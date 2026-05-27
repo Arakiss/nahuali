@@ -53,8 +53,6 @@ assert_file_contains .gitignore '^docs/$' "private docs directory must stay igno
 assert_file_contains .gitignore '^\.private/$' "private local workspace must stay ignored"
 assert_file_contains .gitignore '^\.local/$' "local workspace must stay ignored"
 assert_file_contains .gitignore '^\.runs/$' "local run workspace must stay ignored"
-assert_file_contains .gitignore '^\.promptfoo/$' "local Promptfoo state must stay ignored"
-assert_file_contains .gitignore '^eval-results/$' "eval results must stay ignored"
 
 private_path_pattern='(^docs/|^\.private/|^\.local/|^\.runs/)'
 if git ls-tree -r --name-only HEAD | rg -n "$private_path_pattern"; then
@@ -130,19 +128,17 @@ assert_file_contains scripts/verify-release.sh 'NAHUALI_VERIFY_INSTALL_BIN_DIR' 
 assert_file_contains scripts/release-candidate-check.sh 'scripts/check-release-assets\.sh' "release-candidate gate must check existing release assets"
 assert_file_contains scripts/release-candidate-check.sh 'scripts/verify-release\.sh' "release-candidate gate must verify existing release signatures and install smoke"
 assert_file_contains scripts/release-candidate-check.sh 'NAHUALI_RELEASE_CANDIDATE_REQUIRE_CURRENT_RELEASE' "release-candidate gate must expose the signed-release/current-HEAD alignment switch"
-assert_file_contains scripts/release-candidate-check.sh 'NAHUALI_RELEASE_CANDIDATE_RUN_PROMPTFOO_EVALS' "release-candidate gate must run Promptfoo evals by default with an escape hatch"
+assert_file_contains scripts/release-candidate-check.sh 'NAHUALI_RELEASE_CANDIDATE_EXPECT_VISIBILITY' "release-candidate gate must make expected repository visibility explicit"
+assert_file_contains scripts/validate-clean-tree.sh 'scripts/verify-recall-contract\.sh' "local validation must run the native recall contract smoke"
 assert_file_contains scripts/verify-release-please-dry-run.sh 'git clone --quiet "\$ROOT"' "release-please dry-run helper must use a temporary clone"
 assert_file_contains scripts/verify-release-please-dry-run.sh '--dry-run' "release-please dry-run helper must never mutate GitHub state"
 assert_file_contains scripts/verify-release-please-dry-run.sh 'BUN_INSTALL_CACHE_DIR="\$tmp_cache"' "release-please dry-run helper must isolate the Bun install cache"
 assert_file_contains scripts/verify-release-please-dry-run.sh 'gh auth token' "release-please dry-run helper must use the authenticated gh token for private repos"
-assert_file_contains scripts/fresh-clone-validate.sh 'NAHUALI_VALIDATE_RUN_PROMPTFOO_EVALS' "fresh clone validation must propagate Promptfoo eval configuration"
-assert_file_contains scripts/fresh-clone-validate.sh 'NAHUALI_FRESH_CLONE_NODE_VERSION:-24\.11\.1' "fresh clone validation must pin a modern Node runtime for Promptfoo"
+assert_file_contains scripts/fresh-clone-validate.sh 'NAHUALI_FRESH_CLONE_NODE_VERSION:-24\.11\.1' "fresh clone validation must pin a modern Node runtime for JavaScript checks"
 assert_file_contains scripts/fresh-clone-validate.sh 'node-v\$\{node_version\}-linux-\$\{node_arch\}\.tar\.xz' "fresh clone validation must install Node from a versioned official archive"
-assert_file_contains scripts/verify-recall-evals.sh 'PROMPTFOO_VERSION="\$\{PROMPTFOO_VERSION:-0\.121\.12\}"' "Promptfoo evals must use a pinned default version"
-assert_file_contains scripts/verify-recall-evals.sh 'command -v node' "Promptfoo evals must require the Node runtime"
-assert_file_contains scripts/verify-recall-evals.sh 'Node \^20\.20\.0 or >=22\.22\.0' "Promptfoo evals must reject unsupported Node runtimes before invoking Promptfoo"
-assert_file_contains scripts/verify-recall-evals.sh 'BUN_INSTALL_CACHE_DIR="\$WORK_DIR/bun-cache"' "Promptfoo evals must isolate the Bun install cache"
-assert_file_contains scripts/verify-recall-evals.sh 'retrying once with a clean Bun runtime' "Promptfoo evals must retry once after transient Bun runtime corruption"
+assert_file_contains scripts/verify-recall-contract.sh '--require-evidence' "native recall contract must require evidence-backed recall"
+assert_file_contains scripts/verify-recall-contract.sh '--authority' "native recall contract must require authority context"
+assert_file_contains scripts/verify-recall-contract.sh 'jq -e' "native recall contract must validate structured JSON output"
 assert_file_contains .github/workflows/sbom.yml 'workflow_dispatch:' "SBOM workflow must support manual reruns for existing private beta tags"
 assert_file_contains .github/workflows/sbom.yml 'startsWith\(inputs\.tag, .nahuali-cli-v.\)' "SBOM workflow manual dispatch must stay scoped to nahuali-cli tags"
 assert_file_contains .github/workflows/sbom.yml 'artifact-name: nahuali-\$\{\{ env\.RELEASE_TAG \}\}\.cdx\.json' "SBOM workflow must attach the canonical release SBOM asset"
@@ -170,8 +166,6 @@ if rg -n --hidden \
   --glob '!.private/**' \
   --glob '!.local/**' \
   --glob '!.runs/**' \
-  --glob '!.promptfoo/**' \
-  --glob '!eval-results/**' \
   --glob '!.dev-bin/**' \
   --glob '!.nahuali-oss/**' \
   --glob '!.release-dry-run/**' \
@@ -215,13 +209,13 @@ if [[ -n "$large_files" ]]; then
 fi
 
 identity_pattern='(?i)([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|legal name|personal email)'
-if rg -n -i --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.promptfoo/**' --glob '!eval-results/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$identity_pattern" .; then
+if rg -n -i --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$identity_pattern" .; then
   echo "identity scan failed" >&2
   exit 1
 fi
 
 secret_pattern='(?i)(api[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|secret[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|password[[:space:]]*[:=][[:space:]]*["'\'']?[a-z0-9._-]{8,}["'\'']?|bearer[[:space:]]+[a-z0-9._-]{16,}|sk-[a-z0-9]{20,}|ghp_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|AKIA[0-9A-Z]{16})'
-if rg -n --hidden --glob '!.git/**' --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.promptfoo/**' --glob '!eval-results/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!Cargo.lock' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$secret_pattern" .; then
+if rg -n --hidden --glob '!.git/**' --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!Cargo.lock' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$secret_pattern" .; then
   echo "secret scan failed" >&2
   exit 1
 fi

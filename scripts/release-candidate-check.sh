@@ -26,13 +26,32 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
+expected_visibility="${NAHUALI_RELEASE_CANDIDATE_EXPECT_VISIBILITY:-PUBLIC}"
 visibility="$(gh repo view "$REMOTE_REPO" --json visibility --jq '.visibility')"
 is_private="$(gh repo view "$REMOTE_REPO" --json isPrivate --jq '.isPrivate')"
-if [[ "$visibility" != "PRIVATE" || "$is_private" != "true" ]]; then
-  echo "repository must remain private during the release-candidate freeze" >&2
-  echo "visibility=$visibility is_private=$is_private" >&2
-  exit 1
-fi
+case "$expected_visibility" in
+  PUBLIC)
+    if [[ "$visibility" != "PUBLIC" || "$is_private" != "false" ]]; then
+      echo "repository must be public for the current release-candidate gate" >&2
+      echo "visibility=$visibility is_private=$is_private" >&2
+      exit 1
+    fi
+    ;;
+  PRIVATE)
+    if [[ "$visibility" != "PRIVATE" || "$is_private" != "true" ]]; then
+      echo "repository must be private for this release-candidate gate" >&2
+      echo "visibility=$visibility is_private=$is_private" >&2
+      exit 1
+    fi
+    ;;
+  ANY)
+    ;;
+  *)
+    echo "unsupported NAHUALI_RELEASE_CANDIDATE_EXPECT_VISIBILITY=$expected_visibility" >&2
+    echo "expected PUBLIC, PRIVATE, or ANY" >&2
+    exit 1
+    ;;
+esac
 
 remote_heads="$(git ls-remote --heads "$GIT_REMOTE" | awk '{print $2}')"
 unexpected_remote_heads="$(
@@ -162,9 +181,6 @@ fi
 
 bash scripts/security-supply-chain-check.sh
 bash scripts/check-doc-release-refs.sh
-if [[ -z "${NAHUALI_VALIDATE_RUN_PROMPTFOO_EVALS:-}" ]]; then
-  export NAHUALI_VALIDATE_RUN_PROMPTFOO_EVALS="${NAHUALI_RELEASE_CANDIDATE_RUN_PROMPTFOO_EVALS:-1}"
-fi
 bash scripts/fresh-clone-validate.sh
 
 echo "release-candidate gate passed"

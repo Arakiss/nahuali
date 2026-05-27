@@ -34,7 +34,6 @@ if command -v docker >/dev/null 2>&1 && [[ "${NAHUALI_FRESH_CLONE_USE_DOCKER:-1}
     -e DEBIAN_FRONTEND=noninteractive \
     -e NAHUALI_FRESH_CLONE_NODE_VERSION="${NAHUALI_FRESH_CLONE_NODE_VERSION:-24.11.1}" \
     -e NAHUALI_VALIDATE_SKIP_DEV_STACK=1 \
-    -e NAHUALI_VALIDATE_RUN_PROMPTFOO_EVALS \
     -e NAHUALI_DB_URL=host.docker.internal:18000 \
     -e NAHUALI_QDRANT_URL=http://host.docker.internal:16333 \
     rust:latest \

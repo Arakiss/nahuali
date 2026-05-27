@@ -18,6 +18,4 @@ target/
 *.backup.json
 *.interchange.json
 benchmark-results/
-eval-results/
-.promptfoo/
 docs/

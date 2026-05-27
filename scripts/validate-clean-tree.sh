@@ -85,7 +85,5 @@ for attempt in 1 2 3; do
   run_quiet_step "Knowledge-health regression fixture ${attempt}" cargo run -p nahuali-regression -- --fixtures fixtures/knowledge-health-regression.json
 done
 run_quiet_step "Recall regression fixture" cargo run -p nahuali-regression -- --fixtures fixtures/recall-regression.json
-if [[ "${NAHUALI_VALIDATE_RUN_PROMPTFOO_EVALS:-0}" == "1" ]]; then
-  run_step "Promptfoo recall evals" bash scripts/verify-recall-evals.sh
-fi
+run_step "Recall contract smoke" bash scripts/verify-recall-contract.sh
 run_step "Security and supply-chain checks" bash scripts/security-supply-chain-check.sh

@@ -31,6 +31,19 @@ database.
 For where the project is going next, see [ROADMAP.md](ROADMAP.md). The roadmap
 is directional; this README describes the current public surface.
 
+## Origin
+
+Nahuali started as a private internal prototype before this Rust OSS
+foundation. That earlier work shaped the product thesis: long-running agent
+memory should inspect its own evidence and health, not only retrieve more
+context.
+
+This repository is the clean public Rust line for that idea. It is not a
+publication of every earlier experiment, private workflow, migration note, or
+implementation detail. The public contract is intentionally limited to the
+code, schemas, fixtures, examples, crate READMEs, and validation scripts in
+this repository.
+
 ## What Exists Today
 
 - `nahuali-core`: the canonical Rust engine.
@@ -268,18 +281,18 @@ cargo doc -p nahuali-core --no-deps
 bash scripts/security-supply-chain-check.sh
 bash scripts/verify-dogfood-daily-workflow.sh
 bash scripts/verify-dogfood-migration.sh
-bash scripts/verify-recall-evals.sh
+bash scripts/verify-recall-contract.sh
 ```
 
 The larger release gate is:
 
 ```bash
-NAHUALI_VALIDATE_RUN_PROMPTFOO_EVALS=1 bash scripts/validate-clean-tree.sh
+bash scripts/validate-clean-tree.sh
 ```
 
 That gate runs formatting, clippy, workspace tests, documentation generation,
 package and release dry-runs, install/coexistence checks, dogfood workflows,
-regression fixtures, recall evals, and security checks.
+regression fixtures, the recall contract smoke, and security checks.
 
 ## Current Limits
 
