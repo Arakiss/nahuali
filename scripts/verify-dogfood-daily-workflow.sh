@@ -30,15 +30,21 @@ require_pattern() {
 
 GLOBAL_NAHUALI_BEFORE="$(command -v nahuali || true)"
 
-cargo build -p nahuali-cli --quiet
-TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
-case "$TARGET_DIR" in
-  /*) ;;
-  *) TARGET_DIR="$ROOT/$TARGET_DIR" ;;
-esac
-NAHUALI_BIN="$TARGET_DIR/debug/nahuali"
+if [[ -n "${NAHUALI_DOGFOOD_BIN:-}" ]]; then
+  NAHUALI_BIN="$NAHUALI_DOGFOOD_BIN"
+elif [[ -n "${NAHUALI_DOGFOOD_BIN_DIR:-}" ]]; then
+  NAHUALI_BIN="${NAHUALI_DOGFOOD_BIN_DIR%/}/nahuali"
+else
+  cargo build -p nahuali-cli --quiet
+  TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
+  case "$TARGET_DIR" in
+    /*) ;;
+    *) TARGET_DIR="$ROOT/$TARGET_DIR" ;;
+  esac
+  NAHUALI_BIN="$TARGET_DIR/debug/nahuali"
+fi
 if [[ ! -x "$NAHUALI_BIN" ]]; then
-  echo "Rust nahuali binary is missing after cargo build" >&2
+  echo "Rust nahuali binary is missing" >&2
   echo "expected: $NAHUALI_BIN" >&2
   exit 1
 fi

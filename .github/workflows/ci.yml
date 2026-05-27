@@ -114,11 +114,19 @@ jobs:
         run: bash scripts/verify-dogfood-daily-workflow.sh
         env:
           NAHUALI_VALIDATE_SKIP_DEV_STACK: "1"
+          NAHUALI_DOGFOOD_BIN_DIR: target/release
       - name: Verify dogfood migration workflow
         timeout-minutes: 10
         run: bash scripts/verify-dogfood-migration.sh
         env:
           NAHUALI_VALIDATE_SKIP_DEV_STACK: "1"
+          NAHUALI_DOGFOOD_BIN_DIR: target/release
+      - name: Verify recall contract
+        timeout-minutes: 5
+        run: bash scripts/verify-recall-contract.sh
+        env:
+          NAHUALI_VALIDATE_SKIP_DEV_STACK: "1"
+          NAHUALI_RECALL_CONTRACT_BIN_DIR: target/release
       - name: Check documentation release refs
         timeout-minutes: 1
         run: sh scripts/check-doc-release-refs.sh

@@ -26,9 +26,14 @@ fi
 
 if command -v docker >/dev/null 2>&1 && [[ "${NAHUALI_FRESH_CLONE_USE_DOCKER:-1}" != "0" ]]; then
   bash "$ROOT/scripts/ensure-dev-stack.sh"
+  CACHE_ROOT="${NAHUALI_FRESH_CLONE_CACHE_DIR:-$ROOT/.local/fresh-clone-cache}"
+  mkdir -p "$CACHE_ROOT/cargo-registry" "$CACHE_ROOT/cargo-git" "$CACHE_ROOT/target"
   docker run --rm \
     --add-host=host.docker.internal:host-gateway \
     -v "$CLONE_DIR":/work \
+    -v "$CACHE_ROOT/cargo-registry":/usr/local/cargo/registry \
+    -v "$CACHE_ROOT/cargo-git":/usr/local/cargo/git \
+    -v "$CACHE_ROOT/target":/tmp/nahuali-target \
     -w /work \
     -e CARGO_TARGET_DIR=/tmp/nahuali-target \
     -e DEBIAN_FRONTEND=noninteractive \

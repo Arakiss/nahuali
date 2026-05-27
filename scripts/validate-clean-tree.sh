@@ -77,12 +77,12 @@ release_bin_dir="${CARGO_TARGET_DIR:-target}/release"
 run_step "Isolated install smoke" env NAHUALI_VERIFY_INSTALL_BIN_DIR="$release_bin_dir" bash scripts/verify-install.sh
 run_step "CLI coexistence smoke" env NAHUALI_VERIFY_CLI_BIN_DIR="$release_bin_dir" bash scripts/verify-cli-coexistence.sh
 run_step "Private memory dry-run summary smoke" env NAHUALI_PRIVATE_DRY_RUN_BIN_DIR="$release_bin_dir" bash scripts/verify-private-memory-dry-run.sh
-run_step "Daily dogfood workflow" bash scripts/verify-dogfood-daily-workflow.sh
-run_step "Dogfood migration workflow" bash scripts/verify-dogfood-migration.sh
+run_step "Daily dogfood workflow" env NAHUALI_DOGFOOD_BIN_DIR="$release_bin_dir" bash scripts/verify-dogfood-daily-workflow.sh
+run_step "Dogfood migration workflow" env NAHUALI_DOGFOOD_BIN_DIR="$release_bin_dir" bash scripts/verify-dogfood-migration.sh
 run_step "Documentation release refs" sh scripts/check-doc-release-refs.sh
 for attempt in 1 2 3; do
   run_quiet_step "Knowledge-health regression fixture ${attempt}" cargo run -p nahuali-regression -- --fixtures fixtures/knowledge-health-regression.json
 done
 run_quiet_step "Recall regression fixture" cargo run -p nahuali-regression -- --fixtures fixtures/recall-regression.json
-run_step "Recall contract smoke" bash scripts/verify-recall-contract.sh
+run_step "Recall contract smoke" env NAHUALI_RECALL_CONTRACT_BIN_DIR="$release_bin_dir" bash scripts/verify-recall-contract.sh
 run_step "Security and supply-chain checks" bash scripts/security-supply-chain-check.sh

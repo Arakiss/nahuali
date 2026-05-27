@@ -20,17 +20,21 @@ if [[ "${NAHUALI_VALIDATE_SKIP_DEV_STACK:-0}" != "1" ]]; then
   bash scripts/ensure-dev-stack.sh
 fi
 
-cargo build -p nahuali-cli --quiet
-
-TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
-case "$TARGET_DIR" in
-  /*) ;;
-  *) TARGET_DIR="$ROOT/$TARGET_DIR" ;;
-esac
-
-NAHUALI_BIN="${NAHUALI_RECALL_CONTRACT_BIN:-$TARGET_DIR/debug/nahuali}"
+if [[ -n "${NAHUALI_RECALL_CONTRACT_BIN:-}" ]]; then
+  NAHUALI_BIN="$NAHUALI_RECALL_CONTRACT_BIN"
+elif [[ -n "${NAHUALI_RECALL_CONTRACT_BIN_DIR:-}" ]]; then
+  NAHUALI_BIN="${NAHUALI_RECALL_CONTRACT_BIN_DIR%/}/nahuali"
+else
+  cargo build -p nahuali-cli --quiet
+  TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
+  case "$TARGET_DIR" in
+    /*) ;;
+    *) TARGET_DIR="$ROOT/$TARGET_DIR" ;;
+  esac
+  NAHUALI_BIN="$TARGET_DIR/debug/nahuali"
+fi
 if [[ ! -x "$NAHUALI_BIN" ]]; then
-  echo "Rust nahuali binary is missing after cargo build" >&2
+  echo "Rust nahuali binary is missing" >&2
   echo "expected: $NAHUALI_BIN" >&2
   exit 1
 fi
