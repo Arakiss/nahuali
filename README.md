@@ -10,18 +10,26 @@
   <a href="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml"><img src="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="rust-toolchain.toml"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust stable"></a>
+  <a href="#self-inspecting-memory"><img src="https://img.shields.io/badge/memory-self--inspecting-blue.svg" alt="Self-inspecting memory"></a>
   <a href="fixtures/knowledge-health-regression.json"><img src="https://img.shields.io/badge/regression-fixtured-brightgreen.svg" alt="Regression fixtures"></a>
 </p>
 
 Nahuali is a pre-release Rust memory engine for local agent and operator
-workflows. It records observations into an append-only ledger, rebuilds
-projected memory from that ledger, and exposes recall together with evidence
-and knowledge-health signals.
+workflows. Its core idea is **self-inspecting memory**: memory should expose the
+evidence, health signals, and authority decision behind recall before a caller
+trusts it.
+
+The engine records observations into an append-only ledger, rebuilds projected
+memory from that ledger, and reports when projected knowledge is unsupported,
+contradictory, stale, isolated, low-confidence, or missing source coverage.
 
 The current project is intentionally small: a Rust core crate, a CLI, a local
 MCP stdio server, a local HTTP API, fixtures, and release-gate scripts. It is
 not a hosted product, not an accounts system, and not a general-purpose
 database.
+
+For where the project is going next, see [ROADMAP.md](ROADMAP.md). The roadmap
+is directional; this README describes the current public surface.
 
 ## What Exists Today
 
@@ -36,6 +44,24 @@ database.
 
 The repository is pre-1.0. The source tree is public, but the project should
 still be treated as a beta foundation rather than a finished product.
+
+## Self-Inspecting Memory
+
+In this repository, self-inspection means concrete, local reports over the
+current memory projection:
+
+- `inspect` reports knowledge-health counts and signals.
+- `recall --authority --json` returns recall results with the authority mode,
+  trust flag, score, health report, and evidence IDs when available.
+- `self-inspect` turns health and authority signals into proposed review work.
+- `review` exposes a prioritized operator queue.
+- `reflect`, `sleep`, `consolidation-plan`, and `proactive` plan follow-up work
+  without writing memory automatically.
+
+This is not a claim that Nahuali can prove remembered information is true. It is
+a claim that Nahuali makes its current basis for trust inspectable: what
+evidence exists, what is unsupported, what conflicts, what looks stale, and
+what should be reviewed before acting on memory.
 
 ## Storage Contract
 
@@ -265,6 +291,9 @@ regression fixtures, recall evals, and security checks.
 - No guarantee that remembered information is true; Nahuali reports evidence,
   confidence, and health signals so callers can decide whether to trust it.
 - No stable 1.0 API guarantee yet.
+
+See [ROADMAP.md](ROADMAP.md) for the longer-term direction. Roadmap items are
+not release guarantees until they appear in code, tests, and tagged releases.
 
 ## Repository Layout
 
