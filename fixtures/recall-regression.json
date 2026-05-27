@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "id": "recall_no_match_memory",
+      "goal": "A valid store should return an empty recall result for unrelated queries.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "episode_release",
+          "content": "Lena owns the release notes.",
+          "tags": ["product"]
+        },
+        {
+          "type": "fact",
+          "subject": "Lena",
+          "predicate": "owns",
+          "object": "release notes",
+          "source_episode_ref": "episode_release",
+          "confidence": 0.9
+        },
+        {
+          "type": "recall",
+          "query": "billing invoice",
+          "limit": 10,
+          "require_result_count": 0,
+          "require_authority_mode": "advisory"
+        }
+      ],
+      "expected": {
+        "event_count": 2,
+        "episode_count": 1,
+        "fact_count": 1,
+        "supported_fact_count": 1,
+        "authority_mode": "advisory"
+      }
+    },
+    {
+      "id": "recall_partial_claim_match",
+      "goal": "Partial lexical matches should still surface canonical claim results.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "episode_preference",
+          "content": "Lena prefers concise release notes.",
+          "tags": ["product"]
+        },
+        {
+          "type": "fact",
+          "subject": "Lena",
+          "predicate": "prefers",
+          "object": "concise release notes",
+          "source_episode_ref": "episode_preference",
+          "confidence": 0.95
+        },
+        {
+          "type": "recall",
+          "query": "concise",
+          "limit": 10,
+          "require_kinds": ["claim"],
+          "require_authority_mode": "advisory"
+        }
+      ],
+      "expected": {
+        "event_count": 2,
+        "episode_count": 1,
+        "fact_count": 1,
+        "supported_fact_count": 1,
+        "authority_mode": "advisory"
+      }
+    },
+    {
+      "id": "recall_generic_relation_match_is_not_enough",
+      "goal": "A query with specific unmatched nouns should not return a claim that only shares a generic relation verb.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "episode_release_owner",
+          "content": "Lena owns the release notes.",
+          "tags": ["product"]
+        },
+        {
+          "type": "fact",
+          "subject": "Lena",
+          "predicate": "owns",
+          "object": "release notes",
+          "source_episode_ref": "episode_release_owner",
+          "confidence": 0.9
+        },
+        {
+          "type": "recall",
+          "query": "who owns deployment keys",
+          "limit": 10,
+          "require_result_count": 0,
+          "require_authority_mode": "advisory"
+        }
+      ],
+      "expected": {
+        "event_count": 2,
+        "episode_count": 1,
+        "fact_count": 1,
+        "supported_fact_count": 1,
+        "authority_mode": "advisory"
+      }
+    },
+    {
+      "id": "recall_procedure_and_intention",
+      "goal": "Recall should cover procedural and prospective memory families.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "episode_launch",
+          "content": "The launch workflow needs release notes before publishing.",
+          "tags": ["launch"]
+        },
+        {
+          "type": "procedure",
+          "name": "Release workflow",
+          "body": "Draft release notes before publishing.",
+          "source_episode_ref": "episode_launch",
+          "confidence": 0.9
+        },
+        {
+          "type": "intention",
+          "bind": "ship_release",
+          "description": "Ship release notes",
+          "kind": "task",
+          "priority": "high",
+          "source_episode_ref": "episode_launch"
+        },
+        {
+          "type": "recall",
+          "query": "release notes",
+          "limit": 10,
+          "require_kinds": ["procedure", "intention"],
+          "require_authority_mode": "certify"
+        }
+      ],
+      "expected": {
+        "event_count": 3,
+        "episode_count": 1,
+        "fact_count": 0,
+        "relation_count": 0,
+        "authority_mode": "certify"
+      }
+    },
+    {
+      "id": "recall_authority_blocks_weak_context",
+      "goal": "Recall over unsupported low-confidence memory should carry block authority.",
+      "steps": [
+        {
+          "type": "fact",
+          "subject": "Lena",
+          "predicate": "owns",
+          "object": "release notes",
+          "source_episode_ref": null,
+          "confidence": 0.3
+        },
+        {
+          "type": "recall",
+          "query": "release notes",
+          "limit": 10,
+          "require_kinds": ["claim"],
+          "require_authority_mode": "block"
+        }
+      ],
+      "expected": {
+        "event_count": 1,
+        "episode_count": 0,
+        "fact_count": 1,
+        "unsupported_fact_count": 1,
+        "low_confidence_fact_count": 1,
+        "authority_mode": "block",
+        "required_signal_kinds": ["no_episodes", "unsupported_fact", "low_confidence_fact"]
+      }
+    }
+  ]
+}

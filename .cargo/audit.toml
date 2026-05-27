@@ -1,0 +1,10 @@
+[advisories]
+ignore = [
+  # Transitive through surrealdb-core -> jsonwebtoken -> rsa. The advisory has
+  # no fixed upgrade, and Nahuali does not expose JWT/RSA verification surfaces.
+  # Revisit when SurrealDB updates this dependency chain.
+  "RUSTSEC-2023-0071",
+  # Transitive through SurrealDB geo dependencies. Nahuali does not use this
+  # crate directly; keep tracked until the upstream dependency graph moves.
+  "RUSTSEC-2023-0089",
+]

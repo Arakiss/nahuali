@@ -1,0 +1,37 @@
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v3.0.5
+    container_name: nahuali-oss-surrealdb
+    user: root
+    ports:
+      - "18000:8000"
+    command: start --user root --pass root surrealkv:/data/nahuali.db
+    volumes:
+      - ${HOME}/.nahuali-oss/surrealdb:/data
+    healthcheck:
+      test: ["CMD", "/surreal", "isready", "--endpoint", "http://localhost:8000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: nahuali-oss-qdrant
+    ports:
+      - "16333:6333"
+      - "16334:6334"
+    volumes:
+      - ${HOME}/.nahuali-oss/qdrant:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

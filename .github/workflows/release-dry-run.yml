@@ -1,0 +1,18 @@
+name: Release Dry Run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-dry-run:
+    name: private release dry run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: bash scripts/release-dry-run.sh --dist-dir .release-dry-run --keep
+      - run: find .release-dry-run -maxdepth 2 -type f -print | sort

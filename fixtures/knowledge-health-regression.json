@@ -1,0 +1,410 @@
+{
+  "version": 1,
+  "description": "Synthetic knowledge-health fixtures for local Nahuali validation.",
+  "fixtures": [
+    {
+      "id": "empty_store_memory",
+      "goal": "An empty store should open safely while surfacing that no episodes exist yet.",
+      "steps": [],
+      "expected": {
+        "event_count": 0,
+        "episode_count": 0,
+        "fact_count": 0,
+        "relation_count": 0,
+        "supported_fact_count": 0,
+        "unsupported_fact_count": 0,
+        "low_confidence_fact_count": 0,
+        "conflicting_fact_count": 0,
+        "stale_fact_count": 0,
+        "isolated_entity_count": 0,
+        "blind_spot_count_min": 1,
+        "authority_mode": "block",
+        "authority_score": 0.0,
+        "authority_can_trust": false,
+        "required_signal_kinds": ["no_episodes"],
+        "required_signals": [
+          {
+            "kind": "no_episodes",
+            "severity": "high",
+            "dimensions": ["completeness", "blind_spot"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "supported_relation_memory",
+      "goal": "A healthy governed memory should recall an episode, a supported fact, and a relation while keeping entity isolation at zero.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "source",
+          "content": "Lena owns the release notes",
+          "tags": ["product"]
+        },
+        {
+          "type": "fact",
+          "subject": "Lena",
+          "predicate": "owns",
+          "object": "release notes",
+          "source_episode_ref": "source",
+          "confidence": 0.92
+        },
+        {
+          "type": "relate",
+          "from": "Lena",
+          "relation": "owns",
+          "to": "release notes",
+          "source_episode_ref": "source",
+          "confidence": 0.9
+        },
+        {
+          "type": "recall",
+          "query": "Lena release",
+          "limit": 10,
+          "require_kinds": ["episode", "claim", "link"]
+        }
+      ],
+      "expected": {
+        "event_count": 3,
+        "episode_count": 1,
+        "fact_count": 1,
+        "relation_count": 1,
+        "supported_fact_count": 1,
+        "unsupported_fact_count": 0,
+        "low_confidence_fact_count": 0,
+        "conflicting_fact_count": 0,
+        "stale_fact_count": 0,
+        "isolated_entity_count": 0,
+        "blind_spot_count_min": 0,
+        "authority_mode": "certify",
+        "authority_score": 1.0,
+        "authority_can_trust": true
+      }
+    },
+    {
+      "id": "isolated_entity_advisory_memory",
+      "goal": "Supported claims with no relation edges should remain usable while carrying low-severity advisory authority.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "source",
+          "content": "Lena owns the release notes",
+          "tags": ["product"]
+        },
+        {
+          "type": "fact",
+          "subject": "Lena",
+          "predicate": "owns",
+          "object": "release notes",
+          "source_episode_ref": "source",
+          "confidence": 0.92
+        }
+      ],
+      "expected": {
+        "event_count": 2,
+        "episode_count": 1,
+        "fact_count": 1,
+        "relation_count": 0,
+        "supported_fact_count": 1,
+        "unsupported_fact_count": 0,
+        "low_confidence_fact_count": 0,
+        "conflicting_fact_count": 0,
+        "stale_fact_count": 0,
+        "isolated_entity_count": 2,
+        "blind_spot_count_min": 2,
+        "required_signal_kinds": ["isolated_entity"],
+        "required_signals": [
+          {
+            "kind": "isolated_entity",
+            "severity": "low",
+            "dimensions": ["connectivity", "blind_spot"]
+          }
+        ],
+        "authority_mode": "advisory",
+        "authority_score": 0.75,
+        "authority_can_trust": false
+      }
+    },
+    {
+      "id": "unsupported_fact_memory",
+      "goal": "A fact without a source episode should remain usable but surface as weak authority.",
+      "steps": [
+        {
+          "type": "fact",
+          "subject": "Atlas",
+          "predicate": "status",
+          "object": "draft",
+          "confidence": 0.4
+        }
+      ],
+      "expected": {
+        "event_count": 1,
+        "episode_count": 0,
+        "fact_count": 1,
+        "relation_count": 0,
+        "unsupported_fact_count": 1,
+        "low_confidence_fact_count": 1,
+        "conflicting_fact_count": 0,
+        "stale_fact_count": 0,
+        "blind_spot_count_min": 4,
+        "required_signal_kinds": [
+          "no_episodes",
+          "unsupported_fact",
+          "low_confidence_fact",
+          "isolated_entity"
+        ],
+        "required_signals": [
+          {
+            "kind": "unsupported_fact",
+            "severity": "medium",
+            "dimensions": ["unsupported_memory", "blind_spot"]
+          },
+          {
+            "kind": "low_confidence_fact",
+            "severity": "medium",
+            "dimensions": ["confidence"]
+          }
+        ],
+        "authority_mode": "block",
+        "authority_score": 0.0,
+        "authority_can_trust": false
+      }
+    },
+    {
+      "id": "conflicting_fact_memory",
+      "goal": "Conflicting assertions about the same subject and predicate should surface before recall is trusted.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "first_source",
+          "content": "Atlas is in draft status",
+          "tags": ["release"]
+        },
+        {
+          "type": "fact",
+          "subject": "Atlas",
+          "predicate": "status",
+          "object": "draft",
+          "source_episode_ref": "first_source",
+          "confidence": 0.9
+        },
+        {
+          "type": "remember",
+          "bind": "second_source",
+          "content": "Atlas is now published",
+          "tags": ["release"]
+        },
+        {
+          "type": "fact",
+          "subject": "Atlas",
+          "predicate": "status",
+          "object": "published",
+          "source_episode_ref": "second_source",
+          "confidence": 0.9
+        }
+      ],
+      "expected": {
+        "event_count": 4,
+        "episode_count": 2,
+        "fact_count": 2,
+        "relation_count": 0,
+        "supported_fact_count": 2,
+        "unsupported_fact_count": 0,
+        "low_confidence_fact_count": 0,
+        "conflicting_fact_count": 1,
+        "stale_fact_count": 0,
+        "blind_spot_count_min": 1,
+        "required_signal_kinds": ["conflicting_fact", "isolated_entity"],
+        "required_signals": [
+          {
+            "kind": "conflicting_fact",
+            "severity": "high",
+            "dimensions": ["contradiction", "blind_spot"]
+          }
+        ],
+        "authority_mode": "block",
+        "authority_score": 0.0,
+        "authority_can_trust": false
+      }
+    },
+    {
+      "id": "stale_fact_memory",
+      "goal": "Time-dependent staleness should be reproducible with deterministic event timestamps.",
+      "inspect_at_ms": 8640000000,
+      "steps": [
+        {
+          "type": "raw_event",
+          "sequence": 1,
+          "timestamp_ms": 0,
+          "payload": {
+            "type": "episode_recorded",
+            "id": "episode_old",
+            "content": "Lena owned the migration checklist",
+            "tags": ["product"]
+          }
+        },
+        {
+          "type": "raw_event",
+          "sequence": 2,
+          "timestamp_ms": 0,
+          "payload": {
+            "type": "fact_asserted",
+            "id": "fact_old",
+            "subject": "Lena",
+            "predicate": "owns",
+            "object": "migration checklist",
+            "source_episode_id": "episode_old",
+            "confidence": 0.8
+          }
+        },
+        {
+          "type": "write_raw_records"
+        }
+      ],
+      "expected": {
+        "event_count": 2,
+        "episode_count": 1,
+        "fact_count": 1,
+        "relation_count": 0,
+        "supported_fact_count": 1,
+        "unsupported_fact_count": 0,
+        "low_confidence_fact_count": 0,
+        "conflicting_fact_count": 0,
+        "stale_fact_count": 1,
+        "blind_spot_count_min": 2,
+        "required_signal_kinds": ["stale_fact", "isolated_entity"],
+        "required_signals": [
+          {
+            "kind": "stale_fact",
+            "severity": "medium",
+            "dimensions": ["freshness", "staleness"]
+          }
+        ],
+        "authority_mode": "warn",
+        "authority_score": 0.5,
+        "authority_can_trust": false
+      }
+    },
+    {
+      "id": "corrupted_checksum_record_ledger",
+      "goal": "A corrupted event checksum must fail closed before projection.",
+      "steps": [
+        {
+          "type": "raw_event",
+          "sequence": 1,
+          "timestamp_ms": 1000,
+          "corrupt_checksum": true,
+          "payload": {
+            "type": "episode_recorded",
+            "id": "episode_1",
+            "content": "Synthetic memory",
+            "tags": []
+          }
+        },
+        {
+          "type": "write_raw_records"
+        }
+      ],
+      "expected": {
+        "open_error_contains": "checksum mismatch"
+      }
+    },
+    {
+      "id": "out_of_order_record_ledger",
+      "goal": "A record ledger with a missing first sequence must fail closed before projection.",
+      "steps": [
+        {
+          "type": "raw_event",
+          "sequence": 2,
+          "timestamp_ms": 1000,
+          "payload": {
+            "type": "episode_recorded",
+            "id": "episode_2",
+            "content": "Synthetic memory",
+            "tags": []
+          }
+        },
+        {
+          "type": "write_raw_records"
+        }
+      ],
+      "expected": {
+        "open_error_contains": "expected sequence 1, found 2"
+      }
+    },
+    {
+      "id": "unsupported_record_ledger_version",
+      "goal": "A record ledger with an unsupported envelope version must fail closed before projection.",
+      "steps": [
+        {
+          "type": "raw_event",
+          "version": 999,
+          "sequence": 1,
+          "timestamp_ms": 1000,
+          "payload": {
+            "type": "episode_recorded",
+            "id": "episode_1",
+            "content": "Synthetic memory",
+            "tags": []
+          }
+        },
+        {
+          "type": "write_raw_records"
+        }
+      ],
+      "expected": {
+        "open_error_contains": "unsupported record envelope version 999"
+      }
+    },
+    {
+      "id": "recall_ranking_memory",
+      "goal": "A high-confidence supported fact should rank before relation and episode matches for a focused fact query.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "source",
+          "content": "Lena owns release notes",
+          "tags": ["product"]
+        },
+        {
+          "type": "fact",
+          "subject": "Lena",
+          "predicate": "owns",
+          "object": "release notes",
+          "source_episode_ref": "source",
+          "confidence": 0.95
+        },
+        {
+          "type": "relate",
+          "from": "Lena",
+          "relation": "owns",
+          "to": "release notes",
+          "source_episode_ref": "source",
+          "confidence": 0.5
+        },
+        {
+          "type": "ranked_recall",
+          "query": "Lena owns release notes",
+          "limit": 10,
+          "require_first_kind": "claim"
+        }
+      ],
+      "expected": {
+        "event_count": 3,
+        "episode_count": 1,
+        "fact_count": 1,
+        "relation_count": 1,
+        "supported_fact_count": 1,
+        "unsupported_fact_count": 0,
+        "low_confidence_fact_count": 0,
+        "conflicting_fact_count": 0,
+        "stale_fact_count": 0,
+        "isolated_entity_count": 0,
+        "blind_spot_count_min": 0,
+        "authority_mode": "certify",
+        "authority_score": 1.0,
+        "authority_can_trust": true
+      }
+    }
+  ]
+}

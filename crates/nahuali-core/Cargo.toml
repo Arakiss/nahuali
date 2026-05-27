@@ -1,0 +1,21 @@
+[package]
+name = "nahuali-core"
+version = "0.1.0-beta.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+description = "Self-inspecting memory engine for AI agents"
+readme = "README.md"
+keywords = ["agents", "memory", "recall", "provenance", "governance"]
+categories = ["data-structures", "development-tools"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+surrealdb.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

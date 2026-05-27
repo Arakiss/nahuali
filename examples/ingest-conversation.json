@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "source": {
+    "kind": "conversation",
+    "title": "Release review",
+    "uri": "fixture://release-review",
+    "metadata": {
+      "adapter": "fixture"
+    }
+  },
+  "episodes": [
+    {
+      "ref": "message-1",
+      "content": "Lena owns the release notes.",
+      "tags": ["product"],
+      "mentions": ["Lena", "Release Notes"],
+      "source_position": 1,
+      "source_role": "user"
+    },
+    {
+      "ref": "message-2",
+      "content": "Release notes should stay concise.",
+      "tags": ["product"],
+      "mentions": ["Release Notes"],
+      "source_position": 2,
+      "source_role": "assistant"
+    }
+  ],
+  "claims": [
+    {
+      "subject": "Lena",
+      "predicate": "owns",
+      "object": "release notes",
+      "source_episode_ref": "message-1",
+      "confidence": 0.94
+    }
+  ],
+  "links": [
+    {
+      "from": "Lena",
+      "relation": "owns",
+      "to": "Release Notes",
+      "source_episode_ref": "message-1",
+      "confidence": 0.92
+    }
+  ],
+  "procedures": [
+    {
+      "kind": "preference",
+      "name": "Release notes",
+      "body": "Keep release notes concise.",
+      "source_episode_ref": "message-2",
+      "confidence": 0.9
+    }
+  ],
+  "intentions": [
+    {
+      "kind": "task",
+      "priority": "high",
+      "description": "Ship release notes",
+      "source_episode_ref": "message-1"
+    }
+  ]
+}

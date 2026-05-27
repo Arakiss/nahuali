@@ -1,0 +1,7 @@
+{
+  ".": "0.1.0-beta.0",
+  "crates/nahuali-core": "0.1.0-beta.0",
+  "crates/nahuali-cli": "0.1.0-beta.0",
+  "crates/nahuali-mcp": "0.1.0-beta.0",
+  "crates/nahuali-api": "0.1.0-beta.0"
+}

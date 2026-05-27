@@ -1,0 +1,302 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_please:
+        description: "Run Release Please on the current ref instead of building binaries"
+        required: false
+        default: false
+        type: boolean
+      tag:
+        description: "Existing tag to build and attach binaries to (for example nahuali-cli-vX.Y.Z-beta.N)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release-please:
+    name: release-please
+    runs-on: ubuntu-latest
+    if: >
+      (github.event_name == 'workflow_dispatch' && inputs.release_please == true)
+      || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    permissions:
+      actions: write
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify internal workspace dependency pins
+        run: sh scripts/sync-workspace-internal-deps.sh --check
+      - name: Verify living release text avoids pinned release drift
+        run: sh scripts/check-doc-release-refs.sh
+      - name: Tag internal components without GitHub Releases
+        run: sh scripts/tag-skipped-release-please-components.sh
+      - id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sync generated release PR workspace pins
+        if: ${{ steps.release.outputs.prs_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR: ${{ steps.release.outputs.pr }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pr_number="$(
+            node <<'NODE'
+          const single = process.env.RELEASE_PR || "";
+          const many = process.env.RELEASE_PRS || "";
+          const prs = [];
+          if (single) prs.push(JSON.parse(single));
+          if (many) prs.push(...JSON.parse(many));
+          const pr = prs.find((item) => item && (item.number || item.id));
+          if (pr?.number) {
+            console.log(pr.number);
+          }
+          NODE
+          )"
+
+          if [[ -z "${pr_number}" ]]; then
+            echo "No release PR number emitted; skipping workspace pin sync."
+            exit 0
+          fi
+
+          gh pr checkout "${pr_number}" --repo "${GITHUB_REPOSITORY}"
+          sh scripts/sync-workspace-internal-deps.sh
+
+          if git diff --quiet -- Cargo.toml; then
+            echo "Release PR workspace dependency pins already synchronized."
+            exit 0
+          fi
+
+          git add Cargo.toml
+          git commit -m "chore: sync workspace dependency pins"
+          git push origin "HEAD:$(git branch --show-current)"
+      - name: Trigger CI for generated release PR
+        if: ${{ steps.release.outputs.prs_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR: ${{ steps.release.outputs.pr }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pr_info="$(
+            node <<'NODE'
+          const single = process.env.RELEASE_PR || "";
+          const many = process.env.RELEASE_PRS || "";
+          const prs = [];
+          if (single) prs.push(JSON.parse(single));
+          if (many) prs.push(...JSON.parse(many));
+          const pr = prs.find((item) => item && (item.number || item.id));
+          if (!pr) {
+            process.exit(0);
+          }
+          const branch = pr.headRefName
+            || pr.headBranchName
+            || pr.branch
+            || pr.head?.ref
+            || "";
+          console.log(`${pr.number || ""}\t${branch}`);
+          NODE
+          )"
+
+          if [[ -z "${pr_info}" ]]; then
+            echo "No release PR metadata emitted; skipping CI dispatch."
+            exit 0
+          fi
+
+          pr_number="${pr_info%%$'\t'*}"
+          pr_branch="${pr_info#*$'\t'}"
+          if [[ -z "${pr_branch}" && -n "${pr_number}" ]]; then
+            pr_branch="$(gh pr view "${pr_number}" --repo "${GITHUB_REPOSITORY}" --json headRefName --jq .headRefName)"
+          fi
+
+          if [[ -z "${pr_branch}" ]]; then
+            echo "::warning::Release PR branch could not be resolved; skipping CI dispatch."
+            exit 0
+          fi
+
+          echo "Dispatching ci.yml for release PR branch ${pr_branch}"
+          gh workflow run ci.yml --repo "${GITHUB_REPOSITORY}" --ref "${pr_branch}"
+      - name: Name CLI release as the Nahuali product
+        if: ${{ steps.release.outputs['crates/nahuali-cli--release_created'] == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLI_TAG: ${{ steps.release.outputs['crates/nahuali-cli--tag_name'] }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${CLI_TAG#nahuali-cli-v}"
+          gh release edit "${CLI_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Nahuali v${version}" \
+            --prerelease \
+            --latest=false
+      - name: Trigger CLI binary build
+        if: ${{ steps.release.outputs['crates/nahuali-cli--release_created'] == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLI_TAG: ${{ steps.release.outputs['crates/nahuali-cli--tag_name'] }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${CLI_TAG}" ]]; then
+            echo "::error::Release Please reported a CLI release but did not emit a tag."
+            exit 1
+          fi
+
+          gh workflow run release.yml --repo "${GITHUB_REPOSITORY}" --ref "${CLI_TAG}" -f "tag=${CLI_TAG}"
+
+  build-binaries:
+    name: build (${{ matrix.target }})
+    if: >
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/nahuali-cli-v'))
+      || (github.event_name == 'workflow_dispatch' && inputs.release_please != true && inputs.tag != '')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Resolve and validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            upload_tag="${{ github.event.inputs.tag }}"
+          else
+            upload_tag="${GITHUB_REF#refs/tags/}"
+          fi
+
+          expected_ref="refs/tags/${upload_tag}"
+          if [[ "${GITHUB_REF}" != "${expected_ref}" ]]; then
+            echo "::error::Release signatures are verified against ${expected_ref}, but this run identity is ${GITHUB_REF}. Re-run workflow_dispatch from the tag ref."
+            exit 1
+          fi
+
+          version="${upload_tag#nahuali-cli-v}"
+          archive_basename="nahuali-v${version}-${{ matrix.target }}"
+          echo "UPLOAD_TAG=${upload_tag}" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=${version}" >> "$GITHUB_ENV"
+          echo "ARCHIVE_BASENAME=${archive_basename}" >> "$GITHUB_ENV"
+          echo "SIGNER_IDENTITY=https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${expected_ref}" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - uses: sigstore/cosign-installer@v4.1.1
+      - name: Install cross toolchain (linux-aarch64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in 1 2 3; do
+            if sudo env DEBIAN_FRONTEND=noninteractive timeout 300s apt-get update \
+              && sudo env DEBIAN_FRONTEND=noninteractive timeout 300s apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross; then
+              break
+            fi
+
+            if [[ "${attempt}" == "3" ]]; then
+              echo "::error::Failed to install Linux aarch64 cross toolchain after 3 attempts."
+              exit 1
+            fi
+
+            sleep "$((attempt * 10))"
+          done
+
+          mkdir -p .cargo
+          {
+            echo '[target.aarch64-unknown-linux-gnu]'
+            echo 'linker = "aarch64-linux-gnu-gcc"'
+          } > .cargo/config.toml
+      - name: Build release binaries
+        timeout-minutes: 25
+        run: cargo build --release --target ${{ matrix.target }} -p nahuali-cli -p nahuali-mcp -p nahuali-api
+      - name: Package + checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          archive="${ARCHIVE_BASENAME}.tar.gz"
+          stage_dir="dist/${ARCHIVE_BASENAME}"
+          mkdir -p "${stage_dir}/bin"
+          cp "target/${{ matrix.target }}/release/nahuali" "${stage_dir}/bin/nahuali"
+          cp "target/${{ matrix.target }}/release/nahuali-mcp" "${stage_dir}/bin/nahuali-mcp"
+          cp "target/${{ matrix.target }}/release/nahuali-api" "${stage_dir}/bin/nahuali-api"
+          chmod +x "${stage_dir}/bin/nahuali" "${stage_dir}/bin/nahuali-mcp" "${stage_dir}/bin/nahuali-api"
+
+          {
+            printf 'name=nahuali\n'
+            printf 'version=%s\n' "${RELEASE_VERSION}"
+            printf 'target=%s\n' "${{ matrix.target }}"
+            printf 'archive=%s\n' "${archive}"
+            printf 'binaries=nahuali,nahuali-mcp,nahuali-api\n'
+            printf 'publication=github-release\n'
+          } > "${stage_dir}/MANIFEST.txt"
+
+          tar -czf "dist/${archive}" -C dist "${ARCHIVE_BASENAME}"
+
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd dist && sha256sum "${archive}" > "${archive}.sha256")
+          else
+            (cd dist && shasum -a 256 "${archive}" > "${archive}.sha256")
+          fi
+      - name: Sign + verify artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          artifact="dist/${ARCHIVE_BASENAME}.tar.gz"
+          bundle="${artifact}.sigstore.json"
+          cosign sign-blob --yes "${artifact}" --bundle "${bundle}"
+          cosign verify-blob "${artifact}" \
+            --bundle "${bundle}" \
+            --certificate-identity "${SIGNER_IDENTITY}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.UPLOAD_TAG }}
+          files: |
+            dist/${{ env.ARCHIVE_BASENAME }}.tar.gz
+            dist/${{ env.ARCHIVE_BASENAME }}.tar.gz.sha256
+            dist/${{ env.ARCHIVE_BASENAME }}.tar.gz.sigstore.json

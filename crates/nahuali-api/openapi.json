@@ -1,0 +1,612 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Nahuali Beta API",
+    "version": "0.1.0",
+    "description": "HTTP surface over nahuali-core. The SurrealDB memory_record ledger remains authoritative, SurrealDB graph tables are derived projections, and Qdrant is a rebuildable semantic index."
+  },
+  "paths": {
+    "/v1/status": {
+      "get": {
+        "operationId": "getStatus",
+        "summary": "Return memory counts, authority, health, and graph projection validation.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "operationId": "getOpenapi",
+        "summary": "Return the static OpenAPI contract for the beta HTTP surface.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/episode": {
+      "post": {
+        "operationId": "createEpisode",
+        "summary": "Append an observed episode through nahuali-core.",
+        "requestBody": { "$ref": "#/components/requestBodies/EpisodeRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/claim": {
+      "post": {
+        "operationId": "createClaim",
+        "summary": "Append a derived claim through nahuali-core.",
+        "requestBody": { "$ref": "#/components/requestBodies/ClaimRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/link": {
+      "post": {
+        "operationId": "createLink",
+        "summary": "Append a derived typed link through nahuali-core.",
+        "requestBody": { "$ref": "#/components/requestBodies/LinkRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/procedure": {
+      "post": {
+        "operationId": "createProcedure",
+        "summary": "Append a reusable procedure through nahuali-core.",
+        "requestBody": { "$ref": "#/components/requestBodies/ProcedureRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/intention": {
+      "post": {
+        "operationId": "createIntention",
+        "summary": "Append future work, a goal, or a reminder through nahuali-core.",
+        "requestBody": { "$ref": "#/components/requestBodies/IntentionRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/intention/update": {
+      "post": {
+        "operationId": "updateIntention",
+        "summary": "Update intention metadata without changing lifecycle status.",
+        "requestBody": { "$ref": "#/components/requestBodies/IntentionUpdateRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/intention/status": {
+      "post": {
+        "operationId": "updateIntentionStatus",
+        "summary": "Change an intention lifecycle state.",
+        "requestBody": { "$ref": "#/components/requestBodies/IntentionStatusRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/intention/reconcile": {
+      "post": {
+        "operationId": "reconcileIntentions",
+        "summary": "Return a non-mutating intention reconciliation report.",
+        "requestBody": { "$ref": "#/components/requestBodies/IntentionReconcileRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/goal-progress": {
+      "get": {
+        "operationId": "getGoalProgress",
+        "summary": "Return a non-mutating goal progress report.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/proactive": {
+      "post": {
+        "operationId": "getProactiveReport",
+        "summary": "Return a non-mutating proactive operator report.",
+        "requestBody": { "$ref": "#/components/requestBodies/ProactiveRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/deadlines": {
+      "post": {
+        "operationId": "getDeadlines",
+        "summary": "Return non-mutating proactive deadline signals.",
+        "requestBody": { "$ref": "#/components/requestBodies/ProactiveRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/anomalies": {
+      "post": {
+        "operationId": "getAnomalies",
+        "summary": "Return non-mutating proactive anomaly alerts.",
+        "requestBody": { "$ref": "#/components/requestBodies/ProactiveRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/anomaly/acknowledge": {
+      "post": {
+        "operationId": "acknowledgeAnomaly",
+        "summary": "Acknowledge a proactive anomaly with an explicit audit note.",
+        "requestBody": { "$ref": "#/components/requestBodies/AnomalyAcknowledgeRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/recall": {
+      "post": {
+        "operationId": "recall",
+        "summary": "Recall projected memory with authority and health context.",
+        "requestBody": { "$ref": "#/components/requestBodies/RecallRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/session-resume": {
+      "post": {
+        "operationId": "sessionResume",
+        "summary": "Return a continuity briefing with authority and health context.",
+        "requestBody": { "$ref": "#/components/requestBodies/SessionResumeRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/memory-health": {
+      "post": {
+        "operationId": "getMemoryHealth",
+        "summary": "Return knowledge-health and authority context.",
+        "requestBody": { "$ref": "#/components/requestBodies/EmptyRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/graph": {
+      "get": {
+        "operationId": "getGraph",
+        "summary": "Return a deterministic graph neighborhood.",
+        "parameters": [
+          { "$ref": "#/components/parameters/GraphSeed" },
+          { "$ref": "#/components/parameters/Depth" },
+          { "$ref": "#/components/parameters/Limit" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/timeline": {
+      "get": {
+        "operationId": "getTimeline",
+        "summary": "Return SurrealDB graph-projection episodes.",
+        "parameters": [{ "$ref": "#/components/parameters/Limit" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/pending": {
+      "get": {
+        "operationId": "getPending",
+        "summary": "Return SurrealDB graph-projection pending intentions.",
+        "parameters": [{ "$ref": "#/components/parameters/Limit" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/projection/status": {
+      "get": {
+        "operationId": "getProjectionStatus",
+        "summary": "Return SurrealDB graph-projection checkpoint and table counts.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/projection/rebuild": {
+      "post": {
+        "operationId": "rebuildProjection",
+        "summary": "Rebuild derived SurrealDB graph projection from the record ledger.",
+        "requestBody": { "$ref": "#/components/requestBodies/EmptyRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/projection/validate": {
+      "post": {
+        "operationId": "validateProjection",
+        "summary": "Validate derived SurrealDB graph projection against the record ledger.",
+        "requestBody": { "$ref": "#/components/requestBodies/EmptyRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/semantic/status": {
+      "get": {
+        "operationId": "getSemanticStatus",
+        "summary": "Return Qdrant semantic-index status.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/semantic/rebuild": {
+      "post": {
+        "operationId": "rebuildSemantic",
+        "summary": "Rebuild Qdrant semantic index from the projected memory state.",
+        "requestBody": { "$ref": "#/components/requestBodies/EmptyRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/v1/review/resolve": {
+      "post": {
+        "operationId": "resolveReview",
+        "summary": "Append an explicit operator review resolution.",
+        "requestBody": { "$ref": "#/components/requestBodies/ReviewResolveRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Depth": {
+        "name": "depth",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 0 },
+        "description": "Graph traversal depth. Defaults to 2."
+      },
+      "GraphSeed": {
+        "name": "seed",
+        "in": "query",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 },
+        "description": "Canonical entity or memory id used as the graph seed."
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1 },
+        "description": "Maximum number of records to return."
+      }
+    },
+    "requestBodies": {
+      "AnomalyAcknowledgeRequest": { "$ref": "#/components/requestBodies/JsonAnomalyAcknowledgeRequest" },
+      "ClaimRequest": { "$ref": "#/components/requestBodies/JsonClaimRequest" },
+      "EmptyRequest": { "$ref": "#/components/requestBodies/JsonEmptyRequest" },
+      "EpisodeRequest": { "$ref": "#/components/requestBodies/JsonEpisodeRequest" },
+      "IntentionReconcileRequest": { "$ref": "#/components/requestBodies/JsonIntentionReconcileRequest" },
+      "IntentionRequest": { "$ref": "#/components/requestBodies/JsonIntentionRequest" },
+      "IntentionStatusRequest": { "$ref": "#/components/requestBodies/JsonIntentionStatusRequest" },
+      "IntentionUpdateRequest": { "$ref": "#/components/requestBodies/JsonIntentionUpdateRequest" },
+      "LinkRequest": { "$ref": "#/components/requestBodies/JsonLinkRequest" },
+      "ProcedureRequest": { "$ref": "#/components/requestBodies/JsonProcedureRequest" },
+      "ProactiveRequest": { "$ref": "#/components/requestBodies/JsonProactiveRequest" },
+      "RecallRequest": { "$ref": "#/components/requestBodies/JsonRecallRequest" },
+      "ReviewResolveRequest": { "$ref": "#/components/requestBodies/JsonReviewResolveRequest" },
+      "SessionResumeRequest": { "$ref": "#/components/requestBodies/JsonSessionResumeRequest" },
+      "JsonAnomalyAcknowledgeRequest": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnomalyAcknowledgeRequest" } } }
+      },
+      "JsonClaimRequest": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClaimRequest" } } }
+      },
+      "JsonEmptyRequest": {
+        "required": false,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmptyRequest" } } }
+      },
+      "JsonEpisodeRequest": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EpisodeRequest" } } }
+      },
+      "JsonIntentionReconcileRequest": {
+        "required": false,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentionReconcileRequest" } } }
+      },
+      "JsonIntentionRequest": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentionRequest" } } }
+      },
+      "JsonIntentionStatusRequest": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentionStatusRequest" } } }
+      },
+      "JsonIntentionUpdateRequest": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentionUpdateRequest" } } }
+      },
+      "JsonLinkRequest": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LinkRequest" } } }
+      },
+      "JsonProcedureRequest": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcedureRequest" } } }
+      },
+      "JsonProactiveRequest": {
+        "required": false,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProactiveRequest" } } }
+      },
+      "JsonRecallRequest": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecallRequest" } } }
+      },
+      "JsonReviewResolveRequest": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReviewResolveRequest" } } }
+      },
+      "JsonSessionResumeRequest": {
+        "required": false,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResumeRequest" } } }
+      }
+    },
+    "responses": {
+      "ApiError": {
+        "description": "Structured Nahuali API error.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiErrorResponse" } } }
+      },
+      "JsonObject": {
+        "description": "JSON response returned by nahuali-core.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JsonObject" } } }
+      }
+    },
+    "schemas": {
+      "AnomalyAcknowledgeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["anomaly_id", "note"],
+        "properties": {
+          "anomaly_id": { "type": "string", "minLength": 1 },
+          "note": { "type": "string", "minLength": 1 },
+          "dry_run": { "type": "boolean", "default": false }
+        }
+      },
+      "ApiErrorBody": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      },
+      "ApiErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["error"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/ApiErrorBody" }
+        }
+      },
+      "ClaimRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject", "predicate", "object"],
+        "properties": {
+          "subject": { "type": "string", "minLength": 1 },
+          "predicate": { "type": "string", "minLength": 1 },
+          "object": { "type": "string", "minLength": 1 },
+          "source_episode_id": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 },
+          "scope": { "$ref": "#/components/schemas/MemoryScope" }
+        }
+      },
+      "EmptyRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "EpisodeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["content"],
+        "properties": {
+          "content": { "type": "string", "minLength": 1 },
+          "tags": { "type": "array", "items": { "type": "string" }, "default": [] },
+          "mentions": { "type": "array", "items": { "type": "string" }, "default": [] },
+          "scope": { "$ref": "#/components/schemas/MemoryScope" }
+        }
+      },
+      "IntentionKind": {
+        "type": "string",
+        "enum": ["task", "goal", "reminder"]
+      },
+      "IntentionPriority": {
+        "type": "string",
+        "enum": ["low", "medium", "high", "critical"]
+      },
+      "IntentionReconcileRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "now_ms": { "type": "integer", "minimum": 0 },
+          "stale_after_ms": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "IntentionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["description", "kind", "priority"],
+        "properties": {
+          "description": { "type": "string", "minLength": 1 },
+          "kind": { "$ref": "#/components/schemas/IntentionKind" },
+          "priority": { "$ref": "#/components/schemas/IntentionPriority" },
+          "source_episode_id": { "type": "string" },
+          "scope": { "$ref": "#/components/schemas/MemoryScope" }
+        }
+      },
+      "IntentionStatus": {
+        "type": "string",
+        "enum": ["active", "completed", "abandoned", "blocked", "deferred"]
+      },
+      "IntentionStatusRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "$ref": "#/components/schemas/IntentionStatus" },
+          "reason": { "type": "string" }
+        }
+      },
+      "IntentionUpdateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "priority": { "$ref": "#/components/schemas/IntentionPriority" },
+          "deadline_at_ms": { "type": ["integer", "null"], "minimum": 0 },
+          "depends_on": { "type": "array", "items": { "type": "string" } },
+          "goal_id": { "type": ["string", "null"] },
+          "progress_percent": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 }
+        }
+      },
+      "JsonObject": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "LinkRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "relation", "to"],
+        "properties": {
+          "from": { "type": "string", "minLength": 1 },
+          "relation": { "type": "string", "minLength": 1 },
+          "to": { "type": "string", "minLength": 1 },
+          "source_episode_id": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 },
+          "scope": { "$ref": "#/components/schemas/MemoryScope" }
+        }
+      },
+      "MemoryKind": {
+        "type": "string",
+        "enum": ["entity", "episode", "claim", "link", "procedure", "intention", "fact", "relation"]
+      },
+      "MemoryScope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "name"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["personal", "project", "organization", "custom"] },
+          "name": { "type": "string", "minLength": 1 }
+        }
+      },
+      "ProcedureRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "body"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "body": { "type": "string", "minLength": 1 },
+          "source_episode_id": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 },
+          "scope": { "$ref": "#/components/schemas/MemoryScope" }
+        }
+      },
+      "ProactiveRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "now_ms": { "type": "integer", "minimum": 0 },
+          "deadline_horizon_ms": { "type": "integer", "minimum": 0 },
+          "stale_after_ms": { "type": "integer", "minimum": 0 },
+          "review_limit": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "RecallRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["query"],
+        "properties": {
+          "query": { "type": "string", "minLength": 1 },
+          "limit": { "type": "integer", "minimum": 1, "default": 10 },
+          "scope": { "$ref": "#/components/schemas/MemoryScope" },
+          "kinds": { "type": "array", "items": { "$ref": "#/components/schemas/MemoryKind" }, "default": [] },
+          "require_evidence": { "type": "boolean", "default": false },
+          "semantic": { "type": "boolean", "default": false }
+        }
+      },
+      "ReviewResolveRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["review_id", "note"],
+        "properties": {
+          "review_id": { "type": "string", "minLength": 1 },
+          "note": { "type": "string", "minLength": 1 },
+          "dry_run": { "type": "boolean", "default": false }
+        }
+      },
+      "SessionResumeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "episode_limit": { "type": "integer", "minimum": 1, "default": 5 },
+          "intention_limit": { "type": "integer", "minimum": 1, "default": 5 },
+          "review_limit": { "type": "integer", "minimum": 1, "default": 5 },
+          "graph_seed_limit": { "type": "integer", "minimum": 1, "default": 8 }
+        }
+      }
+    }
+  }
+}

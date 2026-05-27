@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Nahuali CLI recall grounding evals
+
+prompts:
+  - '{{query}}'
+
+providers:
+  - id: file://providers/cli-recall-provider.cjs
+    label: nahuali-cli-recall
+
+tests:
+  - file://tests/recall-grounding.yaml
+
+commandLineOptions:
+  maxConcurrency: 1
+  noCache: true

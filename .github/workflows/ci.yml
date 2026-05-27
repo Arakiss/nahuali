@@ -1,0 +1,175 @@
+name: CI
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  NAHUALI_CHECKOUT_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--')) }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ env.NAHUALI_CHECKOUT_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--')) }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ env.NAHUALI_CHECKOUT_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    if: ${{ github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--')) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            command: bash scripts/ensure-dev-stack.sh && cargo test --workspace
+          - os: macos-latest
+            command: cargo test --workspace --no-run
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ env.NAHUALI_CHECKOUT_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: ${{ matrix.command }}
+
+  js-test:
+    name: js test
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--')) }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ env.NAHUALI_CHECKOUT_REF }}
+      - uses: oven-sh/setup-bun@v2
+      - run: bun test --cwd packages/js
+
+  release-gate:
+    name: release/install dry-run gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    if: ${{ github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--')) }}
+    # Keep this gate independent so it is queued with the rest of CI instead of
+    # waiting until cheaper checks have already consumed the account minute
+    # budget. `CI (all)` still requires it before a workflow can pass.
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ env.NAHUALI_CHECKOUT_REF }}
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Private memory dry-run helper interface
+        timeout-minutes: 1
+        run: bash scripts/private-memory-dry-run.sh --help
+      - name: Start service-backed dev stack
+        timeout-minutes: 3
+        run: bash scripts/ensure-dev-stack.sh
+      - name: Build API documentation
+        timeout-minutes: 10
+        run: cargo doc -p nahuali-core --no-deps
+      - name: Package core crate
+        timeout-minutes: 8
+        run: cargo package -p nahuali-core --allow-dirty --no-verify
+      - name: Build release artifacts
+        timeout-minutes: 20
+        run: bash scripts/release-dry-run.sh
+      - name: Verify isolated install
+        timeout-minutes: 20
+        run: bash scripts/verify-install.sh
+        env:
+          NAHUALI_VALIDATE_SKIP_DEV_STACK: "1"
+          NAHUALI_VERIFY_INSTALL_BIN_DIR: target/release
+      - name: Verify CLI coexistence
+        timeout-minutes: 5
+        run: bash scripts/verify-cli-coexistence.sh
+        env:
+          NAHUALI_VALIDATE_SKIP_DEV_STACK: "1"
+          NAHUALI_VERIFY_CLI_BIN_DIR: target/release
+      - name: Verify private memory dry-run summary
+        timeout-minutes: 8
+        run: bash scripts/verify-private-memory-dry-run.sh
+        env:
+          NAHUALI_VALIDATE_SKIP_DEV_STACK: "1"
+          NAHUALI_PRIVATE_DRY_RUN_BIN_DIR: target/release
+      - name: Verify daily dogfood workflow
+        timeout-minutes: 10
+        run: bash scripts/verify-dogfood-daily-workflow.sh
+        env:
+          NAHUALI_VALIDATE_SKIP_DEV_STACK: "1"
+      - name: Verify dogfood migration workflow
+        timeout-minutes: 10
+        run: bash scripts/verify-dogfood-migration.sh
+        env:
+          NAHUALI_VALIDATE_SKIP_DEV_STACK: "1"
+      - name: Check documentation release refs
+        timeout-minutes: 1
+        run: sh scripts/check-doc-release-refs.sh
+      - name: Run regression fixtures
+        timeout-minutes: 8
+        run: |
+          for attempt in 1 2 3; do
+            log="$RUNNER_TEMP/knowledge-health-${attempt}.json"
+            cargo run -p nahuali-regression -- --fixtures fixtures/knowledge-health-regression.json >"$log" 2>&1 || {
+              cat "$log" >&2
+              exit 1
+            }
+          done
+          log="$RUNNER_TEMP/recall-regression.json"
+          cargo run -p nahuali-regression -- --fixtures fixtures/recall-regression.json >"$log" 2>&1 || {
+            cat "$log" >&2
+            exit 1
+          }
+      - name: Run security and supply-chain checks
+        timeout-minutes: 5
+        run: bash scripts/security-supply-chain-check.sh
+
+  ci-all:
+    name: CI (all)
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy, test, js-test, release-gate]
+    if: ${{ always() && (github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--'))) }}
+    steps:
+      - name: Roll up job results
+        run: |
+          for result in \
+            "${{ needs.fmt.result }}" \
+            "${{ needs.clippy.result }}" \
+            "${{ needs.test.result }}" \
+            "${{ needs['js-test'].result }}" \
+            "${{ needs.release-gate.result }}"; do
+            if [[ "$result" != "success" ]]; then
+              echo "at least one required CI job failed or was skipped"
+              exit 1
+            fi
+          done
+          echo "all CI jobs passed"

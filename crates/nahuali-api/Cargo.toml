@@ -1,0 +1,29 @@
+[package]
+name = "nahuali-api"
+version = "0.1.0-beta.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+description = "HTTP API for the Nahuali self-inspecting memory engine"
+readme = "README.md"
+keywords = ["agents", "memory", "api", "recall", "governance"]
+categories = ["web-programming::http-server", "development-tools"]
+
+[[bin]]
+name = "nahuali-api"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+nahuali-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tower.workspace = true

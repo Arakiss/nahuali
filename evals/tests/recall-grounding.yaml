@@ -1,0 +1,32 @@
+- description: Evidence-backed scoped recall returns release ownership
+  vars:
+    query: Who owns release notes?
+    scope: project:Nahuali
+    kind: claim
+    requireEvidence: true
+    authority: true
+  assert:
+    - type: javascript
+      value: file://assertions/recall-grounding.cjs:hasEvidenceBackedReleaseOwner
+
+- description: Project scope prevents release ownership leakage
+  vars:
+    query: Who owns release notes?
+    scope: project:Billing
+    kind: claim
+    requireEvidence: true
+    authority: true
+  assert:
+    - type: javascript
+      value: file://assertions/recall-grounding.cjs:doesNotLeakAcrossScopes
+
+- description: Unknown scoped owner query does not invent an answer
+  vars:
+    query: Who owns deployment keys?
+    scope: project:Nahuali
+    kind: claim
+    requireEvidence: true
+    authority: true
+  assert:
+    - type: javascript
+      value: file://assertions/recall-grounding.cjs:doesNotInventUnknownOwner

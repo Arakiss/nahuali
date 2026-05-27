@@ -1,0 +1,37 @@
+name: sbom
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing nahuali-cli tag to generate and attach a CycloneDX SBOM for"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  cyclonedx:
+    name: cyclonedx (${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }})
+    if: >
+      (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'nahuali-cli-v'))
+      || (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'nahuali-cli-v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Generate and attach CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
+          artifact-name: nahuali-${{ env.RELEASE_TAG }}.cdx.json
+          upload-release-assets: true
