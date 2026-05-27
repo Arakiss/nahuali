@@ -91,6 +91,9 @@ jobs:
       - name: Build release artifacts
         timeout-minutes: 20
         run: bash scripts/release-dry-run.sh
+      - name: Build regression runner
+        timeout-minutes: 5
+        run: cargo build --release -p nahuali-regression
       - name: Verify isolated install
         timeout-minutes: 20
         run: bash scripts/verify-install.sh
@@ -135,16 +138,18 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             log="$RUNNER_TEMP/knowledge-health-${attempt}.json"
-            cargo run -p nahuali-regression -- --fixtures fixtures/knowledge-health-regression.json >"$log" 2>&1 || {
+            bash scripts/run-regression-fixture.sh fixtures/knowledge-health-regression.json >"$log" 2>&1 || {
               cat "$log" >&2
               exit 1
             }
           done
           log="$RUNNER_TEMP/recall-regression.json"
-          cargo run -p nahuali-regression -- --fixtures fixtures/recall-regression.json >"$log" 2>&1 || {
+          bash scripts/run-regression-fixture.sh fixtures/recall-regression.json >"$log" 2>&1 || {
             cat "$log" >&2
             exit 1
           }
+        env:
+          NAHUALI_REGRESSION_BIN_DIR: target/release
       - name: Run security and supply-chain checks
         timeout-minutes: 5
         run: bash scripts/security-supply-chain-check.sh
