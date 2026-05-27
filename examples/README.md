@@ -84,7 +84,3 @@ Validated MCP prompts:
 recall_with_health_check
 record_evidence_backed_fact
 ```
-
-Planned examples:
-
-- inspection-gated recall

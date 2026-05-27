@@ -1,8 +1,9 @@
 # Nahuali Roadmap
 
-This roadmap is directional. It explains where Nahuali is intended to go, not
-what the current beta already guarantees. Tagged releases, tests, schemas, and
-crate documentation are the authority for shipped behavior.
+This roadmap is deliberately narrow. It explains the current product direction
+and the next beta hardening work without turning speculative ideas into a public
+backlog. Tagged releases, tests, schemas, and crate documentation are the
+authority for shipped behavior.
 
 ## North Star
 
@@ -68,7 +69,7 @@ Focus areas:
 - cut reproducible prerelease artifacts from tagged commits
 - keep the release gate runnable from a clean checkout
 - make errors and JSON output stable enough for scripts
-- tighten examples around evidence-backed recall and self-inspection
+- tighten validated examples around evidence-backed recall and self-inspection
 - document the exact boundaries of the local API and MCP surfaces
 - collect issues that come from real local usage and convert them into fixtures
 
@@ -77,48 +78,8 @@ Exit criteria:
 - a new technical user can clone the repository, start local services, run the
   CLI, record memory, recall it with authority context, inspect health, and run
   the documented validation commands
-- public claims in README and ROADMAP are either implemented, explicitly marked
-  as future work, or removed
+- public claims in README and ROADMAP are implemented or removed
 - release tags and release notes describe what actually shipped
-
-## Mid-Term: Stronger Memory Operations
-
-After the beta foundation is stable, the engine should become better at
-operating memory over time.
-
-Likely areas:
-
-- richer review workflows for weak evidence, contradictions, and stale memory
-- safer migration rehearsals from existing exports into source-neutral
-  interchange
-- clearer graph exploration commands and API shapes
-- better semantic recall diagnostics
-- stronger benchmark fixtures for recall grounding and knowledge health
-- improved backup and restore ergonomics
-- explicit versioning policy for schemas, events, and public JSON contracts
-- more examples that demonstrate real operator loops without depending on
-  private data
-
-These items should land only when they can be validated with fixtures, tests, or
-documented local workflows.
-
-## Later: Integrations And Wider Adoption
-
-Longer-term work may expand the engine into more environments while keeping the
-same core contract.
-
-Possible directions:
-
-- published Rust crates after API stability improves
-- more MCP host examples
-- import adapters for common local knowledge formats
-- stronger release verification and package provenance
-- optional server or service layers that remain thin wrappers over the local
-  core
-
-Any higher-level product or managed-service work should remain outside this OSS
-engine unless it has a clear open-source contract and does not weaken the local
-ledger-first model.
 
 ## Explicit Non-Goals For This Repository
 
@@ -146,6 +107,6 @@ A roadmap item should move into the public contract only when it has:
 - tests or fixtures that prove the behavior
 - documented limits
 - validation in the release gate if it affects public trust
-- release notes that distinguish shipped behavior from future direction
+- release notes that distinguish shipped behavior from non-goals
 
-Until then, it remains direction, not a promise.
+Until then, it should stay out of the public roadmap.
