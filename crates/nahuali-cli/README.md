@@ -167,8 +167,8 @@ knowledge health, recent source episodes, active intentions, high-priority
 review items, and graph seeds without mutating the ledger.
 
 `status --json`, `session-resume --json`, `timeline --json`, and
-`pending --json` preserve the core daily workflow names from the private
-Nahuali CLI while using the current Rust engine, SurrealDB graph projection, and
+`pending --json` preserve the core daily workflow names from earlier Nahuali
+CLI work while using the current Rust engine, SurrealDB graph projection, and
 knowledge-health contracts.
 
 `intention-update`, `intention-complete`, `intention-block`, and

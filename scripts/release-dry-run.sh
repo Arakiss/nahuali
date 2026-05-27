@@ -11,7 +11,7 @@ usage() {
   cat <<'USAGE'
 Usage: bash scripts/release-dry-run.sh [--dist-dir PATH] [--keep]
 
-Builds private release-candidate artifacts without publishing packages, tags,
+Builds local release-candidate artifacts without publishing crates, tags,
 or GitHub releases. When --dist-dir is omitted, artifacts are written to a
 temporary directory and removed on exit unless --keep is provided.
 USAGE

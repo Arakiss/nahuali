@@ -87,6 +87,4 @@ record_evidence_backed_fact
 
 Planned examples:
 
-- Python binding workflow
-- JavaScript binding workflow
 - inspection-gated recall

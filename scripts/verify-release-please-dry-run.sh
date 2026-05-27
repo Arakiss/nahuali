@@ -19,8 +19,9 @@ Options:
   -h, --help                  Show this help.
 
 Runs Release Please in dry-run mode against a temporary local clone so the
-current worktree is never reset by release-please. The command requires an
-authenticated gh CLI session because private repositories need a GitHub token.
+current worktree is never reset by release-please. The command uses an
+authenticated gh CLI token so dry-runs behave consistently across repository
+visibility modes.
 USAGE
 }
 

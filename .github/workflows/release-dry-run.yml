@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   release-dry-run:
-    name: private release dry run
+    name: local release dry run
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2

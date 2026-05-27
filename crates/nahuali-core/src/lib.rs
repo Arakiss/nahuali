@@ -2,7 +2,7 @@
 //!
 //! `nahuali-core` owns the record envelope model, deterministic projection,
 //! lexical recall, and knowledge-health inspection used by the CLI, MCP server,
-//! and future language bindings. Persistence is backed by SurrealDB.
+//! and local HTTP API. Persistence is backed by SurrealDB.
 //!
 //! Opening a memory database validates record sequence order and checksums
 //! before projecting state, so callers can inspect memory without trusting a

@@ -95,7 +95,7 @@ if [[ -n "$remote_pull_refs" ]]; then
 
   if [[ -n "$unsafe_pull_refs" ]]; then
     echo "$GIT_REMOTE exposes GitHub pull refs that can retain pre-sanitized history" >&2
-    echo "recreate the private repository or request a GitHub purge before public release approval" >&2
+    echo "recreate the repository or request a GitHub purge before public release approval" >&2
     echo "sanitized main bundle helper: bash scripts/export-sanitized-main-bundle.sh" >&2
     echo "$unsafe_pull_refs" >&2
     exit 1
@@ -110,7 +110,7 @@ if [[ -n "$remote_tags" ]]; then
       | grep -Ev '^refs/tags/nahuali-(cli|core|mcp|api)-v.*(\^\{\})?$' || true
   )"
   if [[ -n "$unexpected_tags" ]]; then
-    echo "remote tags outside the private Nahuali release stream are not allowed" >&2
+    echo "remote tags outside the Nahuali beta release stream are not allowed" >&2
     echo "$unexpected_tags" >&2
     exit 1
   fi
@@ -121,7 +121,7 @@ release_check="$(
     --jq '[.[] | select(.prerelease != true)] | length'
 )"
 if [[ "$release_check" != "0" ]]; then
-  echo "only private prereleases are allowed before explicit public release approval" >&2
+  echo "only beta prereleases are allowed before explicit stable release approval" >&2
   gh release list --repo "$REMOTE_REPO" --limit 10 >&2
   exit 1
 fi
