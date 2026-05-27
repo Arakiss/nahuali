@@ -110,8 +110,6 @@ same core contract.
 Possible directions:
 
 - published Rust crates after API stability improves
-- deeper TypeScript support once the HTTP surface settles
-- Python bindings after the core contract is stable enough
 - more MCP host examples
 - import adapters for common local knowledge formats
 - stronger release verification and package provenance

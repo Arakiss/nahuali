@@ -263,7 +263,7 @@ review item count, and write-back policy before any import write.
 structured export shape plus deterministic SurrealQL export bundles, then emits
 the source-neutral interchange format so `import --dry-run --json` can inspect
 the write plan before any record is appended. This bridge imports into the OSS
-record-ledger/interchange contract and is not legacy TypeScript schema parity.
+record-ledger/interchange contract and is not legacy schema parity.
 
 `convert-projection-export` is a dry-run-friendly bridge for projected memory
 exports. It accepts canonical top-level arrays plus conservative envelope and

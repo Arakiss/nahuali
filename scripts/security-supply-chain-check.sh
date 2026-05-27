@@ -94,8 +94,6 @@ if [[ -f "$private_denylist" ]]; then
   done <"$private_denylist"
 fi
 
-assert_file_contains packages/js/package.json '"private": true' "JavaScript beta client must remain private"
-assert_file_contains packages/js/package.json '"name": "@nahuali/client"' "JavaScript beta client package name drifted"
 assert_file_contains Cargo.toml '^nahuali-core = \{ version = "=[^"]+", path = "crates/nahuali-core" \}$' "nahuali-core must be pinned as an exact workspace dependency"
 assert_file_contains crates/nahuali-cli/Cargo.toml '^nahuali-core\.workspace = true$' "nahuali-cli must use the workspace nahuali-core pin"
 assert_file_contains crates/nahuali-mcp/Cargo.toml '^nahuali-core\.workspace = true$' "nahuali-mcp must use the workspace nahuali-core pin"
@@ -134,8 +132,6 @@ assert_file_contains scripts/verify-release-please-dry-run.sh 'git clone --quiet
 assert_file_contains scripts/verify-release-please-dry-run.sh '--dry-run' "release-please dry-run helper must never mutate GitHub state"
 assert_file_contains scripts/verify-release-please-dry-run.sh 'BUN_INSTALL_CACHE_DIR="\$tmp_cache"' "release-please dry-run helper must isolate the Bun install cache"
 assert_file_contains scripts/verify-release-please-dry-run.sh 'gh auth token' "release-please dry-run helper must use the authenticated gh token for private repos"
-assert_file_contains scripts/fresh-clone-validate.sh 'NAHUALI_FRESH_CLONE_NODE_VERSION:-24\.11\.1' "fresh clone validation must pin a modern Node runtime for JavaScript checks"
-assert_file_contains scripts/fresh-clone-validate.sh 'node-v\$\{node_version\}-linux-\$\{node_arch\}\.tar\.xz' "fresh clone validation must install Node from a versioned official archive"
 assert_file_contains scripts/verify-recall-contract.sh '--require-evidence' "native recall contract must require evidence-backed recall"
 assert_file_contains scripts/verify-recall-contract.sh '--authority' "native recall contract must require authority context"
 assert_file_contains scripts/verify-recall-contract.sh 'jq -e' "native recall contract must validate structured JSON output"
@@ -176,15 +172,6 @@ if rg -n --hidden \
   --glob '!Cargo.lock' \
   "$legacy_line_format_pattern" .; then
   echo "legacy line-oriented file format references are not part of this codebase" >&2
-  exit 1
-fi
-
-binding_placeholder_files="$(
-  find packages/python -type f ! -name README.md 2>/dev/null || true
-)"
-if [[ -n "$binding_placeholder_files" ]]; then
-  echo "deferred Python binding directory must remain README-only until publication is approved:" >&2
-  echo "$binding_placeholder_files" >&2
   exit 1
 fi
 

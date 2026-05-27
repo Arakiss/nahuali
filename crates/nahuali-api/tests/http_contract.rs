@@ -351,7 +351,7 @@ async fn api_reads_projection_timeline_pending_and_session_resume() {
         app.clone(),
         "/v1/intention",
         json!({
-            "description": "Write the TypeScript SDK contract tests",
+            "description": "Write the local client contract tests",
             "kind": "task",
             "priority": "high",
             "source_episode_id": episode["id"]
@@ -395,7 +395,7 @@ async fn api_exposes_operator_loop_contract() {
         app.clone(),
         "/v1/episode",
         json!({
-            "content": "The June beta needs operator-loop parity.",
+            "content": "The public beta needs operator-loop parity.",
             "tags": ["beta"],
             "mentions": ["Nahuali API"]
         }),
@@ -406,7 +406,7 @@ async fn api_exposes_operator_loop_contract() {
         app.clone(),
         "/v1/intention",
         json!({
-            "description": "Ship the June beta",
+            "description": "Ship the public beta",
             "kind": "goal",
             "priority": "critical",
             "source_episode_id": episode["id"]

@@ -54,7 +54,7 @@ fn record_goal_and_task(server: &mut McpProcess) -> OperatorIds {
         "params": {
             "name": "remember",
             "arguments": {
-                "content": "The June beta needs operator-loop parity.",
+                "content": "The public beta needs operator-loop parity.",
                 "tags": ["beta"],
                 "mentions": ["Nahuali"]
             }
@@ -68,7 +68,7 @@ fn record_goal_and_task(server: &mut McpProcess) -> OperatorIds {
         "params": {
             "name": "intention",
             "arguments": {
-                "description": "Ship the June beta",
+                "description": "Ship the public beta",
                 "kind": "goal",
                 "priority": "critical",
                 "sourceLast": true

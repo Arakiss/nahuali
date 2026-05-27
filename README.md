@@ -52,8 +52,6 @@ this repository.
 - `nahuali-mcp`: a local MCP stdio server over the same core.
 - `nahuali-api`: a local HTTP API over the same core.
 - `nahuali-regression`: a fixture runner used by release gates.
-- `packages/js`: an unpublished beta TypeScript client for the local HTTP API.
-- `packages/python`: a README-only placeholder; no Python package exists yet.
 
 The repository is pre-1.0. The source tree is public, but the project should
 still be treated as a beta foundation rather than a finished product.
@@ -256,18 +254,6 @@ Interchange import/export is a separate source-neutral format. It is useful for
 rehearsing migrations without treating old projection dumps as authoritative
 record ledgers.
 
-## JavaScript And Python
-
-The JavaScript package is an unpublished beta client for `nahuali-api`:
-
-```bash
-bun test --cwd packages/js
-```
-
-It is marked private and is not published to npm.
-
-Python bindings are deferred. `packages/python` is intentionally README-only.
-
 ## Validation
 
 Useful local checks:
@@ -276,7 +262,6 @@ Useful local checks:
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-bun test --cwd packages/js
 cargo doc -p nahuali-core --no-deps
 bash scripts/security-supply-chain-check.sh
 bash scripts/verify-dogfood-daily-workflow.sh
@@ -298,8 +283,6 @@ regression fixtures, the recall contract smoke, and security checks.
 
 - No hosted service.
 - No accounts, teams, tenants, API keys, billing, sync, or dashboards.
-- No Python package.
-- No npm publication.
 - No automatic memory repair or automatic consolidation write-back.
 - No guarantee that remembered information is true; Nahuali reports evidence,
   confidence, and health signals so callers can decide whether to trust it.
@@ -316,8 +299,6 @@ crates/nahuali-cli         CLI crate; installs the nahuali command
 crates/nahuali-mcp         MCP stdio server
 crates/nahuali-api         Local HTTP API
 crates/nahuali-regression  Regression fixture runner
-packages/js                Unpublished TypeScript HTTP client
-packages/python            Deferred Python placeholder
 fixtures                   Synthetic regression fixtures
 examples                   Synthetic example inputs
 scripts                    Release, validation, and safety checks

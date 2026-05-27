@@ -26,7 +26,7 @@ scan_release_tags() {
   fi
 }
 
-for path in README.md crates/nahuali-core/README.md crates/nahuali-cli/README.md packages/js/README.md packages/python/README.md scripts .github/workflows; do
+for path in README.md crates/nahuali-core/README.md crates/nahuali-cli/README.md scripts .github/workflows; do
   scan_release_tags "$path"
 done | sort | while IFS= read -r file; do
   relative="${file#./}"
@@ -88,10 +88,6 @@ require_file_contains crates/nahuali-mcp/README.md 'goal_progress'
 require_file_contains crates/nahuali-mcp/README.md 'anomaly_acknowledge'
 require_file_contains crates/nahuali-mcp/README.md 'projection_validate'
 require_file_contains crates/nahuali-mcp/README.md 'semantic_rebuild'
-require_file_contains packages/js/README.md 'unpublished beta client'
-require_file_contains packages/js/README.md 'not published to npm'
-require_file_contains packages/python/README.md 'remain private until publication is'
-require_file_contains packages/python/README.md 'explicitly approved'
 require_file_contains .gitignore '^docs/$'
 require_file_contains .gitignore '^\.private/$'
 
