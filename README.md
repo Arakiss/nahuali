@@ -203,12 +203,13 @@ The MCP server exposes structured tools and read-only resources for local
 clients. Tool names include:
 
 - memory writes: `remember`, `claim`, `link`, `procedure`, `preference`,
-  `intention`, `intention_update`, and `intention_status`
+  `intention`, `intention_update`, `intention_status`, and compatibility
+  `fact`/`relate`
 - recall and context: `recall`, `briefing`, `memory_hook`, `graph`, and
   `inspect`
-- operator reports: `goal_progress`, `proactive`, `deadlines`, `anomalies`,
-  `anomaly_acknowledge`, `self_inspect`, `reflect`, `review`, and
-  `review_resolve`
+- operator reports: `reconcile_intentions`, `goal_progress`, `proactive`,
+  `deadlines`, `anomalies`, `anomaly_acknowledge`, `self_inspect`, `reflect`,
+  `consolidation_plan`, `review`, and `review_resolve`
 - derived-tier maintenance: `projection_status`, `projection_rebuild`,
   `projection_validate`, `semantic_status`, and `semantic_rebuild`
 - validation and ingestion: `validate`, `ingest`, and `ingest_text`

@@ -36,7 +36,7 @@ The server exposes tools for `remember`, `claim`, `fact`, `link`, `relate`,
 `projection_status`, `projection_rebuild`, `projection_validate`,
 `semantic_status`, `semantic_rebuild`, and `validate`. It also exposes
 read-only JSON resources for database summary, sources, health, entities,
-episodes, claims, links, facts, relations, procedures, intentions, and events,
+episodes, claims, links, facts, relations, procedures, intentions, and records,
 plus prompts for health-checked recall and evidence-backed claim recording.
 
 Recall tool responses include an authority decision and the health report used
