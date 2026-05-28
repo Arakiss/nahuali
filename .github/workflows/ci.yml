@@ -153,17 +153,51 @@ jobs:
     runs-on: ubuntu-latest
     needs: [fmt, clippy, test, release-gate]
     if: ${{ always() }}
+    permissions:
+      contents: read
+      statuses: write
     steps:
       - name: Roll up job results
+        id: rollup
+        shell: bash
         run: |
+          state="success"
           for result in \
             "${{ needs.fmt.result }}" \
             "${{ needs.clippy.result }}" \
             "${{ needs.test.result }}" \
             "${{ needs.release-gate.result }}"; do
             if [[ "$result" != "success" ]]; then
-              echo "at least one required CI job failed or was skipped"
-              exit 1
+              state="failure"
             fi
           done
-          echo "all CI jobs passed"
+
+          echo "state=${state}" >> "$GITHUB_OUTPUT"
+          if [[ "$state" == "success" ]]; then
+            echo "all CI jobs passed"
+          else
+            echo "at least one required CI job failed or was skipped"
+          fi
+      - name: Publish workflow dispatch commit status
+        if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ROLLUP_STATE: ${{ steps.rollup.outputs.state || 'failure' }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          state="${ROLLUP_STATE:-failure}"
+          if [[ "$state" != "success" ]]; then
+            state="failure"
+          fi
+
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state="$state" \
+            -f context="CI / workflow_dispatch" \
+            -f description="CI ${state}" \
+            -f target_url="$TARGET_URL"
+      - name: Fail when required CI failed
+        if: ${{ steps.rollup.outputs.state != 'success' }}
+        run: exit 1
