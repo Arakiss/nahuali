@@ -10,14 +10,11 @@ jobs:
   audit:
     name: cargo-audit
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--')) }}
     permissions:
       contents: read
       issues: write
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
       - uses: actions-rust-lang/audit@v1
         with:
           denyWarnings: true

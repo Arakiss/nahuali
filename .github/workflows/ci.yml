@@ -1,7 +1,14 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
@@ -10,17 +17,13 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  NAHUALI_CHECKOUT_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
 
 jobs:
   fmt:
     name: rustfmt
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--')) }}
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          ref: ${{ env.NAHUALI_CHECKOUT_REF }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -29,11 +32,8 @@ jobs:
   clippy:
     name: clippy
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--')) }}
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          ref: ${{ env.NAHUALI_CHECKOUT_REF }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -43,7 +43,6 @@ jobs:
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    if: ${{ github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -54,8 +53,6 @@ jobs:
             command: cargo test --workspace --no-run
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          ref: ${{ env.NAHUALI_CHECKOUT_REF }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: ${{ matrix.command }}
@@ -64,14 +61,11 @@ jobs:
     name: release/install dry-run gate
     runs-on: ubuntu-latest
     timeout-minutes: 80
-    if: ${{ github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--')) }}
     # Keep this gate independent so it is queued with the rest of CI instead of
     # waiting until cheaper checks have already consumed the account minute
     # budget. `CI (all)` still requires it before a workflow can pass.
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          ref: ${{ env.NAHUALI_CHECKOUT_REF }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -158,7 +152,7 @@ jobs:
     name: CI (all)
     runs-on: ubuntu-latest
     needs: [fmt, clippy, test, release-gate]
-    if: ${{ always() && (github.event_name != 'pull_request_target' || (github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release-please--branches--'))) }}
+    if: ${{ always() }}
     steps:
       - name: Roll up job results
         run: |

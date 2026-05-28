@@ -4,6 +4,7 @@ set -eu
 mode="write"
 remote="${NAHUALI_TAG_REMOTE:-origin}"
 target="${NAHUALI_TAG_TARGET:-${GITHUB_SHA:-HEAD}}"
+target_explicit=0
 config_file="${NAHUALI_RELEASE_PLEASE_CONFIG:-release-please-config.json}"
 manifest_file="${NAHUALI_RELEASE_PLEASE_MANIFEST:-.release-please-manifest.json}"
 
@@ -39,6 +40,7 @@ while [ "$#" -gt 0 ]; do
         exit 2
       fi
       target="$2"
+      target_explicit=1
       shift 2
       ;;
     --remote)
@@ -118,17 +120,24 @@ while IFS= read -r tag; do
   fi
 
   missing=1
+  tag_target="$target"
+  version="${tag#*-v}"
+  product_tag="nahuali-cli-v$version"
+  if [ "$target_explicit" -eq 0 ] && git rev-parse -q --verify "refs/tags/$product_tag" >/dev/null; then
+    tag_target="$product_tag"
+  fi
+
   case "$mode" in
     check)
       echo "missing internal release tag: $tag" >&2
       ;;
     dry-run)
-      echo "plan internal tag: $tag -> $target"
+      echo "plan internal tag: $tag -> $tag_target"
       ;;
     write)
-      git tag "$tag" "$target"
+      git tag "$tag" "$tag_target"
       git push "$remote" "refs/tags/$tag"
-      echo "ok internal tag created: $tag -> $target"
+      echo "ok internal tag created: $tag -> $tag_target"
       ;;
   esac
 done < "$tags_file"

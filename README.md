@@ -334,6 +334,22 @@ That gate runs formatting, clippy, workspace tests, documentation generation,
 package and release dry-runs, install/coexistence checks, dogfood workflows,
 regression fixtures, the recall contract smoke, and security checks.
 
+## Release Automation
+
+Nahuali uses semantic commits and Release Please for the public beta release
+train.
+
+- Commits should use conventional prefixes such as `feat:`, `fix:`, `docs:`,
+  `test:`, `ci:`, `chore:`, `refactor:`, `perf:`, or `security:`.
+- Pushes to `main` run CI and update the Release Please PR when a releasable
+  change exists.
+- Merging the Release Please PR creates the version tag and GitHub prerelease.
+- Binary artifacts are built only for `nahuali-cli-vX.Y.Z-beta.N` tags.
+- Manual workflow dispatch remains available for release-pr and artifact
+  reruns.
+
+The release train stays prerelease-only while the project is in beta.
+
 ## Current Limits
 
 - No hosted service.
