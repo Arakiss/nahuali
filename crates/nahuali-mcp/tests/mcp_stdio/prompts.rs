@@ -46,6 +46,7 @@ fn assert_recall_prompt(server: &mut McpProcess) {
         .expect("prompt returns text");
     assert!(recall_prompt_text.contains("Lena release"));
     assert!(recall_prompt_text.contains("inspect"));
+    assert!(recall_prompt_text.contains("trust"));
     assert!(recall_prompt_text.contains("evidence_id"));
 }
 

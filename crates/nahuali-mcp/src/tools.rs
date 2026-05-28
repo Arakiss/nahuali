@@ -563,7 +563,7 @@ impl NahualiMcpServer {
     }
 
     #[tool(
-        description = "Retrieve memory with transparent scoring, evidence, authority, and health."
+        description = "Retrieve memory with transparent scoring, evidence, result trust, authority, and health."
     )]
     fn recall(
         &self,

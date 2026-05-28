@@ -243,7 +243,7 @@ impl NahualiMcpServer {
     ) -> Result<GetPromptResult, McpError> {
         let query = Self::required_string_arg(request.arguments.as_ref(), "query")?;
         let text = format!(
-            "Recall Nahuali memory for this query: \"{query}\".\n\nWorkflow:\n1. Call the `recall` tool with the query and a focused limit.\n2. Read the returned `authority` and `health` before trusting the result; call `inspect` only if broader database context is needed.\n3. Cite `evidence_id` values for any claim, link, fact, relation, procedure, or intention used.\n4. If authority is `warn` or `block`, or health reports unsupported facts, contradictions, stale facts, or blind spots, state that uncertainty directly.\n5. Prefer saying that memory is insufficient over filling gaps from inference."
+            "Recall Nahuali memory for this query: \"{query}\".\n\nWorkflow:\n1. Call the `recall` tool with the query and a focused limit.\n2. Read each result's `trust` object before using it, then read the store-level `authority` and `health` context; call `inspect` only if broader database context is needed.\n3. Cite `evidence_id` values for any claim, link, fact, relation, procedure, or intention used.\n4. If result trust is `warn` or `block`, authority is `warn` or `block`, or health reports unsupported facts, contradictions, stale facts, or blind spots, state that uncertainty directly.\n5. Prefer saying that memory is insufficient over filling gaps from inference."
         );
 
         Ok(

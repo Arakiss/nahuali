@@ -91,6 +91,12 @@ fn assert_tool_catalog(server: &mut McpProcess) {
             .unwrap_or_default()
             .contains("health")
     );
+    assert!(
+        recall_tool["description"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("result trust")
+    );
     tool_names.sort();
     assert_eq!(
         tool_names,
@@ -410,6 +416,14 @@ fn assert_recall_graph_and_health(server: &mut McpProcess, episode_id: &str) {
     assert_eq!(
         recalled["result"]["structuredContent"]["results"][0]["evidence_id"],
         episode_id
+    );
+    assert_eq!(
+        recalled["result"]["structuredContent"]["results"][0]["trust"]["mode"],
+        "certify"
+    );
+    assert_eq!(
+        recalled["result"]["structuredContent"]["results"][0]["trust"]["can_trust"],
+        true
     );
     assert_eq!(
         recalled["result"]["structuredContent"]["authority"]["mode"],
