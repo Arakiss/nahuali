@@ -26,7 +26,7 @@ scan_release_tags() {
   fi
 }
 
-for path in README.md crates/nahuali-core/README.md crates/nahuali-cli/README.md scripts .github/workflows; do
+for path in README.md ALPHA.md crates/nahuali-core/README.md crates/nahuali-cli/README.md scripts .github/workflows; do
   scan_release_tags "$path"
 done | sort | while IFS= read -r file; do
   relative="${file#./}"
@@ -75,6 +75,9 @@ require_file_contains README.md 'memory_record'
 require_file_contains README.md 'derived semantic index'
 require_file_contains README.md 'Qdrant'
 require_file_contains README.md 'documents remain private during pre-release development'
+require_file_contains README.md 'scripts/verify-controlled-alpha\.sh'
+require_file_contains ALPHA.md 'scripts/verify-controlled-alpha\.sh'
+require_file_contains ALPHA.md 'self-inspection, review, reflection, sleep, consolidation, and proactive'
 require_file_contains README.md 'intention_update'
 require_file_contains README.md 'goal_progress'
 require_file_contains README.md 'anomaly_acknowledge'

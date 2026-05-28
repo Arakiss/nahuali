@@ -155,6 +155,16 @@ Run the agent-first daily-driver loop demo:
 bash scripts/demo-daily-driver-loop.sh
 ```
 
+Run the controlled alpha gate before asking another technical user to test a
+checkout:
+
+```bash
+bash scripts/verify-controlled-alpha.sh
+```
+
+See [ALPHA.md](ALPHA.md) for the current controlled testing boundary, tester
+rules, passing criteria, and blockers.
+
 Record a source episode and cite it as evidence:
 
 ```bash
@@ -319,6 +329,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo doc -p nahuali-core --no-deps
 bash scripts/security-supply-chain-check.sh
+bash scripts/verify-controlled-alpha.sh
 bash scripts/verify-dogfood-daily-workflow.sh
 bash scripts/verify-dogfood-migration.sh
 bash scripts/verify-recall-contract.sh

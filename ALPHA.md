@@ -1,0 +1,103 @@
+# Controlled Alpha
+
+Nahuali is not ready for broad daily-driver use yet. This page defines the
+smaller controlled alpha gate for technical testers who can run a local Rust
+project and are comfortable using disposable databases.
+
+The alpha goal is narrow: prove that the local CLI-first memory loop can run
+from a clean checkout without risking existing data.
+
+## What The Alpha Covers
+
+The controlled alpha gate verifies that a checkout can:
+
+- start the local SurrealDB and Qdrant dev stack
+- record synthetic project memory into an isolated database
+- resume a session from persisted ledger state
+- recall scoped memory with evidence IDs, trust signals, and authority context
+- inspect memory health and expose review work
+- run self-inspection, review, reflection, sleep, consolidation, and proactive
+  reports without implicit memory writes
+- create, validate, drill, restore, and re-validate a local backup
+- rebuild and query the derived semantic index
+- avoid changing any globally installed `nahuali` command
+- pass the public security and supply-chain hygiene checks
+
+Run the gate:
+
+```bash
+bash scripts/verify-controlled-alpha.sh
+```
+
+The script prints each validation step and exits non-zero on the first blocker.
+A non-zero exit means the current checkout is not ready for controlled alpha
+testing.
+
+## Tester Rules
+
+Use Nahuali alpha only with data you can recreate.
+
+- Use a new `--database` value per test project or person.
+- Start with synthetic or non-sensitive project notes.
+- Do not import private exports until the dry-run and backup drill commands pass.
+- Do not treat recall as truth. Treat it as memory plus inspectable evidence and
+  warnings.
+- Do not rely on automatic repair. Review, consolidation, and sleep reports are
+  non-mutating unless a separate explicit write command is run.
+- Keep local backups before experimenting with data you care about.
+
+## First Commands
+
+Run the full alpha gate first:
+
+```bash
+bash scripts/verify-controlled-alpha.sh
+```
+
+Then run the two human-readable demos:
+
+```bash
+bash scripts/demo-self-inspecting-memory.sh
+bash scripts/demo-daily-driver-loop.sh
+```
+
+The demos use ignored `.local/` databases. Their output is synthetic and safe to
+discard.
+
+## Passing Criteria
+
+A commit can be considered controlled-alpha-ready only when all of these are
+freshly true:
+
+- `bash scripts/verify-controlled-alpha.sh` passes.
+- `bash scripts/security-supply-chain-check.sh` passes.
+- `cargo test --workspace` passes or the current CI run for the commit is green.
+- Public docs describe only shipped local behavior and explicit non-goals.
+- No private notes, local databases, exports, backups, or workflow artifacts are
+  tracked by Git.
+
+## Blockers
+
+Do not ask another person to test the alpha when any of these are true:
+
+- the dev stack cannot start with an actionable error
+- the daily-driver workflow gate fails
+- scoped recall returns unsupported memory when evidence is required
+- self-inspection, sleep, reflection, or consolidation writes memory implicitly
+- backup validation, backup drill, restore dry-run, or restore validation fails
+- security and supply-chain checks fail
+- CI is red for the commit being shared
+
+## Explicit Non-Goals
+
+The controlled alpha does not include:
+
+- hosted accounts, tenants, billing, or sync
+- browser dashboard workflows
+- stable 1.0 API guarantees
+- automatic memory repair
+- a promise that remembered content is true
+- safe handling of secrets or irreplaceable personal data
+
+Nahuali should expose why memory can or cannot be trusted. The operator still
+decides whether to act on that memory.
