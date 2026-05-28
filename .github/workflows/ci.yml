@@ -83,11 +83,11 @@ jobs:
         timeout-minutes: 8
         run: cargo package -p nahuali-core --allow-dirty --no-verify
       - name: Build release artifacts
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: bash scripts/release-dry-run.sh
-      - name: Build regression runner
-        timeout-minutes: 5
-        run: cargo build --release -p nahuali-regression
+      - name: Verify regression runner binary
+        timeout-minutes: 1
+        run: test -x target/release/nahuali-regression
       - name: Verify isolated install
         timeout-minutes: 20
         run: bash scripts/verify-install.sh

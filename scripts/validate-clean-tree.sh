@@ -74,7 +74,7 @@ run_step "Rust API documentation" cargo doc -p nahuali-core --no-deps
 run_step "Core crate package dry-run" cargo package -p nahuali-core --allow-dirty --no-verify
 run_step "Release artifact dry-run" bash scripts/release-dry-run.sh
 release_bin_dir="${CARGO_TARGET_DIR:-target}/release"
-run_step "Regression runner release build" cargo build --release -p nahuali-regression
+run_step "Regression runner release binary" test -x "$release_bin_dir/nahuali-regression"
 run_step "Isolated install smoke" env NAHUALI_VERIFY_INSTALL_BIN_DIR="$release_bin_dir" bash scripts/verify-install.sh
 run_step "CLI coexistence smoke" env NAHUALI_VERIFY_CLI_BIN_DIR="$release_bin_dir" bash scripts/verify-cli-coexistence.sh
 run_step "Private memory dry-run summary smoke" env NAHUALI_PRIVATE_DRY_RUN_BIN_DIR="$release_bin_dir" bash scripts/verify-private-memory-dry-run.sh

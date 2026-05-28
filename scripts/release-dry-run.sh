@@ -83,7 +83,7 @@ for package in "${package_order[@]}"; do
   exit 1
 done
 
-cargo build --release -p nahuali-cli -p nahuali-mcp -p nahuali-api
+cargo build --release -p nahuali-cli -p nahuali-mcp -p nahuali-api -p nahuali-regression
 
 target_dir="${CARGO_TARGET_DIR:-target}"
 release_dir="$target_dir/release"
