@@ -1,5 +1,7 @@
+use crate::inspection::{HealthSeverity, HealthSignal, HealthSignalKind, KnowledgeHealth};
 use crate::model::{
     Claim, IntentionStatus, Link, MemoryData, MemoryKind, MemoryScope, RecallResult,
+    RecallResultTrust, RecallResultTrustMode,
 };
 use serde::{Deserialize, Serialize};
 
@@ -88,6 +90,7 @@ pub(crate) fn recall_with_options(
                 evidence_id: entity.source_event_ids.first().cloned(),
                 matched_terms,
                 scope: entity.scope.clone(),
+                trust: None,
             },
             &options,
         );
@@ -113,6 +116,7 @@ pub(crate) fn recall_with_options(
                 evidence_id: Some(episode.id.clone()),
                 matched_terms,
                 scope: episode.scope.clone(),
+                trust: None,
             },
             &options,
         );
@@ -144,6 +148,7 @@ pub(crate) fn recall_with_options(
                 evidence_id: claim.source_episode_id.clone(),
                 matched_terms,
                 scope: claim.scope.clone(),
+                trust: None,
             },
             &options,
         );
@@ -175,6 +180,7 @@ pub(crate) fn recall_with_options(
                 evidence_id: link.source_episode_id.clone(),
                 matched_terms,
                 scope: link.scope.clone(),
+                trust: None,
             },
             &options,
         );
@@ -206,6 +212,7 @@ pub(crate) fn recall_with_options(
                 evidence_id: procedure.source_episode_id.clone(),
                 matched_terms,
                 scope: procedure.scope.clone(),
+                trust: None,
             },
             &options,
         );
@@ -240,6 +247,7 @@ pub(crate) fn recall_with_options(
                 evidence_id: intention.source_episode_id.clone(),
                 matched_terms,
                 scope: intention.scope.clone(),
+                trust: None,
             },
             &options,
         );
@@ -254,6 +262,184 @@ pub(crate) fn recall_with_options(
     });
     results.truncate(options.limit.max(1));
     results
+}
+
+pub(crate) fn attach_result_trust(
+    data: &MemoryData,
+    health: &KnowledgeHealth,
+    results: &mut [RecallResult],
+) {
+    for result in results {
+        result.trust = Some(result_trust(data, health, result));
+    }
+}
+
+fn result_trust(
+    data: &MemoryData,
+    health: &KnowledgeHealth,
+    result: &RecallResult,
+) -> RecallResultTrust {
+    let source_event_id = source_event_id_for_result(data, result);
+    let local_signals = source_event_id
+        .as_deref()
+        .map(|event_id| {
+            health
+                .signals
+                .iter()
+                .filter(|signal| signal.evidence_ids.iter().any(|id| id == event_id))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    if !local_signals.is_empty() {
+        return trust_from_signals(local_signals);
+    }
+
+    match result.kind {
+        MemoryKind::Episode => RecallResultTrust {
+            mode: RecallResultTrustMode::Certify,
+            score: 1.0,
+            can_trust: true,
+            reasons: vec!["Result is an observed episode and can cite itself as evidence.".into()],
+            signal_kinds: Vec::new(),
+        },
+        MemoryKind::Claim | MemoryKind::Link | MemoryKind::Fact | MemoryKind::Relation => {
+            if result.evidence_id.is_some() {
+                RecallResultTrust {
+                    mode: RecallResultTrustMode::Certify,
+                    score: 1.0,
+                    can_trust: true,
+                    reasons: vec!["Result has source episode evidence.".into()],
+                    signal_kinds: Vec::new(),
+                }
+            } else {
+                RecallResultTrust {
+                    mode: RecallResultTrustMode::Warn,
+                    score: 0.5,
+                    can_trust: false,
+                    reasons: vec!["Result has no source episode evidence.".into()],
+                    signal_kinds: vec![signal_kind_name(&HealthSignalKind::UnsupportedFact).into()],
+                }
+            }
+        }
+        MemoryKind::Procedure | MemoryKind::Intention => {
+            if result.evidence_id.is_some() {
+                RecallResultTrust {
+                    mode: RecallResultTrustMode::Certify,
+                    score: 1.0,
+                    can_trust: true,
+                    reasons: vec!["Result has source episode evidence.".into()],
+                    signal_kinds: Vec::new(),
+                }
+            } else {
+                RecallResultTrust {
+                    mode: RecallResultTrustMode::Advisory,
+                    score: 0.75,
+                    can_trust: false,
+                    reasons: vec![
+                        "Result is actionable memory but has no source episode evidence.".into(),
+                    ],
+                    signal_kinds: Vec::new(),
+                }
+            }
+        }
+        MemoryKind::Entity => RecallResultTrust {
+            mode: RecallResultTrustMode::Advisory,
+            score: 0.75,
+            can_trust: false,
+            reasons: vec!["Result is an observed entity, not an evidence-backed assertion.".into()],
+            signal_kinds: Vec::new(),
+        },
+    }
+}
+
+fn trust_from_signals(signals: Vec<&HealthSignal>) -> RecallResultTrust {
+    let highest = signals
+        .iter()
+        .map(|signal| &signal.severity)
+        .max_by_key(|severity| severity_rank(severity))
+        .expect("signals are non-empty");
+    let mode = match highest {
+        HealthSeverity::High => RecallResultTrustMode::Block,
+        HealthSeverity::Medium => RecallResultTrustMode::Warn,
+        HealthSeverity::Low => RecallResultTrustMode::Advisory,
+    };
+    let score = match mode {
+        RecallResultTrustMode::Certify => 1.0,
+        RecallResultTrustMode::Advisory => 0.75,
+        RecallResultTrustMode::Warn => 0.5,
+        RecallResultTrustMode::Block => 0.0,
+    };
+    let mut signal_kinds = Vec::new();
+    for signal in &signals {
+        let kind = signal_kind_name(&signal.kind);
+        if !signal_kinds.iter().any(|existing| existing == kind) {
+            signal_kinds.push(kind.to_string());
+        }
+    }
+
+    RecallResultTrust {
+        can_trust: matches!(mode, RecallResultTrustMode::Certify),
+        mode,
+        score,
+        reasons: signals
+            .into_iter()
+            .map(|signal| signal.message.clone())
+            .collect(),
+        signal_kinds,
+    }
+}
+
+fn severity_rank(severity: &HealthSeverity) -> u8 {
+    match severity {
+        HealthSeverity::Low => 1,
+        HealthSeverity::Medium => 2,
+        HealthSeverity::High => 3,
+    }
+}
+
+fn source_event_id_for_result(data: &MemoryData, result: &RecallResult) -> Option<String> {
+    match result.kind {
+        MemoryKind::Entity => data
+            .entities
+            .iter()
+            .find(|entity| entity.id == result.id)
+            .and_then(|entity| entity.source_event_ids.first().cloned()),
+        MemoryKind::Episode => data
+            .episodes
+            .iter()
+            .find(|episode| episode.id == result.id)
+            .map(|episode| episode.event_id.clone()),
+        MemoryKind::Claim | MemoryKind::Fact => projected_claims(data)
+            .iter()
+            .find(|claim| claim.id == result.id)
+            .map(|claim| claim.event_id.clone()),
+        MemoryKind::Link | MemoryKind::Relation => projected_links(data)
+            .iter()
+            .find(|link| link.id == result.id)
+            .map(|link| link.event_id.clone()),
+        MemoryKind::Procedure => data
+            .procedures
+            .iter()
+            .find(|procedure| procedure.id == result.id)
+            .map(|procedure| procedure.event_id.clone()),
+        MemoryKind::Intention => data
+            .intentions
+            .iter()
+            .find(|intention| intention.id == result.id)
+            .map(|intention| intention.event_id.clone()),
+    }
+}
+
+fn signal_kind_name(kind: &HealthSignalKind) -> &'static str {
+    match kind {
+        HealthSignalKind::NoEpisodes => "no_episodes",
+        HealthSignalKind::UnsupportedFact => "unsupported_fact",
+        HealthSignalKind::LowConfidenceFact => "low_confidence_fact",
+        HealthSignalKind::ConflictingFact => "conflicting_fact",
+        HealthSignalKind::StaleFact => "stale_fact",
+        HealthSignalKind::IsolatedEntity => "isolated_entity",
+    }
 }
 
 fn push_result(results: &mut Vec<RecallResult>, result: RecallResult, options: &RecallOptions) {

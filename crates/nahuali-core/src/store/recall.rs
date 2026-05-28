@@ -77,9 +77,10 @@ impl MemoryEngine {
         query: &str,
         options: RecallOptions,
     ) -> Result<AuthorityRecall> {
-        let results = self.recall_with_options(query, options)?;
+        let mut results = self.recall_with_options(query, options)?;
         let health = self.inspect();
         let authority = AuthorityDecision::evaluate(&health);
+        recall::attach_result_trust(&self.data, &health, &mut results);
 
         Ok(AuthorityRecall {
             results,

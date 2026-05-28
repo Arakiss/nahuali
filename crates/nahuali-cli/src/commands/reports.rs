@@ -296,7 +296,7 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
             return Ok(());
         }
         println!(
-            "Authority: {:?} score={:.2}",
+            "Store authority: {:?} score={:.2}",
             recall.authority.mode, recall.authority.score
         );
         for reason in &recall.authority.reasons {
@@ -967,6 +967,15 @@ fn print_recall_results(results: Vec<nahuali_core::RecallResult>) {
         println!("  {}", result.excerpt);
         if let Some(evidence_id) = result.evidence_id {
             println!("  evidence: {evidence_id}");
+        }
+        if let Some(trust) = result.trust {
+            println!(
+                "  result trust: {:?} score={:.2} can_trust={}",
+                trust.mode, trust.score, trust.can_trust
+            );
+            for reason in trust.reasons {
+                println!("  trust reason: {reason}");
+            }
         }
         if let Some(scope) = result.scope {
             println!("  scope: {}", scope.key);

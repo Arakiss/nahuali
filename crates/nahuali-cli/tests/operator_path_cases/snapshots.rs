@@ -255,6 +255,18 @@ fn authority_json_reports_blocking_health_contract() {
             .unwrap_or_default()
             .contains("No episodes")
     );
+    let unsupported_result = recall["results"]
+        .as_array()
+        .expect("recall results are an array")
+        .iter()
+        .find(|result| result["kind"] == "claim")
+        .expect("unsupported claim result is returned");
+    assert_eq!(unsupported_result["trust"]["mode"], "warn");
+    assert_eq!(unsupported_result["trust"]["can_trust"], false);
+    assert_eq!(
+        unsupported_result["trust"]["signal_kinds"],
+        serde_json::json!(["unsupported_fact", "low_confidence_fact"])
+    );
 
     let signals = recall["health"]["signals"]
         .as_array()

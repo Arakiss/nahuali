@@ -524,6 +524,40 @@ pub enum MemoryKind {
     Relation,
 }
 
+/// Query-local trust classification for one recall result.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RecallResultTrustMode {
+    /// This specific result is backed by source evidence and no result-local
+    /// health signal currently weakens it.
+    Certify,
+    /// This result is observable but should not be treated as a supported
+    /// assertion on its own.
+    Advisory,
+    /// This result is relevant but missing support or affected by medium-risk
+    /// result-local health signals.
+    Warn,
+    /// This result is affected by high-risk result-local health signals.
+    Block,
+}
+
+/// Query-local trust context for one recall result.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RecallResultTrust {
+    /// Trust mode for this specific result, independent of store-level
+    /// authority.
+    pub mode: RecallResultTrustMode,
+    /// Numeric result trust score in the `0.0..=1.0` range.
+    pub score: f32,
+    /// Whether callers may rely on this specific result without adding
+    /// uncertainty.
+    pub can_trust: bool,
+    /// Human-readable reasons for this result trust decision.
+    pub reasons: Vec<String>,
+    /// Result-local health signal kinds that drove the decision.
+    pub signal_kinds: Vec<String>,
+}
+
 /// Scored recall candidate.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RecallResult {
@@ -543,4 +577,7 @@ pub struct RecallResult {
     /// Explicit memory context boundary, when provided.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<MemoryScope>,
+    /// Query-local trust context, attached when callers request authority.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust: Option<RecallResultTrust>,
 }

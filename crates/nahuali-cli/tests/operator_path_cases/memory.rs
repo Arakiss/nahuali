@@ -1154,6 +1154,14 @@ fn json_output_covers_expanded_memory_families() {
     assert_eq!(authority["authority"]["mode"], "certify");
     assert_eq!(authority["authority"]["can_trust"], true);
     assert!(authority["results"].as_array().unwrap().len() >= 3);
+    assert!(
+        authority["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|result| result["trust"].as_object())
+            .any(|trust| trust["mode"] == "certify" && trust["can_trust"] == true)
+    );
 
     let _ = fs::remove_file(store);
 }

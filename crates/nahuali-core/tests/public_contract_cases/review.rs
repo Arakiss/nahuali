@@ -299,6 +299,17 @@ fn public_api_calibrates_authority_from_health_signals() {
         weak_graph.authority.signal_kinds,
         vec![HealthSignalKind::IsolatedEntity]
     );
+    let weak_graph_claim = weak_graph
+        .results
+        .iter()
+        .find(|result| result.kind == MemoryKind::Claim)
+        .expect("supported claim is returned");
+    let weak_graph_claim_trust = weak_graph_claim
+        .trust
+        .as_ref()
+        .expect("authority recall annotates result trust");
+    assert_eq!(weak_graph_claim_trust.mode, RecallResultTrustMode::Certify);
+    assert!(weak_graph_claim_trust.can_trust);
 
     memory
         .add_link("Lena", "owns", "release notes", Some(episode.id), 0.9)
@@ -310,6 +321,54 @@ fn public_api_calibrates_authority_from_health_signals() {
     assert_eq!(supported.authority.score, 1.0);
     assert!(supported.authority.can_trust);
     assert!(supported.authority.signal_kinds.is_empty());
+    assert!(
+        supported
+            .results
+            .iter()
+            .filter_map(|result| result.trust.as_ref())
+            .any(|trust| trust.mode == RecallResultTrustMode::Certify && trust.can_trust)
+    );
+
+    memory
+        .add_claim("Mateo", "owns", "deployment keys", None, 0.51)
+        .expect("unsupported claim records");
+    let mixed_store = memory
+        .recall_with_authority("release notes", 10)
+        .expect("mixed recall succeeds");
+    assert_eq!(mixed_store.authority.mode, AuthorityMode::Warn);
+    assert!(!mixed_store.authority.can_trust);
+    let mixed_supported_claim = mixed_store
+        .results
+        .iter()
+        .find(|result| result.kind == MemoryKind::Claim)
+        .expect("supported claim remains visible");
+    let mixed_supported_trust = mixed_supported_claim
+        .trust
+        .as_ref()
+        .expect("supported claim has result trust");
+    assert_eq!(mixed_supported_trust.mode, RecallResultTrustMode::Certify);
+    assert!(mixed_supported_trust.can_trust);
+
+    let unsupported = memory
+        .recall_with_authority("deployment keys", 10)
+        .expect("unsupported recall succeeds");
+    let unsupported_claim = unsupported
+        .results
+        .iter()
+        .find(|result| result.kind == MemoryKind::Claim)
+        .expect("unsupported claim is returned");
+    let unsupported_trust = unsupported_claim
+        .trust
+        .as_ref()
+        .expect("unsupported claim has result trust");
+    assert_eq!(unsupported_trust.mode, RecallResultTrustMode::Warn);
+    assert!(!unsupported_trust.can_trust);
+    assert!(
+        unsupported_trust
+            .signal_kinds
+            .iter()
+            .any(|kind| kind == "unsupported_fact")
+    );
 
     let _ = fs::remove_file(path);
 }

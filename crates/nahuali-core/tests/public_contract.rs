@@ -23,12 +23,12 @@ use nahuali_core::{
     MemoryGraphNodeKind, MemoryHookKind, MemoryHookOptions, MemoryIngestDocument,
     MemoryInterchange, MemoryKind, MemoryScope, MemoryScopeKind, NahualiError,
     OPERATOR_REVIEW_VERSION, OperatorReviewOptions, ProactiveOptions, ProcedureKind,
-    ProjectViewOptions, RecallOptions, ReflectionOptions, Relation, ReviewDecisionOutcome,
-    SelfInspectionFindingKind, SelfInspectionReviewAction, SelfInspectionReviewPriority,
-    SemanticTierProvider, SemanticTierRestorePolicy, SemanticTierSnapshotStatus,
-    SleepConsolidationCandidateKind, SleepModeOptions, SnapshotIssueKind, SourceKind,
-    TEXT_INGEST_ADAPTER_VERSION, TextChunking, TextIngestIssueKind, TextIngestOptions,
-    build_text_ingest_document,
+    ProjectViewOptions, RecallOptions, RecallResultTrustMode, ReflectionOptions, Relation,
+    ReviewDecisionOutcome, SelfInspectionFindingKind, SelfInspectionReviewAction,
+    SelfInspectionReviewPriority, SemanticTierProvider, SemanticTierRestorePolicy,
+    SemanticTierSnapshotStatus, SleepConsolidationCandidateKind, SleepModeOptions,
+    SnapshotIssueKind, SourceKind, TEXT_INGEST_ADAPTER_VERSION, TextChunking, TextIngestIssueKind,
+    TextIngestOptions, build_text_ingest_document,
 };
 use public_contract_support::{semantic_test_config, temp_store};
 

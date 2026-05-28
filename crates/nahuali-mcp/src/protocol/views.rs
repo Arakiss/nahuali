@@ -297,6 +297,17 @@ pub(crate) struct RecallResultView {
     matched_terms: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     scope: Option<ScopeView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trust: Option<RecallResultTrustView>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct RecallResultTrustView {
+    mode: String,
+    score: f32,
+    can_trust: bool,
+    reasons: Vec<String>,
+    signal_kinds: Vec<String>,
 }
 
 impl From<RecallResult> for RecallResultView {
@@ -309,6 +320,13 @@ impl From<RecallResult> for RecallResultView {
             evidence_id: result.evidence_id,
             matched_terms: result.matched_terms,
             scope: result.scope.map(ScopeView::from),
+            trust: result.trust.map(|trust| RecallResultTrustView {
+                mode: json_string(&trust.mode),
+                score: trust.score,
+                can_trust: trust.can_trust,
+                reasons: trust.reasons,
+                signal_kinds: trust.signal_kinds,
+            }),
         }
     }
 }

@@ -247,8 +247,10 @@ fn recall_for_hook(
     }
 
     let query = input.as_ref()?;
+    let mut results = recall::recall(data, query, options.recall_limit.max(1));
+    recall::attach_result_trust(data, health, &mut results);
     Some(AuthorityRecall {
-        results: recall::recall(data, query, options.recall_limit.max(1)),
+        results,
         authority: authority.clone(),
         health: health.clone(),
     })

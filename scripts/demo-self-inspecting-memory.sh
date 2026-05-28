@@ -20,6 +20,8 @@ DEMO_DB="${NAHUALI_DEMO_DB:-.local/demo-self-inspection-${RUN_ID}}"
 
 if [[ -n "${NAHUALI_BIN:-}" ]]; then
   NAHUALI="$NAHUALI_BIN"
+elif [[ -x "$ROOT/target/debug/nahuali" ]]; then
+  NAHUALI="$ROOT/target/debug/nahuali"
 elif [[ -x "$ROOT/target/release/nahuali" ]]; then
   NAHUALI="$ROOT/target/release/nahuali"
 else
@@ -77,6 +79,7 @@ run_nahuali recall \
   | summarize "Evidence-backed recall with store-level authority context" \
       '{
         top_result: .results[0],
+        top_result_trust: .results[0].trust,
         authority: .authority,
         health: {
           supported_fact_count: .health.supported_fact_count,
@@ -94,6 +97,7 @@ run_nahuali recall \
       '{
         top_result: .results[0],
         unsupported_result: (.results[] | select(.kind == "claim")),
+        unsupported_result_trust: (.results[] | select(.kind == "claim") | .trust),
         authority: .authority
       }'
 

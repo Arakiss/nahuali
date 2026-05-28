@@ -125,8 +125,8 @@ pub use maintenance::{
 pub use model::{
     Claim, Entity, Episode, Fact, Intention, IntentionKind, IntentionPriority, IntentionStatus,
     Link, MEMORY_DATA_VERSION, MemoryData, MemoryKind, MemoryScope, MemoryScopeKind, Procedure,
-    ProcedureKind, RecallResult, Relation, ReviewDecision, ReviewDecisionAction,
-    ReviewDecisionOutcome, SourceDocument, SourceKind,
+    ProcedureKind, RecallResult, RecallResultTrust, RecallResultTrustMode, Relation,
+    ReviewDecision, ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
 };
 pub use operator_review::{
     OPERATOR_REVIEW_VERSION, OperatorReviewItem, OperatorReviewOptions, OperatorReviewReport,
