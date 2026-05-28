@@ -46,8 +46,6 @@ jobs:
         run: sh scripts/sync-workspace-internal-deps.sh --check
       - name: Verify living release text avoids pinned release drift
         run: sh scripts/check-doc-release-refs.sh
-      - name: Tag internal components without GitHub Releases
-        run: sh scripts/tag-skipped-release-please-components.sh
       - id: release
         uses: googleapis/release-please-action@v5
         with:
