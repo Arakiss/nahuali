@@ -47,8 +47,8 @@ this repository.
 ## What Exists Today
 
 - `nahuali-core`: the canonical Rust engine.
-- `nahuali`: a CLI for local memory recording, recall, inspection, backup, and
-  migration rehearsals.
+- `nahuali`: an agent-first CLI for local memory recording, recall, inspection,
+  review, proactive signals, backup, and migration rehearsals.
 - `nahuali-mcp`: a local MCP stdio server over the same core.
 - `nahuali-api`: a local HTTP API over the same core.
 - `nahuali-regression`: a fixture runner used by release gates.
@@ -62,8 +62,9 @@ In this repository, self-inspection means concrete, local reports over the
 current memory projection:
 
 - `inspect` reports knowledge-health counts and signals.
-- `recall --authority --json` returns recall results with the authority mode,
-  trust flag, score, health report, and evidence IDs when available.
+- `recall --authority --json` returns recall results with store-level
+  authority, result-level trust, scores, health signals, and evidence IDs when
+  available.
 - `self-inspect` turns health and authority signals into proposed review work.
 - `review` exposes a prioritized operator queue.
 - `reflect`, `sleep`, `consolidation-plan`, and `proactive` plan follow-up work
@@ -148,6 +149,12 @@ Run a synthetic end-to-end demo:
 bash scripts/demo-self-inspecting-memory.sh
 ```
 
+Run the agent-first daily-driver loop demo:
+
+```bash
+bash scripts/demo-daily-driver-loop.sh
+```
+
 Record a source episode and cite it as evidence:
 
 ```bash
@@ -191,6 +198,27 @@ cargo run -p nahuali-cli -- --database .nahuali-demo recall \
 
 Scopes are labels for memory context. They are not authentication or
 authorization boundaries.
+
+## Agent-First CLI
+
+The CLI is the canonical local interface for agents and operators during the
+beta foundation phase. Agent-facing usage should prefer `--json`, explicit
+flags, scoped databases, and non-mutating inspection commands. Human-readable
+output is kept useful, but the machine contract comes first.
+
+The expected local loop is:
+
+1. `validate --json` before relying on a database.
+2. `session-resume --json` or `briefing --json` before planning work.
+3. `recall --authority --json` before using remembered context.
+4. `inspect --json`, `self-inspect --json`, and `review --json` before
+   repairing weak memory.
+5. `goal-progress --json`, `deadlines --json`, `anomalies --json`, and
+   `proactive --json` for forward-looking work.
+
+MCP exposes the same core to agent hosts that prefer tool calls. The HTTP API
+serves local integrations and UI/service experiments. Neither replaces the CLI
+as the fastest way to inspect and validate the engine locally.
 
 ## Local API
 

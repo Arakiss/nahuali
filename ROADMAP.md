@@ -69,6 +69,7 @@ Focus areas:
 - cut reproducible prerelease artifacts from tagged commits
 - keep the release gate runnable from a clean checkout
 - make errors and JSON output stable enough for scripts
+- keep the agent-first CLI daily-driver loop demo passing from a clean checkout
 - tighten validated examples around evidence-backed recall and self-inspection
 - document the exact boundaries of the local API and MCP surfaces
 - collect issues that come from real local usage and convert them into fixtures
