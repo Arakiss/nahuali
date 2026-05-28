@@ -347,6 +347,11 @@ train.
 - Binary artifacts are built only for `nahuali-cli-vX.Y.Z-beta.N` tags.
 - Manual workflow dispatch remains available for release-pr and artifact
   reruns.
+- Repository workflow permissions stay read-only by default; Release Please
+  requires the repository setting that allows GitHub Actions to create pull
+  requests, while write scopes remain limited to the release job. Verify that
+  setting with:
+  `NAHUALI_VERIFY_GITHUB_SETTINGS=1 bash scripts/security-supply-chain-check.sh`.
 
 The release train stays prerelease-only while the project is in beta.
 

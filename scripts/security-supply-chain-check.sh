@@ -127,6 +127,7 @@ assert_file_contains .github/workflows/release.yml 'gh workflow run ci\.yml' "re
 assert_file_not_contains .github/workflows/release.yml 'scripts/tag-skipped-release-please-components.sh' "release workflow must not push internal component tags with GITHUB_TOKEN"
 assert_file_contains scripts/tag-skipped-release-please-components.sh 'skip-github-release=true' "internal release tag script must target skipped Release Please components"
 assert_file_contains scripts/tag-skipped-release-please-components.sh 'product_tag="nahuali-cli-v\$version"' "internal release tags must prefer the matching public CLI release boundary"
+assert_file_contains README.md 'NAHUALI_VERIFY_GITHUB_SETTINGS=1 bash scripts/security-supply-chain-check.sh' "README must document the repository settings verification command"
 assert_file_contains scripts/validate-clean-tree.sh 'scripts/sync-workspace-internal-deps\.sh --check' "local validation must check workspace internal dependency pins"
 assert_file_contains scripts/release-dry-run.sh 'crates/nahuali-cli/Cargo\.toml' "release dry-run must use the user-facing CLI version"
 assert_file_contains scripts/check-release-assets.sh 'nahuali-v\$\{version\}-\$\{target\}\.tar\.gz' "release asset checker must verify versioned target archives"
@@ -232,6 +233,31 @@ publication_pattern='(cargo publish|npm publish|pnpm publish|bun publish|twine u
 if rg -n --hidden --glob '.github/**' --glob 'scripts/**' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/tag-skipped-release-please-components.sh' "$publication_pattern" .; then
   echo "publication command found in automation" >&2
   exit 1
+fi
+
+if [[ "${NAHUALI_VERIFY_GITHUB_SETTINGS:-0}" == "1" ]]; then
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "gh CLI is required when NAHUALI_VERIFY_GITHUB_SETTINGS=1" >&2
+    exit 1
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "jq is required when NAHUALI_VERIFY_GITHUB_SETTINGS=1" >&2
+    exit 1
+  fi
+
+  github_repo="${NAHUALI_GITHUB_REPOSITORY:-Arakiss/nahuali}"
+  workflow_permissions="$(gh api "repos/${github_repo}/actions/permissions/workflow")"
+  default_permissions="$(printf '%s' "$workflow_permissions" | jq -r '.default_workflow_permissions')"
+  can_create_prs="$(printf '%s' "$workflow_permissions" | jq -r '.can_approve_pull_request_reviews')"
+
+  if [[ "$default_permissions" != "read" ]]; then
+    echo "GitHub Actions default workflow permissions must stay read-only for ${github_repo}" >&2
+    exit 1
+  fi
+  if [[ "$can_create_prs" != "true" ]]; then
+    echo "GitHub Actions must be allowed to create pull requests so Release Please can maintain the release PR for ${github_repo}" >&2
+    exit 1
+  fi
 fi
 
 echo "security and supply-chain check passed"
