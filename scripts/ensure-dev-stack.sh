@@ -4,13 +4,43 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-mkdir -p "${HOME}/.nahuali-oss/surrealdb" "${HOME}/.nahuali-oss/qdrant"
+SURREAL_CONTAINER="nahual-mictlan-surrealdb"
+QDRANT_CONTAINER="nahual-tonalli-qdrant"
+LEGACY_SURREAL_CONTAINER="nahuali-oss-surrealdb"
+LEGACY_QDRANT_CONTAINER="nahuali-oss-qdrant"
+
+mkdir -p "${HOME}/.nahual-rust/mictlan-surrealdb" "${HOME}/.nahual-rust/tonalli-qdrant"
+
+container_name() {
+  local service="$1"
+
+  case "$service" in
+    surrealdb) printf '%s\n' "$SURREAL_CONTAINER" ;;
+    qdrant) printf '%s\n' "$QDRANT_CONTAINER" ;;
+    *) echo "unknown service: $service" >&2; exit 1 ;;
+  esac
+}
+
+stop_legacy_container() {
+  local container="$1"
+  local state
+
+  state="$(docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null || true)"
+  if [[ "$state" == "running" ]]; then
+    docker stop "$container" >/dev/null
+  fi
+}
+
+stop_legacy_container "$LEGACY_SURREAL_CONTAINER"
+stop_legacy_container "$LEGACY_QDRANT_CONTAINER"
 
 container_ready() {
   local service="$1"
+  local container
   local status
 
-  status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "nahuali-oss-${service}" 2>/dev/null || true)"
+  container="$(container_name "$service")"
+  status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || true)"
   [[ "$status" == "healthy" || "$status" == "running" ]]
 }
 
@@ -20,7 +50,7 @@ qdrant_nofile_ready() {
   limits="$(
     docker inspect \
       --format='{{range .HostConfig.Ulimits}}{{if eq .Name "nofile"}}{{.Soft}}:{{.Hard}}{{end}}{{end}}' \
-      nahuali-oss-qdrant 2>/dev/null || true
+      "$QDRANT_CONTAINER" 2>/dev/null || true
   )"
   [[ "$limits" == "65535:65535" ]]
 }
@@ -37,7 +67,8 @@ fi
 
 for service in surrealdb qdrant; do
   for attempt in {1..90}; do
-    status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "nahuali-oss-${service}" 2>/dev/null || true)"
+    container="$(container_name "$service")"
+    status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || true)"
     if [[ "$status" == "healthy" || "$status" == "running" ]]; then
       break
     fi

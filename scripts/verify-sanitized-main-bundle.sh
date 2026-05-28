@@ -83,7 +83,7 @@ if [[ -n "$hidden_refs" ]]; then
 fi
 
 tracked_local_artifacts="$(
-  git ls-files | rg '(^|/)(\.private|\.local|\.runs|\.nahuali-oss|\.release-dry-run|\.dev-bin|docs)(/|$)|(^|/)\.nahuali-demo$|\.snapshot\.json$|\.backup\.json$|\.interchange\.json$' || true
+  git ls-files | rg '(^|/)(\.private|\.local|\.runs|\.nahuali-oss|\.nahual-rust|\.release-dry-run|\.dev-bin|docs)(/|$)|(^|/)\.nahuali-demo$|\.snapshot\.json$|\.backup\.json$|\.interchange\.json$' || true
 )"
 if [[ -n "$tracked_local_artifacts" ]]; then
   echo "bundle clone tracks local-only artifacts:" >&2

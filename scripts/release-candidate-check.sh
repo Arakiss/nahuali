@@ -143,7 +143,7 @@ if [[ "$open_issue_count" != "0" ]]; then
 fi
 
 tracked_local_artifacts="$(
-  git ls-files | rg '(^|/)(\.private|\.local|\.runs|\.nahuali-oss|\.release-dry-run|\.dev-bin|docs)(/|$)|(^|/)\.nahuali-demo\$|\.snapshot\.json$|\.backup\.json$|\.interchange\.json$' || true
+  git ls-files | rg '(^|/)(\.private|\.local|\.runs|\.nahuali-oss|\.nahual-rust|\.release-dry-run|\.dev-bin|docs)(/|$)|(^|/)\.nahuali-demo\$|\.snapshot\.json$|\.backup\.json$|\.interchange\.json$' || true
 )"
 if [[ -n "$tracked_local_artifacts" ]]; then
   echo "local-only artifacts are tracked:" >&2

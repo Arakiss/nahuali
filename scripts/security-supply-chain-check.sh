@@ -53,6 +53,7 @@ assert_file_contains .gitignore '^docs/$' "private docs directory must stay igno
 assert_file_contains .gitignore '^\.private/$' "private local workspace must stay ignored"
 assert_file_contains .gitignore '^\.local/$' "local workspace must stay ignored"
 assert_file_contains .gitignore '^\.runs/$' "local run workspace must stay ignored"
+assert_file_contains .gitignore '^\.nahual-rust/$' "Nahual-named local workspace must stay ignored"
 
 private_path_pattern='(^docs/|^\.private/|^\.local/|^\.runs/)'
 if git ls-tree -r --name-only HEAD | rg -n "$private_path_pattern"; then
@@ -150,7 +151,11 @@ assert_file_contains .github/workflows/sbom.yml 'workflow_dispatch:' "SBOM workf
 assert_file_contains .github/workflows/sbom.yml 'startsWith\(inputs\.tag, .nahuali-cli-v.\)' "SBOM workflow manual dispatch must stay scoped to nahuali-cli tags"
 assert_file_contains .github/workflows/sbom.yml 'artifact-name: nahuali-\$\{\{ env\.RELEASE_TAG \}\}\.cdx\.json' "SBOM workflow must attach the canonical release SBOM asset"
 assert_file_contains docker-compose.yml 'nofile:' "Qdrant dev stack must raise nofile for long release-candidate gates"
+assert_file_contains docker-compose.yml 'container_name: nahual-mictlan-surrealdb' "SurrealDB dev container must use the Nahual universe name"
+assert_file_contains docker-compose.yml 'container_name: nahual-tonalli-qdrant' "Qdrant dev container must use the Nahual universe name"
 assert_file_contains scripts/ensure-dev-stack.sh 'qdrant_nofile_ready' "dev stack bootstrap must recreate Qdrant when nofile is missing"
+assert_file_contains scripts/ensure-dev-stack.sh 'LEGACY_SURREAL_CONTAINER="nahuali-oss-surrealdb"' "dev stack bootstrap must stop the legacy Rust SurrealDB container"
+assert_file_contains scripts/ensure-dev-stack.sh 'LEGACY_QDRANT_CONTAINER="nahuali-oss-qdrant"' "dev stack bootstrap must stop the legacy Rust Qdrant container"
 
 sh scripts/sync-workspace-internal-deps.sh --check
 
@@ -174,7 +179,7 @@ if rg -n --hidden \
   --glob '!.local/**' \
   --glob '!.runs/**' \
   --glob '!.dev-bin/**' \
-  --glob '!.nahuali-oss/**' \
+  --glob '!.nahuali-oss/**' --glob '!.nahual-rust/**' \
   --glob '!.release-dry-run/**' \
   --glob '!.nahuali-demo' \
   --glob '!*.snapshot.json' \
@@ -207,13 +212,13 @@ if [[ -n "$large_files" ]]; then
 fi
 
 identity_pattern='(?i)([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|legal name|personal email)'
-if rg -n -i --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$identity_pattern" .; then
+if rg -n -i --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.nahual-rust/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$identity_pattern" .; then
   echo "identity scan failed" >&2
   exit 1
 fi
 
 secret_pattern='(?i)(api[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|secret[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|password[[:space:]]*[:=][[:space:]]*["'\'']?[a-z0-9._-]{8,}["'\'']?|bearer[[:space:]]+[a-z0-9._-]{16,}|sk-[a-z0-9]{20,}|ghp_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|AKIA[0-9A-Z]{16})'
-if rg -n --hidden --glob '!.git/**' --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!Cargo.lock' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$secret_pattern" .; then
+if rg -n --hidden --glob '!.git/**' --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.nahual-rust/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!Cargo.lock' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$secret_pattern" .; then
   echo "secret scan failed" >&2
   exit 1
 fi

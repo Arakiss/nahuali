@@ -87,7 +87,7 @@ if [[ "$current_head" != "$main_head" ]]; then
 fi
 
 tracked_private_paths="$(
-  git ls-files | rg '(^|/)(\.private|\.local|\.runs|\.nahuali-oss|\.release-dry-run|\.dev-bin|docs)(/|$)|(^|/)\.nahuali-demo$|\.snapshot\.json$|\.backup\.json$|\.interchange\.json$' || true
+  git ls-files | rg '(^|/)(\.private|\.local|\.runs|\.nahuali-oss|\.nahual-rust|\.release-dry-run|\.dev-bin|docs)(/|$)|(^|/)\.nahuali-demo$|\.snapshot\.json$|\.backup\.json$|\.interchange\.json$' || true
 )"
 if [[ -n "$tracked_private_paths" ]]; then
   echo "tracked local-only artifacts block sanitized export:" >&2
@@ -97,7 +97,7 @@ fi
 
 tree_private_paths="$(
   git ls-tree -r --name-only "$current_head" \
-    | rg '(^|/)(\.private|\.local|\.runs|\.nahuali-oss|\.release-dry-run|\.dev-bin|docs)(/|$)|(^|/)\.nahuali-demo$|\.snapshot\.json$|\.backup\.json$|\.interchange\.json$' || true
+    | rg '(^|/)(\.private|\.local|\.runs|\.nahuali-oss|\.nahual-rust|\.release-dry-run|\.dev-bin|docs)(/|$)|(^|/)\.nahuali-demo$|\.snapshot\.json$|\.backup\.json$|\.interchange\.json$' || true
 )"
 if [[ -n "$tree_private_paths" ]]; then
   echo "current main tree contains local-only artifacts:" >&2
@@ -144,7 +144,7 @@ fi
 
 clone_private_paths="$(
   git -C "$clone_dir" ls-files \
-    | rg '(^|/)(\.private|\.local|\.runs|\.nahuali-oss|\.release-dry-run|\.dev-bin|docs)(/|$)|(^|/)\.nahuali-demo$|\.snapshot\.json$|\.backup\.json$|\.interchange\.json$' || true
+    | rg '(^|/)(\.private|\.local|\.runs|\.nahuali-oss|\.nahual-rust|\.release-dry-run|\.dev-bin|docs)(/|$)|(^|/)\.nahuali-demo$|\.snapshot\.json$|\.backup\.json$|\.interchange\.json$' || true
 )"
 if [[ -n "$clone_private_paths" ]]; then
   echo "bundle clone contains local-only artifacts:" >&2

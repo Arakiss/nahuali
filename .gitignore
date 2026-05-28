@@ -9,6 +9,7 @@ target/
 *.swo
 .nahuali-demo
 .nahuali-oss/
+.nahual-rust/
 .release-dry-run/
 .dev-bin/
 .private/

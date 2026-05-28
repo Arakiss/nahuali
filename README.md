@@ -74,6 +74,13 @@ a claim that Nahuali makes its current basis for trust inspectable: what
 evidence exists, what is unsupported, what conflicts, what looks stale, and
 what should be reviewed before acting on memory.
 
+Practically, self-inspection means Nahuali can return useful memory while also
+showing why the current store should or should not be trusted. A supported
+answer can still come with a warning when the same store contains unrelated
+unsupported claims, isolated entities, stale facts, contradictions, or source
+coverage gaps. Review and repair remain explicit operator work; Nahuali does
+not silently rewrite memory.
+
 ## Storage Contract
 
 Nahuali stores authoritative history in a SurrealDB `memory_record` ledger.
@@ -104,6 +111,12 @@ Start the local services:
 docker compose up -d
 ```
 
+The local dev containers use project-specific names so they can coexist with
+other Nahuali experiments on the same machine:
+
+- `nahual-mictlan-surrealdb` stores the local ledger and graph projection.
+- `nahual-tonalli-qdrant` stores the derived semantic index.
+
 Run the CLI from source:
 
 ```bash
@@ -125,6 +138,15 @@ During pre-release work, prefer `cargo run` or an isolated install root if you
 already have another `nahuali` command on your machine.
 
 ## Quickstart
+
+Start with the CLI. It is the fastest way to see the engine, the ledger, recall,
+health inspection, and the review queue working together.
+
+Run a synthetic end-to-end demo:
+
+```bash
+bash scripts/demo-self-inspecting-memory.sh
+```
 
 Record a source episode and cite it as evidence:
 
@@ -171,6 +193,10 @@ Scopes are labels for memory context. They are not authentication or
 authorization boundaries.
 
 ## Local API
+
+The HTTP API is not required for the first hands-on test. Use it when another
+local program, service, or UI needs to call the same engine without shelling out
+to the CLI.
 
 Run the local HTTP API:
 
