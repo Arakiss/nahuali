@@ -51,6 +51,13 @@ Accepted types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`,
 
 Use `!` for breaking changes and include a `BREAKING CHANGE:` footer.
 
+Every pull request validates commit subjects in CI. To catch problems before you
+push, enable the optional local hook:
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ## Development
 
 ```bash
@@ -75,6 +82,13 @@ Before a public release:
 - privacy and secret scans must be clean
 - the release notes must state the supported install path
 - record-ledger compatibility expectations must be explicit
+
+## Licensing Of Contributions
+
+Nahuali is source-available under the Functional Source License (FSL-1.1-MIT).
+By submitting a contribution you agree that it is licensed to the project under
+those same terms, including the MIT future grant that applies to each released
+version two years after publication.
 
 ## Style
 
