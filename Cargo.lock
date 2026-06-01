@@ -2481,7 +2481,7 @@ dependencies = [
 
 [[package]]
 name = "nahuali-api"
-version = "0.1.0-beta.0"
+version = "0.2.0-beta.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2495,7 +2495,7 @@ dependencies = [
 
 [[package]]
 name = "nahuali-cli"
-version = "0.1.0-beta.0"
+version = "0.2.0-beta.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2506,7 +2506,7 @@ dependencies = [
 
 [[package]]
 name = "nahuali-core"
-version = "0.1.0-beta.0"
+version = "0.2.0-beta.0"
 dependencies = [
  "model2vec-rs",
  "reqwest",
@@ -2519,7 +2519,7 @@ dependencies = [
 
 [[package]]
 name = "nahuali-mcp"
-version = "0.1.0-beta.0"
+version = "0.2.0-beta.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2532,7 +2532,7 @@ dependencies = [
 
 [[package]]
 name = "nahuali-regression"
-version = "0.1.0-beta.0"
+version = "0.1.1-beta.0"
 dependencies = [
  "anyhow",
  "clap",
