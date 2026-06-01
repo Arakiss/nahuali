@@ -1,5 +1,5 @@
 /// Semantic index schema version stored in Qdrant payloads.
-pub const SEMANTIC_INDEX_SCHEMA_VERSION: u32 = 2;
+pub const SEMANTIC_INDEX_SCHEMA_VERSION: u32 = 3;
 /// Default local Qdrant REST endpoint for the OSS Docker stack.
 pub const DEFAULT_QDRANT_URL: &str = "http://localhost:16333";
 /// Default collection used for memory-item vectors.
@@ -18,6 +18,10 @@ pub struct SemanticConfig {
     pub collection_name: String,
     /// Embedding provider configuration.
     pub embedding: EmbeddingProviderConfig,
+    /// Filesystem path to a local static embedding model directory, used only
+    /// when the provider is the optional local model. Ignored otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding_model_path: Option<String>,
 }
 
 impl SemanticConfig {
@@ -54,11 +58,17 @@ impl SemanticConfig {
         let provider = non_empty_env("NAHUALI_EMBEDDING_PROVIDER")
             .unwrap_or_else(|| "deterministic".to_string());
         let embedding = EmbeddingProviderConfig::from_provider_name(provider, dimensions);
+        let embedding_model_path = if embedding.kind == EmbeddingProviderKind::LocalModel {
+            non_empty_env("NAHUALI_LOCAL_EMBEDDING_MODEL_PATH")
+        } else {
+            None
+        };
 
         Ok(Self {
             qdrant_url: normalize_qdrant_url(&qdrant_url),
             collection_name: normalize_collection_name(&collection_name)?,
             embedding,
+            embedding_model_path,
         })
     }
 
@@ -68,6 +78,7 @@ impl SemanticConfig {
             qdrant_url: DEFAULT_QDRANT_URL.to_string(),
             collection_name: DEFAULT_SEMANTIC_COLLECTION.to_string(),
             embedding: EmbeddingProviderConfig::deterministic(DEFAULT_EMBEDDING_DIMENSIONS),
+            embedding_model_path: None,
         }
     }
 
@@ -91,17 +102,39 @@ impl SemanticConfig {
         })
     }
 
-    fn embedder(&self) -> Result<DeterministicEmbedder> {
-        if self.embedding.kind != EmbeddingProviderKind::DeterministicLocal {
-            return Err(NahualiError::InvalidSemanticConfig {
+    fn embedder(&self) -> Result<Box<dyn Embedder>> {
+        match self.embedding.kind {
+            EmbeddingProviderKind::DeterministicLocal => Ok(Box::new(DeterministicEmbedder {
+                dimensions: self.embedding.dimensions,
+            })),
+            EmbeddingProviderKind::LocalModel => self.local_model_embedder(),
+            EmbeddingProviderKind::Hosted => Err(NahualiError::InvalidSemanticConfig {
                 message: format!(
                     "embedding provider '{}' is configured but only the deterministic local provider is built into nahuali-core",
                     self.embedding.model
                 ),
-            });
+            }),
         }
-        Ok(DeterministicEmbedder {
-            dimensions: self.embedding.dimensions,
+    }
+
+    #[cfg(feature = "local-embeddings")]
+    fn local_model_embedder(&self) -> Result<Box<dyn Embedder>> {
+        let path = self.embedding_model_path.as_deref().ok_or_else(|| {
+            NahualiError::InvalidSemanticConfig {
+                message: "local-model embedding provider requires NAHUALI_LOCAL_EMBEDDING_MODEL_PATH \
+                          to point at a directory with tokenizer.json, model.safetensors and config.json"
+                    .to_string(),
+            }
+        })?;
+        Ok(Box::new(LocalModelEmbedder::load(path)?))
+    }
+
+    #[cfg(not(feature = "local-embeddings"))]
+    fn local_model_embedder(&self) -> Result<Box<dyn Embedder>> {
+        Err(NahualiError::InvalidSemanticConfig {
+            message: "local-model embedding provider requires building nahuali-core with \
+                      --features local-embeddings"
+                .to_string(),
         })
     }
 }
@@ -140,6 +173,12 @@ impl EmbeddingProviderConfig {
             || normalized == LOCAL_EMBEDDING_MODEL
         {
             Self::deterministic(dimensions)
+        } else if normalized == "local-model" || normalized == "model2vec" {
+            Self {
+                kind: EmbeddingProviderKind::LocalModel,
+                model: normalized,
+                dimensions,
+            }
         } else {
             Self {
                 kind: EmbeddingProviderKind::Hosted,
@@ -156,6 +195,8 @@ impl EmbeddingProviderConfig {
 pub enum EmbeddingProviderKind {
     /// Built-in deterministic local token-hash embedding.
     DeterministicLocal,
+    /// Optional local static embedding model (model2vec) loaded from disk.
+    LocalModel,
     /// Explicit hosted or external provider configured above the OSS core.
     Hosted,
 }

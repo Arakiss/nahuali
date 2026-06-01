@@ -3,10 +3,14 @@ pub(crate) fn rebuild_index(
     config: &SemanticConfig,
 ) -> Result<SemanticIndexReport> {
     let embedder = config.embedder()?;
+    let embedding = EmbeddingProviderConfig {
+        dimensions: embedder.dimensions(),
+        ..config.embedding.clone()
+    };
     let client = QdrantRestClient::new(config);
     let deleted_existing_collection =
         client.delete_collection_if_exists(&config.collection_name)?;
-    client.create_collection(&config.collection_name, &config.embedding)?;
+    client.create_collection(&config.collection_name, &embedding)?;
 
     let documents = semantic_documents(data);
     let points = documents
@@ -27,7 +31,7 @@ pub(crate) fn rebuild_index(
     Ok(SemanticIndexReport {
         collection_name: config.collection_name.clone(),
         qdrant_url: config.qdrant_url.clone(),
-        embedding: config.embedding.clone(),
+        embedding,
         source_event_count: data.event_count,
         indexed_point_count: points.len(),
         deleted_existing_collection,
@@ -86,6 +90,10 @@ pub(crate) fn hybrid_recall_with_options(
     config: &SemanticConfig,
 ) -> Result<HybridRecallReport> {
     let embedder = config.embedder()?;
+    let embedding = EmbeddingProviderConfig {
+        dimensions: embedder.dimensions(),
+        ..config.embedding.clone()
+    };
     let client = QdrantRestClient::new(config);
     let bounded_limit = limit.max(1);
     let candidate_limit = bounded_limit.saturating_mul(3).max(bounded_limit);
@@ -139,7 +147,7 @@ pub(crate) fn hybrid_recall_with_options(
         query: query.to_string(),
         limit: bounded_limit,
         collection_name: config.collection_name.clone(),
-        embedding: config.embedding.clone(),
+        embedding,
         authority,
         lexical_results,
         semantic_results,
@@ -147,11 +155,23 @@ pub(crate) fn hybrid_recall_with_options(
     })
 }
 
+/// Converts memory-item and query text into a dense vector for semantic recall.
+///
+/// This is the single seam behind which embedding strategies vary. The default
+/// build ships only [`DeterministicEmbedder`]; optional adapters (e.g. a local
+/// static model) implement the same contract behind a feature flag.
+pub(crate) trait Embedder {
+    /// Embed `text` into a vector of [`Embedder::dimensions`] length.
+    fn embed(&self, text: &str) -> Vec<f32>;
+    /// Vector dimensionality produced by this embedder.
+    fn dimensions(&self) -> usize;
+}
+
 struct DeterministicEmbedder {
     dimensions: usize,
 }
 
-impl DeterministicEmbedder {
+impl Embedder for DeterministicEmbedder {
     fn embed(&self, text: &str) -> Vec<f32> {
         let mut vector = vec![0.0; self.dimensions];
         for token in tokenize(text) {
@@ -170,6 +190,61 @@ impl DeterministicEmbedder {
             *value /= norm;
         }
         vector
+    }
+
+    fn dimensions(&self) -> usize {
+        self.dimensions
+    }
+}
+
+/// Local static-embedding adapter backed by a model2vec model loaded from disk.
+///
+/// Available only under `--features local-embeddings`. The model is a frozen
+/// token→vector lookup table plus mean pooling: deterministic, CPU-only, and
+/// fully offline (bytes are read from disk, never fetched).
+#[cfg(feature = "local-embeddings")]
+struct LocalModelEmbedder {
+    model: model2vec_rs::model::StaticModel,
+    dimensions: usize,
+}
+
+#[cfg(feature = "local-embeddings")]
+impl LocalModelEmbedder {
+    /// Load the model from a directory holding `tokenizer.json`,
+    /// `model.safetensors` and `config.json`.
+    fn load(path: &str) -> Result<Self> {
+        let dir = std::path::Path::new(path);
+        let read = |file: &str| -> Result<Vec<u8>> {
+            std::fs::read(dir.join(file)).map_err(|source| NahualiError::LocalEmbeddingModel {
+                message: format!("failed to read {file} under {path}: {source}"),
+            })
+        };
+        let tokenizer = read("tokenizer.json")?;
+        let model_bytes = read("model.safetensors")?;
+        let config = read("config.json")?;
+        let model =
+            model2vec_rs::model::StaticModel::from_bytes(tokenizer, model_bytes, config, Some(true))
+                .map_err(|source| NahualiError::LocalEmbeddingModel {
+                    message: format!("failed to load local embedding model from {path}: {source}"),
+                })?;
+        let dimensions = model.encode_single("nahuali").len();
+        if dimensions == 0 {
+            return Err(NahualiError::LocalEmbeddingModel {
+                message: format!("local embedding model at {path} produced an empty vector"),
+            });
+        }
+        Ok(Self { model, dimensions })
+    }
+}
+
+#[cfg(feature = "local-embeddings")]
+impl Embedder for LocalModelEmbedder {
+    fn embed(&self, text: &str) -> Vec<f32> {
+        self.model.encode_single(text)
+    }
+
+    fn dimensions(&self) -> usize {
+        self.dimensions
     }
 }
 

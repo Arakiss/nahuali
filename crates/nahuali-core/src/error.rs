@@ -134,6 +134,12 @@ pub enum NahualiError {
         /// Human-readable configuration failure.
         message: String,
     },
+    /// A local embedding model could not be loaded or produced no vectors.
+    #[error("local embedding model error: {message}")]
+    LocalEmbeddingModel {
+        /// Human-readable load or inference failure.
+        message: String,
+    },
     /// The Qdrant semantic tier could not be reached.
     #[error("semantic tier HTTP error at {endpoint}: {source}")]
     SemanticHttp {

@@ -12,6 +12,14 @@ readme = "README.md"
 keywords = ["agents", "memory", "recall", "provenance", "governance"]
 categories = ["data-structures", "development-tools"]
 
+[features]
+default = []
+# Optional local static-embedding adapter (model2vec-rs). Off by default: the
+# deterministic embedder ships in every build, and this only adds real semantic
+# vectors when explicitly enabled. Pure-Rust regex backend (no C toolchain),
+# network download (`hf-hub`) deliberately excluded — models load from disk.
+local-embeddings = ["dep:model2vec-rs"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
@@ -19,3 +27,4 @@ reqwest.workspace = true
 surrealdb.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+model2vec-rs = { version = "0.2", default-features = false, features = ["fancy-regex"], optional = true }

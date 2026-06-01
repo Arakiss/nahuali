@@ -5,7 +5,7 @@ mod tests {
     use crate::{
         AuthorityDecision, AuthorityMode, EmbeddingProviderKind, MemoryData, SemanticConfig,
         SemanticIndexStatus,
-        semantic::{DeterministicEmbedder, hybrid_recall, index_status, rebuild_index},
+        semantic::{DeterministicEmbedder, Embedder, hybrid_recall, index_status, rebuild_index},
     };
 
     #[test]
@@ -89,6 +89,40 @@ mod tests {
             .expect_err("missing collection fails");
 
         assert!(format!("{error}").contains("/points/query"));
+    }
+
+    #[cfg(not(feature = "local-embeddings"))]
+    #[test]
+    fn local_model_requires_local_embeddings_feature() {
+        let mut config = SemanticConfig::default_local();
+        config.embedding.kind = EmbeddingProviderKind::LocalModel;
+        config.embedding.model = "model2vec".to_string();
+
+        let data = MemoryData::default();
+        let error = rebuild_index(&data, &config).expect_err("local model requires the feature");
+
+        assert!(format!("{error}").contains("local-embeddings"));
+    }
+
+    #[cfg(feature = "local-embeddings")]
+    #[test]
+    fn local_model_embeds_with_model_dimensions_when_present() {
+        let Some(path) = std::env::var("NAHUALI_LOCAL_EMBEDDING_MODEL_PATH")
+            .ok()
+            .filter(|value| !value.is_empty())
+        else {
+            return;
+        };
+        let mut config = SemanticConfig::default_local();
+        config.embedding.kind = EmbeddingProviderKind::LocalModel;
+        config.embedding.model = "model2vec".to_string();
+        config.embedding_model_path = Some(path);
+
+        let embedder = config.embedder().expect("local model loads from disk");
+        let vector = embedder.embed("Lena owns the release notes");
+
+        assert!(embedder.dimensions() > 0);
+        assert_eq!(vector.len(), embedder.dimensions());
     }
 
     fn qdrant_test_config(suffix: &str) -> Option<SemanticConfig> {
