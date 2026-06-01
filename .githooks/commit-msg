@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Opt-in Conventional Commit check. Enable with:
+#   git config core.hooksPath .githooks
+# Skipped automatically for merge and revert messages by the shared script.
+set -euo pipefail
+repo_root="$(git rev-parse --show-toplevel)"
+exec "${repo_root}/scripts/check-conventional-commits.sh" --message "$1"

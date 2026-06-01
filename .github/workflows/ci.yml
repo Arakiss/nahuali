@@ -148,6 +148,17 @@ jobs:
         timeout-minutes: 5
         run: bash scripts/security-supply-chain-check.sh
 
+  commits:
+    name: conventional commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Validate Conventional Commit subjects
+        run: bash scripts/check-conventional-commits.sh "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
   ci-all:
     name: CI (all)
     runs-on: ubuntu-latest
