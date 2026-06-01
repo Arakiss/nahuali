@@ -30,7 +30,7 @@ require_package_metadata() {
   local manifest="$1"
   local package="$2"
 
-  assert_file_contains "$manifest" '^license\.workspace = true$' "$package must inherit the workspace license"
+  assert_file_contains "$manifest" '^license-file\.workspace = true$' "$package must inherit the workspace license-file"
   assert_file_contains "$manifest" '^repository\.workspace = true$' "$package must inherit the workspace repository"
   assert_file_contains "$manifest" '^homepage\.workspace = true$' "$package must inherit the workspace homepage"
   assert_file_contains "$manifest" '^authors\.workspace = true$' "$package must inherit the workspace authors"
@@ -38,8 +38,8 @@ require_package_metadata() {
   assert_file_contains "$manifest" '^readme = "README\.md"$' "$package must include a crate README"
 }
 
-assert_file_contains LICENSE '^MIT License$' "LICENSE must be MIT"
-assert_file_contains Cargo.toml '^license = "MIT"$' "workspace license must be MIT"
+assert_file_contains LICENSE '^FSL-1\.1-MIT$' "LICENSE must be FSL-1.1-MIT"
+assert_file_contains Cargo.toml '^license-file = "LICENSE"$' "workspace must reference the FSL LICENSE file"
 assert_file_contains Cargo.toml '^repository = "https://github.com/Arakiss/nahuali"$' "workspace repository metadata is missing"
 assert_file_contains Cargo.toml '^homepage = "https://github.com/Arakiss/nahuali"$' "workspace homepage metadata is missing"
 
