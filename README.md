@@ -8,16 +8,16 @@
 
 <p align="center">
   <a href="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml"><img src="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--MIT-yellow.svg" alt="License: FSL-1.1-MIT"></a>
   <a href="rust-toolchain.toml"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust stable"></a>
   <a href="#self-inspecting-memory"><img src="https://img.shields.io/badge/memory-self--inspecting-blue.svg" alt="Self-inspecting memory"></a>
   <a href="fixtures/knowledge-health-regression.json"><img src="https://img.shields.io/badge/regression-fixtured-brightgreen.svg" alt="Regression fixtures"></a>
 </p>
 
 Nahuali is a pre-release Rust memory engine for local agent and operator
-workflows. Its core idea is **self-inspecting memory**: memory should expose the
-evidence, health signals, and authority decision behind recall before a caller
-trusts it.
+workflows: a governed memory subsystem for directed agent harnesses. Its core
+idea is **self-inspecting memory**: memory should expose the evidence, health
+signals, and authority decision behind recall before a caller trusts it.
 
 The engine records observations into an append-only ledger, rebuilds projected
 memory from that ledger, and reports when projected knowledge is unsupported,
@@ -98,6 +98,12 @@ Current projected state is derived from the ledger:
 The ledger is the source of truth. Snapshots, graph projection tables, and
 semantic vectors are maintenance or retrieval artifacts that must be rebuildable
 from the ledger.
+
+Semantic vectors come from a deterministic local embedder by default. An
+optional `local-embeddings` build feature swaps in a static model2vec model for
+stronger semantic recall while staying fully local, offline, and deterministic;
+no LLM is introduced into the core. Changing the embedder changes the vector
+space, so rebuild the index with `semantic-rebuild` afterwards.
 
 Detailed architecture, commercial planning, migration strategy, and internal
 design documents remain private during pre-release development. The public
@@ -397,4 +403,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Nahuali is source-available under the Functional Source License, version 1.1,
+with an MIT future grant (**FSL-1.1-MIT**). You may use, copy, modify, and
+self-host it for any purpose other than offering a competing commercial product
+or service. Two years after each version is published, that version also becomes
+available to you under the MIT license. See [LICENSE](LICENSE).

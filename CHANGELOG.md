@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- License moved from MIT to the Functional Source License (**FSL-1.1-MIT**)
+  while the project is still pre-1.0. The code stays source-available — free to
+  read, audit, use, modify, and self-host — and the only restriction is offering
+  a competing commercial product or service. Under FSL, each release becomes
+  MIT-licensed two years after it ships; the earlier MIT-licensed beta remains
+  under MIT.
+
+### Added
+
+- Optional local `model2vec` embedder behind the `local-embeddings` build
+  feature for real semantic recall, kept fully local and deterministic. The
+  default build remains the deterministic embedder and pulls in no new
+  dependencies. The semantic index schema version is now 3; run
+  `semantic-rebuild` after switching embedders.
+- Conventional Commit subject enforcement on pull requests, with an opt-in local
+  `commit-msg` hook.
+
 ## 0.1.0-beta.0
 
 Initial public beta seed for the local Rust memory engine.
