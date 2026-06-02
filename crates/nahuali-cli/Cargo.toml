@@ -18,10 +18,14 @@ path = "src/main.rs"
 
 [features]
 default = []
+# Forward nahuali-core's tamper-evident hash chain. Off by default (default
+# builds write byte-identical records). With this feature, recorded events are
+# chained and `validate` detects an in-place rewrite of any historical record.
+tamper-evidence = ["nahuali-core/tamper-evidence"]
 # Forward the optional Ed25519 chain-tip attestation surface from nahuali-core.
-# Off by default: the `attest-sign` / `attest-verify` subcommands only exist in a
-# build made with `--features attestation`.
-attestation = ["nahuali-core/attestation"]
+# Implies `tamper-evidence`. Off by default: the `attest-sign` / `attest-verify`
+# subcommands only exist in a build made with `--features attestation`.
+attestation = ["nahuali-core/attestation", "tamper-evidence"]
 # Forward nahuali-core's optional static model2vec embedder so `semantic-rebuild`
 # and recall can use a local model for stronger semantic recall. Off by default
 # (the deterministic embedder ships in every build); point
