@@ -1028,7 +1028,11 @@ pub(crate) struct HookRecallView {
 impl From<AuthorityRecall> for HookRecallView {
     fn from(recall: AuthorityRecall) -> Self {
         Self {
-            results: recall.results.into_iter().map(RecallResultView::from).collect(),
+            results: recall
+                .results
+                .into_iter()
+                .map(RecallResultView::from)
+                .collect(),
             authority: AuthorityDecisionView::from(recall.authority),
             health: HealthView::from(recall.health),
         }
