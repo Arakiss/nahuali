@@ -15,6 +15,7 @@ pub(crate) fn issue_kind_name(kind: &RecordLedgerIssueKind) -> &'static str {
         RecordLedgerIssueKind::OutOfOrderSequence => "out_of_order_sequence",
         RecordLedgerIssueKind::UnsupportedVersion => "unsupported_version",
         RecordLedgerIssueKind::ChecksumMismatch => "checksum_mismatch",
+        RecordLedgerIssueKind::HashChainBroken => "hash_chain_broken",
     }
 }
 

@@ -76,6 +76,13 @@ pub enum RecordLedgerIssueKind {
     UnsupportedVersion,
     /// The checksum does not match the event body.
     ChecksumMismatch,
+    /// The tamper-evident hash chain is broken at this record: the recorded
+    /// `prev_hash` does not match the previous event's chained hash.
+    ///
+    /// Only produced when the `tamper-evidence` feature is enabled and the
+    /// record carries a chain link; default-build and legacy unchained records
+    /// never raise it.
+    HashChainBroken,
 }
 
 /// Record-ledger validation issue severity.
@@ -102,6 +109,10 @@ pub fn validate_record_ledger(path: impl AsRef<Path>) -> Result<RecordLedgerVali
     let mut report = RecordLedgerValidation::empty();
     let mut observed_versions = BTreeSet::new();
     let mut expected_sequence = 1_u64;
+    // Running chained hash of the last accepted event, used to verify the next
+    // event's recorded `prev_hash`. Only consulted under `tamper-evidence`.
+    #[cfg(feature = "tamper-evidence")]
+    let mut last_chained: Option<String> = None;
 
     for (index, record) in records.into_iter().enumerate() {
         let record_number = index + 1;
@@ -156,6 +167,32 @@ pub fn validate_record_ledger(path: impl AsRef<Path>) -> Result<RecordLedgerVali
                 "checksum mismatch".to_string(),
             ));
             continue;
+        }
+
+        // Tamper-evident hash-chain linkage. Mirrors the open/replay check in
+        // `store/ledger.rs`: the per-event checksum cannot detect an in-place
+        // rewrite that recomputes its own checksum, but the chain can, because
+        // the next event's `prev_hash` no longer matches. Unchained records
+        // (default-build / legacy) carry no link and are accepted as-is.
+        #[cfg(feature = "tamper-evidence")]
+        if event.is_chained() {
+            let expected_prev = last_chained.clone().unwrap_or_default();
+            let recorded_prev = event.prev_hash.clone().unwrap_or_default();
+            if recorded_prev != expected_prev {
+                report.valid = false;
+                report.issues.push(error_issue(
+                    record_number,
+                    RecordLedgerIssueKind::HashChainBroken,
+                    "hash-chain broken: recorded prev_hash does not match the \
+                     previous event's chained hash"
+                        .to_string(),
+                ));
+                continue;
+            }
+        }
+        #[cfg(feature = "tamper-evidence")]
+        {
+            last_chained = Some(event.chain_hash());
         }
 
         report.event_count += 1;
@@ -361,6 +398,90 @@ mod tests {
         assert_eq!(
             report.issues[0].kind,
             RecordLedgerIssueKind::ChecksumMismatch
+        );
+
+        let _ = fs::remove_dir_all(path);
+    }
+
+    /// (b) THE KEY PROOF, exercised through the real non-mutating replay path.
+    /// A clean chained ledger validates; rewriting a middle event's payload and
+    /// forging its own per-event checksum still passes the checksum-only check,
+    /// yet `validate_record_ledger` reports `HashChainBroken` at the next record.
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn detects_hash_chain_break_after_in_place_rewrite() {
+        let path = temp_path("hash-chain-break");
+        let _ = fs::remove_dir_all(&path);
+
+        // Build and persist a clean three-event chain.
+        let mut chain: Vec<EventEnvelope> = Vec::new();
+        for sequence in 1..=3u64 {
+            let prev = chain.last().map(EventEnvelope::chain_hash);
+            chain.push(EventEnvelope::with_chain(
+                sequence,
+                1_700_000_000_000 + sequence,
+                MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                    id: format!("episode_{sequence}"),
+                    content: format!("Chained validation event {sequence}"),
+                    tags: vec!["validation".to_string()],
+                    mentions: Vec::new(),
+                    source_id: None,
+                    source_position: None,
+                    source_role: None,
+                    scope: None,
+                }),
+                prev.as_deref(),
+            ));
+        }
+
+        // Tamper the middle event in place: new payload, freshly recomputed
+        // checksum, original chain link preserved.
+        let original = &chain[1];
+        let mut forged = EventEnvelope::new(
+            original.sequence,
+            original.timestamp_ms,
+            MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                id: "episode_2".to_string(),
+                content: "TAMPERED middle event".to_string(),
+                tags: vec!["validation".to_string()],
+                mentions: Vec::new(),
+                source_id: None,
+                source_position: None,
+                source_role: None,
+                scope: None,
+            }),
+        );
+        forged.prev_hash = original.prev_hash.clone();
+        assert!(
+            forged.validate_checksum(),
+            "forged checksum must pass the self-contained checksum check"
+        );
+        chain[1] = forged;
+
+        for event in &chain {
+            write_raw_record(&path, event.sequence, event.clone());
+        }
+
+        let report = validate_record_ledger(&path).unwrap();
+
+        assert!(!report.valid);
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.kind == RecordLedgerIssueKind::HashChainBroken),
+            "expected a HashChainBroken issue, got {:?}",
+            report.issues
+        );
+        // The break surfaces at the third record (it recorded the original
+        // event 2's chained hash, which no longer matches the forged body).
+        assert_eq!(
+            report
+                .issues
+                .iter()
+                .find(|issue| issue.kind == RecordLedgerIssueKind::HashChainBroken)
+                .and_then(|issue| issue.line),
+            Some(3)
         );
 
         let _ = fs::remove_dir_all(path);

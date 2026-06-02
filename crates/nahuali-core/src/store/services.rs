@@ -571,12 +571,42 @@ impl MemoryEngine {
         self.append_at(now_ms(), payload)
     }
 
+    /// Current tamper-evident chain tip: the chained hash of the last appended
+    /// event, or `None` for an empty ledger.
+    ///
+    /// This is the value to anchor (e.g. publish or sign) so that even a full
+    /// re-chaining of the ledger suffix becomes detectable: re-chaining changes
+    /// the tip, and an externally recorded tip will no longer match. Tip signing
+    /// itself is out of scope here (see the TODO in the implementation).
+    #[cfg(feature = "tamper-evidence")]
+    pub fn chain_tip(&self) -> Option<String> {
+        self.events.last().map(EventEnvelope::chain_hash)
+    }
+
     pub(crate) fn append_at(
         &mut self,
         timestamp_ms: u64,
         payload: MemoryEvent,
     ) -> Result<EventEnvelope> {
+        // FEATURE OFF (default): plain self-contained envelope, `prev_hash` stays
+        // `None` and is skipped on serialization — byte-identical to before.
+        #[cfg(not(feature = "tamper-evidence"))]
         let envelope = EventEnvelope::new(self.next_sequence, timestamp_ms, payload);
+        // FEATURE ON: bind the previous event's chained hash so any later rewrite
+        // of this or an earlier event breaks the chain at the next event.
+        //
+        // TODO(tamper-evidence): optionally sign/anchor `chain_tip()` so a full
+        // suffix re-chain (which changes the tip) is also externally detectable.
+        #[cfg(feature = "tamper-evidence")]
+        let envelope = {
+            let previous_chain_hash = self.events.last().map(EventEnvelope::chain_hash);
+            EventEnvelope::with_chain(
+                self.next_sequence,
+                timestamp_ms,
+                payload,
+                previous_chain_hash.as_deref(),
+            )
+        };
         let write_path = self.path.clone();
         let write_envelope = envelope.clone();
         block_on_database(async move { write_record(&write_path, &write_envelope).await })?;

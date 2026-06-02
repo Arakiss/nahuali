@@ -150,6 +150,30 @@ fn validate_event(
         });
     }
 
+    // Tamper-evident hash-chain linkage check. The per-event checksum above is
+    // self-contained: an attacker who rewrites an event and recomputes its own
+    // checksum passes that check. The chain binds each event to the previous
+    // event's chained hash, so such a rewrite breaks the link at the *next*
+    // event, which this verifies. Records without a `prev_hash` (default-build /
+    // legacy ledgers) are treated as unchained and skipped, never hard-failed.
+    #[cfg(feature = "tamper-evidence")]
+    if event.is_chained() {
+        let expected_prev = previous
+            .last()
+            .map(EventEnvelope::chain_hash)
+            .unwrap_or_default();
+        let recorded_prev = event.prev_hash.as_deref().unwrap_or("");
+        if recorded_prev != expected_prev {
+            return Err(NahualiError::InvalidRecordLedger {
+                path: path.to_path_buf(),
+                record,
+                message: "hash-chain broken: recorded prev_hash does not match \
+                          the previous event's chained hash"
+                    .to_string(),
+            });
+        }
+    }
+
     Ok(())
 }
 

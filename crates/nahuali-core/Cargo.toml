@@ -19,6 +19,14 @@ default = []
 # vectors when explicitly enabled. Pure-Rust regex backend (no C toolchain),
 # network download (`hf-hub`) deliberately excluded — models load from disk.
 local-embeddings = ["dep:model2vec-rs"]
+# Optional tamper-evident hash chain over the append-only record ledger. Off by
+# default: default builds keep the self-contained per-event checksum and write
+# byte-for-byte identical records. When enabled, each appended event binds the
+# previous event's chained SHA-256 hash, so rewriting any historical event
+# breaks the chain at the next event and ledger replay detects it. `sha2` is
+# already present transitively (via surrealdb), so enabling this pulls no new
+# crate versions.
+tamper-evidence = ["dep:sha2"]
 
 [dependencies]
 serde.workspace = true
@@ -28,3 +36,4 @@ surrealdb.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 model2vec-rs = { version = "0.2", default-features = false, features = ["fancy-regex"], optional = true }
+sha2 = { version = "0.10", default-features = false, optional = true }
