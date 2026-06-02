@@ -27,6 +27,44 @@ MCP clients launch this process and communicate over stdin/stdout. stdout is
 reserved for MCP JSON-RPC messages; diagnostics must not print extra data to
 stdout.
 
+## Client Configuration
+
+Register `nahuali-mcp` as a stdio server in your MCP client. The command is the
+installed binary; pass the memory database with `--database`.
+
+For a project-scoped MCP config file (for example `.mcp.json` in the project root):
+
+```json
+{
+  "mcpServers": {
+    "nahuali": {
+      "command": "nahuali-mcp",
+      "args": ["--database", "./memory"]
+    }
+  }
+}
+```
+
+For a global or user-level MCP client config, use an absolute database
+path so it resolves regardless of the launch directory:
+
+```json
+{
+  "mcpServers": {
+    "nahuali": {
+      "command": "nahuali-mcp",
+      "args": ["--database", "/absolute/path/to/memory"]
+    }
+  }
+}
+```
+
+At the start of every session, call the `briefing` tool first. It returns the
+read-only pre-work surface (authority, health, recent episodes, active
+intentions, high-priority review items, and graph seeds) and changes nothing, so
+it is the recommended session-start entry point before recalling specifics or
+acting.
+
 The server exposes tools for `remember`, `claim`, `fact`, `link`, `relate`,
 `procedure`, `preference`, `intention`, `intention_update`,
 `intention_status`, `reconcile_intentions`, `goal_progress`, `proactive`,
@@ -130,5 +168,6 @@ changing the ledger contract. `projection_status`, `projection_rebuild`, and
 from `memory_record`; `semantic_status` and `semantic_rebuild` inspect or
 rebuild the Qdrant semantic index from projected memory.
 
-`fact` and `relate` remain compatibility tools while canonical public clients
-move toward `claim` and `link`.
+`fact`, `relate`, and `preference` are deprecated compatibility aliases of
+`claim`, `link`, and `procedure`. Prefer the canonical tools; the aliases stay
+only until clients finish migrating.
