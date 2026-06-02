@@ -48,8 +48,8 @@ pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
     println!("Episodes: {}", report.summary.episode_count);
     println!("Entities: {}", report.summary.entity_count);
     println!(
-        "Authority: {:?} score={:.2}",
-        report.authority.mode, report.authority.score
+        "{}",
+        crate::style::store_trust_line(&report.authority.mode, report.authority.score)
     );
     println!("Health signals: {}", report.health.blind_spot_count);
     println!(
@@ -110,8 +110,8 @@ pub(crate) fn print_reflection_report(report: &MemoryReflectionReport) {
     println!("Reflection cycle");
     println!("Events: {}", report.event_count);
     println!(
-        "Authority: {:?} score={:.2}",
-        report.authority.mode, report.authority.score
+        "{}",
+        crate::style::store_trust_line(&report.authority.mode, report.authority.score)
     );
     println!("Findings: {}", report.summary.finding_count);
     println!("Cycles: {}", report.summary.displayed_cycle_count);
@@ -154,8 +154,8 @@ pub(crate) fn print_sleep_report(report: &MemorySleepReport) {
     println!("Sleep Mode");
     println!("Events: {}", report.event_count);
     println!(
-        "Authority: {:?} score={:.2}",
-        report.authority.mode, report.authority.score
+        "{}",
+        crate::style::store_trust_line(&report.authority.mode, report.authority.score)
     );
     println!(
         "Recent episodes replayed: {}",
@@ -219,8 +219,8 @@ pub(crate) fn print_consolidation_plan_report(report: &MemoryConsolidationPlanRe
     println!("Consolidation plan");
     println!("Events: {}", report.event_count);
     println!(
-        "Authority: {:?} score={:.2}",
-        report.authority.mode, report.authority.score
+        "{}",
+        crate::style::store_trust_line(&report.authority.mode, report.authority.score)
     );
     println!("Stages: {}", report.summary.stage_count);
     println!("Operations: {}", report.summary.operation_count);
@@ -278,8 +278,8 @@ pub(crate) fn print_hook_report(report: &MemoryHookReport) {
     println!("Kind: {:?}", report.kind);
     println!("Events: {}", report.event_count);
     println!(
-        "Authority: {:?} score={:.2}",
-        report.authority.mode, report.authority.score
+        "{}",
+        crate::style::store_trust_line(&report.authority.mode, report.authority.score)
     );
     println!("Recall results: {}", report.summary.recall_count);
     println!("Review items: {}", report.summary.review_item_count);
@@ -435,6 +435,13 @@ fn print_recall_section(results: &[nahuali_core::RecallResult]) {
             "- [{:?}] {:.2} {}",
             result.kind, result.score, result.excerpt
         );
+        if let Some(trust) = &result.trust {
+            println!(
+                "  confianza: {} (score {:.2})",
+                crate::style::trust_badge(&trust.mode),
+                trust.score
+            );
+        }
         if let Some(evidence_id) = &result.evidence_id {
             println!("  evidence: {evidence_id}");
         }
@@ -445,8 +452,8 @@ pub(crate) fn print_operator_review(report: &OperatorReviewReport) {
     println!("Operator review");
     println!("Events: {}", report.event_count);
     println!(
-        "Authority: {:?} score={:.2}",
-        report.authority.mode, report.authority.score
+        "{}",
+        crate::style::store_trust_line(&report.authority.mode, report.authority.score)
     );
     println!("Total items: {}", report.total_items);
     println!("Displayed items: {}", report.displayed_items);
@@ -504,8 +511,8 @@ pub(crate) fn print_graph_report(report: &MemoryGraphReport) {
     println!("Seed: {}", report.seed);
     println!("Events: {}", report.event_count);
     println!(
-        "Authority: {:?} score={:.2}",
-        report.authority.mode, report.authority.score
+        "{}",
+        crate::style::store_trust_line(&report.authority.mode, report.authority.score)
     );
     println!("Nodes: {}", report.summary.node_count);
     println!("Edges: {}", report.summary.edge_count);
@@ -544,8 +551,8 @@ pub(crate) fn print_project_report(report: &MemoryProjectReport) {
     println!("Query: {}", report.query);
     println!("Events: {}", report.event_count);
     println!(
-        "Authority: {:?} score={:.2}",
-        report.authority.mode, report.authority.score
+        "{}",
+        crate::style::store_trust_line(&report.authority.mode, report.authority.score)
     );
     println!("Health signals: {}", report.health.signals.len());
     match &report.matched_entity {
@@ -578,6 +585,13 @@ pub(crate) fn print_project_report(report: &MemoryProjectReport) {
                 "- [{:?}] {:.2} {}",
                 result.kind, result.score, result.excerpt
             );
+            if let Some(trust) = &result.trust {
+                println!(
+                    "  confianza: {} (score {:.2})",
+                    crate::style::trust_badge(&trust.mode),
+                    trust.score
+                );
+            }
             if let Some(evidence_id) = &result.evidence_id {
                 println!("  evidence: {evidence_id}");
             }
@@ -733,8 +747,8 @@ pub(crate) fn print_proactive_report(report: &MemoryProactiveReport) {
     println!("Proactive operator report");
     println!("Events: {}", report.event_count);
     println!(
-        "Authority: {:?} score={:.2}",
-        report.authority.mode, report.authority.score
+        "{}",
+        crate::style::store_trust_line(&report.authority.mode, report.authority.score)
     );
     println!("Deadlines: {}", report.summary.deadline_count);
     println!(

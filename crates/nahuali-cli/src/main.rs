@@ -1,6 +1,7 @@
 mod cli;
 mod commands;
 mod output;
+mod style;
 mod text_intake;
 
 use clap::Parser;

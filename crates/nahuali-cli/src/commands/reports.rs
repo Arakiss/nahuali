@@ -52,8 +52,8 @@ pub(crate) fn status(
         println!("Intentions: {}", data.intentions.len());
         println!("Review decisions: {}", data.review_decisions.len());
         println!(
-            "Authority: {:?} score={:.2}",
-            authority.mode, authority.score
+            "{}",
+            crate::style::store_trust_line(&authority.mode, authority.score)
         );
         println!("Health signals: {}", health.signals.len());
         println!(
@@ -270,8 +270,8 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
             return Ok(());
         }
         println!(
-            "Authority: {:?} score={:.2}",
-            recall.authority.mode, recall.authority.score
+            "{}",
+            crate::style::store_trust_line(&recall.authority.mode, recall.authority.score)
         );
         println!("Semantic collection: {}", recall.collection_name);
         println!(
@@ -296,8 +296,8 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
             return Ok(());
         }
         println!(
-            "Store authority: {:?} score={:.2}",
-            recall.authority.mode, recall.authority.score
+            "{}",
+            crate::style::store_trust_line(&recall.authority.mode, recall.authority.score)
         );
         for reason in &recall.authority.reasons {
             println!("- {reason}");
@@ -306,12 +306,17 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
         return Ok(());
     }
 
-    let results = memory.recall_with_options(&query, options)?;
     if args.json {
+        let results = memory.recall_with_options(&query, options)?;
         println!("{}", serde_json::to_string(&results)?);
         return Ok(());
     }
-    print_recall_results(results);
+
+    // Human mode: enrich results with per-result trust so the trust layer is
+    // visible by default (without `--authority`). The `--json` path above is
+    // left untouched so its bytes stay identical.
+    let recall = memory.recall_with_authority_options(&query, options)?;
+    print_recall_results(recall.results);
     Ok(())
 }
 
@@ -822,8 +827,8 @@ pub(crate) fn self_inspect(memory: &mut MemoryEngine, json: bool) -> anyhow::Res
     } else {
         println!("Events: {}", report.event_count);
         println!(
-            "Authority: {:?} score={:.2}",
-            report.authority.mode, report.authority.score
+            "{}",
+            crate::style::store_trust_line(&report.authority.mode, report.authority.score)
         );
         println!("Findings: {}", report.summary.finding_count);
         println!("Review items: {}", report.review_queue.len());
@@ -970,8 +975,9 @@ fn print_recall_results(results: Vec<nahuali_core::RecallResult>) {
         }
         if let Some(trust) = result.trust {
             println!(
-                "  result trust: {:?} score={:.2} can_trust={}",
-                trust.mode, trust.score, trust.can_trust
+                "  confianza: {} (score {:.2})",
+                crate::style::trust_badge(&trust.mode),
+                trust.score
             );
             for reason in trust.reasons {
                 println!("  trust reason: {reason}");
