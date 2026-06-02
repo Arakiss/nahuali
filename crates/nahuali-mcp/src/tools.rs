@@ -644,8 +644,9 @@ impl NahualiMcpServer {
                 graph_seed_limit: args.graph_seed_limit.unwrap_or(8),
             }))
         })?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(BriefingResult { report }))
+        Ok(Json(BriefingResult {
+            report: report.into(),
+        }))
     }
 
     #[tool(
@@ -737,8 +738,9 @@ impl NahualiMcpServer {
                 )
                 .map_err(|error| error.to_string())
         })?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(GraphResult { report }))
+        Ok(Json(GraphResult {
+            report: report.into(),
+        }))
     }
 
     #[tool(
@@ -758,8 +760,9 @@ impl NahualiMcpServer {
     )]
     fn self_inspect(&self) -> Result<Json<SelfInspectResult>, String> {
         let report = self.with_memory(|memory| Ok(memory.self_inspect()))?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(SelfInspectResult { report }))
+        Ok(Json(SelfInspectResult {
+            report: report.into(),
+        }))
     }
 
     #[tool(
@@ -818,8 +821,9 @@ impl NahualiMcpServer {
                 action: args.action.map(SelfInspectionReviewAction::from),
             }))
         })?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(ReviewResult { report }))
+        Ok(Json(ReviewResult {
+            report: report.into(),
+        }))
     }
 
     #[tool(

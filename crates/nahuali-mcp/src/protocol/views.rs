@@ -1,6 +1,10 @@
 use nahuali_core::{
-    AuthorityDecision, Claim, Entity, Episode, Fact, HealthSignal, Intention, KnowledgeHealth,
-    Link, MemoryScope, Procedure, RecallResult, RecordLedgerIssue, Relation,
+    AuthorityDecision, BriefingEpisode, BriefingGraphSeed, BriefingIntention, BriefingSummary,
+    Claim, Entity, Episode, Fact, HealthSignal, Intention, KnowledgeHealth, Link,
+    MemoryBriefingReport, MemoryGraphEdge, MemoryGraphNode, MemoryGraphReport, MemoryGraphSummary,
+    MemoryScope, OperatorReviewItem, OperatorReviewReport, OperatorReviewSummary, Procedure,
+    RecallResult, RecordLedgerIssue, Relation, SelfInspectionFinding, SelfInspectionReport,
+    SelfInspectionReviewItem, SelfInspectionSummary, SelfInspectionWriteBackPolicy,
 };
 use rmcp::schemars;
 use serde::Serialize;
@@ -419,6 +423,544 @@ impl From<HealthSignal> for HealthSignalView {
             severity,
             message: signal.message,
             evidence_ids: signal.evidence_ids,
+        }
+    }
+}
+
+/// Explicit write-back policy mirrored from the core self-inspection report.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct WriteBackPolicyView {
+    automatic_write_back: bool,
+    requires_operator_review: bool,
+    message: String,
+}
+
+impl From<SelfInspectionWriteBackPolicy> for WriteBackPolicyView {
+    fn from(policy: SelfInspectionWriteBackPolicy) -> Self {
+        Self {
+            automatic_write_back: policy.automatic_write_back,
+            requires_operator_review: policy.requires_operator_review,
+            message: policy.message,
+        }
+    }
+}
+
+/// Prioritized operator review item, shared by the briefing and review tools.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct OperatorReviewItemView {
+    id: String,
+    finding_id: String,
+    finding_kind: String,
+    priority: String,
+    score: u32,
+    action: String,
+    status: String,
+    title: String,
+    detail: String,
+    source_severity: String,
+    dimensions: Vec<String>,
+    evidence_ids: Vec<String>,
+    operator_guidance: String,
+}
+
+impl From<OperatorReviewItem> for OperatorReviewItemView {
+    fn from(item: OperatorReviewItem) -> Self {
+        Self {
+            id: item.id,
+            finding_id: item.finding_id,
+            finding_kind: json_string(&item.finding_kind),
+            priority: json_string(&item.priority),
+            score: item.score,
+            action: json_string(&item.action),
+            status: json_string(&item.status),
+            title: item.title,
+            detail: item.detail,
+            source_severity: json_string(&item.source_severity),
+            dimensions: item.dimensions.iter().map(json_string).collect(),
+            evidence_ids: item.evidence_ids,
+            operator_guidance: item.operator_guidance,
+        }
+    }
+}
+
+/// Aggregate counts for the operator review queue.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct OperatorReviewSummaryView {
+    item_count: usize,
+    critical_count: usize,
+    high_count: usize,
+    medium_count: usize,
+    low_count: usize,
+    capture_evidence_count: usize,
+    resolve_contradiction_count: usize,
+    refresh_memory_count: usize,
+    link_memory_count: usize,
+    consolidate_pattern_count: usize,
+    review_intention_count: usize,
+}
+
+impl From<OperatorReviewSummary> for OperatorReviewSummaryView {
+    fn from(summary: OperatorReviewSummary) -> Self {
+        Self {
+            item_count: summary.item_count,
+            critical_count: summary.critical_count,
+            high_count: summary.high_count,
+            medium_count: summary.medium_count,
+            low_count: summary.low_count,
+            capture_evidence_count: summary.capture_evidence_count,
+            resolve_contradiction_count: summary.resolve_contradiction_count,
+            refresh_memory_count: summary.refresh_memory_count,
+            link_memory_count: summary.link_memory_count,
+            consolidate_pattern_count: summary.consolidate_pattern_count,
+            review_intention_count: summary.review_intention_count,
+        }
+    }
+}
+
+/// Structured operator-review report surfacing authority, summary, and queue.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct OperatorReviewReportView {
+    version: u32,
+    generated_at_ms: u64,
+    event_count: usize,
+    total_items: usize,
+    displayed_items: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    min_priority: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    action: Option<String>,
+    authority: AuthorityDecisionView,
+    summary: OperatorReviewSummaryView,
+    items: Vec<OperatorReviewItemView>,
+    write_back_policy: WriteBackPolicyView,
+}
+
+impl From<OperatorReviewReport> for OperatorReviewReportView {
+    fn from(report: OperatorReviewReport) -> Self {
+        Self {
+            version: report.version,
+            generated_at_ms: report.generated_at_ms,
+            event_count: report.event_count,
+            total_items: report.total_items,
+            displayed_items: report.displayed_items,
+            min_priority: report.min_priority.as_ref().map(json_string),
+            action: report.action.as_ref().map(json_string),
+            authority: AuthorityDecisionView::from(report.authority),
+            summary: OperatorReviewSummaryView::from(report.summary),
+            items: report
+                .items
+                .into_iter()
+                .map(OperatorReviewItemView::from)
+                .collect(),
+            write_back_policy: WriteBackPolicyView::from(report.write_back_policy),
+        }
+    }
+}
+
+/// Aggregate counts for a session briefing.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct BriefingSummaryView {
+    source_count: usize,
+    episode_count: usize,
+    entity_count: usize,
+    active_intention_count: usize,
+    high_priority_review_count: usize,
+    critical_review_count: usize,
+    high_review_count: usize,
+    returned_episode_count: usize,
+    returned_intention_count: usize,
+    returned_review_count: usize,
+    graph_seed_count: usize,
+}
+
+impl From<BriefingSummary> for BriefingSummaryView {
+    fn from(summary: BriefingSummary) -> Self {
+        Self {
+            source_count: summary.source_count,
+            episode_count: summary.episode_count,
+            entity_count: summary.entity_count,
+            active_intention_count: summary.active_intention_count,
+            high_priority_review_count: summary.high_priority_review_count,
+            critical_review_count: summary.critical_review_count,
+            high_review_count: summary.high_review_count,
+            returned_episode_count: summary.returned_episode_count,
+            returned_intention_count: summary.returned_intention_count,
+            returned_review_count: summary.returned_review_count,
+            graph_seed_count: summary.graph_seed_count,
+        }
+    }
+}
+
+/// Recent-episode entry included in a briefing.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct BriefingEpisodeView {
+    id: String,
+    event_id: String,
+    content: String,
+    tags: Vec<String>,
+    mentions: Vec<String>,
+    source_id: Option<String>,
+    source_position: Option<u32>,
+    source_role: Option<String>,
+    created_at_ms: u64,
+}
+
+impl From<BriefingEpisode> for BriefingEpisodeView {
+    fn from(episode: BriefingEpisode) -> Self {
+        Self {
+            id: episode.id,
+            event_id: episode.event_id,
+            content: episode.content,
+            tags: episode.tags,
+            mentions: episode.mentions,
+            source_id: episode.source_id,
+            source_position: episode.source_position,
+            source_role: episode.source_role,
+            created_at_ms: episode.created_at_ms,
+        }
+    }
+}
+
+/// Active-intention entry included in a briefing.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct BriefingIntentionView {
+    id: String,
+    event_id: String,
+    updated_event_id: String,
+    kind: String,
+    status: String,
+    priority: String,
+    description: String,
+    source_episode_id: Option<String>,
+    status_reason: Option<String>,
+    created_at_ms: u64,
+    updated_at_ms: u64,
+}
+
+impl From<BriefingIntention> for BriefingIntentionView {
+    fn from(intention: BriefingIntention) -> Self {
+        Self {
+            id: intention.id,
+            event_id: intention.event_id,
+            updated_event_id: intention.updated_event_id,
+            kind: json_string(&intention.kind),
+            status: json_string(&intention.status),
+            priority: json_string(&intention.priority),
+            description: intention.description,
+            source_episode_id: intention.source_episode_id,
+            status_reason: intention.status_reason,
+            created_at_ms: intention.created_at_ms,
+            updated_at_ms: intention.updated_at_ms,
+        }
+    }
+}
+
+/// Entity seed for graph traversal included in a briefing.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct BriefingGraphSeedView {
+    id: String,
+    label: String,
+    mention_count: usize,
+    first_seen_at_ms: u64,
+    last_seen_at_ms: u64,
+    source_event_ids: Vec<String>,
+}
+
+impl From<BriefingGraphSeed> for BriefingGraphSeedView {
+    fn from(seed: BriefingGraphSeed) -> Self {
+        Self {
+            id: seed.id,
+            label: seed.label,
+            mention_count: seed.mention_count,
+            first_seen_at_ms: seed.first_seen_at_ms,
+            last_seen_at_ms: seed.last_seen_at_ms,
+            source_event_ids: seed.source_event_ids,
+        }
+    }
+}
+
+/// Structured session-briefing report surfacing authority, health, and seeds.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct BriefingReportView {
+    version: u32,
+    generated_at_ms: u64,
+    event_count: usize,
+    authority: AuthorityDecisionView,
+    health: HealthView,
+    summary: BriefingSummaryView,
+    recent_episodes: Vec<BriefingEpisodeView>,
+    active_intentions: Vec<BriefingIntentionView>,
+    review_items: Vec<OperatorReviewItemView>,
+    graph_seeds: Vec<BriefingGraphSeedView>,
+}
+
+impl From<MemoryBriefingReport> for BriefingReportView {
+    fn from(report: MemoryBriefingReport) -> Self {
+        Self {
+            version: report.version,
+            generated_at_ms: report.generated_at_ms,
+            event_count: report.event_count,
+            authority: AuthorityDecisionView::from(report.authority),
+            health: HealthView::from(report.health),
+            summary: BriefingSummaryView::from(report.summary),
+            recent_episodes: report
+                .recent_episodes
+                .into_iter()
+                .map(BriefingEpisodeView::from)
+                .collect(),
+            active_intentions: report
+                .active_intentions
+                .into_iter()
+                .map(BriefingIntentionView::from)
+                .collect(),
+            review_items: report
+                .review_items
+                .into_iter()
+                .map(OperatorReviewItemView::from)
+                .collect(),
+            graph_seeds: report
+                .graph_seeds
+                .into_iter()
+                .map(BriefingGraphSeedView::from)
+                .collect(),
+        }
+    }
+}
+
+/// Aggregate counts for a self-inspection report.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct SelfInspectionSummaryView {
+    finding_count: usize,
+    contradiction_count: usize,
+    stale_memory_count: usize,
+    blind_spot_count: usize,
+    weak_evidence_count: usize,
+    source_coverage_count: usize,
+    low_confidence_count: usize,
+    consolidation_opportunity_count: usize,
+    latent_intention_count: usize,
+    high_priority_review_count: usize,
+}
+
+impl From<SelfInspectionSummary> for SelfInspectionSummaryView {
+    fn from(summary: SelfInspectionSummary) -> Self {
+        Self {
+            finding_count: summary.finding_count,
+            contradiction_count: summary.contradiction_count,
+            stale_memory_count: summary.stale_memory_count,
+            blind_spot_count: summary.blind_spot_count,
+            weak_evidence_count: summary.weak_evidence_count,
+            source_coverage_count: summary.source_coverage_count,
+            low_confidence_count: summary.low_confidence_count,
+            consolidation_opportunity_count: summary.consolidation_opportunity_count,
+            latent_intention_count: summary.latent_intention_count,
+            high_priority_review_count: summary.high_priority_review_count,
+        }
+    }
+}
+
+/// A single self-inspection finding with evidence IDs.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct SelfInspectionFindingView {
+    id: String,
+    kind: String,
+    severity: String,
+    title: String,
+    detail: String,
+    dimensions: Vec<String>,
+    evidence_ids: Vec<String>,
+    suggested_action: String,
+}
+
+impl From<SelfInspectionFinding> for SelfInspectionFindingView {
+    fn from(finding: SelfInspectionFinding) -> Self {
+        Self {
+            id: finding.id,
+            kind: json_string(&finding.kind),
+            severity: json_string(&finding.severity),
+            title: finding.title,
+            detail: finding.detail,
+            dimensions: finding.dimensions.iter().map(json_string).collect(),
+            evidence_ids: finding.evidence_ids,
+            suggested_action: finding.suggested_action,
+        }
+    }
+}
+
+/// A proposed self-inspection review item.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct SelfInspectionReviewItemView {
+    id: String,
+    finding_id: String,
+    priority: String,
+    action: String,
+    status: String,
+    title: String,
+    detail: String,
+    evidence_ids: Vec<String>,
+}
+
+impl From<SelfInspectionReviewItem> for SelfInspectionReviewItemView {
+    fn from(item: SelfInspectionReviewItem) -> Self {
+        Self {
+            id: item.id,
+            finding_id: item.finding_id,
+            priority: json_string(&item.priority),
+            action: json_string(&item.action),
+            status: json_string(&item.status),
+            title: item.title,
+            detail: item.detail,
+            evidence_ids: item.evidence_ids,
+        }
+    }
+}
+
+/// Structured self-inspection report surfacing health, authority, and findings.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct SelfInspectionReportView {
+    version: u32,
+    generated_at_ms: u64,
+    event_count: usize,
+    health: HealthView,
+    authority: AuthorityDecisionView,
+    summary: SelfInspectionSummaryView,
+    findings: Vec<SelfInspectionFindingView>,
+    review_queue: Vec<SelfInspectionReviewItemView>,
+    write_back_policy: WriteBackPolicyView,
+}
+
+impl From<SelfInspectionReport> for SelfInspectionReportView {
+    fn from(report: SelfInspectionReport) -> Self {
+        Self {
+            version: report.version,
+            generated_at_ms: report.generated_at_ms,
+            event_count: report.event_count,
+            health: HealthView::from(report.health),
+            authority: AuthorityDecisionView::from(report.authority),
+            summary: SelfInspectionSummaryView::from(report.summary),
+            findings: report
+                .findings
+                .into_iter()
+                .map(SelfInspectionFindingView::from)
+                .collect(),
+            review_queue: report
+                .review_queue
+                .into_iter()
+                .map(SelfInspectionReviewItemView::from)
+                .collect(),
+            write_back_policy: WriteBackPolicyView::from(report.write_back_policy),
+        }
+    }
+}
+
+/// Aggregate counts for a graph neighborhood.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct GraphSummaryView {
+    node_count: usize,
+    edge_count: usize,
+    entity_count: usize,
+    memory_count: usize,
+    support_edge_count: usize,
+    relation_edge_count: usize,
+    health_signal_count: usize,
+    review_decision_count: usize,
+}
+
+impl From<MemoryGraphSummary> for GraphSummaryView {
+    fn from(summary: MemoryGraphSummary) -> Self {
+        Self {
+            node_count: summary.node_count,
+            edge_count: summary.edge_count,
+            entity_count: summary.entity_count,
+            memory_count: summary.memory_count,
+            support_edge_count: summary.support_edge_count,
+            relation_edge_count: summary.relation_edge_count,
+            health_signal_count: summary.health_signal_count,
+            review_decision_count: summary.review_decision_count,
+        }
+    }
+}
+
+/// A node in a graph neighborhood, with evidence and overlay counts.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct GraphNodeView {
+    id: String,
+    kind: String,
+    label: String,
+    depth: usize,
+    evidence_ids: Vec<String>,
+    source_event_ids: Vec<String>,
+    health_signal_count: usize,
+    review_decision_count: usize,
+}
+
+impl From<MemoryGraphNode> for GraphNodeView {
+    fn from(node: MemoryGraphNode) -> Self {
+        Self {
+            id: node.id,
+            kind: json_string(&node.kind),
+            label: node.label,
+            depth: node.depth,
+            evidence_ids: node.evidence_ids,
+            source_event_ids: node.source_event_ids,
+            health_signal_count: node.health_signal_count,
+            review_decision_count: node.review_decision_count,
+        }
+    }
+}
+
+/// An edge in a graph neighborhood.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct GraphEdgeView {
+    id: String,
+    from: String,
+    to: String,
+    kind: String,
+    label: String,
+    confidence: Option<f32>,
+    evidence_id: Option<String>,
+}
+
+impl From<MemoryGraphEdge> for GraphEdgeView {
+    fn from(edge: MemoryGraphEdge) -> Self {
+        Self {
+            id: edge.id,
+            from: edge.from,
+            to: edge.to,
+            kind: json_string(&edge.kind),
+            label: edge.label,
+            confidence: edge.confidence,
+            evidence_id: edge.evidence_id,
+        }
+    }
+}
+
+/// Structured graph-neighborhood report surfacing authority and evidence IDs.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct GraphReportView {
+    version: u32,
+    seed: String,
+    max_depth: usize,
+    limit: usize,
+    event_count: usize,
+    authority: AuthorityDecisionView,
+    summary: GraphSummaryView,
+    nodes: Vec<GraphNodeView>,
+    edges: Vec<GraphEdgeView>,
+}
+
+impl From<MemoryGraphReport> for GraphReportView {
+    fn from(report: MemoryGraphReport) -> Self {
+        Self {
+            version: report.version,
+            seed: report.seed,
+            max_depth: report.max_depth,
+            limit: report.limit,
+            event_count: report.event_count,
+            authority: AuthorityDecisionView::from(report.authority),
+            summary: GraphSummaryView::from(report.summary),
+            nodes: report.nodes.into_iter().map(GraphNodeView::from).collect(),
+            edges: report.edges.into_iter().map(GraphEdgeView::from).collect(),
         }
     }
 }

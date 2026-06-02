@@ -450,7 +450,7 @@ pub(crate) struct SemanticReportResult {
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct BriefingResult {
-    pub(crate) report: Value,
+    pub(crate) report: BriefingReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -593,7 +593,7 @@ pub(crate) struct RecallToolResult {
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct GraphResult {
-    pub(crate) report: Value,
+    pub(crate) report: GraphReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -603,7 +603,7 @@ pub(crate) struct InspectResult {
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct SelfInspectResult {
-    pub(crate) report: Value,
+    pub(crate) report: SelfInspectionReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -618,7 +618,7 @@ pub(crate) struct ConsolidationPlanResult {
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct ReviewResult {
-    pub(crate) report: Value,
+    pub(crate) report: OperatorReviewReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
