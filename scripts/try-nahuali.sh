@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# try-nahuali.sh — de cero a ver "el recibo" en un comando.
+# try-nahuali.sh — from zero to seeing "the receipt" in one command.
 #
-# Levanta el stack local, compila la CLI, siembra memoria sintetica y corre el
-# loop diario. Al final veras, en el mismo store, un claim CERTIFICADO por su
-# evidencia y a la vez un AVISO sobre un hecho sin fuente: el momento que
-# diferencia a Nahuali de una memoria de solo-recall.
+# Brings up the local stack, builds the CLI, seeds synthetic memory, and runs
+# the daily loop. At the end you will see, in the same store, a claim CERTIFIED
+# by its evidence and, at the same time, a WARNING about a fact with no source:
+# the moment that sets Nahuali apart from a recall-only memory.
 #
-# Uso:  bash scripts/try-nahuali.sh
-# Requisitos: docker (o un stack SurrealDB+Qdrant ya arriba), cargo, jq.
+# Usage:  bash scripts/try-nahuali.sh
+# Requires: docker (or an already-running SurrealDB+Qdrant stack), cargo, jq.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,24 +15,27 @@ cd "$ROOT"
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
-step "1/4 · Levantando el stack local (SurrealDB + Qdrant)"
+DEMO_DB=".local/try-nahuali-demo"
+export NAHUALI_DEMO_DB="$DEMO_DB"
+
+step "1/4 · Bringing up the local stack (SurrealDB + Qdrant)"
 bash scripts/ensure-dev-stack.sh
 
-step "2/4 · Compilando la CLI (la primera vez tarda unos minutos)"
+step "2/4 · Building the CLI (the first build takes a few minutes)"
 cargo build -q -p nahuali-cli
 
-step "3/4 · Sembrando memoria sintetica y corriendo el loop diario"
+step "3/4 · Seeding synthetic memory and running the daily loop"
 NAHUALI_BIN="$ROOT/target/debug/nahuali" bash scripts/demo-daily-driver-loop.sh
 
-step "4/4 · Que acabas de ver"
-cat <<'EOF'
-  En el bloque "3. Evidence-backed recall" de arriba:
-    - el claim con fuente se CERTIFICA        (trust.can_trust: true,  score 1.0)
-    - el store AVISA de un hecho sin fuente    (authority.can_trust: false, score 0.5)
-  Eso es el recibo: memoria util y, en la misma respuesta, por que fiarte o no.
+step "4/4 · What you just saw"
+cat <<EOF
+  In the "3. Evidence-backed recall" block above:
+    - the sourced claim is CERTIFIED       (trust.can_trust: true,  score 1.0)
+    - the store WARNS about a fact with no source (authority.can_trust: false, score 0.5)
+  That is the receipt: useful memory and, in the same response, why to trust it or not.
 
-  Sigue explorando contra la misma base de datos:
-    target/debug/nahuali --database <db-del-demo> inspect --json
-    target/debug/nahuali --database <db-del-demo> self-inspect --json
-    target/debug/nahuali --database <db-del-demo> review --json
+  Keep exploring against the same database:
+    target/debug/nahuali --database $DEMO_DB inspect --json
+    target/debug/nahuali --database $DEMO_DB self-inspect --json
+    target/debug/nahuali --database $DEMO_DB review --json
 EOF
