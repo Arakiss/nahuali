@@ -16,6 +16,11 @@ three questions before callers rely on it:
 1. What do we know?
 2. Why should we trust it?
 3. What is missing, stale, unsupported, or contradictory?
+4. Has the recorded history been altered?
+
+The first three are answered by inspectable trust: evidence, health signals, and
+authority context. The fourth is answered by a verifiable ledger: an opt-in hash
+chain and a signed tip let a caller prove the recorded past was not rewritten.
 
 The public OSS engine should stay focused on that foundation: local persistence,
 ledger replay, evidence-backed recall, knowledge-health inspection, explicit
@@ -45,8 +50,11 @@ The current public foundation includes:
 - local MCP stdio server: `nahuali-mcp`
 - local HTTP API: `nahuali-api`
 - SurrealDB-backed record ledger
+- optional tamper-evident hash-chained ledger (off by default)
+- optional Ed25519 chain-tip attestation (off by default)
 - rebuildable SurrealDB graph projection
 - rebuildable Qdrant semantic index
+- optional local model2vec embedder for stronger semantic recall (off by default)
 - evidence-backed lexical and hybrid recall
 - knowledge-health inspection
 - authority-aware recall
@@ -69,6 +77,8 @@ Focus areas:
 - cut reproducible prerelease artifacts from tagged commits
 - keep the release gate runnable from a clean checkout
 - make errors and JSON output stable enough for scripts
+- extend the opt-in tamper-evidence, attestation, and local-model surfaces from
+  the CLI to the MCP and API binaries
 - keep the agent-first CLI daily-driver loop demo passing from a clean checkout
 - tighten validated examples around evidence-backed recall and self-inspection
 - document the exact boundaries of the local API and MCP surfaces
