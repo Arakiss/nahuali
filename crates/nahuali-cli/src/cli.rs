@@ -7,6 +7,97 @@ use nahuali_core::{
     MemoryKind, SelfInspectionReviewAction, SelfInspectionReviewPriority, SourceKind, TextChunking,
 };
 
+/// Custom help template for the root command. clap renders every subcommand in a
+/// single flat `Commands:` block ordered only by display order, so the grouped
+/// section view lives in `{after-help}` (see [`GROUPED_COMMANDS`]) and the default
+/// `{subcommands}` token is intentionally omitted here. Grouping is presentational
+/// only: command names, flags, and behavior are unchanged.
+const ROOT_HELP_TEMPLATE: &str = "\
+{about-with-newline}
+{usage-heading} {usage}{after-help}
+
+Options:
+{options}";
+
+/// Grouped command listing rendered in the root help, with the everyday verbs
+/// first inside each section. Kept in sync by hand with the `Command` variants.
+const GROUPED_COMMANDS: &str = "\
+Capture:
+  remember              Record an observed episode
+  claim                 Record an evidence-backed canonical claim
+  fact                  Record a compatibility fact
+  link                  Record a canonical typed link between entities
+  relate                Record a compatibility relation between entities
+  procedure             Record a reusable procedure
+  preference            Record a reusable preference
+  intention             Record a future task, goal, reminder, or commitment
+  intention-status      Update an existing intention lifecycle state
+  intention-update      Update intention metadata without changing lifecycle state
+  intention-complete    Mark an intention completed
+  intention-block       Mark an intention blocked
+  intention-defer       Mark an intention deferred
+
+Recall & inspect:
+  recall                Recall matching memory with optional authority context
+  status                Print operational memory status
+  inspect               Inspect knowledge health before trusting memory
+  self-inspect          Produce a non-mutating self-inspection consolidation report
+  graph                 Traverse the projected memory graph around a seed
+  project               Print a focused project or entity dashboard
+  briefing              Print a compact non-mutating session briefing
+  session-resume        Resume a session with briefing, authority, and review context
+  timeline              Read recent memory timeline from the SurrealDB projection
+  pending               Read pending intentions from the SurrealDB projection
+  data                  Print the projected memory data
+
+Reports:
+  review                Print a prioritized non-mutating operator review queue
+  review-resolve        Resolve an operator review item with an explicit audit note
+  proactive             Print a non-mutating proactive operator report
+  deadlines             Print non-mutating proactive deadline signals
+  anomalies             Print non-mutating proactive anomaly alerts
+  anomaly-acknowledge   Acknowledge a proactive anomaly with an explicit audit note
+  goal-progress         Print non-mutating progress for goal intentions
+  reconcile-intentions  Print a non-mutating intention reconciliation report
+  reflect               Plan a non-mutating reflection cycle for operator approval
+  sleep                 Run a non-mutating memory sleep pass
+  consolidation-plan    Plan replay, review gates, and write-back eligibility
+  hook                  Run a non-mutating memory hook for a host execution point
+
+Maintenance:
+  projection-status     Inspect the SurrealDB graph projection status
+  projection-rebuild    Rebuild the SurrealDB graph projection from the record ledger
+  projection-validate   Validate the SurrealDB graph projection without mutating it
+  projection-entities   Read projected entities from SurrealDB graph tables
+  projection-timeline   Read projected episode timeline from SurrealDB graph tables
+  projection-pending    Read projected pending intentions from SurrealDB graph tables
+  projection-health     Read projected health signals from SurrealDB graph tables
+  semantic-rebuild      Rebuild the derived Qdrant semantic index from the projection
+  semantic-status       Inspect the derived Qdrant semantic index status
+  validate              Validate the SurrealDB memory_record ledger without mutating it
+  maintenance           Print a non-destructive maintenance report
+  snapshot              Write or dry-run an optional projection snapshot
+  snapshot-validate     Validate an optional snapshot against record replay
+
+Migration & backup:
+  backup                Write or dry-run a local record-ledger backup
+  backup-validate       Validate a local record-ledger backup
+  backup-drill          Validate a backup and dry-run restore into a target database
+  restore               Restore a backup into an empty SurrealDB database
+  export                Export a source-neutral memory interchange document
+  import                Import a source-neutral memory interchange document
+  convert-projection-export  Convert a projected memory export into an interchange document
+  convert-legacy-export      Convert a historical export into an interchange document
+  ingest                Ingest a provenance-aware source document
+  ingest-text           Ingest a local text file as provenance-preserving source episodes
+  ingest-dir            Ingest a directory of local text files after full batch preflight
+
+Shell:
+  completions           Generate shell completion scripts for your terminal
+  help                  Print this message or the help of the given subcommand(s)
+
+Run 'nahuali <COMMAND> --help' for details and examples on a single command.";
+
 /// Parse and validate a `--confidence` value, rejecting anything outside the
 /// `0.0..=1.0` range instead of silently clamping it.
 fn parse_confidence(raw: &str) -> Result<f32, String> {
@@ -26,6 +117,8 @@ fn parse_confidence(raw: &str) -> Result<f32, String> {
 #[command(version)]
 #[command(about = "Self-inspecting memory for AI agents")]
 #[command(arg_required_else_help = true)]
+#[command(help_template = ROOT_HELP_TEMPLATE)]
+#[command(after_help = GROUPED_COMMANDS)]
 pub(crate) struct Cli {
     #[arg(
         long = "database",
@@ -46,32 +139,67 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Record an observed episode.")]
+    #[command(
+        about = "Record an observed episode.",
+        after_help = "Examples:\n  nahuali remember \"Shipped the recall CLI grouping\" --tag cli\n  nahuali remember \"Met with the design team\" --mention alice --scope project:nahuali\n  nahuali remember \"Fixed flaky test\" -t ci -t fix"
+    )]
     Remember {
+        #[arg(help = "Episode text to record (joined into a single observed episode)")]
         content: Vec<String>,
-        #[arg(long = "tag", short = 't')]
+        #[arg(long = "tag", short = 't', help = "Tag to attach (repeatable)")]
         tags: Vec<String>,
-        #[arg(long = "mention", short = 'm')]
+        #[arg(
+            long = "mention",
+            short = 'm',
+            help = "Entity mentioned in this episode (repeatable)"
+        )]
         mentions: Vec<String>,
-        #[arg(long, value_name = "KIND:NAME")]
+        #[arg(
+            long,
+            value_name = "KIND:NAME",
+            help = "Scope this episode to a KIND:NAME entity, e.g. project:nahuali"
+        )]
         scope: Option<String>,
-        #[arg(long)]
+        #[arg(long, help = "Emit machine-readable JSON instead of text")]
         json: bool,
     },
-    #[command(about = "Record an evidence-backed canonical claim.")]
+    #[command(
+        about = "Record an evidence-backed canonical claim.",
+        after_help = "Examples:\n  nahuali claim nahuali license FSL-1.1-MIT --source-last\n  nahuali claim alice role \"lead engineer\" --confidence 0.95 --scope project:nahuali\n  nahuali claim db backend SurrealDB --source-episode <episode-id>"
+    )]
     Claim {
+        #[arg(help = "Subject entity the claim is about, e.g. nahuali")]
         subject: String,
+        #[arg(help = "Predicate or relationship, e.g. license")]
         predicate: String,
+        #[arg(help = "Object value(s) of the claim (joined), e.g. FSL-1.1-MIT")]
         object: Vec<String>,
-        #[arg(long = "source-episode")]
+        #[arg(
+            long = "source-episode",
+            help = "Attribute the claim to an existing episode by id"
+        )]
         source_episode_id: Option<String>,
-        #[arg(long = "source-last", conflicts_with = "source_episode_id")]
+        #[arg(
+            long = "source-last",
+            conflicts_with = "source_episode_id",
+            help = "Attribute the claim to the most recent episode"
+        )]
         source_last: bool,
-        #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
+        #[arg(
+            long,
+            short = 'c',
+            default_value_t = 0.8,
+            value_parser = parse_confidence,
+            help = "Confidence in the claim, between 0.0 and 1.0"
+        )]
         confidence: f32,
-        #[arg(long, value_name = "KIND:NAME")]
+        #[arg(
+            long,
+            value_name = "KIND:NAME",
+            help = "Scope this claim to a KIND:NAME entity, e.g. project:nahuali"
+        )]
         scope: Option<String>,
-        #[arg(long)]
+        #[arg(long, help = "Emit machine-readable JSON instead of text")]
         json: bool,
     },
     #[command(about = "Record a compatibility fact.")]
@@ -152,7 +280,10 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Record a future task, goal, reminder, or commitment.")]
+    #[command(
+        about = "Record a future task, goal, reminder, or commitment.",
+        after_help = "Examples:\n  nahuali intention \"Ship shell completions\" --priority high\n  nahuali intention \"Reach 80% test coverage\" --kind goal --scope project:nahuali\n  nahuali intention \"Renew the TLS cert\" --kind reminder --priority critical"
+    )]
     Intention {
         description: Vec<String>,
         #[arg(long, value_enum, default_value_t = CliIntentionKind::Task)]
@@ -293,7 +424,10 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Print a compact non-mutating session briefing.")]
+    #[command(
+        about = "Print a compact non-mutating session briefing.",
+        after_help = "Examples:\n  nahuali briefing\n  nahuali briefing --episode-limit 10 --review-limit 10\n  nahuali briefing --json"
+    )]
     Briefing {
         #[arg(long = "episode-limit", default_value_t = 5)]
         episode_limit: usize,
@@ -386,22 +520,49 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Recall matching memory with optional authority context.")]
+    #[command(
+        about = "Recall matching memory with optional authority context.",
+        after_help = "Examples:\n  nahuali recall \"licensing decision\"\n  nahuali recall nahuali --authority --require-evidence\n  nahuali recall roadmap --kind intention --kind claim --limit 25 --scope project:nahuali"
+    )]
     Recall {
+        #[arg(help = "Search terms (joined) to match against memory")]
         query: Vec<String>,
-        #[arg(long, short = 'l', default_value_t = 10)]
+        #[arg(
+            long,
+            short = 'l',
+            default_value_t = 10,
+            help = "Maximum number of results to return"
+        )]
         limit: usize,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Rank results by governance authority instead of plain relevance"
+        )]
         authority: bool,
-        #[arg(long, conflicts_with = "authority")]
+        #[arg(
+            long,
+            conflicts_with = "authority",
+            help = "Use the semantic index for fuzzy matching instead of lexical search"
+        )]
         semantic: bool,
-        #[arg(long, value_name = "KIND:NAME")]
+        #[arg(
+            long,
+            value_name = "KIND:NAME",
+            help = "Restrict results to a KIND:NAME scope entity, e.g. project:nahuali"
+        )]
         scope: Option<String>,
-        #[arg(long = "kind", value_enum)]
+        #[arg(
+            long = "kind",
+            value_enum,
+            help = "Restrict results to one or more memory kinds (repeatable)"
+        )]
         kinds: Vec<CliRecallKind>,
-        #[arg(long = "require-evidence")]
+        #[arg(
+            long = "require-evidence",
+            help = "Only return results backed by recorded evidence"
+        )]
         require_evidence: bool,
-        #[arg(long)]
+        #[arg(long, help = "Emit machine-readable JSON instead of text")]
         json: bool,
     },
     #[command(about = "Traverse the projected memory graph around a seed.")]
@@ -485,12 +646,18 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Inspect knowledge health before trusting memory.")]
+    #[command(
+        about = "Inspect knowledge health before trusting memory.",
+        after_help = "Examples:\n  nahuali inspect\n  nahuali inspect --json"
+    )]
     Inspect {
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Produce a non-mutating self-inspection consolidation report.")]
+    #[command(
+        about = "Produce a non-mutating self-inspection consolidation report.",
+        after_help = "Examples:\n  nahuali self-inspect\n  nahuali self-inspect --json"
+    )]
     SelfInspect {
         #[arg(long)]
         json: bool,
@@ -504,7 +671,10 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Print a prioritized non-mutating operator review queue.")]
+    #[command(
+        about = "Print a prioritized non-mutating operator review queue.",
+        after_help = "Examples:\n  nahuali review\n  nahuali review --min-priority high --limit 10\n  nahuali review --action resolve-contradiction"
+    )]
     Review {
         #[arg(long, short = 'l', default_value_t = 20)]
         limit: usize,
@@ -699,6 +869,37 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
+    #[command(
+        about = "Generate shell completion scripts for your terminal.",
+        after_help = "Examples:\n  nahuali completions zsh > ~/.zsh/completions/_nahuali\n  nahuali completions bash > /etc/bash_completion.d/nahuali\n  nahuali completions fish > ~/.config/fish/completions/nahuali.fish"
+    )]
+    Completions {
+        #[arg(value_enum, help = "Shell to generate a completion script for")]
+        shell: CliShell,
+    },
+}
+
+/// Shells supported by `nahuali completions`. Mirrors `clap_complete::Shell`.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub(crate) enum CliShell {
+    Bash,
+    Zsh,
+    Fish,
+    #[value(name = "powershell")]
+    PowerShell,
+    Elvish,
+}
+
+impl From<CliShell> for clap_complete::Shell {
+    fn from(value: CliShell) -> Self {
+        match value {
+            CliShell::Bash => Self::Bash,
+            CliShell::Zsh => Self::Zsh,
+            CliShell::Fish => Self::Fish,
+            CliShell::PowerShell => Self::PowerShell,
+            CliShell::Elvish => Self::Elvish,
+        }
+    }
 }
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -955,5 +1156,75 @@ mod tests {
         assert!(help.contains("optional projection snapshot"));
         assert!(help.contains("--output"));
         assert!(help.contains("--dry-run"));
+    }
+
+    #[test]
+    fn clap_command_configuration_is_valid() {
+        // Catches malformed help templates, conflicting args, and bad value parsers.
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn top_level_help_groups_commands_into_sections() {
+        let mut command = Cli::command();
+        let help = command.render_long_help().to_string();
+
+        assert!(help.contains("Capture:"));
+        assert!(help.contains("Recall & inspect:"));
+        assert!(help.contains("Reports:"));
+        assert!(help.contains("Maintenance:"));
+        assert!(help.contains("Migration & backup:"));
+        assert!(help.contains("Shell:"));
+        // The everyday verbs lead their sections.
+        let capture = help.find("Capture:").expect("capture section");
+        let remember = help.find("  remember").expect("remember listed");
+        assert!(
+            remember > capture,
+            "remember should follow the Capture heading"
+        );
+    }
+
+    #[test]
+    fn recall_help_documents_arguments_and_examples() {
+        let mut command = Cli::command();
+        let recall = command
+            .find_subcommand_mut("recall")
+            .expect("recall subcommand exists");
+        let help = recall.render_long_help().to_string();
+
+        // Previously-blank args now carry descriptions.
+        assert!(help.contains("Search terms"));
+        assert!(help.contains("Rank results by governance authority"));
+        assert!(help.contains("Only return results backed by recorded evidence"));
+        // Runnable examples are present.
+        assert!(help.contains("Examples:"));
+        assert!(help.contains("nahuali recall"));
+    }
+
+    #[test]
+    fn claim_help_documents_positional_arguments() {
+        let mut command = Cli::command();
+        let claim = command
+            .find_subcommand_mut("claim")
+            .expect("claim subcommand exists");
+        let help = claim.render_long_help().to_string();
+
+        assert!(help.contains("Subject entity"));
+        assert!(help.contains("Predicate"));
+        assert!(help.contains("Object value"));
+        assert!(help.contains("Examples:"));
+    }
+
+    #[test]
+    fn completions_subcommand_exposes_supported_shells() {
+        let mut command = Cli::command();
+        let completions = command
+            .find_subcommand_mut("completions")
+            .expect("completions subcommand exists");
+        let help = completions.render_long_help().to_string();
+
+        for shell in ["bash", "zsh", "fish", "powershell", "elvish"] {
+            assert!(help.contains(shell), "shell `{shell}` should be a value");
+        }
     }
 }

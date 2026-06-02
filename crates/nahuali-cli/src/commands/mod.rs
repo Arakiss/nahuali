@@ -560,7 +560,8 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             json,
         )?,
         Command::Data { json } => reports::data(&mut memory, json)?,
-        Command::Validate { .. }
+        Command::Completions { .. }
+        | Command::Validate { .. }
         | Command::BackupValidate { .. }
         | Command::BackupDrill { .. }
         | Command::Restore { .. }

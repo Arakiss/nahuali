@@ -1,14 +1,30 @@
 use std::path::Path;
 
 use anyhow::{Context, bail};
+use clap::CommandFactory;
+use clap_complete::generate;
 use nahuali_core::MemoryEngine;
 
-use crate::{cli::Command, output};
+use crate::{
+    cli::{Cli, Command},
+    output,
+};
 
 use super::{migration, migration_legacy};
 
 pub(crate) fn handle(command: &Command, database: &Path) -> anyhow::Result<bool> {
     match command {
+        Command::Completions { shell } => {
+            let mut command = Cli::command();
+            let bin_name = command.get_name().to_string();
+            generate(
+                clap_complete::Shell::from(*shell),
+                &mut command,
+                bin_name,
+                &mut std::io::stdout(),
+            );
+            Ok(true)
+        }
         Command::Validate { json } => validate(database, *json),
         Command::BackupValidate { path, json } => backup_validate(path, *json),
         Command::BackupDrill {
