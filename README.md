@@ -4,24 +4,28 @@
   <img src="assets/nahuali-cover.webp" alt="Nahuali memory graph: event stream, projection core, and inspected knowledge network" width="100%" />
 </p>
 
-<p align="center"><sub><em>Local memory that can inspect its own evidence before callers trust it.</em></sub></p>
+<p align="center"><sub><em>Auditable, tamper-evident memory for AI agents — it shows you the evidence before you trust it.</em></sub></p>
 
 <p align="center">
   <a href="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml"><img src="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--MIT-yellow.svg" alt="License: FSL-1.1-MIT"></a>
   <a href="rust-toolchain.toml"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust stable"></a>
   <a href="#self-inspecting-memory"><img src="https://img.shields.io/badge/memory-self--inspecting-blue.svg" alt="Self-inspecting memory"></a>
+  <a href="#tamper-evidence-and-attestation"><img src="https://img.shields.io/badge/ledger-tamper--evident-8a2be2.svg" alt="Tamper-evident ledger"></a>
   <a href="fixtures/knowledge-health-regression.json"><img src="https://img.shields.io/badge/regression-fixtured-brightgreen.svg" alt="Regression fixtures"></a>
 </p>
 
-Nahuali is a pre-release Rust memory engine for local agent and operator
-workflows: a governed memory subsystem for directed agent harnesses. Its core
-idea is **self-inspecting memory**: memory should expose the evidence, health
-signals, and authority decision behind recall before a caller trusts it.
+Nahuali is a local-first, pre-release Rust memory engine for AI agents and
+operator workflows. An agent that remembers across sessions accumulates a store
+you eventually have to trust — and most memory layers give you no way to tell
+which parts are supported, stale, contradictory, or quietly rewritten. Nahuali
+treats memory as something you audit, not something you assume.
 
-The engine records observations into an append-only ledger, rebuilds projected
-memory from that ledger, and reports when projected knowledge is unsupported,
-contradictory, stale, isolated, low-confidence, or missing source coverage.
+It does that two ways. **Self-inspecting memory** surfaces the evidence, health
+signals, and authority decision behind a recall, so a caller can see *why* a
+piece of memory should or should not be trusted. An optional **tamper-evident
+ledger** binds the append-only history into an Ed25519-signable hash chain, so
+you can prove the recorded past was not rewritten underneath you.
 
 The current project is intentionally small: a Rust core crate, a CLI, a local
 MCP stdio server, a local HTTP API, fixtures, and release-gate scripts. It is
@@ -31,18 +35,28 @@ database.
 For where the project is going next, see [ROADMAP.md](ROADMAP.md). The roadmap
 is directional; this README describes the current public surface.
 
-## Origin
+## How Memory Earns Trust
 
-Nahuali started as a private internal prototype before this Rust OSS
-foundation. That earlier work shaped the product thesis: long-running agent
-memory should inspect its own evidence and health, not only retrieve more
-context.
+Most of Nahuali's surface exists to answer one question: should you trust this
+memory right now? Four mechanisms build that answer, each inspectable on its
+own.
 
-This repository is the clean public Rust line for that idea. It is not a
-publication of every earlier experiment, private workflow, migration note, or
-implementation detail. The public contract is intentionally limited to the
-code, schemas, fixtures, examples, crate READMEs, and validation scripts in
-this repository.
+- **Self-inspection.** Recall comes with health counts, trust signals, scores,
+  and the authority decision for the store. Memory reports what is unsupported,
+  contradictory, stale, isolated, low-confidence, or short on source coverage.
+- **Provenance.** Derived claims and links cite the episodes they came from, and
+  recall can return evidence IDs and require evidence, so an answer is traceable
+  back to the observation that produced it.
+- **Tamper-evident ledger** (opt-in). Each recorded event chains the previous
+  event's hash, so rewriting any historical record breaks the chain at the next
+  one and ledger replay detects it.
+- **Tip attestation** (opt-in). The chain tip can be signed with an Ed25519 key,
+  so even a full re-chain of the history — which repairs every internal link —
+  fails verification against a receipt the attacker cannot forge.
+
+None of this claims remembered information is *true*. It makes the current basis
+for trust inspectable and the recorded history verifiable, and leaves the
+decision to act with the operator.
 
 ## What Exists Today
 
@@ -70,23 +84,63 @@ current memory projection:
 - `reflect`, `sleep`, `consolidation-plan`, and `proactive` plan follow-up work
   without writing memory automatically.
 
-This is not a claim that Nahuali can prove remembered information is true. It is
-a claim that Nahuali makes its current basis for trust inspectable: what
-evidence exists, what is unsupported, what conflicts, what looks stale, and
-what should be reviewed before acting on memory.
+A supported answer can still come with a warning when the same store contains
+unrelated unsupported claims, isolated entities, stale facts, contradictions, or
+source coverage gaps. Review and repair stay explicit operator work; Nahuali
+does not silently rewrite memory.
 
-Practically, self-inspection means Nahuali can return useful memory while also
-showing why the current store should or should not be trusted. A supported
-answer can still come with a warning when the same store contains unrelated
-unsupported claims, isolated entities, stale facts, contradictions, or source
-coverage gaps. Review and repair remain explicit operator work; Nahuali does
-not silently rewrite memory.
+## Tamper-Evidence And Attestation
+
+The history matters as much as the answer. By default Nahuali validates each
+record's sequence and a self-contained checksum on open. That catches accidental
+corruption, but a determined editor who rewrites a record and recomputes its
+checksum would pass. Two opt-in build features close that gap and stay off by
+default, so a default build writes byte-for-byte identical records.
+
+Build the CLI with the audit chain, or with the chain plus signing:
+
+```bash
+# Hash-chained audit ledger: validate detects an in-place rewrite.
+cargo build -p nahuali-cli --features tamper-evidence
+
+# Chain plus Ed25519 tip signing (implies tamper-evidence).
+cargo build -p nahuali-cli --features attestation
+```
+
+With `tamper-evidence`, every recorded event binds the previous event's chained
+hash. Rewriting a historical record breaks the link at the next record, and
+`validate` reports a broken chain even if the attacker forged a fresh per-record
+checksum.
+
+With `attestation`, sign the current tip and keep the receipt outside the store.
+Nahuali never generates keys or touches the network — supply a 32-byte Ed25519
+seed you control (for example `openssl rand -hex 32 > ledger.key`):
+
+```bash
+nahuali --database .nahuali-demo attest-sign --key-file ledger.key -o tip.json
+nahuali --database .nahuali-demo attest-verify tip.json
+```
+
+`attest-verify` exits non-zero when the receipt no longer vouches for the live
+ledger, so it can gate a script or CI. A full re-chain of the history changes
+the tip, so the signed receipt stops verifying and forging a new one needs the
+private key.
+
+Run the narrated walkthrough end to end:
+
+```bash
+cargo run -p nahuali-core --example tamper_evidence --features attestation
+```
+
+It shows a recomputed-checksum in-place rewrite being caught by the chain, and a
+full suffix re-chain — which the chain alone cannot see — being caught by the
+signed tip.
 
 ## Storage Contract
 
 Nahuali stores authoritative history in a SurrealDB `memory_record` ledger.
-Opening a database validates record sequence order and event checksums before
-projecting current state.
+Opening a database validates record sequence order and event checksums (and the
+hash chain, when enabled) before projecting current state.
 
 Current projected state is derived from the ledger:
 
@@ -358,9 +412,10 @@ cargo run -p nahuali-cli -- backup-drill \
   --json
 ```
 
-Interchange import/export is a separate source-neutral format. It is useful for
+Interchange import/export is a separate source-neutral format, useful for
 rehearsing migrations without treating old projection dumps as authoritative
-record ledgers.
+record ledgers. Imports are applied as a single batched ledger flush, so loading
+a large history stays fast.
 
 ## Validation
 
@@ -416,6 +471,7 @@ The release train stays prerelease-only while the project is in beta.
 - No automatic memory repair or automatic consolidation write-back.
 - No guarantee that remembered information is true; Nahuali reports evidence,
   confidence, and health signals so callers can decide whether to trust it.
+- Tamper-evidence and tip attestation are opt-in build features, off by default.
 - No stable 1.0 API guarantee yet.
 
 See [ROADMAP.md](ROADMAP.md) for the longer-term direction. Roadmap items are
