@@ -30,7 +30,20 @@ private during pre-release development.
 - Ingestion documents validate source, episode, and explicit derived records
   before anything is appended; dry runs never mutate the ledger.
 - Source-neutral interchange documents can be exported and imported
-  append-only; they are not record ledgers or snapshots.
+  append-only; they are not record ledgers or snapshots. Interchange and
+  ingestion imports apply as a single batched ledger flush, so loading a large
+  history stays fast.
+- An optional tamper-evident mode (`tamper-evidence` feature, off by default)
+  chains each event to the previous event's hash. An in-place rewrite of any
+  historical record breaks the chain at the next record, so replay detects it
+  even when the per-record checksum was recomputed. Default builds write
+  byte-identical records and pull no extra dependencies.
+- An optional attestation surface (`attestation` feature, implies
+  `tamper-evidence`) signs the chain tip with a detached Ed25519 signature.
+  A full re-chain of history repairs every internal link but changes the tip, so
+  a previously signed receipt no longer verifies and forging a new one needs the
+  private key. Keys are operator-supplied seeds; the core never generates
+  randomness or touches the network.
 - Sources, entities, episodes, claims, links, procedures, intentions, health
   signals, and review/audit state are projected in Rust from the same validated
   ledger and materialized into rebuildable SurrealDB graph tables.
@@ -158,8 +171,11 @@ fn main() -> nahuali_core::Result<()> {
 
 ## Current Limits
 
-- The built-in embedding provider is deterministic and local. Hosted embedding
-  providers require an external adapter above this crate.
+- The built-in embedding provider is deterministic and local. An optional
+  `local-embeddings` build feature adds a static model2vec model, loaded from a
+  local directory, for stronger semantic recall; both providers stay fully local
+  and offline. Hosted embedding providers require an external adapter above this
+  crate.
 - The SurrealDB record ledger is append-only. Destructive compaction is not
   supported until a future versioned format can prove replay equivalence.
 - Qdrant vectors are derived state. Rebuild them after restore or migration
