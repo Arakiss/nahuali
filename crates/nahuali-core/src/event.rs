@@ -25,7 +25,7 @@ pub struct EventEnvelope {
     /// event in the ledger.
     ///
     /// This field is only ever populated when the `tamper-evidence` feature is
-    /// enabled (via [`EventEnvelope::with_chain`]). On a default build it stays
+    /// enabled (via `EventEnvelope::with_chain`). On a default build it stays
     /// `None`, and because it is skipped when serializing, default-build records
     /// are byte-for-byte identical to records written before this field existed.
     /// Legacy and default-build ledgers therefore deserialize with `prev_hash =
@@ -41,7 +41,7 @@ impl EventEnvelope {
     /// Create a new event envelope and compute its checksum.
     ///
     /// The hash-chain link (`prev_hash`) is left unset; default builds and the
-    /// per-event checksum model never populate it. Use [`Self::with_chain`]
+    /// per-event checksum model never populate it. Use `Self::with_chain`
     /// under the `tamper-evidence` feature to link the event to its predecessor.
     pub fn new(sequence: u64, timestamp_ms: u64, payload: MemoryEvent) -> Self {
         let version = EVENT_ENVELOPE_VERSION;
