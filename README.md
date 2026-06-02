@@ -105,6 +105,43 @@ stronger semantic recall while staying fully local, offline, and deterministic;
 no LLM is introduced into the core. Changing the embedder changes the vector
 space, so rebuild the index with `semantic-rebuild` afterwards.
 
+### Optional: stronger semantic recall with a local model
+
+The default deterministic embedder hashes tokens, so two phrasings that share no
+words look unrelated to it. A static [model2vec](https://github.com/MinishLab/model2vec)
+model places synonyms close instead. Nahuali never downloads models — you point
+it at a directory you control, so the core stays offline by construction.
+
+Fetch a model once (any model2vec export works; the directory must hold
+`tokenizer.json`, `model.safetensors`, and `config.json`):
+
+```bash
+mkdir -p models/potion-retrieval-32M
+base="https://huggingface.co/minishlab/potion-retrieval-32M/resolve/main"
+for f in tokenizer.json model.safetensors config.json; do
+  curl -L -o "models/potion-retrieval-32M/$f" "$base/$f"
+done
+```
+
+Build with the feature, point the environment at the model, then rebuild the
+index and recall by meaning:
+
+```bash
+export NAHUALI_EMBEDDING_PROVIDER=model2vec
+export NAHUALI_LOCAL_EMBEDDING_MODEL_PATH="$PWD/models/potion-retrieval-32M"
+
+cargo run -p nahuali-cli --features local-embeddings -- \
+  --database .nahuali-demo semantic-rebuild
+cargo run -p nahuali-cli --features local-embeddings -- \
+  --database .nahuali-demo recall --semantic "driving a car to work"
+```
+
+A query like `driving a car to work` then surfaces an episode such as "Lena
+commutes by automobile each morning" — no shared words, ranked by meaning. The
+deterministic embedder scores that episode the same as an unrelated one; the
+model separates them (see `local_model_separates_meaning_where_deterministic_cannot`
+in `nahuali-core`).
+
 Detailed architecture, commercial planning, migration strategy, and internal
 design documents remain private during pre-release development. The public
 contract is the code, schema files, crate READMEs, fixtures, and validation
