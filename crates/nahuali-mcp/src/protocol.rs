@@ -25,7 +25,14 @@ pub(crate) struct RememberArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct IngestArgs {
+    /// Source-neutral ingestion document (the Nahuali interchange format,
+    /// `MemoryIngestDocument`). Expected shape: `{ "version": 1, "source": {
+    /// "kind", "title", "uri", "metadata", "scope" }, "episodes": [...],
+    /// "claims": [...], "links": [...], "procedures": [...], "intentions": [...]
+    /// }`. Derived records reference episodes by their local `ref`.
     pub(crate) document: Value,
+    /// When true, validate and preflight the document without appending any
+    /// records. Defaults to false.
     pub(crate) dry_run: Option<bool>,
 }
 
@@ -52,8 +59,14 @@ pub(crate) struct FactArgs {
     pub(crate) subject: String,
     pub(crate) predicate: String,
     pub(crate) object: String,
+    /// Id of the source episode this assertion cites as evidence. Mutually
+    /// exclusive with `sourceLast`.
     pub(crate) source_episode_id: Option<String>,
+    /// When true, cite the most recently recorded episode as evidence. Use this
+    /// right after `remember`. Mutually exclusive with `sourceEpisodeId`.
     pub(crate) source_last: Option<bool>,
+    /// Confidence in this assertion, from 0.0 (unsure) to 1.0 (certain).
+    /// Defaults to 0.8.
     pub(crate) confidence: Option<f32>,
     pub(crate) scope: Option<ScopeArg>,
 }
@@ -64,8 +77,14 @@ pub(crate) struct RelateArgs {
     pub(crate) from: String,
     pub(crate) relation: String,
     pub(crate) to: String,
+    /// Id of the source episode this connection cites as evidence. Mutually
+    /// exclusive with `sourceLast`.
     pub(crate) source_episode_id: Option<String>,
+    /// When true, cite the most recently recorded episode as evidence. Use this
+    /// right after `remember`. Mutually exclusive with `sourceEpisodeId`.
     pub(crate) source_last: Option<bool>,
+    /// Confidence in this connection, from 0.0 (unsure) to 1.0 (certain).
+    /// Defaults to 0.8.
     pub(crate) confidence: Option<f32>,
     pub(crate) scope: Option<ScopeArg>,
 }
@@ -75,8 +94,14 @@ pub(crate) struct RelateArgs {
 pub(crate) struct ProcedureArgs {
     pub(crate) name: String,
     pub(crate) body: String,
+    /// Id of the source episode this procedure cites as evidence. Mutually
+    /// exclusive with `sourceLast`.
     pub(crate) source_episode_id: Option<String>,
+    /// When true, cite the most recently recorded episode as evidence. Use this
+    /// right after `remember`. Mutually exclusive with `sourceEpisodeId`.
     pub(crate) source_last: Option<bool>,
+    /// Confidence in this procedure, from 0.0 (unsure) to 1.0 (certain).
+    /// Defaults to 0.8.
     pub(crate) confidence: Option<f32>,
     pub(crate) scope: Option<ScopeArg>,
 }
@@ -106,24 +131,38 @@ pub(crate) struct IntentionUpdateArgs {
     pub(crate) id: String,
     pub(crate) description: Option<String>,
     pub(crate) priority: Option<IntentionPriorityArg>,
+    /// Deadline as Unix epoch milliseconds. Pass `null` to clear an existing
+    /// deadline; omit the field to leave it unchanged.
     pub(crate) deadline_at_ms: Option<Option<u64>>,
     pub(crate) depends_on: Option<Vec<String>>,
     pub(crate) goal_id: Option<Option<String>>,
+    /// Progress from 0 to 100 percent. Pass `null` to clear it; omit to leave
+    /// it unchanged.
     pub(crate) progress_percent: Option<Option<u8>>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct IntentionReconcileArgs {
+    /// Reference "now" as Unix epoch milliseconds. Defaults to the current
+    /// system time; override only to reconcile against a fixed point.
     pub(crate) now_ms: Option<u64>,
+    /// Age threshold in milliseconds after which an intention is treated as
+    /// stale.
     pub(crate) stale_after_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProactiveArgs {
+    /// Reference "now" as Unix epoch milliseconds. Defaults to the current
+    /// system time; override only to evaluate against a fixed point.
     pub(crate) now_ms: Option<u64>,
+    /// How far ahead, in milliseconds from `now`, to treat a deadline as
+    /// upcoming.
     pub(crate) deadline_horizon_ms: Option<u64>,
+    /// Age threshold in milliseconds after which a fact or intention is treated
+    /// as stale.
     pub(crate) stale_after_ms: Option<u64>,
     pub(crate) review_limit: Option<usize>,
 }

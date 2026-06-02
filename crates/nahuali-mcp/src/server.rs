@@ -410,6 +410,7 @@ mod tests {
                 "anomalies",
                 "anomaly_acknowledge",
                 "briefing",
+                "memory_hook",
                 "recall",
                 "graph",
                 "inspect",
