@@ -125,6 +125,82 @@ mod tests {
         assert_eq!(vector.len(), embedder.dimensions());
     }
 
+    /// Reproducible proof that the local model embedder carries real meaning the
+    /// deterministic token-hash embedder cannot. The synonym phrasing below shares
+    /// only stopwords with the query, so the deterministic embedder — which hashes
+    /// tokens — cannot tell it apart from an unrelated sentence: both land at a
+    /// similar middling score. A model2vec model places the synonym far above the
+    /// unrelated sentence. What matters for recall ranking is that *separation*,
+    /// and the model's is several times the deterministic embedder's. That is the
+    /// "stronger semantic recall" the README promises.
+    ///
+    /// Runs only when `NAHUALI_LOCAL_EMBEDDING_MODEL_PATH` points at a local
+    /// model directory; otherwise it is a no-op so default CI stays offline.
+    #[cfg(feature = "local-embeddings")]
+    #[test]
+    fn local_model_separates_meaning_where_deterministic_cannot() {
+        let Some(path) = std::env::var("NAHUALI_LOCAL_EMBEDDING_MODEL_PATH")
+            .ok()
+            .filter(|value| !value.is_empty())
+        else {
+            return;
+        };
+
+        // The synonym shares no content words with the query, only stopwords.
+        let query = "a car travels along the street";
+        let synonym = "the automobile drives down the road";
+        let unrelated = "the committee approved the quarterly budget";
+
+        let mut config = SemanticConfig::default_local();
+        config.embedding.kind = EmbeddingProviderKind::LocalModel;
+        config.embedding.model = "model2vec".to_string();
+        config.embedding_model_path = Some(path);
+        let model = config.embedder().expect("local model loads from disk");
+        let deterministic = DeterministicEmbedder {
+            dimensions: crate::DEFAULT_EMBEDDING_DIMENSIONS,
+        };
+
+        let model_synonym = cosine(&model.embed(query), &model.embed(synonym));
+        let model_unrelated = cosine(&model.embed(query), &model.embed(unrelated));
+        let det_synonym = cosine(&deterministic.embed(query), &deterministic.embed(synonym));
+        let det_unrelated = cosine(&deterministic.embed(query), &deterministic.embed(unrelated));
+        let model_separation = model_synonym - model_unrelated;
+        let det_separation = det_synonym - det_unrelated;
+
+        eprintln!(
+            "model2vec:     synonym={model_synonym:.3} unrelated={model_unrelated:.3} \
+             separation={model_separation:.3}"
+        );
+        eprintln!(
+            "deterministic: synonym={det_synonym:.3} unrelated={det_unrelated:.3} \
+             separation={det_separation:.3}"
+        );
+
+        // The model ranks the synonym clearly above an unrelated sentence.
+        assert!(
+            model_synonym > model_unrelated + 0.2,
+            "model synonym {model_synonym:.3} should clear unrelated {model_unrelated:.3}"
+        );
+        // And it separates meaning far better than the token-hash embedder, which
+        // is what makes recall ranking actually reflect meaning.
+        assert!(
+            model_separation > det_separation + 0.2,
+            "model separation {model_separation:.3} should beat deterministic {det_separation:.3}"
+        );
+    }
+
+    #[cfg(feature = "local-embeddings")]
+    fn cosine(a: &[f32], b: &[f32]) -> f32 {
+        let dot: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
+        let norm = |v: &[f32]| v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let denominator = norm(a) * norm(b);
+        if denominator == 0.0 {
+            0.0
+        } else {
+            dot / denominator
+        }
+    }
+
     fn qdrant_test_config(suffix: &str) -> Option<SemanticConfig> {
         let config = SemanticConfig::local_with_collection(format!(
             "nahuali_core_semantic_test_{}_{}_{}",
