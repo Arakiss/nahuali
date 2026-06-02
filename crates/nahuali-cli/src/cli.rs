@@ -7,6 +7,20 @@ use nahuali_core::{
     MemoryKind, SelfInspectionReviewAction, SelfInspectionReviewPriority, SourceKind, TextChunking,
 };
 
+/// Parse and validate a `--confidence` value, rejecting anything outside the
+/// `0.0..=1.0` range instead of silently clamping it.
+fn parse_confidence(raw: &str) -> Result<f32, String> {
+    let value: f32 = raw
+        .parse()
+        .map_err(|_| format!("`{raw}` is not a valid number"))?;
+    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+        return Err(format!(
+            "confidence must be between 0.0 and 1.0 (got {raw})"
+        ));
+    }
+    Ok(value)
+}
+
 #[derive(Debug, Parser)]
 #[command(name = "nahuali")]
 #[command(version)]
@@ -53,7 +67,7 @@ pub(crate) enum Command {
         source_episode_id: Option<String>,
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
-        #[arg(long, short = 'c', default_value_t = 0.8)]
+        #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
         confidence: f32,
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
@@ -69,7 +83,7 @@ pub(crate) enum Command {
         source_episode_id: Option<String>,
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
-        #[arg(long, short = 'c', default_value_t = 0.8)]
+        #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
         confidence: f32,
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
@@ -85,7 +99,7 @@ pub(crate) enum Command {
         source_episode_id: Option<String>,
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
-        #[arg(long, short = 'c', default_value_t = 0.8)]
+        #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
         confidence: f32,
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
@@ -101,7 +115,7 @@ pub(crate) enum Command {
         source_episode_id: Option<String>,
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
-        #[arg(long, short = 'c', default_value_t = 0.8)]
+        #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
         confidence: f32,
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
@@ -116,7 +130,7 @@ pub(crate) enum Command {
         source_episode_id: Option<String>,
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
-        #[arg(long, short = 'c', default_value_t = 0.8)]
+        #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
         confidence: f32,
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
@@ -131,7 +145,7 @@ pub(crate) enum Command {
         source_episode_id: Option<String>,
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
-        #[arg(long, short = 'c', default_value_t = 0.8)]
+        #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
         confidence: f32,
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
