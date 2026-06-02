@@ -16,6 +16,13 @@ categories = ["command-line-utilities", "development-tools"]
 name = "nahuali"
 path = "src/main.rs"
 
+[features]
+default = []
+# Forward the optional Ed25519 chain-tip attestation surface from nahuali-core.
+# Off by default: the `attest-sign` / `attest-verify` subcommands only exist in a
+# build made with `--features attestation`.
+attestation = ["nahuali-core/attestation"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true

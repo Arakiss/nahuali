@@ -2518,6 +2518,7 @@ dependencies = [
 name = "nahuali-core"
 version = "0.3.0-beta.0"
 dependencies = [
+ "ed25519-dalek",
  "model2vec-rs",
  "reqwest",
  "serde",

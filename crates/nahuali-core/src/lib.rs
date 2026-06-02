@@ -33,6 +33,8 @@
 #![deny(missing_docs)]
 
 mod adapters;
+#[cfg(feature = "attestation")]
+mod attestation;
 mod authority;
 mod backup;
 mod briefing;
@@ -66,6 +68,11 @@ pub use adapters::{
     DEFAULT_TEXT_CHUNK_BYTES, TEXT_INGEST_ADAPTER_VERSION, TextChunking, TextIngestBuildReport,
     TextIngestIssue, TextIngestIssueKind, TextIngestOptions, build_text_ingest_document,
 };
+#[cfg(feature = "attestation")]
+pub use attestation::{
+    AttestationVerdict, LEDGER_ATTESTATION_ALGORITHM, LEDGER_ATTESTATION_VERSION,
+    LedgerAttestation, sign_chain_tip, verify_chain_tip,
+};
 pub use authority::{AuthorityDecision, AuthorityMode, AuthorityRecall};
 pub use backup::{
     BackupDrillReport, BackupIssue, BackupIssueKind, BackupIssueSeverity, BackupRestoreReport,
@@ -83,6 +90,8 @@ pub use consolidation_plan::{
     MEMORY_CONSOLIDATION_PLAN_VERSION, MemoryConsolidationPlanReport,
 };
 pub use error::{NahualiError, Result};
+#[cfg(feature = "tamper-evidence")]
+pub use event::{ChainBreak, verify_event_chain};
 pub use event::{
     EVENT_ENVELOPE_VERSION, EpisodeRecorded, EventEnvelope, FactAsserted, IntentionRecorded,
     IntentionRecordedKind, IntentionRecordedPriority, IntentionRecordedStatus,

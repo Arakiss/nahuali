@@ -1,4 +1,6 @@
 mod artifacts;
+#[cfg(feature = "attestation")]
+mod attestation;
 mod migration;
 mod migration_legacy;
 mod migration_timestamps;
@@ -468,6 +470,17 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             dry_run,
             json,
         } => reports::review_resolve(&mut memory, review_id, note, dry_run, json)?,
+        #[cfg(feature = "attestation")]
+        Command::AttestSign {
+            key_file,
+            output,
+            json,
+        } => attestation::sign(&mut memory, &key_file, output.as_deref(), json)?,
+        #[cfg(feature = "attestation")]
+        Command::AttestVerify {
+            attestation: path,
+            json,
+        } => attestation::verify(&mut memory, &path, json)?,
         Command::Maintenance { json } => reports::maintenance(&mut memory, &database, json)?,
         Command::Snapshot {
             output,

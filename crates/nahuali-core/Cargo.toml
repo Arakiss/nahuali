@@ -27,6 +27,15 @@ local-embeddings = ["dep:model2vec-rs"]
 # already present transitively (via surrealdb), so enabling this pulls no new
 # crate versions.
 tamper-evidence = ["dep:sha2"]
+# Optional Ed25519 detached signatures over the tamper-evident chain tip. Implies
+# `tamper-evidence` (signing a tip only makes sense once events are chained). Off
+# by default; default builds pull neither `sha2` nor `ed25519-dalek` and stay
+# byte-for-byte identical. The hash chain detects in-place rewrites; signing the
+# tip closes the remaining gap — a full suffix re-chain changes the tip, and a
+# detached signature over the old tip no longer verifies without the private key.
+# `ed25519-dalek` and its dependencies are already present transitively (via
+# surrealdb), so enabling this pulls no new crate versions.
+attestation = ["tamper-evidence", "dep:ed25519-dalek"]
 
 [dependencies]
 serde.workspace = true
@@ -37,3 +46,11 @@ thiserror.workspace = true
 tokio.workspace = true
 model2vec-rs = { version = "0.2", default-features = false, features = ["fancy-regex"], optional = true }
 sha2 = { version = "0.10", default-features = false, optional = true }
+ed25519-dalek = { version = "2.2", default-features = false, features = ["std", "zeroize"], optional = true }
+
+# Narrated walkthrough of the tamper-evidence wedge: hash chain catches in-place
+# rewrites, tip signature catches a full suffix re-chain. Build/run only with the
+# feature: `cargo run -p nahuali-core --example tamper_evidence --features attestation`.
+[[example]]
+name = "tamper_evidence"
+required-features = ["attestation"]

@@ -582,8 +582,8 @@ impl MemoryEngine {
     ///
     /// This is the value to anchor (e.g. publish or sign) so that even a full
     /// re-chaining of the ledger suffix becomes detectable: re-chaining changes
-    /// the tip, and an externally recorded tip will no longer match. Tip signing
-    /// itself is out of scope here (see the TODO in the implementation).
+    /// the tip, and an externally recorded tip will no longer match. With the
+    /// `attestation` feature, sign it via the `attest_chain_tip` method.
     #[cfg(feature = "tamper-evidence")]
     pub fn chain_tip(&self) -> Option<String> {
         self.events.last().map(EventEnvelope::chain_hash)
@@ -602,10 +602,9 @@ impl MemoryEngine {
         // of this or an earlier event breaks the chain at the next event. The
         // chain is computed against `self.events.last()` whether or not we are in
         // a batch, so a buffered batch produces exactly the same chain as
-        // appending the same events one at a time.
-        //
-        // TODO(tamper-evidence): optionally sign/anchor `chain_tip()` so a full
-        // suffix re-chain (which changes the tip) is also externally detectable.
+        // appending the same events one at a time. A full suffix re-chain (which
+        // changes the tip) is caught externally by signing `chain_tip()` — see
+        // the `attestation` feature.
         #[cfg(feature = "tamper-evidence")]
         let envelope = {
             let previous_chain_hash = self.events.last().map(EventEnvelope::chain_hash);

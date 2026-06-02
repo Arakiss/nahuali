@@ -166,6 +166,13 @@ pub enum NahualiError {
         /// Underlying JSON decoding error.
         source: serde_json::Error,
     },
+    /// A ledger tip attestation could not be produced or verified.
+    #[cfg(feature = "tamper-evidence")]
+    #[error("ledger attestation error: {message}")]
+    Attestation {
+        /// Human-readable signing or verification failure.
+        message: String,
+    },
 }
 
 /// Result alias used by `nahuali-core`.

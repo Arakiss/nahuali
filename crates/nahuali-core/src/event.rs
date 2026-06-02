@@ -127,6 +127,44 @@ impl EventEnvelope {
     }
 }
 
+/// A broken link discovered while verifying a hash chain.
+#[cfg(feature = "tamper-evidence")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChainBreak {
+    /// One-based position of the event whose recorded `prev_hash` does not match.
+    pub record: usize,
+    /// Sequence number of that event.
+    pub sequence: u64,
+}
+
+/// Verify the tamper-evident hash chain across an in-memory event slice.
+///
+/// Returns the first broken link, or `None` when the chain is intact. Events
+/// without a `prev_hash` (default-build / legacy records) are treated as
+/// unchained and skipped, mirroring the ledger-replay validator. This lets a
+/// caller check a ledger it already holds in memory — for example the events a
+/// tip attestation was signed over — without reopening the database.
+#[cfg(feature = "tamper-evidence")]
+pub fn verify_event_chain(events: &[EventEnvelope]) -> Option<ChainBreak> {
+    for (index, event) in events.iter().enumerate() {
+        if !event.is_chained() {
+            continue;
+        }
+        let expected_prev = if index == 0 {
+            String::new()
+        } else {
+            events[index - 1].chain_hash()
+        };
+        if event.prev_hash.as_deref().unwrap_or("") != expected_prev {
+            return Some(ChainBreak {
+                record: index + 1,
+                sequence: event.sequence,
+            });
+        }
+    }
+    None
+}
+
 /// Typed event payload stored in the record ledger.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -787,6 +825,44 @@ mod tests {
         // *original* event's chained hash, which no longer matches the forged
         // event's chained hash. The break surfaces at the following record.
         assert_eq!(first_broken_link(&events), Some(target + 2));
+    }
+
+    /// The public in-memory verifier agrees with the replay walk: it passes a
+    /// clean chain and pinpoints the same broken link after a checksum-recomputed
+    /// in-place rewrite. This is the property a tip attestation rests on.
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn public_chain_verifier_detects_in_place_rewrite() {
+        let clean = chained_ledger(4);
+        assert_eq!(super::verify_event_chain(&clean), None);
+
+        let mut tampered = chained_ledger(4);
+        let original = &tampered[1];
+        let forged_payload = MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+            id: "episode_2".to_string(),
+            content: "TAMPERED: attacker-substituted content".to_string(),
+            tags: Vec::new(),
+            mentions: Vec::new(),
+            source_id: None,
+            source_position: None,
+            source_role: None,
+            scope: None,
+        });
+        let mut forged =
+            EventEnvelope::new(original.sequence, original.timestamp_ms, forged_payload);
+        forged.prev_hash = original.prev_hash.clone();
+        assert!(forged.validate_checksum());
+        tampered[1] = forged;
+
+        let chain_break =
+            super::verify_event_chain(&tampered).expect("verifier reports the broken link");
+        assert_eq!(
+            chain_break,
+            super::ChainBreak {
+                record: 3,
+                sequence: 3
+            }
+        );
     }
 
     /// (c) The tip changes when the suffix is re-chained. A full forgery requires

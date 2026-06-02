@@ -700,6 +700,24 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
+    #[cfg(feature = "attestation")]
+    #[command(about = "Sign the current tamper-evident chain tip with an Ed25519 key.")]
+    AttestSign {
+        #[arg(long = "key-file", value_name = "PATH")]
+        key_file: PathBuf,
+        #[arg(long, short = 'o', value_name = "PATH")]
+        output: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
+    #[cfg(feature = "attestation")]
+    #[command(about = "Verify a ledger tip attestation against the current ledger.")]
+    AttestVerify {
+        #[arg(value_name = "PATH")]
+        attestation: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
     #[command(about = "Print a non-destructive maintenance report.")]
     Maintenance {
         #[arg(long)]
