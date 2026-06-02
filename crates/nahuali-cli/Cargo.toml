@@ -22,6 +22,12 @@ default = []
 # Off by default: the `attest-sign` / `attest-verify` subcommands only exist in a
 # build made with `--features attestation`.
 attestation = ["nahuali-core/attestation"]
+# Forward nahuali-core's optional static model2vec embedder so `semantic-rebuild`
+# and recall can use a local model for stronger semantic recall. Off by default
+# (the deterministic embedder ships in every build); point
+# NAHUALI_EMBEDDING_PROVIDER=model2vec and NAHUALI_LOCAL_EMBEDDING_MODEL_PATH at a
+# model directory when built with this feature.
+local-embeddings = ["nahuali-core/local-embeddings"]
 
 [dependencies]
 anyhow.workspace = true
