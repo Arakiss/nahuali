@@ -19,9 +19,15 @@ labels, not permission boundaries.
 Health check and OpenAPI contract:
 
 ```bash
+curl http://127.0.0.1:7070/v1/health
 curl http://127.0.0.1:7070/v1/status
 curl http://127.0.0.1:7070/v1/openapi.json
 ```
+
+`GET /health` and `GET /v1/health` return `{"status":"ok"}` without opening the
+database, so they are safe as liveness probes. Transport-level failures (unknown
+route, wrong `Content-Type`, malformed JSON, unknown or missing fields) return the
+same structured envelope as core errors: `{"error":{"code":"...","message":"..."}}`.
 
 Core endpoint groups:
 
@@ -42,5 +48,9 @@ Recall example:
 ```bash
 curl -X POST http://127.0.0.1:7070/v1/recall \
   -H 'content-type: application/json' \
-  -d '{"query":"Lena release","limit":10,"authority":true}'
+  -d '{"query":"Lena release","limit":10,"semantic":true}'
 ```
+
+Request bodies reject unknown fields (matching `additionalProperties: false` in the
+OpenAPI contract), so a typo such as `"authority":true` returns a `400` with code
+`validation_error` rather than being silently ignored.
