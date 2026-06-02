@@ -9,10 +9,14 @@ use std::{
     sync::Arc,
 };
 
+use axum::Json as AxumJson;
 use axum::{
-    Json, Router,
-    extract::{Query, State},
-    http::{StatusCode, header},
+    Router,
+    extract::{
+        FromRequest, FromRequestParts, Request, State,
+        rejection::{JsonRejection, QueryRejection},
+    },
+    http::{StatusCode, header, request::Parts},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -64,6 +68,9 @@ pub fn router(config: ApiConfig) -> Router {
     };
 
     Router::new()
+        .route("/", get(root))
+        .route("/health", get(health))
+        .route("/v1/health", get(health))
         .route("/v1/status", get(status))
         .route("/v1/openapi.json", get(openapi))
         .route("/v1/episode", post(record_episode))
@@ -91,6 +98,8 @@ pub fn router(config: ApiConfig) -> Router {
         .route("/v1/semantic/status", get(semantic_status))
         .route("/v1/semantic/rebuild", post(semantic_rebuild))
         .route("/v1/review/resolve", post(resolve_review))
+        .fallback(not_found)
+        .method_not_allowed_fallback(method_not_allowed)
         .with_state(state)
 }
 
@@ -168,7 +177,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (
             self.status,
-            Json(ApiErrorResponse {
+            AxumJson(ApiErrorResponse {
                 error: ApiErrorBody {
                     code: self.code,
                     message: self.message,
@@ -177,6 +186,101 @@ impl IntoResponse for ApiError {
         )
             .into_response()
     }
+}
+
+impl From<JsonRejection> for ApiError {
+    fn from(rejection: JsonRejection) -> Self {
+        let (status, code) = match &rejection {
+            JsonRejection::MissingJsonContentType(_) => {
+                (StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")
+            }
+            JsonRejection::JsonDataError(_) => (StatusCode::BAD_REQUEST, "validation_error"),
+            JsonRejection::JsonSyntaxError(_) => (StatusCode::BAD_REQUEST, "malformed_json"),
+            JsonRejection::BytesRejection(_) => (StatusCode::BAD_REQUEST, "malformed_json"),
+            _ => (StatusCode::BAD_REQUEST, "validation_error"),
+        };
+        Self::new(status, code, rejection.body_text())
+    }
+}
+
+impl From<QueryRejection> for ApiError {
+    fn from(rejection: QueryRejection) -> Self {
+        Self::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            rejection.body_text(),
+        )
+    }
+}
+
+/// JSON body extractor that emits the universal [`ApiErrorResponse`] envelope on
+/// any transport-level failure (wrong/missing `Content-Type`, malformed JSON,
+/// unknown or missing fields) instead of Axum's bare `text/plain` rejection.
+struct Json<T>(T);
+
+impl<T, S> FromRequest<S> for Json<T>
+where
+    AxumJson<T>: FromRequest<S, Rejection = JsonRejection>,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        let AxumJson(value) = AxumJson::<T>::from_request(req, state).await?;
+        Ok(Self(value))
+    }
+}
+
+impl<T: Serialize> IntoResponse for Json<T> {
+    fn into_response(self) -> Response {
+        AxumJson(self.0).into_response()
+    }
+}
+
+/// Query-string extractor that maps [`QueryRejection`] into the universal
+/// [`ApiErrorResponse`] envelope.
+struct Query<T>(T);
+
+impl<T, S> FromRequestParts<S> for Query<T>
+where
+    axum::extract::Query<T>: FromRequestParts<S, Rejection = QueryRejection>,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let axum::extract::Query(value) =
+            axum::extract::Query::<T>::from_request_parts(parts, state).await?;
+        Ok(Self(value))
+    }
+}
+
+async fn not_found() -> ApiError {
+    ApiError::new(
+        StatusCode::NOT_FOUND,
+        "not_found",
+        "No route matches the requested path. See GET /v1/openapi.json for the contract.",
+    )
+}
+
+async fn method_not_allowed() -> ApiError {
+    ApiError::new(
+        StatusCode::METHOD_NOT_ALLOWED,
+        "method_not_allowed",
+        "The HTTP method is not allowed for this route. See GET /v1/openapi.json for the contract.",
+    )
+}
+
+async fn root() -> impl IntoResponse {
+    AxumJson(serde_json::json!({
+        "service": "nahuali-api",
+        "openapi": "/v1/openapi.json",
+        "health": "/v1/health",
+    }))
+}
+
+async fn health() -> impl IntoResponse {
+    AxumJson(serde_json::json!({ "status": "ok" }))
 }
 
 fn open_memory(state: &ApiState) -> Result<MemoryEngine, ApiError> {
@@ -578,6 +682,7 @@ async fn resolve_review(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct EpisodeRequest {
     content: String,
     #[serde(default)]
@@ -589,6 +694,7 @@ struct EpisodeRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ClaimRequest {
     subject: String,
     predicate: String,
@@ -602,6 +708,7 @@ struct ClaimRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct LinkRequest {
     from: String,
     relation: String,
@@ -615,6 +722,7 @@ struct LinkRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ProcedureRequest {
     name: String,
     body: String,
@@ -627,6 +735,7 @@ struct ProcedureRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct IntentionRequest {
     description: String,
     kind: IntentionKind,
@@ -638,6 +747,7 @@ struct IntentionRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct IntentionUpdateRequest {
     id: String,
     #[serde(default)]
@@ -655,6 +765,7 @@ struct IntentionUpdateRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct IntentionStatusRequest {
     id: String,
     status: IntentionStatus,
@@ -663,6 +774,7 @@ struct IntentionStatusRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct IntentionReconcileRequest {
     #[serde(default)]
     now_ms: Option<u64>,
@@ -671,6 +783,7 @@ struct IntentionReconcileRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ProactiveRequest {
     #[serde(default)]
     now_ms: Option<u64>,
@@ -702,6 +815,7 @@ impl From<ProactiveRequest> for ProactiveOptions {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AnomalyAcknowledgeRequest {
     anomaly_id: String,
     note: String,
@@ -710,6 +824,7 @@ struct AnomalyAcknowledgeRequest {
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RecallRequest {
     query: String,
     #[serde(default = "default_limit")]
@@ -725,6 +840,7 @@ struct RecallRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SessionResumeRequest {
     #[serde(default = "default_episode_limit")]
     episode_limit: usize,
@@ -748,6 +864,7 @@ impl From<SessionResumeRequest> for nahuali_core::BriefingOptions {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GraphQuery {
     seed: String,
     #[serde(default)]
@@ -757,12 +874,14 @@ struct GraphQuery {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct LimitQuery {
     #[serde(default)]
     limit: Option<usize>,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ReviewResolveRequest {
     review_id: String,
     note: String,

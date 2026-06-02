@@ -577,6 +577,163 @@ async fn api_returns_structured_core_errors() {
     assert_eq!(body["error"]["code"], "empty_content");
 }
 
+#[tokio::test]
+async fn api_health_does_not_open_the_engine() {
+    let _guard = api_contract_lock().lock().await;
+    // Intentionally point at a database name that is never opened; /health must
+    // answer 200 without touching SurrealDB.
+    let app = router(ApiConfig::new(temp_database(
+        "api_health_does_not_open_the_engine",
+    )));
+
+    for uri in ["/health", "/v1/health"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{uri} should be 200");
+        let body = response_json(response).await;
+        assert_eq!(body["status"], "ok", "{uri} body");
+    }
+
+    let root = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(root.status(), StatusCode::OK);
+    let root_body = response_json(root).await;
+    assert_eq!(root_body["openapi"], "/v1/openapi.json");
+}
+
+#[tokio::test]
+async fn api_wraps_transport_errors_in_the_structured_envelope() {
+    let _guard = api_contract_lock().lock().await;
+    let app = router(ApiConfig::new(temp_database(
+        "api_wraps_transport_errors_in_the_structured_envelope",
+    )));
+
+    // Unmatched route -> 404 with the universal envelope (was an empty body).
+    let not_found = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/does-not-exist")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(not_found.status(), StatusCode::NOT_FOUND);
+    let not_found_body = response_json(not_found).await;
+    assert_eq!(not_found_body["error"]["code"], "not_found");
+    assert!(not_found_body["error"]["message"].is_string());
+
+    // Wrong method on a real route -> 405 with the envelope (was an empty body).
+    let method_not_allowed = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/episode")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(method_not_allowed.status(), StatusCode::METHOD_NOT_ALLOWED);
+    let method_body = response_json(method_not_allowed).await;
+    assert_eq!(method_body["error"]["code"], "method_not_allowed");
+
+    // Malformed JSON -> 400 malformed_json (was a text/plain body).
+    let malformed = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/episode")
+                .header("content-type", "application/json")
+                .body(Body::from("{ this is not json"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
+    let malformed_body = response_json(malformed).await;
+    assert_eq!(malformed_body["error"]["code"], "malformed_json");
+
+    // Missing required field -> 400 validation_error (was a text/plain body).
+    let missing_field = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/episode")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "tags": ["x"] }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_field.status(), StatusCode::BAD_REQUEST);
+    let missing_field_body = response_json(missing_field).await;
+    assert_eq!(missing_field_body["error"]["code"], "validation_error");
+
+    // Unknown field -> 400 validation_error (deny_unknown_fields contract).
+    let unknown_field = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/recall")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "query": "x", "authority": true }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unknown_field.status(), StatusCode::BAD_REQUEST);
+    let unknown_field_body = response_json(unknown_field).await;
+    assert_eq!(unknown_field_body["error"]["code"], "validation_error");
+
+    // Missing/wrong Content-Type -> 415 unsupported_media_type.
+    let wrong_content_type = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/episode")
+                .header("content-type", "text/plain")
+                .body(Body::from(json!({ "content": "hi" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        wrong_content_type.status(),
+        StatusCode::UNSUPPORTED_MEDIA_TYPE
+    );
+    let wrong_content_type_body = response_json(wrong_content_type).await;
+    assert_eq!(
+        wrong_content_type_body["error"]["code"],
+        "unsupported_media_type"
+    );
+}
+
 async fn json_request(app: axum::Router, uri: &str, body: Value) -> Value {
     let response = app
         .oneshot(
