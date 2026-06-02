@@ -54,3 +54,17 @@ curl -X POST http://127.0.0.1:7070/v1/recall \
 Request bodies reject unknown fields (matching `additionalProperties: false` in the
 OpenAPI contract), so a typo such as `"authority":true` returns a `400` with code
 `validation_error` rather than being silently ignored.
+
+## Optional build features
+
+Off by default; a default build is unchanged and writes byte-identical records.
+
+- `--features tamper-evidence`: recorded events are chained by hash, so ledger
+  replay on open detects an in-place rewrite of any historical record.
+- `--features local-embeddings`: `POST /v1/semantic/rebuild` and semantic recall
+  use a static model2vec model instead of the deterministic embedder. Set
+  `NAHUALI_EMBEDDING_PROVIDER=model2vec` and point
+  `NAHUALI_LOCAL_EMBEDDING_MODEL_PATH` at a local model directory.
+
+Chain-tip attestation (signing) is a CLI/operator action; the API exposes no
+signing endpoint.

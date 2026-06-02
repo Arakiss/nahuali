@@ -16,6 +16,19 @@ categories = ["web-programming::http-server", "development-tools"]
 name = "nahuali-api"
 path = "src/main.rs"
 
+[features]
+default = []
+# Forward the nahuali-core optional surfaces that have an observable effect on the
+# API surface. All off by default; a default build is unchanged.
+# - tamper-evidence: writes are chained, and ledger replay on open detects an
+#   in-place rewrite of any historical record.
+# - local-embeddings: static model2vec embedder for `/v1/semantic/rebuild` and
+#   semantic recall.
+# Tip attestation is intentionally not forwarded: it is a CLI/operator action and
+# the API exposes no signing endpoint.
+tamper-evidence = ["nahuali-core/tamper-evidence"]
+local-embeddings = ["nahuali-core/local-embeddings"]
+
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
