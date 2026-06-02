@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# demo-walkthrough.sh — Nahuali explicado para HUMANOS, paso a paso.
+# demo-walkthrough.sh — Nahuali explained for HUMANS, step by step.
 #
-# Corre el motor de VERDAD (la CLI real, el ledger real). No hay nada simulado:
-# cada resultado sale del engine. Pero en vez de escupir JSON, te lo cuenta en
-# lenguaje claro y te explica por que cada paso importa.
+# Runs the REAL engine (the real CLI, the real ledger). Nothing is simulated:
+# every result comes from the engine. But instead of dumping JSON, it narrates
+# in plain language and explains why each step matters.
 #
-# Uso:        bash scripts/demo-walkthrough.sh
-# Con pausas: NAHUALI_DEMO_PAUSE=1 bash scripts/demo-walkthrough.sh
+# Usage:        bash scripts/demo-walkthrough.sh
+# With pauses:  NAHUALI_DEMO_PAUSE=1 bash scripts/demo-walkthrough.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; cd "$ROOT"
-command -v jq >/dev/null || { echo "Este recorrido necesita 'jq'."; exit 1; }
+command -v jq >/dev/null || { echo "This walkthrough needs 'jq'."; exit 1; }
 
 if   [[ -n "${NAHUALI_BIN:-}" ]];        then N="$NAHUALI_BIN"
 elif [[ -x target/debug/nahuali ]];      then N="target/debug/nahuali"
@@ -24,53 +24,53 @@ ok(){ printf '   \033[1;32m✓ %s\033[0m\n' "$*"; }
 warn(){ printf '   \033[1;33m⚠ %s\033[0m\n' "$*"; }
 arrow(){ printf '   \033[36m→\033[0m %s\n' "$*"; }
 cmd(){ dim "     \$ nahuali $*"; }
-pause(){ [[ "${NAHUALI_DEMO_PAUSE:-0}" == "1" ]] && read -rp $'     (enter para seguir)' _ ; printf '\n'; }
+pause(){ [[ "${NAHUALI_DEMO_PAUSE:-0}" == "1" ]] && read -rp $'     (enter to continue)' _ ; printf '\n'; }
 
 bash scripts/ensure-dev-stack.sh >/dev/null 2>&1 || true
 
 printf '\n'
 B "═══════════════════════════════════════════════════════════════"
-B "   Nahuali en 6 pasos. Sin jerga. Mira que hace de verdad."
+B "   Nahuali in 6 steps. No jargon. See what it actually does."
 B "═══════════════════════════════════════════════════════════════"
 cat <<'EOF'
 
-   Tu agente recuerda cosas mientras trabaja. Algunas con prueba de
-   donde salieron, otras no. Una memoria normal las guarda todas por
-   igual. Nahuali no: te dice de cuales puedes fiarte.
+   Your agent remembers things as it works. Some with proof of where
+   they came from, some without. An ordinary memory stores them all
+   the same. Nahuali does not: it tells you which ones you can trust.
 
-   Vamos a darle dos recuerdos -- uno CON fuente, otro SIN fuente --
-   y a ver como los trata distinto.
+   We will give it two memories -- one WITH a source, one WITHOUT --
+   and watch it treat them differently.
 EOF
 pause
 
-B "Paso 1 · La memoria empieza vacia"
+B "Step 1 · Memory starts empty"
 cmd "validate"
 V=$(run validate --json)
-ok "Ledger valido: $(echo "$V" | jq -r '.valid'). Eventos guardados: $(echo "$V" | jq -r '.event_count'). Partimos de cero."
+ok "Ledger valid: $(echo "$V" | jq -r '.valid'). Stored events: $(echo "$V" | jq -r '.event_count'). We start from zero."
 pause
 
-B "Paso 2 · El agente OBSERVA algo y lo guarda con su origen"
-cmd 'remember "Ana dijo en la reunion que ella lleva el release de marzo"'
-run remember "Ana dijo en la reunion de planificacion que ella es la responsable del release de marzo." \
-    --tag reunion --mention Ana --scope project:Demo >/dev/null
-arrow "Eso queda como un EPISODIO. Es la fuente: la prueba original de donde salio la informacion."
+B "Step 2 · The agent OBSERVES something and stores it with its origin"
+cmd 'remember "Ana said in the planning meeting that she owns the March release"'
+run remember "Ana said in the planning meeting that she owns the March release." \
+    --tag meeting --mention Ana --scope project:Demo >/dev/null
+arrow "That becomes an EPISODE. It is the source: the original proof of where the information came from."
 pause
 
-B "Paso 3 · Convierte la observacion en un hecho, citando esa fuente"
-cmd 'claim Ana owns "release de marzo" --source-last'
-run claim Ana owns "release de marzo" --confidence 0.9 --source-last --scope project:Demo >/dev/null
-ok "Ahora hay un HECHO, y apunta a la reunion como su evidencia."
+B "Step 3 · Turn the observation into a fact, citing that source"
+cmd 'claim Ana owns "March release" --source-last'
+run claim Ana owns "March release" --confidence 0.9 --source-last --scope project:Demo >/dev/null
+ok "Now there is a FACT, and it points to the meeting as its evidence."
 pause
 
-B "Paso 4 · El agente afirma OTRO hecho... pero sin ninguna prueba"
-cmd 'claim Beto owns "el roadmap"'
-run claim Beto owns "el roadmap" --confidence 0.5 --scope project:Demo >/dev/null
-arrow "Nahuali lo guarda, pero toma nota: esto nadie sabe de donde salio."
+B "Step 4 · The agent asserts ANOTHER fact... but with no proof at all"
+cmd 'claim Beto owns "the roadmap"'
+run claim Beto owns "the roadmap" --confidence 0.5 --scope project:Demo >/dev/null
+arrow "Nahuali stores it, but takes note: nobody knows where this came from."
 pause
 
-B "Paso 5 · Le preguntas al agente: ¿quien lleva el release de marzo?"
-cmd 'recall "release de marzo" --authority'
-R=$(run recall "release de marzo" --authority --json --scope project:Demo)
+B "Step 5 · You ask the agent: who owns the March release?"
+cmd 'recall "March release" --authority'
+R=$(run recall "March release" --authority --json --scope project:Demo)
 EXC=$(echo "$R" | jq -r '.results[0].excerpt // "—"')
 TCAN=$(echo "$R" | jq -r '.results[0].trust.can_trust')
 TMODE=$(echo "$R" | jq -r '.results[0].trust.mode')
@@ -78,41 +78,41 @@ TWHY=$(echo "$R" | jq -r '.results[0].trust.reasons[0] // ""')
 ACAN=$(echo "$R" | jq -r '.authority.can_trust')
 AMODE=$(echo "$R" | jq -r '.authority.mode')
 AWHY=$(echo "$R" | jq -r '.authority.reasons[0] // ""')
-echo "   Nahuali encuentra:  \"$EXC\""
+echo "   Nahuali finds:  \"$EXC\""
 if [[ "$TCAN" == "true" ]]; then
-  ok "CERTIFICADO ($TMODE). Tiene evidencia detras. Puedes actuar sobre esto."
-  dim "       motivo del engine: $TWHY"
+  ok "CERTIFIED ($TMODE). It has evidence behind it. You can act on this."
+  dim "       engine reason: $TWHY"
 fi
 if [[ "$ACAN" != "true" ]]; then
-  warn "Pero AVISA sobre el conjunto ($AMODE). No todo el store es de fiar:"
-  dim "       motivo del engine: $AWHY"
+  warn "But it WARNS about the whole set ($AMODE). Not all of the store is trustworthy:"
+  dim "       engine reason: $AWHY"
 fi
-arrow "Esto es lo que una memoria de solo-recall NO hace: te da la respuesta"
-arrow "buena Y te avisa de lo dudoso, en la misma consulta."
+arrow "This is what a recall-only memory does NOT do: it gives you the good"
+arrow "answer AND warns you about the doubtful part, in the same query."
 pause
 
-B "Paso 6 · ¿Que deberias revisar antes de fiarte del todo?"
+B "Step 6 · What should you review before fully trusting it?"
 cmd "review"
 RV=$(run review --json)
 CNT=$(echo "$RV" | jq -r '.summary.item_count // (.items|length)')
 T0=$(echo "$RV" | jq -r '.items[0].title // "—"')
 G0=$(echo "$RV" | jq -r '.items[0].operator_guidance // ""')
-echo "   Nahuali te entrega una lista priorizada de $CNT cosa(s) a revisar. La primera:"
+echo "   Nahuali hands you a prioritized list of $CNT thing(s) to review. The first:"
 warn "$T0"
-dim "       que hacer: $G0"
-arrow "No lo arregla por su cuenta. Te lo señala y te deja decidir."
+dim "       what to do: $G0"
+arrow "It does not fix it on its own. It flags it and leaves the decision to you."
 pause
 
-B "El aja"
+B "The aha"
 cat <<'EOF'
 
-   Una memoria normal (Mem0, Zep) te habria devuelto las dos cosas
-   como si ambas fueran ciertas. Nahuali te devolvio la buena CON su
-   recibo y te marco la dudosa para revisar.
+   An ordinary memory (Mem0, Zep) would have returned both things as
+   if they were equally true. Nahuali returned the good one WITH its
+   receipt and flagged the doubtful one for review.
 
-   No vende memoria. Vende poder fiarte de ella -- y dar la cara por
-   lo que tu agente recordo e hizo.
+   It does not sell memory. It sells being able to trust it -- and to
+   stand behind what your agent remembered and did.
 
 EOF
-dim "   (Memoria de demo en $DB · sintetica · puedes borrarla sin miedo)"
+dim "   (Demo memory in $DB · synthetic · safe to delete)"
 printf '\n'
