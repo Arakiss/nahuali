@@ -11,7 +11,7 @@
         "operationId": "getStatus",
         "summary": "Return memory counts, authority, health, and graph projection validation.",
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
+          "200": { "$ref": "#/components/responses/StatusResponse" },
           "default": { "$ref": "#/components/responses/ApiError" }
         }
       }
@@ -174,7 +174,7 @@
         "summary": "Recall projected memory with authority and health context.",
         "requestBody": { "$ref": "#/components/requestBodies/RecallRequest" },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
+          "200": { "$ref": "#/components/responses/RecallResponse" },
           "default": { "$ref": "#/components/responses/ApiError" }
         }
       }
@@ -185,7 +185,7 @@
         "summary": "Return a continuity briefing with authority and health context.",
         "requestBody": { "$ref": "#/components/requestBodies/SessionResumeRequest" },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
+          "200": { "$ref": "#/components/responses/SessionResumeResponse" },
           "default": { "$ref": "#/components/responses/ApiError" }
         }
       }
@@ -196,7 +196,7 @@
         "summary": "Return knowledge-health and authority context.",
         "requestBody": { "$ref": "#/components/requestBodies/EmptyRequest" },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
+          "200": { "$ref": "#/components/responses/MemoryHealthResponse" },
           "default": { "$ref": "#/components/responses/ApiError" }
         }
       }
@@ -404,6 +404,22 @@
         "description": "Structured Nahuali API error.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiErrorResponse" } } }
       },
+      "StatusResponse": {
+        "description": "Memory counts, store-level authority, knowledge health, and graph projection validation.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } }
+      },
+      "RecallResponse": {
+        "description": "Lexical recall results with per-result trust, store-level authority, and knowledge health.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecallResponse" } } }
+      },
+      "MemoryHealthResponse": {
+        "description": "Store-level authority decision paired with the knowledge-health report it was derived from.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoryHealthResponse" } } }
+      },
+      "SessionResumeResponse": {
+        "description": "Continuity briefing with store-level authority and knowledge-health context.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResumeResponse" } } }
+      },
       "JsonObject": {
         "description": "JSON response returned by nahuali-core.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JsonObject" } } }
@@ -605,6 +621,236 @@
           "intention_limit": { "type": "integer", "minimum": 1, "default": 5 },
           "review_limit": { "type": "integer", "minimum": 1, "default": 5 },
           "graph_seed_limit": { "type": "integer", "minimum": 1, "default": 8 }
+        }
+      },
+      "AuthorityMode": {
+        "type": "string",
+        "description": "Authority mode assigned to a memory answer, derived deterministically from knowledge health.",
+        "enum": ["advisory", "warn", "block", "certify"]
+      },
+      "AuthorityDecision": {
+        "type": "object",
+        "description": "Deterministic store-level trust decision derived from knowledge health.",
+        "additionalProperties": false,
+        "required": ["mode", "score", "can_trust", "reasons", "signal_kinds"],
+        "properties": {
+          "mode": { "$ref": "#/components/schemas/AuthorityMode" },
+          "score": { "type": "number", "minimum": 0, "maximum": 1, "description": "Numeric trust score in the 0.0..=1.0 range." },
+          "can_trust": { "type": "boolean", "description": "Whether callers may rely on memory without adding uncertainty." },
+          "reasons": { "type": "array", "items": { "type": "string" }, "description": "Human-readable reasons for the decision." },
+          "signal_kinds": { "type": "array", "items": { "$ref": "#/components/schemas/HealthSignalKind" }, "description": "Health signal kinds that drove the decision." }
+        }
+      },
+      "RecallResultTrustMode": {
+        "type": "string",
+        "description": "Query-local trust classification for one recall result.",
+        "enum": ["certify", "advisory", "warn", "block"]
+      },
+      "RecallResultTrust": {
+        "type": "object",
+        "description": "Query-local trust context for one recall result, independent of store-level authority.",
+        "additionalProperties": false,
+        "required": ["mode", "score", "can_trust", "reasons", "signal_kinds"],
+        "properties": {
+          "mode": { "$ref": "#/components/schemas/RecallResultTrustMode" },
+          "score": { "type": "number", "minimum": 0, "maximum": 1, "description": "Numeric result trust score in the 0.0..=1.0 range." },
+          "can_trust": { "type": "boolean", "description": "Whether callers may rely on this specific result without adding uncertainty." },
+          "reasons": { "type": "array", "items": { "type": "string" }, "description": "Human-readable reasons for this result trust decision." },
+          "signal_kinds": { "type": "array", "items": { "type": "string" }, "description": "Result-local health signal kinds that drove the decision." }
+        }
+      },
+      "HealthSignalKind": {
+        "type": "string",
+        "description": "Category for a knowledge-health signal.",
+        "enum": ["no_episodes", "unsupported_fact", "low_confidence_fact", "conflicting_fact", "stale_fact", "isolated_entity"]
+      },
+      "HealthDimension": {
+        "type": "string",
+        "description": "Higher-level knowledge-health dimension affected by a signal.",
+        "enum": ["completeness", "confidence", "freshness", "connectivity", "contradiction", "staleness", "unsupported_memory", "blind_spot"]
+      },
+      "HealthSeverity": {
+        "type": "string",
+        "description": "Severity level for a knowledge-health signal.",
+        "enum": ["high", "medium", "low"]
+      },
+      "HealthSignal": {
+        "type": "object",
+        "description": "Single knowledge-health issue or observation.",
+        "additionalProperties": false,
+        "required": ["kind", "dimensions", "severity", "message", "evidence_ids"],
+        "properties": {
+          "kind": { "$ref": "#/components/schemas/HealthSignalKind" },
+          "dimensions": { "type": "array", "items": { "$ref": "#/components/schemas/HealthDimension" } },
+          "severity": { "$ref": "#/components/schemas/HealthSeverity" },
+          "message": { "type": "string" },
+          "evidence_ids": { "type": "array", "items": { "type": "string" }, "description": "Event or memory identifiers that support the signal." }
+        }
+      },
+      "KnowledgeHealth": {
+        "type": "object",
+        "description": "Structured health report for a projected memory store.",
+        "additionalProperties": false,
+        "required": [
+          "event_count", "episode_count", "fact_count", "relation_count", "entity_count",
+          "supported_fact_count", "unsupported_fact_count", "low_confidence_fact_count",
+          "conflicting_fact_count", "stale_fact_count", "isolated_entity_count", "blind_spot_count",
+          "average_fact_confidence", "signals", "warnings"
+        ],
+        "properties": {
+          "event_count": { "type": "integer", "minimum": 0 },
+          "episode_count": { "type": "integer", "minimum": 0 },
+          "fact_count": { "type": "integer", "minimum": 0 },
+          "relation_count": { "type": "integer", "minimum": 0 },
+          "entity_count": { "type": "integer", "minimum": 0 },
+          "supported_fact_count": { "type": "integer", "minimum": 0 },
+          "unsupported_fact_count": { "type": "integer", "minimum": 0 },
+          "low_confidence_fact_count": { "type": "integer", "minimum": 0 },
+          "conflicting_fact_count": { "type": "integer", "minimum": 0 },
+          "stale_fact_count": { "type": "integer", "minimum": 0 },
+          "isolated_entity_count": { "type": "integer", "minimum": 0 },
+          "blind_spot_count": { "type": "integer", "minimum": 0 },
+          "average_fact_confidence": { "type": "number", "minimum": 0, "maximum": 1, "description": "Mean confidence for projected facts, rounded to two decimals." },
+          "signals": { "type": "array", "items": { "$ref": "#/components/schemas/HealthSignal" } },
+          "warnings": { "type": "array", "items": { "type": "string" }, "description": "Human-readable warning messages derived from the signals." }
+        }
+      },
+      "RecallResult": {
+        "type": "object",
+        "description": "Scored lexical recall candidate.",
+        "additionalProperties": false,
+        "required": ["kind", "id", "score", "excerpt", "matched_terms"],
+        "properties": {
+          "kind": { "$ref": "#/components/schemas/MemoryKind" },
+          "id": { "type": "string", "description": "Identifier of the matched memory item." },
+          "score": { "type": "number", "description": "Deterministic lexical score, including confidence and evidence bonuses." },
+          "excerpt": { "type": "string", "description": "Human-readable excerpt for display or agent context." },
+          "evidence_id": { "type": ["string", "null"], "description": "Optional evidence episode identifier." },
+          "matched_terms": { "type": "array", "items": { "type": "string" }, "description": "Normalized query terms found in the matched item." },
+          "scope": { "$ref": "#/components/schemas/MemoryScope" },
+          "trust": { "$ref": "#/components/schemas/RecallResultTrust" }
+        }
+      },
+      "GraphProjectionStatus": {
+        "type": "object",
+        "description": "SurrealDB graph-projection checkpoint and table counts.",
+        "additionalProperties": false,
+        "required": ["projection_version", "ledger_event_count", "table_counts", "in_sync"],
+        "properties": {
+          "projection_version": { "type": "integer", "minimum": 0 },
+          "ledger_event_count": { "type": "integer", "minimum": 0 },
+          "latest_sequence": { "type": ["integer", "null"], "minimum": 0 },
+          "latest_event_id": { "type": ["string", "null"] },
+          "checkpoint_sequence": { "type": ["integer", "null"], "minimum": 0 },
+          "checkpoint_event_id": { "type": ["string", "null"] },
+          "table_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 }, "description": "Row count for every graph projection table." },
+          "in_sync": { "type": "boolean", "description": "Whether table counts and checkpoint match the current ledger projection." }
+        }
+      },
+      "GraphProjectionValidation": {
+        "type": "object",
+        "description": "Result of validating the derived graph projection against the record ledger.",
+        "additionalProperties": false,
+        "required": ["status", "valid", "issues"],
+        "properties": {
+          "status": { "$ref": "#/components/schemas/GraphProjectionStatus" },
+          "valid": { "type": "boolean", "description": "Whether the graph projection matches the current ledger projection." },
+          "issues": { "type": "array", "items": { "type": "string" }, "description": "Validation issues. Empty when valid is true." }
+        }
+      },
+      "BriefingSummary": {
+        "type": "object",
+        "description": "Aggregate counts for a session briefing.",
+        "additionalProperties": true,
+        "required": ["source_count", "episode_count", "entity_count", "active_intention_count"],
+        "properties": {
+          "source_count": { "type": "integer", "minimum": 0 },
+          "episode_count": { "type": "integer", "minimum": 0 },
+          "entity_count": { "type": "integer", "minimum": 0 },
+          "active_intention_count": { "type": "integer", "minimum": 0 },
+          "high_priority_review_count": { "type": "integer", "minimum": 0 },
+          "critical_review_count": { "type": "integer", "minimum": 0 },
+          "high_review_count": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "MemoryBriefingReport": {
+        "type": "object",
+        "description": "Continuity briefing produced by nahuali-core. Collections of recent episodes, active intentions, review items, and graph seeds are returned as structured arrays.",
+        "additionalProperties": true,
+        "required": ["version", "generated_at_ms", "event_count", "authority", "health", "summary"],
+        "properties": {
+          "version": { "type": "integer", "minimum": 0 },
+          "generated_at_ms": { "type": "integer", "minimum": 0 },
+          "event_count": { "type": "integer", "minimum": 0 },
+          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
+          "health": { "$ref": "#/components/schemas/KnowledgeHealth" },
+          "summary": { "$ref": "#/components/schemas/BriefingSummary" },
+          "recent_episodes": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "active_intentions": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "review_items": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "graph_seeds": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+        }
+      },
+      "StatusResponse": {
+        "type": "object",
+        "description": "Memory counts, store-level authority, knowledge health, and graph projection validation.",
+        "additionalProperties": false,
+        "required": [
+          "database", "event_count", "source_count", "entity_count", "episode_count",
+          "claim_count", "link_count", "procedure_count", "intention_count",
+          "review_decision_count", "authority", "health", "surrealdb_graph_projection",
+          "semantic_index_role"
+        ],
+        "properties": {
+          "database": { "type": "string", "description": "SurrealDB database name backing this engine." },
+          "event_count": { "type": "integer", "minimum": 0 },
+          "source_count": { "type": "integer", "minimum": 0 },
+          "entity_count": { "type": "integer", "minimum": 0 },
+          "episode_count": { "type": "integer", "minimum": 0 },
+          "claim_count": { "type": "integer", "minimum": 0 },
+          "link_count": { "type": "integer", "minimum": 0 },
+          "procedure_count": { "type": "integer", "minimum": 0 },
+          "intention_count": { "type": "integer", "minimum": 0 },
+          "review_decision_count": { "type": "integer", "minimum": 0 },
+          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
+          "health": { "$ref": "#/components/schemas/KnowledgeHealth" },
+          "surrealdb_graph_projection": { "$ref": "#/components/schemas/GraphProjectionValidation" },
+          "semantic_index_role": { "type": "string", "description": "Role of the Qdrant tier relative to the ledger; always \"derived\"." }
+        }
+      },
+      "RecallResponse": {
+        "type": "object",
+        "description": "Lexical recall results with per-result trust, store-level authority, and knowledge health. The optional semantic block is present only when the request set semantic=true.",
+        "additionalProperties": false,
+        "required": ["query", "lexical_results", "authority", "health"],
+        "properties": {
+          "query": { "type": "string" },
+          "lexical_results": { "type": "array", "items": { "$ref": "#/components/schemas/RecallResult" } },
+          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
+          "health": { "$ref": "#/components/schemas/KnowledgeHealth" },
+          "semantic": { "type": "object", "additionalProperties": true, "description": "Hybrid (lexical + semantic) recall report; omitted unless semantic recall was requested." }
+        }
+      },
+      "MemoryHealthResponse": {
+        "type": "object",
+        "description": "Store-level authority decision paired with the knowledge-health report it was derived from.",
+        "additionalProperties": false,
+        "required": ["authority", "health"],
+        "properties": {
+          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
+          "health": { "$ref": "#/components/schemas/KnowledgeHealth" }
+        }
+      },
+      "SessionResumeResponse": {
+        "type": "object",
+        "description": "Continuity briefing with store-level authority and knowledge-health context.",
+        "additionalProperties": false,
+        "required": ["database", "authority", "health", "briefing"],
+        "properties": {
+          "database": { "type": "string" },
+          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
+          "health": { "$ref": "#/components/schemas/KnowledgeHealth" },
+          "briefing": { "$ref": "#/components/schemas/MemoryBriefingReport" }
         }
       }
     }
