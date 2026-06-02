@@ -27,23 +27,23 @@ fn color_enabled() -> bool {
 }
 
 /// Plain-language label plus a short gloss for an authority mode, e.g.
-/// `CERTIFY · fiable`. Keeps the English mode token plus a Spanish gloss.
+/// `CERTIFY · trustworthy`. Keeps the English mode token plus a short gloss.
 fn authority_label(mode: &AuthorityMode) -> &'static str {
     match mode {
-        AuthorityMode::Certify => "CERTIFY · fiable",
-        AuthorityMode::Advisory => "ADVISORY · usable con criterio",
-        AuthorityMode::Warn => "WARN · verifica antes de usar",
-        AuthorityMode::Block => "BLOCK · aún no fiable",
+        AuthorityMode::Certify => "CERTIFY · trustworthy",
+        AuthorityMode::Advisory => "ADVISORY · use with judgment",
+        AuthorityMode::Warn => "WARN · verify before use",
+        AuthorityMode::Block => "BLOCK · not yet trustworthy",
     }
 }
 
 /// Plain-language label plus a short gloss for a per-result trust mode.
 fn trust_label(mode: &RecallResultTrustMode) -> &'static str {
     match mode {
-        RecallResultTrustMode::Certify => "CERTIFY · fiable",
-        RecallResultTrustMode::Advisory => "ADVISORY · usable con criterio",
-        RecallResultTrustMode::Warn => "WARN · verifica antes de usar",
-        RecallResultTrustMode::Block => "BLOCK · aún no fiable",
+        RecallResultTrustMode::Certify => "CERTIFY · trustworthy",
+        RecallResultTrustMode::Advisory => "ADVISORY · use with judgment",
+        RecallResultTrustMode::Warn => "WARN · verify before use",
+        RecallResultTrustMode::Block => "BLOCK · not yet trustworthy",
     }
 }
 
@@ -84,10 +84,10 @@ pub(crate) fn trust_badge(mode: &RecallResultTrustMode) -> String {
 }
 
 /// Render the canonical store-trust line, e.g.
-/// `Confianza del store: CERTIFY · fiable (score 1.00)`.
+/// `Store trust: CERTIFY · trustworthy (score 1.00)`.
 pub(crate) fn store_trust_line(mode: &AuthorityMode, score: f32) -> String {
     format!(
-        "Confianza del store: {} (score {:.2})",
+        "Store trust: {} (score {:.2})",
         authority_badge(mode),
         score
     )
