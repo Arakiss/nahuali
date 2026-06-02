@@ -168,6 +168,22 @@ changing the ledger contract. `projection_status`, `projection_rebuild`, and
 from `memory_record`; `semantic_status` and `semantic_rebuild` inspect or
 rebuild the Qdrant semantic index from projected memory.
 
+## Optional Build Features
+
+These are off by default; a default build is unchanged and writes byte-identical
+records.
+
+- `--features tamper-evidence`: recorded events are chained by hash, so the
+  `validate` tool detects an in-place rewrite of any historical record even when
+  its checksum was recomputed.
+- `--features local-embeddings`: `semantic_rebuild` and semantic recall use a
+  static model2vec model instead of the deterministic embedder. Set
+  `NAHUALI_EMBEDDING_PROVIDER=model2vec` and point
+  `NAHUALI_LOCAL_EMBEDDING_MODEL_PATH` at a local model directory.
+
+Chain-tip attestation (signing) is a CLI/operator action; the MCP server exposes
+no signing tool.
+
 `fact`, `relate`, and `preference` are deprecated compatibility aliases of
 `claim`, `link`, and `procedure`. Prefer the canonical tools; the aliases stay
 only until clients finish migrating.

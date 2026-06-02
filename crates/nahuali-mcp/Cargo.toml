@@ -16,6 +16,18 @@ categories = ["command-line-utilities", "development-tools"]
 name = "nahuali-mcp"
 path = "src/main.rs"
 
+[features]
+default = []
+# Forward the nahuali-core optional surfaces that have an observable effect on the
+# MCP surface. All off by default; a default build is unchanged.
+# - tamper-evidence: writes are chained, and the `validate` tool detects an
+#   in-place rewrite of any historical record.
+# - local-embeddings: static model2vec embedder for `semantic_rebuild` and recall.
+# Tip attestation is intentionally not forwarded: it is a CLI/operator action and
+# the MCP server exposes no signing tool.
+tamper-evidence = ["nahuali-core/tamper-evidence"]
+local-embeddings = ["nahuali-core/local-embeddings"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
