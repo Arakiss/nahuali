@@ -275,5 +275,30 @@ roles, epoch-millisecond timestamps, or UTC ISO timestamps, the bridge carries
 them into interchange so import can preserve historical provenance and event
 time instead of collapsing migrated memory into the import time.
 
+## Optional Build Features
+
+These features are off by default; a default build is unchanged and writes
+byte-identical records.
+
+- `--features tamper-evidence`: recorded events are chained by hash, so
+  `validate` detects an in-place rewrite of any historical record even when its
+  checksum was recomputed.
+- `--features attestation` (implies `tamper-evidence`): adds `attest-sign` and
+  `attest-verify`. `attest-sign --key-file <seed> -o tip.json` signs the current
+  chain tip into a portable receipt; `attest-verify tip.json` checks it against
+  the live ledger and exits non-zero when the tip has moved or the signature is
+  invalid. Supply a 32-byte Ed25519 seed as hex (`openssl rand -hex 32`).
+- `--features local-embeddings`: lets `semantic-rebuild` and `recall --semantic`
+  use a static model2vec model instead of the deterministic embedder. Set
+  `NAHUALI_EMBEDDING_PROVIDER=model2vec` and point
+  `NAHUALI_LOCAL_EMBEDDING_MODEL_PATH` at a local model directory.
+
+```bash
+cargo run -p nahuali-cli --features attestation -- \
+  --database ./memory attest-sign --key-file ledger.key -o tip.json
+cargo run -p nahuali-cli --features attestation -- \
+  --database ./memory attest-verify tip.json
+```
+
 `fact` and `relate` remain compatibility commands while the canonical public
 language moves toward `claim` and `link`.
