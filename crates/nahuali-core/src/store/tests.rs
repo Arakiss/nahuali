@@ -440,6 +440,133 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// Seed a throwaway source store with a representative spread of records and
+    /// return its source-neutral interchange document. Used by the batched-import
+    /// tests below so they exercise sources, episodes, claims, links, procedures,
+    /// and intention lifecycle events in a single import.
+    fn seed_interchange(name: &str) -> crate::MemoryInterchange {
+        let path = temp_path(name);
+        let _ = fs::remove_file(&path);
+        let mut source = MemoryEngine::open(&path).unwrap();
+        let document = source
+            .record_source(
+                SourceKind::Conversation,
+                Some("Release review".to_string()),
+                Some("fixture://release-review".to_string()),
+                "checksum-release-review",
+                82,
+                std::collections::BTreeMap::new(),
+            )
+            .unwrap();
+        let episode = source
+            .remember_source_episode(
+                "Lena owns the release notes.",
+                vec!["product".to_string()],
+                vec!["Lena".to_string(), "Release Notes".to_string()],
+                document.id,
+                Some(1),
+                Some("operator".to_string()),
+            )
+            .unwrap();
+        source
+            .add_claim("Lena", "owns", "release notes", Some(episode.id.clone()), 0.9)
+            .unwrap();
+        source
+            .add_link("Lena", "owns", "Release Notes", Some(episode.id.clone()), 0.9)
+            .unwrap();
+        source
+            .add_preference(
+                "Release notes",
+                "Keep release notes concise.",
+                Some(episode.id.clone()),
+                0.88,
+            )
+            .unwrap();
+        let intention = source
+            .add_intention(
+                "Ship release notes",
+                IntentionKind::Task,
+                IntentionPriority::High,
+                Some(episode.id),
+            )
+            .unwrap();
+        source
+            .set_intention_status(
+                intention.id,
+                IntentionStatus::Blocked,
+                Some("Waiting for review".to_string()),
+            )
+            .unwrap();
+
+        let interchange = source.export_interchange();
+        let _ = fs::remove_file(path);
+        interchange
+    }
+
+    #[test]
+    fn batched_import_writes_a_well_formed_ledger_in_one_flush() {
+        // Importing buffers every event and flushes the records with a single
+        // database write plus one graph rebuild. Reopening replays and validates
+        // the ledger, so this proves the deferred flush wrote the same ordered,
+        // checksum-valid records the per-event path would have, and that the
+        // single graph rebuild matches the projection.
+        let interchange = seed_interchange("batched_import_source");
+
+        let target_path = temp_path("batched_import_target");
+        let _ = fs::remove_file(&target_path);
+        let mut target = MemoryEngine::open(&target_path).unwrap();
+        let report = target.import_interchange(&interchange, false).unwrap();
+        assert!(report.valid);
+        let expected_events = report.imported_event_count;
+        assert!(expected_events >= 6, "fixture should be multi-record");
+        assert_eq!(target.events().len(), expected_events);
+
+        let validation = MemoryEngine::validate_store(&target_path).unwrap();
+        assert!(validation.valid, "{:?}", validation.issues);
+
+        let reopened = MemoryEngine::open(&target_path).unwrap();
+        assert_eq!(reopened.events().len(), expected_events);
+        assert_eq!(reopened.data().event_count, expected_events);
+        assert_eq!(reopened.data().sources.len(), 1);
+        assert_eq!(reopened.data().episodes.len(), 1);
+        assert_eq!(reopened.data().claims.len(), 1);
+        assert_eq!(reopened.data().links.len(), 1);
+        assert_eq!(reopened.data().procedures.len(), 1);
+        assert_eq!(reopened.data().intentions.len(), 1);
+        let projection = reopened.projection_validate().unwrap();
+        assert!(projection.valid, "{:?}", projection.issues);
+
+        let _ = fs::remove_file(target_path);
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn batched_import_preserves_the_hash_chain() {
+        // The hash chain links each event to the previous one's chained hash.
+        // A buffered batch must produce exactly the chain the per-event path
+        // would: reopening runs the chain-linkage check on every record, so a
+        // mismatch would fail the reopen. Every imported event must be chained
+        // and the tip must be exposed for anchoring.
+        let interchange = seed_interchange("batched_chain_source");
+
+        let target_path = temp_path("batched_chain_target");
+        let _ = fs::remove_file(&target_path);
+        let mut target = MemoryEngine::open(&target_path).unwrap();
+        let expected_events = target
+            .import_interchange(&interchange, false)
+            .unwrap()
+            .imported_event_count;
+        assert!(target.chain_tip().is_some());
+        assert!(target.events().iter().all(|event| event.is_chained()));
+
+        let reopened = MemoryEngine::open(&target_path).unwrap();
+        assert_eq!(reopened.events().len(), expected_events);
+        assert!(reopened.events().iter().all(|event| event.is_chained()));
+        assert_eq!(reopened.chain_tip(), target.chain_tip());
+
+        let _ = fs::remove_file(target_path);
+    }
+
     fn temp_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)

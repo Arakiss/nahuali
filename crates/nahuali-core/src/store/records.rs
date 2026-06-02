@@ -46,6 +46,7 @@ impl MemoryEngine {
             events,
             data,
             next_sequence,
+            batch_active: false,
         })
     }
 

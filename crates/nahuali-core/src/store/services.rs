@@ -544,7 +544,10 @@ impl MemoryEngine {
         document: &MemoryInterchange,
         dry_run: bool,
     ) -> Result<InterchangeImportReport> {
-        interchange::import(self, document, dry_run)
+        if dry_run {
+            return interchange::import(self, document, dry_run);
+        }
+        self.run_import_batch(|engine| interchange::import(engine, document, false))
     }
 
     /// Ingest a structured source-neutral document with provenance.
@@ -556,7 +559,10 @@ impl MemoryEngine {
         document: &MemoryIngestDocument,
         dry_run: bool,
     ) -> Result<IngestionReport> {
-        ingestion::ingest(self, document, dry_run)
+        if dry_run {
+            return ingestion::ingest(self, document, dry_run);
+        }
+        self.run_import_batch(|engine| ingestion::ingest(engine, document, false))
     }
 
     /// Compatibility no-op.
@@ -593,7 +599,10 @@ impl MemoryEngine {
         #[cfg(not(feature = "tamper-evidence"))]
         let envelope = EventEnvelope::new(self.next_sequence, timestamp_ms, payload);
         // FEATURE ON: bind the previous event's chained hash so any later rewrite
-        // of this or an earlier event breaks the chain at the next event.
+        // of this or an earlier event breaks the chain at the next event. The
+        // chain is computed against `self.events.last()` whether or not we are in
+        // a batch, so a buffered batch produces exactly the same chain as
+        // appending the same events one at a time.
         //
         // TODO(tamper-evidence): optionally sign/anchor `chain_tip()` so a full
         // suffix re-chain (which changes the tip) is also externally detectable.
@@ -607,20 +616,87 @@ impl MemoryEngine {
                 previous_chain_hash.as_deref(),
             )
         };
-        let write_path = self.path.clone();
-        let write_envelope = envelope.clone();
-        block_on_database(async move { write_record(&write_path, &write_envelope).await })?;
+
+        // Outside a batch, persist this single record first so a write failure
+        // leaves the in-memory projection untouched (unchanged single-mutation
+        // semantics). Inside a batch, defer the write to the one-shot flush in
+        // `flush_import_batch`.
+        if !self.batch_active {
+            let write_path = self.path.clone();
+            let write_envelope = envelope.clone();
+            block_on_database(async move { write_record(&write_path, &write_envelope).await })?;
+        }
 
         self.events.push(envelope.clone());
         self.data = projection::project(&self.events);
+        self.next_sequence += 1;
+
+        // The graph projection is a full rebuild from the whole ledger, so doing
+        // it per event during an import is O(n^2) in database writes. Inside a
+        // batch we rebuild it exactly once at flush time instead.
+        if !self.batch_active {
+            let graph_path = self.path.clone();
+            let graph_data = self.data.clone();
+            let graph_events = self.events.clone();
+            block_on_database(async move {
+                rebuild_graph_projection(&graph_path, &graph_data, &graph_events).await
+            })?;
+        }
+
+        Ok(envelope)
+    }
+
+    /// Run `body` as a single import batch.
+    ///
+    /// While the batch is active, each `append_at` accumulates its event in
+    /// memory and updates the deterministic projection, but defers the database
+    /// write and the graph rebuild. On success the buffered records are written
+    /// with a single database connection and the graph projection is rebuilt
+    /// once, turning an O(n^2) per-event import into a single O(n) flush. If
+    /// `body` or the flush fails, the in-memory state is rolled back to its
+    /// pre-batch snapshot so the engine stays consistent with the database.
+    fn run_import_batch<T>(
+        &mut self,
+        body: impl FnOnce(&mut Self) -> Result<T>,
+    ) -> Result<T> {
+        debug_assert!(!self.batch_active, "import batches must not be nested");
+        let restore_len = self.events.len();
+        let restore_sequence = self.next_sequence;
+        let restore_data = self.data.clone();
+
+        self.batch_active = true;
+        let outcome = body(self);
+        self.batch_active = false;
+
+        match outcome.and_then(|value| self.flush_import_batch(restore_len).map(|()| value)) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.events.truncate(restore_len);
+                self.next_sequence = restore_sequence;
+                self.data = restore_data;
+                Err(error)
+            }
+        }
+    }
+
+    /// Persist every event buffered since `persisted_len` with one database
+    /// connection, then rebuild the graph projection once.
+    fn flush_import_batch(&mut self, persisted_len: usize) -> Result<()> {
+        if self.events.len() <= persisted_len {
+            return Ok(());
+        }
+
+        let write_path = self.path.clone();
+        let pending = self.events[persisted_len..].to_vec();
+        block_on_database(async move { write_records(&write_path, &pending).await })?;
+
         let graph_path = self.path.clone();
         let graph_data = self.data.clone();
         let graph_events = self.events.clone();
         block_on_database(async move {
             rebuild_graph_projection(&graph_path, &graph_data, &graph_events).await
         })?;
-        self.next_sequence += 1;
 
-        Ok(envelope)
+        Ok(())
     }
 }

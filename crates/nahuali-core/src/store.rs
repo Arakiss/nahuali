@@ -74,6 +74,11 @@ pub struct MemoryEngine {
     events: Vec<EventEnvelope>,
     data: MemoryData,
     next_sequence: u64,
+    /// When `true`, `append_at` accumulates events in memory without touching
+    /// the database; the buffered records and a single graph rebuild are flushed
+    /// once when the surrounding import batch commits. Off for ordinary single
+    /// mutations, which still persist synchronously and stay byte-identical.
+    batch_active: bool,
 }
 
 /// Options for registering provenance source material.
