@@ -684,8 +684,9 @@ impl NahualiMcpServer {
                 })
                 .map_err(|error| error.to_string())
         })?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(MemoryHookResult { report }))
+        Ok(Json(MemoryHookResult {
+            report: report.into(),
+        }))
     }
 
     #[tool(

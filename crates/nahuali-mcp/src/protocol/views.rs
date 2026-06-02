@@ -1,10 +1,11 @@
 use nahuali_core::{
-    AuthorityDecision, BriefingEpisode, BriefingGraphSeed, BriefingIntention, BriefingSummary,
-    Claim, Entity, Episode, Fact, HealthSignal, Intention, KnowledgeHealth, Link,
+    AuthorityDecision, AuthorityRecall, BriefingEpisode, BriefingGraphSeed, BriefingIntention,
+    BriefingSummary, Claim, Entity, Episode, Fact, HealthSignal, Intention, KnowledgeHealth, Link,
     MemoryBriefingReport, MemoryGraphEdge, MemoryGraphNode, MemoryGraphReport, MemoryGraphSummary,
-    MemoryScope, OperatorReviewItem, OperatorReviewReport, OperatorReviewSummary, Procedure,
-    RecallResult, RecordLedgerIssue, Relation, SelfInspectionFinding, SelfInspectionReport,
-    SelfInspectionReviewItem, SelfInspectionSummary, SelfInspectionWriteBackPolicy,
+    MemoryHookDirective, MemoryHookReport, MemoryHookSummary, MemoryScope, OperatorReviewItem,
+    OperatorReviewReport, OperatorReviewSummary, Procedure, RecallResult, RecordLedgerIssue,
+    Relation, SelfInspectionFinding, SelfInspectionReport, SelfInspectionReviewItem,
+    SelfInspectionSummary, SelfInspectionWriteBackPolicy,
 };
 use rmcp::schemars;
 use serde::Serialize;
@@ -961,6 +962,132 @@ impl From<MemoryGraphReport> for GraphReportView {
             summary: GraphSummaryView::from(report.summary),
             nodes: report.nodes.into_iter().map(GraphNodeView::from).collect(),
             edges: report.edges.into_iter().map(GraphEdgeView::from).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct HookSummaryView {
+    recall_count: usize,
+    briefing_episode_count: usize,
+    briefing_intention_count: usize,
+    review_item_count: usize,
+    reflection_cycle_count: usize,
+    self_inspection_finding_count: usize,
+    sleep_stage_count: usize,
+    sleep_candidate_count: usize,
+    automatic_write_back: bool,
+    should_pause_for_review: bool,
+}
+
+impl From<MemoryHookSummary> for HookSummaryView {
+    fn from(summary: MemoryHookSummary) -> Self {
+        Self {
+            recall_count: summary.recall_count,
+            briefing_episode_count: summary.briefing_episode_count,
+            briefing_intention_count: summary.briefing_intention_count,
+            review_item_count: summary.review_item_count,
+            reflection_cycle_count: summary.reflection_cycle_count,
+            self_inspection_finding_count: summary.self_inspection_finding_count,
+            sleep_stage_count: summary.sleep_stage_count,
+            sleep_candidate_count: summary.sleep_candidate_count,
+            automatic_write_back: summary.automatic_write_back,
+            should_pause_for_review: summary.should_pause_for_review,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct HookDirectiveView {
+    id: String,
+    priority: String,
+    title: String,
+    detail: String,
+    evidence_ids: Vec<String>,
+}
+
+impl From<MemoryHookDirective> for HookDirectiveView {
+    fn from(directive: MemoryHookDirective) -> Self {
+        Self {
+            id: directive.id,
+            priority: json_string(&directive.priority),
+            title: directive.title,
+            detail: directive.detail,
+            evidence_ids: directive.evidence_ids,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct HookRecallView {
+    results: Vec<RecallResultView>,
+    authority: AuthorityDecisionView,
+    health: HealthView,
+}
+
+impl From<AuthorityRecall> for HookRecallView {
+    fn from(recall: AuthorityRecall) -> Self {
+        Self {
+            results: recall.results.into_iter().map(RecallResultView::from).collect(),
+            authority: AuthorityDecisionView::from(recall.authority),
+            health: HealthView::from(recall.health),
+        }
+    }
+}
+
+/// Typed view of a `memory_hook` report. The hook's own structure (kind,
+/// summary, directives) and the surfaces with dedicated views (authority,
+/// briefing, recall, self-inspection) are fully typed. The two heavier optional
+/// sub-reports it can embed — `reflection` and `sleep` — are carried as nested
+/// JSON, matching the `reflect`/`consolidation_plan` tools, until those reports
+/// get their own typed views.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct MemoryHookReportView {
+    version: u32,
+    generated_at_ms: u64,
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input: Option<String>,
+    event_count: usize,
+    authority: AuthorityDecisionView,
+    summary: HookSummaryView,
+    directives: Vec<HookDirectiveView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    briefing: Option<BriefingReportView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recall: Option<HookRecallView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    self_inspection: Option<SelfInspectionReportView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reflection: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sleep: Option<serde_json::Value>,
+}
+
+impl From<MemoryHookReport> for MemoryHookReportView {
+    fn from(report: MemoryHookReport) -> Self {
+        Self {
+            version: report.version,
+            generated_at_ms: report.generated_at_ms,
+            kind: json_string(&report.kind),
+            input: report.input,
+            event_count: report.event_count,
+            authority: AuthorityDecisionView::from(report.authority),
+            summary: HookSummaryView::from(report.summary),
+            directives: report
+                .directives
+                .into_iter()
+                .map(HookDirectiveView::from)
+                .collect(),
+            briefing: report.briefing.map(BriefingReportView::from),
+            recall: report.recall.map(HookRecallView::from),
+            self_inspection: report.self_inspection.map(SelfInspectionReportView::from),
+            reflection: report
+                .reflection
+                .and_then(|reflection| serde_json::to_value(reflection).ok()),
+            sleep: report
+                .sleep
+                .and_then(|sleep| serde_json::to_value(sleep).ok()),
         }
     }
 }

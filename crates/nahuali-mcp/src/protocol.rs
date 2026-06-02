@@ -455,7 +455,7 @@ pub(crate) struct BriefingResult {
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct MemoryHookResult {
-    pub(crate) report: Value,
+    pub(crate) report: MemoryHookReportView,
 }
 
 impl From<IntentionKindArg> for IntentionKind {
