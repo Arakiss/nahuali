@@ -166,22 +166,22 @@ assert_file_contains docker-compose.yml 'container_name: nahual-tonalli-qdrant' 
 assert_file_contains scripts/ensure-dev-stack.sh 'qdrant_nofile_ready' "dev stack bootstrap must recreate Qdrant when nofile is missing"
 assert_file_contains scripts/ensure-dev-stack.sh 'LEGACY_SURREAL_CONTAINER="nahuali-oss-surrealdb"' "dev stack bootstrap must stop the legacy Rust SurrealDB container"
 assert_file_contains scripts/ensure-dev-stack.sh 'LEGACY_QDRANT_CONTAINER="nahuali-oss-qdrant"' "dev stack bootstrap must stop the legacy Rust Qdrant container"
-assert_file_contains README.md 'scripts/verify-controlled-alpha\.sh' "README must document the controlled alpha gate"
-assert_file_contains ALPHA.md 'controlled alpha gate' "controlled alpha checklist must define the alpha gate"
-assert_file_contains scripts/verify-controlled-alpha.sh 'scripts/security-supply-chain-check\.sh' "controlled alpha gate must include security checks"
-assert_file_contains scripts/verify-controlled-alpha.sh 'scripts/verify-dogfood-daily-workflow\.sh' "controlled alpha gate must include the daily-driver reliability gate"
-assert_file_contains scripts/verify-controlled-alpha.sh 'scripts/verify-recall-contract\.sh' "controlled alpha gate must include the evidence-backed recall contract"
+assert_file_contains README.md 'scripts/verify-controlled-beta\.sh' "README must document the controlled beta gate"
+assert_file_contains BETA.md 'controlled beta gate' "controlled beta checklist must define the beta gate"
+assert_file_contains scripts/verify-controlled-beta.sh 'scripts/security-supply-chain-check\.sh' "controlled beta gate must include security checks"
+assert_file_contains scripts/verify-controlled-beta.sh 'scripts/verify-dogfood-daily-workflow\.sh' "controlled beta gate must include the daily-driver reliability gate"
+assert_file_contains scripts/verify-controlled-beta.sh 'scripts/verify-recall-contract\.sh' "controlled beta gate must include the evidence-backed recall contract"
 
 sh scripts/sync-workspace-internal-deps.sh --check
 
 readme_protected_recipe_pattern='(?i)(Quadrant|generic[[:space:]]+vector[[:space:]]+database|vector[[:space:]]+database|graph[[:space:]]+storage|graph[[:space:]]+store|record/graph|database/vector|storage/vector|dockerized|json[[:space:]]*l|json[[:space:]]+lines)'
-if rg -n "$readme_protected_recipe_pattern" README.md ALPHA.md; then
+if rg -n "$readme_protected_recipe_pattern" README.md BETA.md; then
   echo "public docs contain unbounded implementation-recipe language outside the storage contract" >&2
   exit 1
 fi
 
 readme_hosted_overpromise_pattern='(?i)(Nahuali Cloud|public[[:space:]]+release[[:space:]]+(approved|ready)|ships[[:space:]]+with[[:space:]]+hosted|ships[[:space:]]+hosted|includes[[:space:]]+hosted[[:space:]]+operations|includes[[:space:]]+a[[:space:]]+hosted[[:space:]]+service|offers[^.\n]*(hosted|managed|accounts|teams|billing|sync|dashboards)|provides[^.\n]*(hosted|managed|accounts|teams|billing|sync|dashboards)|hosted[[:space:]]+control[[:space:]]+plane[[:space:]]+is[[:space:]]+part[[:space:]]+of|managed[[:space:]]+deployment[[:space:]]+is[[:space:]]+part[[:space:]]+of|accounts[[:space:]]+are[[:space:]]+part[[:space:]]+of|billing[[:space:]]+is[[:space:]]+part[[:space:]]+of|managed[[:space:]]+backup[[:space:]]+automation[[:space:]]+is[[:space:]]+included|point-in-time[[:space:]]+restore[[:space:]]+is[[:space:]]+included|SLA-backed[[:space:]]+recovery[[:space:]]+is[[:space:]]+included)'
-if rg -n "$readme_hosted_overpromise_pattern" README.md ALPHA.md; then
+if rg -n "$readme_hosted_overpromise_pattern" README.md BETA.md; then
   echo "public docs contain hosted-product claims that need review" >&2
   exit 1
 fi

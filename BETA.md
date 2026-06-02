@@ -1,15 +1,15 @@
-# Controlled Alpha
+# Controlled Beta
 
 Nahuali is not ready for broad daily-driver use yet. This page defines the
-smaller controlled alpha gate for technical testers who can run a local Rust
+smaller controlled beta gate for technical testers who can run a local Rust
 project and are comfortable using disposable databases.
 
-The alpha goal is narrow: prove that the local CLI-first memory loop can run
+The beta goal is narrow: prove that the local CLI-first memory loop can run
 from a clean checkout without risking existing data.
 
-## What The Alpha Covers
+## What The Beta Covers
 
-The controlled alpha gate verifies that a checkout can:
+The controlled beta gate verifies that a checkout can:
 
 - start the local SurrealDB and Qdrant dev stack
 - record synthetic project memory into an isolated database
@@ -26,16 +26,16 @@ The controlled alpha gate verifies that a checkout can:
 Run the gate:
 
 ```bash
-bash scripts/verify-controlled-alpha.sh
+bash scripts/verify-controlled-beta.sh
 ```
 
 The script prints each validation step and exits non-zero on the first blocker.
-A non-zero exit means the current checkout is not ready for controlled alpha
+A non-zero exit means the current checkout is not ready for controlled beta
 testing.
 
 ## Tester Rules
 
-Use Nahuali alpha only with data you can recreate.
+Use Nahuali only with data you can recreate.
 
 - Use a new `--database` value per test project or person.
 - Start with synthetic or non-sensitive project notes.
@@ -48,10 +48,10 @@ Use Nahuali alpha only with data you can recreate.
 
 ## First Commands
 
-Run the full alpha gate first:
+Run the full beta gate first:
 
 ```bash
-bash scripts/verify-controlled-alpha.sh
+bash scripts/verify-controlled-beta.sh
 ```
 
 Then run the two human-readable demos:
@@ -66,10 +66,10 @@ discard.
 
 ## Passing Criteria
 
-A commit can be considered controlled-alpha-ready only when all of these are
+A commit can be considered controlled-beta-ready only when all of these are
 freshly true:
 
-- `bash scripts/verify-controlled-alpha.sh` passes.
+- `bash scripts/verify-controlled-beta.sh` passes.
 - `bash scripts/security-supply-chain-check.sh` passes.
 - `cargo test --workspace` passes or the current CI run for the commit is green.
 - Public docs describe only shipped local behavior and explicit non-goals.
@@ -78,7 +78,7 @@ freshly true:
 
 ## Blockers
 
-Do not ask another person to test the alpha when any of these are true:
+Do not ask another person to test the beta when any of these are true:
 
 - the dev stack cannot start with an actionable error
 - the daily-driver workflow gate fails
@@ -90,7 +90,7 @@ Do not ask another person to test the alpha when any of these are true:
 
 ## Explicit Non-Goals
 
-The controlled alpha does not include:
+The controlled beta does not include:
 
 - hosted accounts, tenants, billing, or sync
 - browser dashboard workflows

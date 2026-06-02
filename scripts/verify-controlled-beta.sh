@@ -8,7 +8,7 @@ require_command() {
   local command_name="$1"
 
   if ! command -v "$command_name" >/dev/null 2>&1; then
-    echo "$command_name is required for the controlled alpha gate" >&2
+    echo "$command_name is required for the controlled beta gate" >&2
     exit 1
   fi
 }
@@ -47,7 +47,7 @@ run_step "Public documentation contract" bash scripts/check-doc-release-refs.sh
 run_step "Public security and supply-chain hygiene" bash scripts/security-supply-chain-check.sh
 run_step "Service-backed dev stack" bash scripts/ensure-dev-stack.sh
 
-run_step "Build CLI once for alpha checks" cargo build -p nahuali-cli --quiet
+run_step "Build CLI once for beta checks" cargo build -p nahuali-cli --quiet
 TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
 case "$TARGET_DIR" in
   /*) ;;
@@ -74,5 +74,5 @@ run_step "Daily-driver reliability gate" \
 run_step "Evidence-backed recall contract" \
   env NAHUALI_RECALL_CONTRACT_BIN="$NAHUALI_BIN" bash scripts/verify-recall-contract.sh
 
-printf '\ncontrolled alpha gate passed\n'
+printf '\ncontrolled beta gate passed\n'
 printf 'The checkout is ready for controlled synthetic/local testing.\n'
