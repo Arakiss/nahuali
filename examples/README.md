@@ -21,6 +21,7 @@ cargo run -p nahuali-cli -- --database .nahuali-demo recall "Lena release" --aut
 cargo run -p nahuali-cli -- --database .nahuali-demo inspect --json
 cargo run -p nahuali-cli -- --database .nahuali-demo reflect --json
 cargo run -p nahuali-cli -- --database .nahuali-demo validate --json
+cargo run -p nahuali-cli -- --database .nahuali-demo audit --json
 ```
 
 This path is covered by CLI integration tests. It should produce an episode,

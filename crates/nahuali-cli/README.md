@@ -237,6 +237,13 @@ review work. It appends an audit decision only after an operator supplies a note
 as structured JSON before exiting non-zero, includes `database`, and lets
 automation inspect invalid logs without projecting them.
 
+`audit` is a non-mutating diff of what the ledger recorded between two points. It
+bounds the range with `--from`/`--to` (exclusive then inclusive sequence) and
+`--since`/`--until` (timestamp), reports per-kind counts and per-event entries,
+restates the integrity of the history through the upper bound (checksums,
+sequence contiguity, and the hash chain and anchoring tips under `tamper-evidence`),
+and exits non-zero when that history fails verification.
+
 `maintenance` reports the non-destructive local maintenance state. `snapshot`
 writes an optional projection artifact or previews it with `--dry-run`.
 `snapshot-validate` checks that artifact against a fresh replay of the current
@@ -287,7 +294,9 @@ byte-identical records.
   `attest-verify`. `attest-sign --key-file <seed> -o tip.json` signs the current
   chain tip into a portable receipt; `attest-verify tip.json` checks it against
   the live ledger and exits non-zero when the tip has moved or the signature is
-  invalid. Supply a 32-byte Ed25519 seed as hex (`openssl rand -hex 32`).
+  invalid. Supply a 32-byte Ed25519 seed as hex (`openssl rand -hex 32`). It also
+  adds `audit --from-attestation tip.json`, which anchors the audit's lower bound
+  on a verified checkpoint and diffs only what was appended since it.
 - `--features local-embeddings`: lets `semantic-rebuild` and `recall --semantic`
   use a static model2vec model instead of the deterministic embedder. Set
   `NAHUALI_EMBEDDING_PROVIDER=model2vec` and point

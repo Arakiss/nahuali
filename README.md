@@ -126,6 +126,20 @@ ledger, so it can gate a script or CI. A full re-chain of the history changes
 the tip, so the signed receipt stops verifying and forging a new one needs the
 private key.
 
+`audit` is a non-mutating diff of what the ledger recorded between two points,
+with the integrity of that history restated next to it. It works in any build
+(bounded by `--from`/`--to` sequence and `--since`/`--until` timestamp). On an
+`attestation` build, anchor the lower bound on a signed receipt to diff exactly
+what was appended since a verified checkpoint:
+
+```bash
+nahuali --database .nahuali-demo audit --from-attestation tip.json --json
+```
+
+It refuses to run when the receipt does not anchor a verified checkpoint in this
+ledger, and exits non-zero when the audited history fails integrity
+verification, so the diff can never claim to start from an unverified point.
+
 Run the narrated walkthrough end to end:
 
 ```bash

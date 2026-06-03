@@ -63,6 +63,8 @@ The current public foundation includes:
 - local backup, restore, and backup-drill flows
 - non-mutating self-inspection, reflection, sleep, consolidation, review, and
   proactive reports
+- non-mutating ledger audit/diff between two points, with integrity restated and
+  optional anchoring on a signed checkpoint
 - synthetic regression fixtures and release-gate scripts
 
 ## Near-Term: Public Beta Hardening
