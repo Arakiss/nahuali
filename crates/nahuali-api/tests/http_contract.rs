@@ -31,6 +31,7 @@ fn openapi_contract_has_the_frozen_beta_path_set() {
         vec![
             "/v1/anomalies",
             "/v1/anomaly/acknowledge",
+            "/v1/audit",
             "/v1/claim",
             "/v1/deadlines",
             "/v1/episode",
@@ -367,6 +368,19 @@ async fn api_reads_projection_timeline_pending_and_session_resume() {
     let pending = get_json(app.clone(), "/v1/pending?limit=5").await;
     assert_eq!(pending["projection_role"], "derived_from_memory_record");
     assert_eq!(pending["intentions"][0]["memory_id"], intention["id"]);
+
+    let audit = get_json(app.clone(), "/v1/audit").await;
+    assert_eq!(audit["integrity"]["verified"], true);
+    assert_eq!(audit["from_sequence"], 0);
+    assert!(audit["range_event_count"].as_u64().unwrap() >= 1);
+    assert!(audit["counts"]["episodes_recorded"].as_u64().unwrap() >= 1);
+    assert!(
+        audit["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["kind"] == "episode_recorded")
+    );
 
     let resume = json_request(
         app,

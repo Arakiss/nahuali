@@ -25,10 +25,10 @@ use nahuali_core::{
     GoalProgressReport, GraphProjectionEpisode, GraphProjectionPendingIntention,
     GraphProjectionStatus, GraphProjectionValidation, HybridRecallReport, Intention, IntentionKind,
     IntentionPriority, IntentionReconciliationOptions, IntentionReconciliationReport,
-    IntentionStatus, IntentionUpdateOptions, KnowledgeHealth, Link, MemoryBriefingReport,
-    MemoryEngine, MemoryGraphReport, MemoryKind, MemoryProactiveReport, MemoryScope, NahualiError,
-    ProactiveOptions, Procedure, RecallOptions, ReviewResolutionReport, SemanticIndexReport,
-    SemanticIndexStatus,
+    IntentionStatus, IntentionUpdateOptions, KnowledgeHealth, LedgerAudit, LedgerAuditOptions,
+    Link, MemoryBriefingReport, MemoryEngine, MemoryGraphReport, MemoryKind, MemoryProactiveReport,
+    MemoryScope, NahualiError, ProactiveOptions, Procedure, RecallOptions, ReviewResolutionReport,
+    SemanticIndexReport, SemanticIndexStatus,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, RwLockMappedWriteGuard, RwLockReadGuard, RwLockWriteGuard};
@@ -91,6 +91,7 @@ pub fn router(config: ApiConfig) -> Router {
         .route("/v1/recall", post(recall))
         .route("/v1/session-resume", post(session_resume))
         .route("/v1/memory-health", post(memory_health))
+        .route("/v1/audit", get(audit))
         .route("/v1/graph", get(graph))
         .route("/v1/timeline", get(timeline))
         .route("/v1/pending", get(pending))
@@ -643,6 +644,19 @@ async fn graph(
     )?))
 }
 
+async fn audit(
+    State(state): State<ApiState>,
+    Query(query): Query<AuditQuery>,
+) -> ApiResult<LedgerAudit> {
+    let memory = read_engine(&state).await?;
+    Ok(Json(memory.audit_ledger(&LedgerAuditOptions {
+        from_sequence: query.from,
+        to_sequence: query.to,
+        since_ms: query.since,
+        until_ms: query.until,
+    })))
+}
+
 async fn timeline(
     State(state): State<ApiState>,
     Query(query): Query<LimitQuery>,
@@ -916,6 +930,19 @@ struct GraphQuery {
     depth: Option<usize>,
     #[serde(default)]
     limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuditQuery {
+    #[serde(default)]
+    from: Option<u64>,
+    #[serde(default)]
+    to: Option<u64>,
+    #[serde(default)]
+    since: Option<u64>,
+    #[serde(default)]
+    until: Option<u64>,
 }
 
 #[derive(Deserialize)]

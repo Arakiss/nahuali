@@ -201,6 +201,22 @@
         }
       }
     },
+    "/v1/audit": {
+      "get": {
+        "operationId": "getAudit",
+        "summary": "Diff what the record ledger recorded between two points.",
+        "parameters": [
+          { "$ref": "#/components/parameters/AuditFrom" },
+          { "$ref": "#/components/parameters/AuditTo" },
+          { "$ref": "#/components/parameters/AuditSince" },
+          { "$ref": "#/components/parameters/AuditUntil" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
     "/v1/graph": {
       "get": {
         "operationId": "getGraph",
@@ -305,6 +321,34 @@
   },
   "components": {
     "parameters": {
+      "AuditFrom": {
+        "name": "from",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 0 },
+        "description": "Exclusive lower sequence bound. Defaults to the genesis event."
+      },
+      "AuditTo": {
+        "name": "to",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 0 },
+        "description": "Inclusive upper sequence bound. Defaults to the latest event."
+      },
+      "AuditSince": {
+        "name": "since",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 0 },
+        "description": "Inclusive lower timestamp bound in milliseconds since the Unix epoch."
+      },
+      "AuditUntil": {
+        "name": "until",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 0 },
+        "description": "Inclusive upper timestamp bound in milliseconds since the Unix epoch."
+      },
       "Depth": {
         "name": "depth",
         "in": "query",
