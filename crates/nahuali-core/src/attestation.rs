@@ -143,6 +143,22 @@ pub fn verify_chain_tip(attestation: &LedgerAttestation, sequence: u64, tip: &st
         .is_ok())
 }
 
+/// Verdict for whether a signed attestation anchors a point in this ledger's
+/// own history, so an audit can diff changes since a trusted checkpoint.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AttestedCheckpointVerdict {
+    /// The signature over the attested `(sequence, tip)` pair verifies.
+    pub signature_valid: bool,
+    /// This ledger's chain hash at the attested sequence equals the attested tip,
+    /// so the checkpoint and the history up to it are unchanged.
+    pub matches_history: bool,
+    /// The checkpoint is genuine: the signature verifies and it sits in this
+    /// ledger's unaltered history.
+    pub anchored: bool,
+    /// The attested sequence the checkpoint anchors.
+    pub sequence: u64,
+}
+
 impl MemoryEngine {
     /// Sign the current chain tip, producing a portable attestation receipt.
     ///
@@ -182,6 +198,32 @@ impl MemoryEngine {
             signature_valid,
             current_tip,
             current_sequence,
+        })
+    }
+
+    /// Check whether an attestation anchors a verified checkpoint in this
+    /// ledger's own history, rather than only the current tip. Unlike
+    /// [`Self::verify_chain_tip_attestation`], the attested sequence need not be
+    /// the latest event: the audit path uses this to diff changes appended since
+    /// a past signed checkpoint, only when that checkpoint is genuine.
+    pub fn verify_attested_checkpoint(
+        &self,
+        attestation: &LedgerAttestation,
+    ) -> Result<AttestedCheckpointVerdict> {
+        let signature_valid =
+            verify_chain_tip(attestation, attestation.sequence, &attestation.tip)?;
+        let matches_history = self
+            .events()
+            .iter()
+            .find(|event| event.sequence == attestation.sequence)
+            .map(|event| event.chain_hash() == attestation.tip)
+            .unwrap_or(false);
+
+        Ok(AttestedCheckpointVerdict {
+            signature_valid,
+            matches_history,
+            anchored: signature_valid && matches_history,
+            sequence: attestation.sequence,
         })
     }
 }

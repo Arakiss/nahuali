@@ -71,8 +71,8 @@ pub use adapters::{
 };
 #[cfg(feature = "attestation")]
 pub use attestation::{
-    AttestationVerdict, LEDGER_ATTESTATION_ALGORITHM, LEDGER_ATTESTATION_VERSION,
-    LedgerAttestation, sign_chain_tip, verify_chain_tip,
+    AttestationVerdict, AttestedCheckpointVerdict, LEDGER_ATTESTATION_ALGORITHM,
+    LEDGER_ATTESTATION_VERSION, LedgerAttestation, sign_chain_tip, verify_chain_tip,
 };
 pub use audit::{
     LedgerAudit, LedgerAuditCounts, LedgerAuditEntry, LedgerAuditEventKind, LedgerAuditIntegrity,

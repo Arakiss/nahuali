@@ -487,17 +487,26 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             to,
             since,
             until,
+            #[cfg(feature = "attestation")]
+            from_attestation,
             json,
-        } => audit::audit(
-            &memory,
-            LedgerAuditOptions {
-                from_sequence: from,
-                to_sequence: to,
-                since_ms: since,
-                until_ms: until,
-            },
-            json,
-        )?,
+        } => {
+            #[cfg(feature = "attestation")]
+            let from = match from_attestation {
+                Some(path) => Some(audit::resolve_attestation_anchor(&memory, &path, json)?),
+                None => from,
+            };
+            audit::audit(
+                &memory,
+                LedgerAuditOptions {
+                    from_sequence: from,
+                    to_sequence: to,
+                    since_ms: since,
+                    until_ms: until,
+                },
+                json,
+            )?
+        }
         Command::Maintenance { json } => reports::maintenance(&mut memory, &database, json)?,
         Command::Snapshot {
             output,

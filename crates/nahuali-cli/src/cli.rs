@@ -717,6 +717,11 @@ pub(crate) enum Command {
         /// Inclusive upper timestamp bound in milliseconds since the Unix epoch.
         #[arg(long, value_name = "MS")]
         until: Option<u64>,
+        /// Anchor the lower bound on a signed attestation receipt and diff
+        /// changes since that verified checkpoint. Overrides `--from`.
+        #[cfg(feature = "attestation")]
+        #[arg(long = "from-attestation", value_name = "PATH")]
+        from_attestation: Option<PathBuf>,
         #[arg(long)]
         json: bool,
     },

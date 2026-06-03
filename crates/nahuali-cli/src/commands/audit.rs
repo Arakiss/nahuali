@@ -123,3 +123,45 @@ fn kind_label(kind: LedgerAuditEventKind) -> &'static str {
 fn ok_or_bad(value: bool) -> &'static str {
     if value { "ok" } else { "bad" }
 }
+
+/// Resolve the exclusive lower bound from a signed attestation receipt: verify it
+/// anchors a genuine checkpoint in this ledger's history, then return its
+/// sequence. Exits non-zero when the receipt does not anchor a verified
+/// checkpoint, so an audit can never claim to diff from an unverified point.
+#[cfg(feature = "attestation")]
+pub(crate) fn resolve_attestation_anchor(
+    memory: &MemoryEngine,
+    path: &std::path::Path,
+    json: bool,
+) -> anyhow::Result<u64> {
+    use anyhow::Context;
+    use nahuali_core::LedgerAttestation;
+
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read attestation {}", path.display()))?;
+    let attestation: LedgerAttestation = serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse attestation {}", path.display()))?;
+    let verdict = memory.verify_attested_checkpoint(&attestation)?;
+
+    if !json {
+        println!(
+            "Anchor: signed checkpoint at seq {} ({})",
+            verdict.sequence,
+            if verdict.anchored {
+                "verified"
+            } else {
+                "NOT verified"
+            }
+        );
+    }
+
+    if !verdict.anchored {
+        anyhow::bail!(
+            "the attestation does not anchor a verified checkpoint in this ledger \
+             (signature_valid={}, matches_history={})",
+            verdict.signature_valid,
+            verdict.matches_history
+        );
+    }
+    Ok(verdict.sequence)
+}
