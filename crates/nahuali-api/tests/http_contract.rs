@@ -57,6 +57,7 @@ fn openapi_contract_has_the_frozen_beta_path_set() {
             "/v1/session-resume",
             "/v1/status",
             "/v1/timeline",
+            "/v1/trust-report",
         ]
     );
 }
@@ -381,6 +382,12 @@ async fn api_reads_projection_timeline_pending_and_session_resume() {
             .iter()
             .any(|entry| entry["kind"] == "episode_recorded")
     );
+
+    let trust = get_json(app.clone(), "/v1/trust-report").await;
+    assert_eq!(trust["integrity"]["ledger_verified"], true);
+    assert!(trust["knowledge"]["episode_count"].as_u64().unwrap() >= 1);
+    assert!(trust["authority"]["mode"].is_string());
+    assert!(trust["trustworthy"].is_boolean());
 
     let resume = json_request(
         app,

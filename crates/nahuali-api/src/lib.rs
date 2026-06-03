@@ -27,8 +27,8 @@ use nahuali_core::{
     IntentionPriority, IntentionReconciliationOptions, IntentionReconciliationReport,
     IntentionStatus, IntentionUpdateOptions, KnowledgeHealth, LedgerAudit, LedgerAuditOptions,
     Link, MemoryBriefingReport, MemoryEngine, MemoryGraphReport, MemoryKind, MemoryProactiveReport,
-    MemoryScope, NahualiError, ProactiveOptions, Procedure, RecallOptions, ReviewResolutionReport,
-    SemanticIndexReport, SemanticIndexStatus,
+    MemoryScope, MemoryTrustReport, NahualiError, ProactiveOptions, Procedure, RecallOptions,
+    ReviewResolutionReport, SemanticIndexReport, SemanticIndexStatus,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, RwLockMappedWriteGuard, RwLockReadGuard, RwLockWriteGuard};
@@ -92,6 +92,7 @@ pub fn router(config: ApiConfig) -> Router {
         .route("/v1/session-resume", post(session_resume))
         .route("/v1/memory-health", post(memory_health))
         .route("/v1/audit", get(audit))
+        .route("/v1/trust-report", get(trust_report))
         .route("/v1/graph", get(graph))
         .route("/v1/timeline", get(timeline))
         .route("/v1/pending", get(pending))
@@ -655,6 +656,11 @@ async fn audit(
         since_ms: query.since,
         until_ms: query.until,
     })))
+}
+
+async fn trust_report(State(state): State<ApiState>) -> ApiResult<MemoryTrustReport> {
+    let memory = read_engine(&state).await?;
+    Ok(Json(memory.trust_report()))
 }
 
 async fn timeline(

@@ -217,6 +217,16 @@
         }
       }
     },
+    "/v1/trust-report": {
+      "get": {
+        "operationId": "getTrustReport",
+        "summary": "Return a composed memory trust report.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
     "/v1/graph": {
       "get": {
         "operationId": "getGraph",
