@@ -649,7 +649,7 @@ pub(crate) struct ReviewResult {
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct ReviewResolveResult {
-    pub(crate) report: Value,
+    pub(crate) report: ReviewResolutionReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]

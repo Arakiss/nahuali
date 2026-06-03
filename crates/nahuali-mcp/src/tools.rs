@@ -842,8 +842,9 @@ impl NahualiMcpServer {
                 .resolve_review_item(args.review_id, args.note, args.dry_run.unwrap_or(false))
                 .map_err(|error| error.to_string())
         })?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(ReviewResolveResult { report }))
+        Ok(Json(ReviewResolveResult {
+            report: report.into(),
+        }))
     }
 
     #[tool(
