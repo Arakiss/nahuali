@@ -35,6 +35,26 @@ database.
 For where the project is going next, see [ROADMAP.md](ROADMAP.md). The roadmap
 is directional; this README describes the current public surface.
 
+## Quickstart
+
+Install the CLI, then see the trust story in about 30 seconds — no Docker, no
+setup:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
+nahuali demo          # builds a tiny ledger, tampers with it, shows Nahuali catch it
+nahuali init          # wire your agent harness to use Nahuali
+```
+
+`nahuali demo` runs the tamper-evidence story entirely in memory, with zero
+dependencies. `nahuali init` installs the [Claude Code skill](skills/nahuali/)
+and prints the MCP server config, so your agent uses governed memory as a
+protocol — recall before assuming, assert only with evidence, read the per-result
+trust decision. To make it binding for any harness, see the cross-harness
+[protocol](skills/nahuali/protocol.md). Building from source instead:
+`cargo install --path crates/nahuali-cli` (add `--features attestation` for the
+signed-checkpoint and `demo` paths).
+
 ## How Memory Earns Trust
 
 Most of Nahuali's surface exists to answer one question: should you trust this
@@ -222,6 +242,9 @@ scripts in this repository.
 
 ## Install From Source
 
+For the one-line binary install see [Quickstart](#quickstart); this section is
+for building from source and running the full local stack.
+
 Start the local services:
 
 ```bash
@@ -373,7 +396,9 @@ tenants, billing, sync, dashboards, or hosted operations.
 
 ## MCP Stdio Server
 
-Run the local MCP server:
+For one-line setup (the copy-paste `.mcp.json`, the trust value, and a first
+session), see [the MCP onboarding guide](crates/nahuali-mcp/ONBOARDING.md), or
+run `nahuali init`. Run the local MCP server directly:
 
 ```bash
 cargo run -p nahuali-mcp -- --database .nahuali-demo

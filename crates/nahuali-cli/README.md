@@ -3,6 +3,18 @@
 `nahuali-cli` ships the installed `nahuali` command for self-inspecting memory
 workflows.
 
+## Quickstart
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
+nahuali demo          # the tamper-evidence trust story, in memory, no Docker
+nahuali init          # wire your agent harness to use Nahuali
+```
+
+`demo` runs the trust story with zero dependencies; `init` installs the Claude
+Code skill and prints the MCP config. (`demo`'s full narrative needs the
+`attestation` build feature, which the release binary ships with.)
+
 ## Install From Source
 
 During pre-release development, avoid overwriting an existing global `nahuali`

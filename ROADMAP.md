@@ -67,6 +67,8 @@ The current public foundation includes:
   optional anchoring on a signed checkpoint
 - composed memory trust report that answers what we know, why to trust it, what
   is missing, and whether history was altered in one non-mutating verdict
+- one-line installer, a zero-dependency `demo`, and a harness adoption skill and
+  cross-harness protocol that `init` wires into the user's agent
 - synthetic regression fixtures and release-gate scripts
 
 ## Near-Term: Public Beta Hardening
