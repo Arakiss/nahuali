@@ -42,5 +42,21 @@ fn trust_report_composes_knowledge_authority_integrity_and_health() {
     assert!(human.contains("Memory trust report"));
     assert!(human.contains("Integrity: verified"));
 
+    let html_path = temp_store("trust-report-html-out");
+    run_ok(
+        &store,
+        &[
+            "trust-report",
+            "--html",
+            html_path.to_str().expect("temp path is UTF-8"),
+        ],
+    );
+    let html = fs::read_to_string(&html_path).expect("the HTML dossier was written");
+    assert!(html.starts_with("<!doctype html>"));
+    assert!(html.contains("Memory Trust Report"));
+    assert!(!html.contains("http://"));
+    assert!(!html.contains("https://"));
+
+    let _ = fs::remove_file(html_path);
     let _ = fs::remove_file(store);
 }

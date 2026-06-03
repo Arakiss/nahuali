@@ -733,6 +733,9 @@ pub(crate) enum Command {
         #[cfg(feature = "attestation")]
         #[arg(long = "attestation", value_name = "PATH")]
         attestation: Option<PathBuf>,
+        /// Also write a self-contained HTML dossier of the report to this path.
+        #[arg(long, value_name = "PATH")]
+        html: Option<PathBuf>,
         #[arg(long)]
         json: bool,
     },

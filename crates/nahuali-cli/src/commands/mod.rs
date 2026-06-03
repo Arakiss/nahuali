@@ -511,6 +511,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
         Command::TrustReport {
             #[cfg(feature = "attestation")]
             attestation,
+            html,
             json,
         } => {
             #[cfg(feature = "attestation")]
@@ -523,7 +524,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             };
             #[cfg(not(feature = "attestation"))]
             let options = TrustReportOptions::default();
-            trust_report::trust_report(&memory, options, json)?
+            trust_report::trust_report(&memory, options, html.as_deref(), json)?
         }
         Command::Maintenance { json } => reports::maintenance(&mut memory, &database, json)?,
         Command::Snapshot {
