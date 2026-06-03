@@ -2,6 +2,7 @@ mod artifacts;
 #[cfg(feature = "attestation")]
 mod attestation;
 mod audit;
+mod demo;
 mod migration;
 mod migration_legacy;
 mod migration_timestamps;
@@ -618,7 +619,8 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             json,
         )?,
         Command::Data { json } => reports::data(&mut memory, json)?,
-        Command::Completions { .. }
+        Command::Demo { .. }
+        | Command::Completions { .. }
         | Command::Validate { .. }
         | Command::BackupValidate { .. }
         | Command::BackupDrill { .. }

@@ -14,6 +14,7 @@ use super::{migration, migration_legacy};
 
 pub(crate) fn handle(command: &Command, database: &Path) -> anyhow::Result<bool> {
     match command {
+        Command::Demo {} => super::demo::demo().map(|()| true),
         Command::Completions { shell } => {
             let mut command = Cli::command();
             let bin_name = command.get_name().to_string();

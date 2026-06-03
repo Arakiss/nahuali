@@ -22,6 +22,9 @@ Options:
 /// Grouped command listing rendered in the root help, with the everyday verbs
 /// first inside each section. Kept in sync by hand with the `Command` variants.
 const GROUPED_COMMANDS: &str = "\
+Getting started:
+  demo                  See the tamper-evidence trust story (no database, no Docker)
+
 Capture:
   remember              Record an observed episode
   claim                 Record an evidence-backed canonical claim
@@ -136,6 +139,8 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
+    #[command(about = "See the tamper-evidence trust story — no database, no Docker, in seconds.")]
+    Demo {},
     #[command(about = "Print operational memory status.")]
     Status {
         #[arg(long)]
