@@ -1,13 +1,15 @@
 use nahuali_core::{
     AuthorityDecision, AuthorityRecall, BriefingEpisode, BriefingGraphSeed, BriefingIntention,
-    BriefingSummary, Claim, Entity, Episode, Fact, HealthSignal, Intention, KnowledgeHealth, Link,
-    MemoryBriefingReport, MemoryGraphEdge, MemoryGraphNode, MemoryGraphReport, MemoryGraphSummary,
-    MemoryHookDirective, MemoryHookReport, MemoryHookSummary, MemoryReflectionReport, MemoryScope,
-    MemorySleepReport, OperatorReviewItem, OperatorReviewReport, OperatorReviewSummary, Procedure,
-    RecallResult, RecordLedgerIssue, ReflectionCycle, ReflectionFinding, ReflectionSourceCoverage,
-    ReflectionSummary, Relation, SelfInspectionFinding, SelfInspectionReport,
-    SelfInspectionReviewItem, SelfInspectionSummary, SelfInspectionWriteBackPolicy,
-    SleepConsolidationCandidate, SleepEpisodeReplay, SleepModeSummary, SleepStage,
+    BriefingSummary, Claim, ConsolidationBlockedItem, ConsolidationGate, ConsolidationOperation,
+    ConsolidationPlanSummary, ConsolidationStage, Entity, Episode, Fact, HealthSignal, Intention,
+    KnowledgeHealth, Link, MemoryBriefingReport, MemoryConsolidationPlanReport, MemoryGraphEdge,
+    MemoryGraphNode, MemoryGraphReport, MemoryGraphSummary, MemoryHookDirective, MemoryHookReport,
+    MemoryHookSummary, MemoryReflectionReport, MemoryScope, MemorySleepReport, OperatorReviewItem,
+    OperatorReviewReport, OperatorReviewSummary, Procedure, RecallResult, RecordLedgerIssue,
+    ReflectionCycle, ReflectionFinding, ReflectionSourceCoverage, ReflectionSummary, Relation,
+    SelfInspectionFinding, SelfInspectionReport, SelfInspectionReviewItem, SelfInspectionSummary,
+    SelfInspectionWriteBackPolicy, SleepConsolidationCandidate, SleepEpisodeReplay,
+    SleepModeSummary, SleepStage,
 };
 use rmcp::schemars;
 use serde::Serialize;
@@ -1342,6 +1344,176 @@ impl From<MemorySleepReport> for MemorySleepReportView {
                 .collect(),
             reflection: MemoryReflectionReportView::from(report.reflection),
             self_inspection: SelfInspectionReportView::from(report.self_inspection),
+            write_back_policy: WriteBackPolicyView::from(report.write_back_policy),
+        }
+    }
+}
+
+/// Aggregate counts for a consolidation plan.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ConsolidationPlanSummaryView {
+    stage_count: usize,
+    operation_count: usize,
+    replay_operation_count: usize,
+    extract_candidate_count: usize,
+    reconcile_candidate_count: usize,
+    review_gate_count: usize,
+    commit_ready_count: usize,
+    blocked_operation_count: usize,
+    needs_review_operation_count: usize,
+    automatic_write_back: bool,
+}
+
+impl From<ConsolidationPlanSummary> for ConsolidationPlanSummaryView {
+    fn from(summary: ConsolidationPlanSummary) -> Self {
+        Self {
+            stage_count: summary.stage_count,
+            operation_count: summary.operation_count,
+            replay_operation_count: summary.replay_operation_count,
+            extract_candidate_count: summary.extract_candidate_count,
+            reconcile_candidate_count: summary.reconcile_candidate_count,
+            review_gate_count: summary.review_gate_count,
+            commit_ready_count: summary.commit_ready_count,
+            blocked_operation_count: summary.blocked_operation_count,
+            needs_review_operation_count: summary.needs_review_operation_count,
+            automatic_write_back: summary.automatic_write_back,
+        }
+    }
+}
+
+/// A pipeline stage in a consolidation plan.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ConsolidationStageView {
+    id: String,
+    status: String,
+    title: String,
+    detail: String,
+    operation_ids: Vec<String>,
+}
+
+impl From<ConsolidationStage> for ConsolidationStageView {
+    fn from(stage: ConsolidationStage) -> Self {
+        Self {
+            id: stage.id,
+            status: json_string(&stage.status),
+            title: stage.title,
+            detail: stage.detail,
+            operation_ids: stage.operation_ids,
+        }
+    }
+}
+
+/// The write-back gate attached to a consolidation operation.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ConsolidationGateView {
+    requires_operator_review: bool,
+    automatic_write_back: bool,
+    reason: String,
+}
+
+impl From<ConsolidationGate> for ConsolidationGateView {
+    fn from(gate: ConsolidationGate) -> Self {
+        Self {
+            requires_operator_review: gate.requires_operator_review,
+            automatic_write_back: gate.automatic_write_back,
+            reason: gate.reason,
+        }
+    }
+}
+
+/// A concrete non-mutating operation proposed by a consolidation plan.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ConsolidationOperationView {
+    id: String,
+    kind: String,
+    status: String,
+    priority: Option<String>,
+    action: Option<String>,
+    title: String,
+    rationale: String,
+    evidence_ids: Vec<String>,
+    gate: ConsolidationGateView,
+}
+
+impl From<ConsolidationOperation> for ConsolidationOperationView {
+    fn from(operation: ConsolidationOperation) -> Self {
+        Self {
+            id: operation.id,
+            kind: json_string(&operation.kind),
+            status: json_string(&operation.status),
+            priority: operation.priority.as_ref().map(json_string),
+            action: operation.action.as_ref().map(json_string),
+            title: operation.title,
+            rationale: operation.rationale,
+            evidence_ids: operation.evidence_ids,
+            gate: ConsolidationGateView::from(operation.gate),
+        }
+    }
+}
+
+/// An operation that cannot become a memory write without more review.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ConsolidationBlockedItemView {
+    operation_id: String,
+    status: String,
+    reason: String,
+    evidence_ids: Vec<String>,
+}
+
+impl From<ConsolidationBlockedItem> for ConsolidationBlockedItemView {
+    fn from(item: ConsolidationBlockedItem) -> Self {
+        Self {
+            operation_id: item.operation_id,
+            status: json_string(&item.status),
+            reason: item.reason,
+            evidence_ids: item.evidence_ids,
+        }
+    }
+}
+
+/// Structured consolidation-plan report surfacing stages, operations, and gates.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct MemoryConsolidationPlanReportView {
+    version: u32,
+    generated_at_ms: u64,
+    event_count: usize,
+    authority: AuthorityDecisionView,
+    health: HealthView,
+    summary: ConsolidationPlanSummaryView,
+    stages: Vec<ConsolidationStageView>,
+    operations: Vec<ConsolidationOperationView>,
+    blocked_items: Vec<ConsolidationBlockedItemView>,
+    sleep: MemorySleepReportView,
+    review: OperatorReviewReportView,
+    write_back_policy: WriteBackPolicyView,
+}
+
+impl From<MemoryConsolidationPlanReport> for MemoryConsolidationPlanReportView {
+    fn from(report: MemoryConsolidationPlanReport) -> Self {
+        Self {
+            version: report.version,
+            generated_at_ms: report.generated_at_ms,
+            event_count: report.event_count,
+            authority: AuthorityDecisionView::from(report.authority),
+            health: HealthView::from(report.health),
+            summary: ConsolidationPlanSummaryView::from(report.summary),
+            stages: report
+                .stages
+                .into_iter()
+                .map(ConsolidationStageView::from)
+                .collect(),
+            operations: report
+                .operations
+                .into_iter()
+                .map(ConsolidationOperationView::from)
+                .collect(),
+            blocked_items: report
+                .blocked_items
+                .into_iter()
+                .map(ConsolidationBlockedItemView::from)
+                .collect(),
+            sleep: MemorySleepReportView::from(report.sleep),
+            review: OperatorReviewReportView::from(report.review),
             write_back_policy: WriteBackPolicyView::from(report.write_back_policy),
         }
     }

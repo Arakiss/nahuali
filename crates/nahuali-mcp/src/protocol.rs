@@ -613,7 +613,7 @@ pub(crate) struct ReflectResult {
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct ConsolidationPlanResult {
-    pub(crate) report: Value,
+    pub(crate) report: MemoryConsolidationPlanReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]

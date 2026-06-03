@@ -804,8 +804,9 @@ impl NahualiMcpServer {
                 }),
             )
         })?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(ConsolidationPlanResult { report }))
+        Ok(Json(ConsolidationPlanResult {
+            report: report.into(),
+        }))
     }
 
     #[tool(
