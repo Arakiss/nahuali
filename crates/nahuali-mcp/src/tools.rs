@@ -15,17 +15,18 @@ use crate::{
     protocol::{
         AnomaliesResult, AnomalyAcknowledgeArgs, AnomalyAcknowledgeResult, AuthorityDecisionView,
         BriefingArgs, BriefingResult, ClaimResult, ClaimView, ConsolidationPlanArgs,
-        ConsolidationPlanResult, DatabaseReportResult, DeadlinesResult, FactArgs, FactResult,
-        FactView, GraphArgs, GraphResult, IngestArgs, IngestResult, IngestTextArgs,
+        ConsolidationPlanResult, DeadlinesResult, FactArgs, FactResult, FactView,
+        GoalProgressResult, GraphArgs, GraphResult, IngestArgs, IngestResult, IngestTextArgs,
         IngestTextResult, InspectResult, IntentionArgs, IntentionKindArg, IntentionPriorityArg,
         IntentionReconcileArgs, IntentionResult, IntentionStatusArgs, IntentionUpdateArgs,
         IntentionView, LinkResult, LinkView, MemoryHookArgs, MemoryHookResult, ProactiveArgs,
         ProactiveResult, ProcedureArgs, ProcedureResult, ProcedureView, ProjectionReportResult,
         ProjectionStatusResult, ProjectionValidationResult, RecallArgs, RecallResultView,
-        RecallToolResult, RecordLedgerIssueView, ReflectArgs, ReflectResult, RelateArgs,
-        RelateResult, RelationView, RememberArgs, RememberResult, ReviewArgs, ReviewResolveArgs,
-        ReviewResolveResult, ReviewResult, SelfInspectResult, SemanticReportResult,
-        SemanticStatusResult, SourceKindArg, TextChunkingArg, ValidateResult, parse_scope_arg,
+        RecallToolResult, ReconcileIntentionsResult, RecordLedgerIssueView, ReflectArgs,
+        ReflectResult, RelateArgs, RelateResult, RelationView, RememberArgs, RememberResult,
+        ReviewArgs, ReviewResolveArgs, ReviewResolveResult, ReviewResult, SelfInspectResult,
+        SemanticReportResult, SemanticStatusResult, SourceKindArg, TextChunkingArg, ValidateResult,
+        parse_scope_arg,
     },
     server::NahualiMcpServer,
 };
@@ -518,7 +519,7 @@ impl NahualiMcpServer {
     fn reconcile_intentions(
         &self,
         Parameters(args): Parameters<IntentionReconcileArgs>,
-    ) -> Result<Json<DatabaseReportResult>, String> {
+    ) -> Result<Json<ReconcileIntentionsResult>, String> {
         let mut options = IntentionReconciliationOptions::default();
         if let Some(now_ms) = args.now_ms {
             options.now_ms = now_ms;
@@ -529,10 +530,9 @@ impl NahualiMcpServer {
 
         let report =
             self.with_memory(|memory| Ok(memory.reconcile_intentions_with_options(options)))?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(DatabaseReportResult {
+        Ok(Json(ReconcileIntentionsResult {
             database: self.database.display().to_string(),
-            report,
+            report: report.into(),
         }))
     }
 
@@ -540,12 +540,11 @@ impl NahualiMcpServer {
         description = "Use when you want a read-only roll-up of progress toward goals and their linked tasks. It does not change anything. Then update progress with `intention_update` if the picture is out of date.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
-    fn goal_progress(&self) -> Result<Json<DatabaseReportResult>, String> {
+    fn goal_progress(&self) -> Result<Json<GoalProgressResult>, String> {
         let report = self.with_memory(|memory| Ok(memory.goal_progress()))?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(DatabaseReportResult {
+        Ok(Json(GoalProgressResult {
             database: self.database.display().to_string(),
-            report,
+            report: report.into(),
         }))
     }
 

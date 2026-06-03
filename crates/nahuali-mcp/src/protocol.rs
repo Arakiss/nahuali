@@ -428,9 +428,15 @@ pub(crate) struct AnomalyAcknowledgeResult {
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
-pub(crate) struct DatabaseReportResult {
+pub(crate) struct ReconcileIntentionsResult {
     pub(crate) database: String,
-    pub(crate) report: Value,
+    pub(crate) report: IntentionReconciliationReportView,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct GoalProgressResult {
+    pub(crate) database: String,
+    pub(crate) report: GoalProgressReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
