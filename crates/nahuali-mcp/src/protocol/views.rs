@@ -3,10 +3,11 @@ use nahuali_core::{
     BriefingSummary, Claim, Entity, Episode, Fact, HealthSignal, Intention, KnowledgeHealth, Link,
     MemoryBriefingReport, MemoryGraphEdge, MemoryGraphNode, MemoryGraphReport, MemoryGraphSummary,
     MemoryHookDirective, MemoryHookReport, MemoryHookSummary, MemoryReflectionReport, MemoryScope,
-    OperatorReviewItem, OperatorReviewReport, OperatorReviewSummary, Procedure, RecallResult,
-    RecordLedgerIssue, ReflectionCycle, ReflectionFinding, ReflectionSourceCoverage,
+    MemorySleepReport, OperatorReviewItem, OperatorReviewReport, OperatorReviewSummary, Procedure,
+    RecallResult, RecordLedgerIssue, ReflectionCycle, ReflectionFinding, ReflectionSourceCoverage,
     ReflectionSummary, Relation, SelfInspectionFinding, SelfInspectionReport,
     SelfInspectionReviewItem, SelfInspectionSummary, SelfInspectionWriteBackPolicy,
+    SleepConsolidationCandidate, SleepEpisodeReplay, SleepModeSummary, SleepStage,
 };
 use rmcp::schemars;
 use serde::Serialize;
@@ -1192,12 +1193,164 @@ impl From<MemoryReflectionReport> for MemoryReflectionReportView {
     }
 }
 
-/// Typed view of a `memory_hook` report. The hook's own structure (kind,
-/// summary, directives) and the surfaces with dedicated views (authority,
-/// briefing, recall, self-inspection, reflection) are fully typed. The heavier
-/// optional `sleep` sub-report it can embed is still carried as nested JSON,
-/// matching the `consolidation_plan` tool, until that report gets its own typed
-/// view.
+/// Aggregate counts for a Sleep Mode report.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct SleepModeSummaryView {
+    replayed_episode_count: usize,
+    finding_count: usize,
+    reflection_cycle_count: usize,
+    consolidation_candidate_count: usize,
+    review_item_count: usize,
+    pending_stage_count: usize,
+    automatic_write_back: bool,
+}
+
+impl From<SleepModeSummary> for SleepModeSummaryView {
+    fn from(summary: SleepModeSummary) -> Self {
+        Self {
+            replayed_episode_count: summary.replayed_episode_count,
+            finding_count: summary.finding_count,
+            reflection_cycle_count: summary.reflection_cycle_count,
+            consolidation_candidate_count: summary.consolidation_candidate_count,
+            review_item_count: summary.review_item_count,
+            pending_stage_count: summary.pending_stage_count,
+            automatic_write_back: summary.automatic_write_back,
+        }
+    }
+}
+
+/// A deterministic stage in a Sleep Mode pass.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct SleepStageView {
+    id: String,
+    status: String,
+    title: String,
+    detail: String,
+    evidence_ids: Vec<String>,
+}
+
+impl From<SleepStage> for SleepStageView {
+    fn from(stage: SleepStage) -> Self {
+        Self {
+            id: stage.id,
+            status: json_string(&stage.status),
+            title: stage.title,
+            detail: stage.detail,
+            evidence_ids: stage.evidence_ids,
+        }
+    }
+}
+
+/// An episode replayed by Sleep Mode.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct SleepEpisodeReplayView {
+    id: String,
+    event_id: String,
+    content: String,
+    tags: Vec<String>,
+    mentions: Vec<String>,
+    source_id: Option<String>,
+    created_at_ms: u64,
+}
+
+impl From<SleepEpisodeReplay> for SleepEpisodeReplayView {
+    fn from(episode: SleepEpisodeReplay) -> Self {
+        Self {
+            id: episode.id,
+            event_id: episode.event_id,
+            content: episode.content,
+            tags: episode.tags,
+            mentions: episode.mentions,
+            source_id: episode.source_id,
+            created_at_ms: episode.created_at_ms,
+        }
+    }
+}
+
+/// A candidate consolidation work item produced by Sleep Mode.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct SleepConsolidationCandidateView {
+    id: String,
+    kind: String,
+    priority: String,
+    action: String,
+    title: String,
+    rationale: String,
+    evidence_ids: Vec<String>,
+}
+
+impl From<SleepConsolidationCandidate> for SleepConsolidationCandidateView {
+    fn from(candidate: SleepConsolidationCandidate) -> Self {
+        Self {
+            id: candidate.id,
+            kind: json_string(&candidate.kind),
+            priority: json_string(&candidate.priority),
+            action: json_string(&candidate.action),
+            title: candidate.title,
+            rationale: candidate.rationale,
+            evidence_ids: candidate.evidence_ids,
+        }
+    }
+}
+
+/// Structured Sleep Mode report surfacing replay, candidates, and review items.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct MemorySleepReportView {
+    version: u32,
+    generated_at_ms: u64,
+    event_count: usize,
+    authority: AuthorityDecisionView,
+    health: HealthView,
+    summary: SleepModeSummaryView,
+    stages: Vec<SleepStageView>,
+    recent_episodes: Vec<SleepEpisodeReplayView>,
+    consolidation_candidates: Vec<SleepConsolidationCandidateView>,
+    review_items: Vec<SelfInspectionReviewItemView>,
+    reflection: MemoryReflectionReportView,
+    self_inspection: SelfInspectionReportView,
+    write_back_policy: WriteBackPolicyView,
+}
+
+impl From<MemorySleepReport> for MemorySleepReportView {
+    fn from(report: MemorySleepReport) -> Self {
+        Self {
+            version: report.version,
+            generated_at_ms: report.generated_at_ms,
+            event_count: report.event_count,
+            authority: AuthorityDecisionView::from(report.authority),
+            health: HealthView::from(report.health),
+            summary: SleepModeSummaryView::from(report.summary),
+            stages: report
+                .stages
+                .into_iter()
+                .map(SleepStageView::from)
+                .collect(),
+            recent_episodes: report
+                .recent_episodes
+                .into_iter()
+                .map(SleepEpisodeReplayView::from)
+                .collect(),
+            consolidation_candidates: report
+                .consolidation_candidates
+                .into_iter()
+                .map(SleepConsolidationCandidateView::from)
+                .collect(),
+            review_items: report
+                .review_items
+                .into_iter()
+                .map(SelfInspectionReviewItemView::from)
+                .collect(),
+            reflection: MemoryReflectionReportView::from(report.reflection),
+            self_inspection: SelfInspectionReportView::from(report.self_inspection),
+            write_back_policy: WriteBackPolicyView::from(report.write_back_policy),
+        }
+    }
+}
+
+/// Typed view of a `memory_hook` report. Every surface — the hook's own
+/// structure (kind, summary, directives), the dedicated sub-report views
+/// (authority, briefing, recall, self-inspection), and the heavier optional
+/// `reflection` and `sleep` sub-reports it can embed — is fully typed.
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct MemoryHookReportView {
     version: u32,
@@ -1218,7 +1371,7 @@ pub(crate) struct MemoryHookReportView {
     #[serde(skip_serializing_if = "Option::is_none")]
     reflection: Option<MemoryReflectionReportView>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    sleep: Option<serde_json::Value>,
+    sleep: Option<MemorySleepReportView>,
 }
 
 impl From<MemoryHookReport> for MemoryHookReportView {
@@ -1240,9 +1393,7 @@ impl From<MemoryHookReport> for MemoryHookReportView {
             recall: report.recall.map(HookRecallView::from),
             self_inspection: report.self_inspection.map(SelfInspectionReportView::from),
             reflection: report.reflection.map(MemoryReflectionReportView::from),
-            sleep: report
-                .sleep
-                .and_then(|sleep| serde_json::to_value(sleep).ok()),
+            sleep: report.sleep.map(MemorySleepReportView::from),
         }
     }
 }
