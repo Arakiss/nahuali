@@ -72,7 +72,7 @@ The server exposes tools for `remember`, `claim`, `fact`, `link`, `relate`,
 `briefing`, `memory_hook`, `recall`, `inspect`, `graph`, `self_inspect`,
 `review`, `reflect`, `consolidation_plan`, `review_resolve`,
 `projection_status`, `projection_rebuild`, `projection_validate`,
-`semantic_status`, `semantic_rebuild`, and `validate`. It also exposes
+`semantic_status`, `semantic_rebuild`, `validate`, and `audit`. It also exposes
 read-only JSON resources for database summary, sources, health, entities,
 episodes, claims, links, facts, relations, procedures, intentions, and records,
 plus prompts for health-checked recall and evidence-backed claim recording.
@@ -145,6 +145,13 @@ consolidation candidates, review items, and
 The `validate` tool includes the record-ledger compatibility report fields
 `supported_event_version`, `observed_event_versions`, `legacy_event_count`,
 `migration_required`, and `issues`.
+
+The `audit` tool returns a non-mutating diff of what the ledger recorded between
+two points. Bound the range with `from`/`to` (exclusive then inclusive sequence)
+and optional `since`/`until` (millisecond timestamps); it reports per-kind
+counts, per-event entries, and whether the history through the upper bound
+verifies (checksums, sequence contiguity, and the hash chain and anchoring tips
+under `tamper-evidence`).
 
 The `self_inspect` tool returns a non-mutating consolidation report with health,
 authority, findings, proposed review items, and an explicit

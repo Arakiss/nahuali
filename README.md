@@ -387,7 +387,8 @@ clients. Tool names include:
   `consolidation_plan`, `review`, and `review_resolve`
 - derived-tier maintenance: `projection_status`, `projection_rebuild`,
   `projection_validate`, `semantic_status`, and `semantic_rebuild`
-- validation and ingestion: `validate`, `ingest`, and `ingest_text`
+- ledger inspection: `validate` and `audit`
+- ingestion: `ingest` and `ingest_text`
 
 MCP responses are structured so clients do not need to scrape human CLI output.
 Each tool advertises a typed JSON Schema for its output in `tools/list` and
