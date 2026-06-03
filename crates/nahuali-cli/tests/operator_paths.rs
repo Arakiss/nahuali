@@ -10,6 +10,7 @@ use operator_path_support::{
 use serde_json::Value;
 
 include!("operator_path_cases/audit.rs");
+include!("operator_path_cases/trust_report.rs");
 include!("operator_path_cases/memory.rs");
 include!("operator_path_cases/scopes.rs");
 include!("operator_path_cases/ingestion.rs");

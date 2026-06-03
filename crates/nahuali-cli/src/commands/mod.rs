@@ -11,11 +11,12 @@ mod record;
 mod reports;
 mod scope;
 mod text;
+mod trust_report;
 
 use std::path::PathBuf;
 
 use anyhow::Context;
-use nahuali_core::{LedgerAuditOptions, MemoryEngine};
+use nahuali_core::{LedgerAuditOptions, MemoryEngine, TrustReportOptions};
 
 use crate::cli::{Cli, Command};
 
@@ -506,6 +507,23 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
                 },
                 json,
             )?
+        }
+        Command::TrustReport {
+            #[cfg(feature = "attestation")]
+            attestation,
+            json,
+        } => {
+            #[cfg(feature = "attestation")]
+            let options = {
+                let mut options = TrustReportOptions::default();
+                if let Some(path) = attestation.as_deref() {
+                    options.attestation = Some(trust_report::read_attestation(path)?);
+                }
+                options
+            };
+            #[cfg(not(feature = "attestation"))]
+            let options = TrustReportOptions::default();
+            trust_report::trust_report(&memory, options, json)?
         }
         Command::Maintenance { json } => reports::maintenance(&mut memory, &database, json)?,
         Command::Snapshot {

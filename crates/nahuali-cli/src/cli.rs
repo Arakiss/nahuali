@@ -76,6 +76,7 @@ Maintenance:
   semantic-status       Inspect the derived Qdrant semantic index status
   validate              Validate the SurrealDB memory_record ledger without mutating it
   audit                 Audit what changed in the record ledger between two points
+  trust-report          Print a composed memory trust report
   maintenance           Print a non-destructive maintenance report
   snapshot              Write or dry-run an optional projection snapshot
   snapshot-validate     Validate an optional snapshot against record replay
@@ -722,6 +723,16 @@ pub(crate) enum Command {
         #[cfg(feature = "attestation")]
         #[arg(long = "from-attestation", value_name = "PATH")]
         from_attestation: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(about = "Print a composed memory trust report without mutating memory.")]
+    TrustReport {
+        /// Verify a signed attestation receipt and fold it into the report as the
+        /// evidence that the recorded history was not altered.
+        #[cfg(feature = "attestation")]
+        #[arg(long = "attestation", value_name = "PATH")]
+        attestation: Option<PathBuf>,
         #[arg(long)]
         json: bool,
     },
