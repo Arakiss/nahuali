@@ -141,6 +141,66 @@ pub fn ledger_inclusion_proof(events: &[EventEnvelope], index: usize) -> Option<
     merkle_proof(&leaves, index)
 }
 
+/// A verdict for whether one Merkle commitment is an append-only extension of an
+/// earlier one: the earlier leaves are an unchanged prefix of the later ones.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsistencyVerdict {
+    /// Leaf count of the earlier commitment.
+    pub old_leaf_count: usize,
+    /// Leaf count of the later commitment.
+    pub new_leaf_count: usize,
+    /// The earlier root recomputed from the later leaves' prefix, when checkable.
+    pub recomputed_old_root: Option<String>,
+    /// Whether the earlier commitment is an unchanged prefix of the later one:
+    /// the recorded history grew by appending only, with nothing rewritten.
+    pub append_only: bool,
+}
+
+/// Verify that the commitment over `new_leaves` is an append-only extension of an
+/// earlier commitment `old_root` taken over its first `old_leaf_count` leaves:
+/// the earlier prefix is unchanged and only new leaves were appended.
+///
+/// This is the leaf-backed check -- the caller holds the later ledger's leaves
+/// and the earlier root, which is the local audit case (you have both states).
+/// It proves the earlier history was not rewritten. A *succinct* consistency
+/// proof, which a remote witness could check without holding the full prefix, is
+/// deliberately left as future work rather than shipped in a rushed, hard-to-
+/// audit form.
+pub fn verify_append_only(
+    old_root: &str,
+    old_leaf_count: usize,
+    new_leaves: &[String],
+) -> ConsistencyVerdict {
+    let new_leaf_count = new_leaves.len();
+    if old_leaf_count == 0 || old_leaf_count > new_leaf_count {
+        return ConsistencyVerdict {
+            old_leaf_count,
+            new_leaf_count,
+            recomputed_old_root: None,
+            append_only: false,
+        };
+    }
+    let recomputed_old_root = merkle_root(&new_leaves[..old_leaf_count]);
+    let append_only = recomputed_old_root.as_deref() == Some(old_root);
+    ConsistencyVerdict {
+        old_leaf_count,
+        new_leaf_count,
+        recomputed_old_root,
+        append_only,
+    }
+}
+
+/// Append-only verdict between an earlier ledger root taken over `old_leaf_count`
+/// events and the current `new_events`, using per-event chain hashes as leaves.
+pub fn ledger_append_only(
+    old_root: &str,
+    old_leaf_count: usize,
+    new_events: &[EventEnvelope],
+) -> ConsistencyVerdict {
+    let leaves: Vec<String> = new_events.iter().map(EventEnvelope::chain_hash).collect();
+    verify_append_only(old_root, old_leaf_count, &leaves)
+}
+
 fn fold_level(level: &[String]) -> Vec<String> {
     let mut next = Vec::with_capacity(level.len().div_ceil(2));
     let mut i = 0;
@@ -188,8 +248,8 @@ fn encode_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        EventEnvelope, ledger_inclusion_proof, ledger_merkle_root, merkle_proof, merkle_root,
-        verify_merkle_proof,
+        EventEnvelope, ledger_append_only, ledger_inclusion_proof, ledger_merkle_root,
+        merkle_proof, merkle_root, verify_append_only, verify_merkle_proof,
     };
     use crate::event::{EpisodeRecorded, MemoryEvent};
 
@@ -293,5 +353,97 @@ mod tests {
                 "event {index} must prove inclusion"
             );
         }
+    }
+
+    #[test]
+    fn append_only_holds_when_history_only_grows() {
+        let old = leaves(4);
+        let old_root = merkle_root(&old).expect("old root");
+        let mut new = old.clone();
+        new.push("leaf-4".to_string());
+        new.push("leaf-5".to_string());
+
+        let verdict = verify_append_only(&old_root, old.len(), &new);
+
+        assert!(verdict.append_only);
+        assert_eq!(verdict.old_leaf_count, 4);
+        assert_eq!(verdict.new_leaf_count, 6);
+        assert_eq!(
+            verdict.recomputed_old_root.as_deref(),
+            Some(old_root.as_str())
+        );
+    }
+
+    #[test]
+    fn append_only_holds_for_an_unchanged_ledger() {
+        let leaves = leaves(5);
+        let root = merkle_root(&leaves).expect("root");
+
+        assert!(verify_append_only(&root, leaves.len(), &leaves).append_only);
+    }
+
+    #[test]
+    fn append_only_fails_when_a_prefix_leaf_was_rewritten() {
+        let old = leaves(4);
+        let old_root = merkle_root(&old).expect("old root");
+        let mut new = old.clone();
+        new.push("leaf-4".to_string());
+        // Rewrite a historical leaf instead of only appending.
+        new[1] = "rewritten".to_string();
+
+        assert!(!verify_append_only(&old_root, old.len(), &new).append_only);
+    }
+
+    #[test]
+    fn append_only_fails_when_the_ledger_shrank() {
+        let old = leaves(6);
+        let old_root = merkle_root(&old).expect("old root");
+        let new = leaves(4);
+
+        let verdict = verify_append_only(&old_root, old.len(), &new);
+
+        assert!(!verdict.append_only);
+        assert!(verdict.recomputed_old_root.is_none());
+    }
+
+    #[test]
+    fn ledger_append_only_proves_an_appended_ledger() {
+        let mut events: Vec<EventEnvelope> = Vec::new();
+        for sequence in 1..=4u64 {
+            let prev = events.last().map(EventEnvelope::chain_hash);
+            events.push(EventEnvelope::with_chain(
+                sequence,
+                1000 + sequence,
+                episode_event(sequence),
+                prev.as_deref(),
+            ));
+        }
+        let old_root = ledger_merkle_root(&events).expect("old ledger root");
+        let old_count = events.len();
+
+        for sequence in 5..=7u64 {
+            let prev = events.last().map(EventEnvelope::chain_hash);
+            events.push(EventEnvelope::with_chain(
+                sequence,
+                1000 + sequence,
+                episode_event(sequence),
+                prev.as_deref(),
+            ));
+        }
+
+        assert!(ledger_append_only(&old_root, old_count, &events).append_only);
+    }
+
+    fn episode_event(sequence: u64) -> MemoryEvent {
+        MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+            id: format!("episode_{sequence}"),
+            content: format!("event {sequence}"),
+            tags: Vec::new(),
+            mentions: Vec::new(),
+            source_id: None,
+            source_position: None,
+            source_role: None,
+            scope: None,
+        })
     }
 }

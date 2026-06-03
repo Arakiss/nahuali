@@ -141,8 +141,8 @@ pub use maintenance::{
 };
 #[cfg(feature = "tamper-evidence")]
 pub use merkle::{
-    MerkleProof, MerkleSibling, ledger_inclusion_proof, ledger_merkle_root, merkle_proof,
-    merkle_root, verify_merkle_proof,
+    ConsistencyVerdict, MerkleProof, MerkleSibling, ledger_append_only, ledger_inclusion_proof,
+    ledger_merkle_root, merkle_proof, merkle_root, verify_append_only, verify_merkle_proof,
 };
 pub use model::{
     Claim, Entity, Episode, Fact, Intention, IntentionKind, IntentionPriority, IntentionStatus,
