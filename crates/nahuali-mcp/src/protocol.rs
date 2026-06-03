@@ -608,7 +608,7 @@ pub(crate) struct SelfInspectResult {
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct ReflectResult {
-    pub(crate) report: Value,
+    pub(crate) report: MemoryReflectionReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]

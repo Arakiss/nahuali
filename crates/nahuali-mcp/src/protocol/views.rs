@@ -2,10 +2,11 @@ use nahuali_core::{
     AuthorityDecision, AuthorityRecall, BriefingEpisode, BriefingGraphSeed, BriefingIntention,
     BriefingSummary, Claim, Entity, Episode, Fact, HealthSignal, Intention, KnowledgeHealth, Link,
     MemoryBriefingReport, MemoryGraphEdge, MemoryGraphNode, MemoryGraphReport, MemoryGraphSummary,
-    MemoryHookDirective, MemoryHookReport, MemoryHookSummary, MemoryScope, OperatorReviewItem,
-    OperatorReviewReport, OperatorReviewSummary, Procedure, RecallResult, RecordLedgerIssue,
-    Relation, SelfInspectionFinding, SelfInspectionReport, SelfInspectionReviewItem,
-    SelfInspectionSummary, SelfInspectionWriteBackPolicy,
+    MemoryHookDirective, MemoryHookReport, MemoryHookSummary, MemoryReflectionReport, MemoryScope,
+    OperatorReviewItem, OperatorReviewReport, OperatorReviewSummary, Procedure, RecallResult,
+    RecordLedgerIssue, ReflectionCycle, ReflectionFinding, ReflectionSourceCoverage,
+    ReflectionSummary, Relation, SelfInspectionFinding, SelfInspectionReport,
+    SelfInspectionReviewItem, SelfInspectionSummary, SelfInspectionWriteBackPolicy,
 };
 use rmcp::schemars;
 use serde::Serialize;
@@ -1039,12 +1040,164 @@ impl From<AuthorityRecall> for HookRecallView {
     }
 }
 
+/// Aggregate counts for a reflection report.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ReflectionSummaryView {
+    finding_count: usize,
+    total_cycle_count: usize,
+    displayed_cycle_count: usize,
+    critical_cycle_count: usize,
+    high_cycle_count: usize,
+    medium_cycle_count: usize,
+    low_cycle_count: usize,
+    evidence_id_count: usize,
+}
+
+impl From<ReflectionSummary> for ReflectionSummaryView {
+    fn from(summary: ReflectionSummary) -> Self {
+        Self {
+            finding_count: summary.finding_count,
+            total_cycle_count: summary.total_cycle_count,
+            displayed_cycle_count: summary.displayed_cycle_count,
+            critical_cycle_count: summary.critical_cycle_count,
+            high_cycle_count: summary.high_cycle_count,
+            medium_cycle_count: summary.medium_cycle_count,
+            low_cycle_count: summary.low_cycle_count,
+            evidence_id_count: summary.evidence_id_count,
+        }
+    }
+}
+
+/// Source and evidence coverage across projected memory.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ReflectionSourceCoverageView {
+    source_count: usize,
+    episode_count: usize,
+    sourced_episode_count: usize,
+    unsourced_episode_count: usize,
+    derived_memory_count: usize,
+    evidence_backed_memory_count: usize,
+    unsupported_memory_count: usize,
+    source_coverage_ratio: f32,
+    evidence_coverage_ratio: f32,
+}
+
+impl From<ReflectionSourceCoverage> for ReflectionSourceCoverageView {
+    fn from(coverage: ReflectionSourceCoverage) -> Self {
+        Self {
+            source_count: coverage.source_count,
+            episode_count: coverage.episode_count,
+            sourced_episode_count: coverage.sourced_episode_count,
+            unsourced_episode_count: coverage.unsourced_episode_count,
+            derived_memory_count: coverage.derived_memory_count,
+            evidence_backed_memory_count: coverage.evidence_backed_memory_count,
+            unsupported_memory_count: coverage.unsupported_memory_count,
+            source_coverage_ratio: coverage.source_coverage_ratio,
+            evidence_coverage_ratio: coverage.evidence_coverage_ratio,
+        }
+    }
+}
+
+/// A finding included in a grouped reflection cycle.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ReflectionFindingView {
+    id: String,
+    kind: String,
+    severity: String,
+    title: String,
+    detail: String,
+    dimensions: Vec<String>,
+    evidence_ids: Vec<String>,
+    suggested_action: String,
+}
+
+impl From<ReflectionFinding> for ReflectionFindingView {
+    fn from(finding: ReflectionFinding) -> Self {
+        Self {
+            id: finding.id,
+            kind: json_string(&finding.kind),
+            severity: json_string(&finding.severity),
+            title: finding.title,
+            detail: finding.detail,
+            dimensions: finding.dimensions.iter().map(json_string).collect(),
+            evidence_ids: finding.evidence_ids,
+            suggested_action: finding.suggested_action,
+        }
+    }
+}
+
+/// Grouped reflection work for one operator-approved cycle.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ReflectionCycleView {
+    id: String,
+    priority: String,
+    action: String,
+    title: String,
+    rationale: String,
+    finding_count: usize,
+    evidence_ids: Vec<String>,
+    findings: Vec<ReflectionFindingView>,
+}
+
+impl From<ReflectionCycle> for ReflectionCycleView {
+    fn from(cycle: ReflectionCycle) -> Self {
+        Self {
+            id: cycle.id,
+            priority: json_string(&cycle.priority),
+            action: json_string(&cycle.action),
+            title: cycle.title,
+            rationale: cycle.rationale,
+            finding_count: cycle.finding_count,
+            evidence_ids: cycle.evidence_ids,
+            findings: cycle
+                .findings
+                .into_iter()
+                .map(ReflectionFindingView::from)
+                .collect(),
+        }
+    }
+}
+
+/// Structured reflection report grouping self-inspection findings into cycles.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct MemoryReflectionReportView {
+    version: u32,
+    generated_at_ms: u64,
+    event_count: usize,
+    authority: AuthorityDecisionView,
+    health: HealthView,
+    summary: ReflectionSummaryView,
+    source_coverage: ReflectionSourceCoverageView,
+    cycles: Vec<ReflectionCycleView>,
+    write_back_policy: WriteBackPolicyView,
+}
+
+impl From<MemoryReflectionReport> for MemoryReflectionReportView {
+    fn from(report: MemoryReflectionReport) -> Self {
+        Self {
+            version: report.version,
+            generated_at_ms: report.generated_at_ms,
+            event_count: report.event_count,
+            authority: AuthorityDecisionView::from(report.authority),
+            health: HealthView::from(report.health),
+            summary: ReflectionSummaryView::from(report.summary),
+            source_coverage: ReflectionSourceCoverageView::from(report.source_coverage),
+            cycles: report
+                .cycles
+                .into_iter()
+                .map(ReflectionCycleView::from)
+                .collect(),
+            write_back_policy: WriteBackPolicyView::from(report.write_back_policy),
+        }
+    }
+}
+
 /// Typed view of a `memory_hook` report. The hook's own structure (kind,
 /// summary, directives) and the surfaces with dedicated views (authority,
-/// briefing, recall, self-inspection) are fully typed. The two heavier optional
-/// sub-reports it can embed — `reflection` and `sleep` — are carried as nested
-/// JSON, matching the `reflect`/`consolidation_plan` tools, until those reports
-/// get their own typed views.
+/// briefing, recall, self-inspection, reflection) are fully typed. The heavier
+/// optional `sleep` sub-report it can embed is still carried as nested JSON,
+/// matching the `consolidation_plan` tool, until that report gets its own typed
+/// view.
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct MemoryHookReportView {
     version: u32,
@@ -1063,7 +1216,7 @@ pub(crate) struct MemoryHookReportView {
     #[serde(skip_serializing_if = "Option::is_none")]
     self_inspection: Option<SelfInspectionReportView>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    reflection: Option<serde_json::Value>,
+    reflection: Option<MemoryReflectionReportView>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sleep: Option<serde_json::Value>,
 }
@@ -1086,9 +1239,7 @@ impl From<MemoryHookReport> for MemoryHookReportView {
             briefing: report.briefing.map(BriefingReportView::from),
             recall: report.recall.map(HookRecallView::from),
             self_inspection: report.self_inspection.map(SelfInspectionReportView::from),
-            reflection: report
-                .reflection
-                .and_then(|reflection| serde_json::to_value(reflection).ok()),
+            reflection: report.reflection.map(MemoryReflectionReportView::from),
             sleep: report
                 .sleep
                 .and_then(|sleep| serde_json::to_value(sleep).ok()),

@@ -780,8 +780,9 @@ impl NahualiMcpServer {
                 evidence_limit: args.evidence_limit.unwrap_or(8),
             }))
         })?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(ReflectResult { report }))
+        Ok(Json(ReflectResult {
+            report: report.into(),
+        }))
     }
 
     #[tool(
