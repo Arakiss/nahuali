@@ -13,19 +13,19 @@ use rmcp::{
 
 use crate::{
     protocol::{
-        AnomalyAcknowledgeArgs, AuthorityDecisionView, BriefingArgs, BriefingResult, ClaimResult,
-        ClaimView, ConsolidationPlanArgs, ConsolidationPlanResult, DatabaseReportResult, FactArgs,
-        FactResult, FactView, GraphArgs, GraphResult, IngestArgs, IngestResult, IngestTextArgs,
+        AnomaliesResult, AnomalyAcknowledgeArgs, AnomalyAcknowledgeResult, AuthorityDecisionView,
+        BriefingArgs, BriefingResult, ClaimResult, ClaimView, ConsolidationPlanArgs,
+        ConsolidationPlanResult, DatabaseReportResult, DeadlinesResult, FactArgs, FactResult,
+        FactView, GraphArgs, GraphResult, IngestArgs, IngestResult, IngestTextArgs,
         IngestTextResult, InspectResult, IntentionArgs, IntentionKindArg, IntentionPriorityArg,
         IntentionReconcileArgs, IntentionResult, IntentionStatusArgs, IntentionUpdateArgs,
-        IntentionView, LinkResult, LinkView, MemoryHookArgs, MemoryHookResult,
-        OperatorReportResult, ProactiveArgs, ProcedureArgs, ProcedureResult, ProcedureView,
-        ProjectionReportResult, ProjectionStatusResult, ProjectionValidationResult, RecallArgs,
-        RecallResultView, RecallToolResult, RecordLedgerIssueView, ReflectArgs, ReflectResult,
-        RelateArgs, RelateResult, RelationView, RememberArgs, RememberResult, ReviewArgs,
-        ReviewResolveArgs, ReviewResolveResult, ReviewResult, SelfInspectResult,
-        SemanticReportResult, SemanticStatusResult, SourceKindArg, TextChunkingArg, ValidateResult,
-        parse_scope_arg,
+        IntentionView, LinkResult, LinkView, MemoryHookArgs, MemoryHookResult, ProactiveArgs,
+        ProactiveResult, ProcedureArgs, ProcedureResult, ProcedureView, ProjectionReportResult,
+        ProjectionStatusResult, ProjectionValidationResult, RecallArgs, RecallResultView,
+        RecallToolResult, RecordLedgerIssueView, ReflectArgs, ReflectResult, RelateArgs,
+        RelateResult, RelationView, RememberArgs, RememberResult, ReviewArgs, ReviewResolveArgs,
+        ReviewResolveResult, ReviewResult, SelfInspectResult, SemanticReportResult,
+        SemanticStatusResult, SourceKindArg, TextChunkingArg, ValidateResult, parse_scope_arg,
     },
     server::NahualiMcpServer,
 };
@@ -556,14 +556,13 @@ impl NahualiMcpServer {
     fn proactive(
         &self,
         Parameters(args): Parameters<ProactiveArgs>,
-    ) -> Result<Json<OperatorReportResult>, String> {
+    ) -> Result<Json<ProactiveResult>, String> {
         let report =
             self.with_memory(|memory| Ok(memory.proactive_with_options(proactive_options(args))))?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(OperatorReportResult {
+        Ok(Json(ProactiveResult {
             database: self.database.display().to_string(),
             source_projection: "rust",
-            report,
+            report: report.into(),
         }))
     }
 
@@ -574,14 +573,13 @@ impl NahualiMcpServer {
     fn deadlines(
         &self,
         Parameters(args): Parameters<ProactiveArgs>,
-    ) -> Result<Json<OperatorReportResult>, String> {
+    ) -> Result<Json<DeadlinesResult>, String> {
         let report =
             self.with_memory(|memory| Ok(memory.deadlines_with_options(proactive_options(args))))?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(OperatorReportResult {
+        Ok(Json(DeadlinesResult {
             database: self.database.display().to_string(),
             source_projection: "rust",
-            report,
+            report: report.into(),
         }))
     }
 
@@ -592,14 +590,13 @@ impl NahualiMcpServer {
     fn anomalies(
         &self,
         Parameters(args): Parameters<ProactiveArgs>,
-    ) -> Result<Json<OperatorReportResult>, String> {
+    ) -> Result<Json<AnomaliesResult>, String> {
         let report =
             self.with_memory(|memory| Ok(memory.anomalies_with_options(proactive_options(args))))?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(OperatorReportResult {
+        Ok(Json(AnomaliesResult {
             database: self.database.display().to_string(),
             source_projection: "rust",
-            report,
+            report: report.into(),
         }))
     }
 
@@ -615,16 +612,15 @@ impl NahualiMcpServer {
     fn anomaly_acknowledge(
         &self,
         Parameters(args): Parameters<AnomalyAcknowledgeArgs>,
-    ) -> Result<Json<DatabaseReportResult>, String> {
+    ) -> Result<Json<AnomalyAcknowledgeResult>, String> {
         let report = self.with_memory(|memory| {
             memory
                 .acknowledge_anomaly(args.anomaly_id, args.note, args.dry_run.unwrap_or(false))
                 .map_err(|error| error.to_string())
         })?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(DatabaseReportResult {
+        Ok(Json(AnomalyAcknowledgeResult {
             database: self.database.display().to_string(),
-            report,
+            report: report.into(),
         }))
     }
 

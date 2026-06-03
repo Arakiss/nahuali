@@ -401,10 +401,30 @@ pub(crate) struct IntentionResult {
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
-pub(crate) struct OperatorReportResult {
+pub(crate) struct ProactiveResult {
     pub(crate) database: String,
     pub(crate) source_projection: &'static str,
-    pub(crate) report: Value,
+    pub(crate) report: MemoryProactiveReportView,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct DeadlinesResult {
+    pub(crate) database: String,
+    pub(crate) source_projection: &'static str,
+    pub(crate) report: DeadlineReportView,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct AnomaliesResult {
+    pub(crate) database: String,
+    pub(crate) source_projection: &'static str,
+    pub(crate) report: AnomalyReportView,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct AnomalyAcknowledgeResult {
+    pub(crate) database: String,
+    pub(crate) report: AnomalyAcknowledgementReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
