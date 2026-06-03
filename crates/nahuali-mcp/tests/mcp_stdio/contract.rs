@@ -59,6 +59,7 @@ pub fn run() {
     assert_frozen_tool_surface(&tools);
     assert_every_tool_publishes_typed_schemas(&tools);
     assert_key_output_shapes(&tools);
+    assert_error_contract(&mut server);
 
     server.shutdown();
     let _ = fs::remove_file(store);
@@ -252,6 +253,82 @@ fn assert_key_output_shapes(tools: &[Value]) {
             .as_object()
             .is_some_and(|properties| !properties.is_empty()),
         "ingest report must resolve to a non-empty typed view"
+    );
+}
+
+/// The error contract: two stable channels a client must tell apart. Parameters
+/// that violate a tool's `inputSchema`, and unknown tool names, are rejected as
+/// pre-dispatch JSON-RPC errors with no tool result. A handler-level domain
+/// failure instead comes back as a tool result with `isError` set, a
+/// human-readable message, and no structured content — so a caller branches on
+/// the channel, not on parsing prose.
+fn assert_error_contract(server: &mut McpProcess) {
+    // Missing a required parameter is a pre-dispatch JSON-RPC invalid-params error.
+    let missing_param = server.request(json!({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": { "name": "recall", "arguments": {} }
+    }));
+    assert!(
+        missing_param["result"].is_null(),
+        "schema-invalid params must not return a tool result"
+    );
+    assert_eq!(
+        missing_param["error"]["code"], -32602,
+        "a missing required parameter must surface as a JSON-RPC invalid-params error"
+    );
+
+    // An unknown tool name is likewise a JSON-RPC error, not a tool result.
+    let unknown_tool = server.request(json!({
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": { "name": "does_not_exist", "arguments": {} }
+    }));
+    assert!(
+        unknown_tool["result"].is_null(),
+        "an unknown tool must not return a tool result"
+    );
+    assert_eq!(
+        unknown_tool["error"]["code"], -32602,
+        "an unknown tool must surface as a JSON-RPC error"
+    );
+
+    // A handler-level domain failure is a tool result with isError, a message,
+    // and no structured content.
+    let domain_error = server.request(json!({
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": {
+            "name": "claim",
+            "arguments": {
+                "subject": "Lena",
+                "predicate": "owns",
+                "object": "the release notes",
+                "sourceEpisodeId": "episode-x",
+                "sourceLast": true
+            }
+        }
+    }));
+    assert!(
+        domain_error.get("error").is_none(),
+        "a domain failure must not be a JSON-RPC protocol error"
+    );
+    assert_eq!(
+        domain_error["result"]["isError"], true,
+        "a domain failure must set isError on the tool result"
+    );
+    assert!(
+        domain_error["result"]["structuredContent"].is_null(),
+        "a domain failure must not carry structured content"
+    );
+    assert!(
+        domain_error["result"]["content"][0]["text"]
+            .as_str()
+            .is_some_and(|text| !text.trim().is_empty()),
+        "a domain failure must carry a human-readable message"
     );
 }
 
