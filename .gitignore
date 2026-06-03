@@ -20,3 +20,4 @@ target/
 *.interchange.json
 benchmark-results/
 docs/
+html-artifacts/
