@@ -68,6 +68,9 @@ pub(crate) struct TrustIntegrityView {
     #[cfg(feature = "tamper-evidence")]
     #[serde(skip_serializing_if = "Option::is_none")]
     chain_tip: Option<String>,
+    #[cfg(feature = "tamper-evidence")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    merkle_root: Option<String>,
 }
 
 impl From<TrustIntegrity> for TrustIntegrityView {
@@ -80,6 +83,8 @@ impl From<TrustIntegrity> for TrustIntegrityView {
             chain_intact: integrity.chain_intact,
             #[cfg(feature = "tamper-evidence")]
             chain_tip: integrity.chain_tip,
+            #[cfg(feature = "tamper-evidence")]
+            merkle_root: integrity.merkle_root,
         }
     }
 }

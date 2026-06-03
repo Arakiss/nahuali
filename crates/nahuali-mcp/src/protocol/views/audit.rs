@@ -55,6 +55,9 @@ pub(crate) struct LedgerAuditIntegrityView {
     sequence_contiguous: bool,
     #[cfg(feature = "tamper-evidence")]
     chain_intact: bool,
+    #[cfg(feature = "tamper-evidence")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    merkle_root: Option<String>,
     verified: bool,
 }
 
@@ -65,6 +68,8 @@ impl From<LedgerAuditIntegrity> for LedgerAuditIntegrityView {
             sequence_contiguous: integrity.sequence_contiguous,
             #[cfg(feature = "tamper-evidence")]
             chain_intact: integrity.chain_intact,
+            #[cfg(feature = "tamper-evidence")]
+            merkle_root: integrity.merkle_root,
             verified: integrity.verified,
         }
     }

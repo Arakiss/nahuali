@@ -104,6 +104,13 @@ pub struct LedgerAuditIntegrity {
     /// The tamper-evident hash chain through the upper bound is intact.
     #[cfg(feature = "tamper-evidence")]
     pub chain_intact: bool,
+    /// Merkle commitment over the chained prefix through the upper bound: one
+    /// root summarizing that these events existed in this order. A commitment
+    /// for anchoring and inclusion proofs, not itself a proof and not a trust
+    /// gate. `None` for an unchained or empty ledger.
+    #[cfg(feature = "tamper-evidence")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub merkle_root: Option<String>,
     /// Overall verdict over the checks that apply to this build.
     pub verified: bool,
 }
@@ -218,6 +225,8 @@ fn audit_integrity(prefix: &[EventEnvelope]) -> LedgerAuditIntegrity {
 
     #[cfg(feature = "tamper-evidence")]
     let chain_intact = crate::verify_event_chain(prefix).is_none();
+    #[cfg(feature = "tamper-evidence")]
+    let merkle_root = crate::ledger_merkle_root(prefix);
 
     #[cfg(feature = "tamper-evidence")]
     let verified = checksums_valid && sequence_contiguous && chain_intact;
@@ -229,6 +238,8 @@ fn audit_integrity(prefix: &[EventEnvelope]) -> LedgerAuditIntegrity {
         sequence_contiguous,
         #[cfg(feature = "tamper-evidence")]
         chain_intact,
+        #[cfg(feature = "tamper-evidence")]
+        merkle_root,
         verified,
     }
 }
@@ -478,5 +489,11 @@ mod tests {
         assert!(audit.integrity.verified);
         assert!(audit.from_tip.is_none());
         assert_eq!(audit.to_tip, Some(events[1].chain_hash()));
+        // The audit surfaces the Merkle commitment over the chained prefix.
+        assert!(audit.integrity.merkle_root.is_some());
+        assert_eq!(
+            audit.integrity.merkle_root,
+            crate::ledger_merkle_root(&events)
+        );
     }
 }

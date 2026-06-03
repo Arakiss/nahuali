@@ -91,6 +91,10 @@ fn print_human(report: &MemoryTrustReport) {
     if let Some(tip) = &integrity.chain_tip {
         println!("Chain tip: {tip}");
     }
+    #[cfg(feature = "tamper-evidence")]
+    if let Some(root) = &integrity.merkle_root {
+        println!("Merkle root: {root}");
+    }
 
     println!(
         "Health: {} unsupported, {} conflicting, {} blind spots (avg confidence {:.2})",
@@ -276,6 +280,15 @@ fn render_html(report: &MemoryTrustReport) -> String {
     #[cfg(not(feature = "tamper-evidence"))]
     let tip_html = String::new();
 
+    #[cfg(feature = "tamper-evidence")]
+    let root_html = integrity
+        .merkle_root
+        .as_ref()
+        .map(|root| format!("<div class=\"tip\">merkle root · {}</div>", escape(root)))
+        .unwrap_or_default();
+    #[cfg(not(feature = "tamper-evidence"))]
+    let root_html = String::new();
+
     let reasons = report
         .verdict_reasons
         .iter()
@@ -286,7 +299,7 @@ fn render_html(report: &MemoryTrustReport) -> String {
     let verdict_text = if report.trustworthy { "YES" } else { "NO" };
 
     format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Memory Trust Report</title><style>{style}</style></head><body><div class="wrap"><div class="kicker">Nahuali · memory trust report</div><h1>Memory Trust Report</h1><div class="verdict {verdict_class}">Trustworthy: {verdict_text}</div><section><div class="q">What do we know</div><div class="grid">{knowledge_cards}</div></section><section><div class="q">Why should we trust it</div><div class="rows">{trust_rows}</div></section><section><div class="q">What is missing or contradictory</div><div class="grid">{health_cards}</div></section><section><div class="q">Was the recorded history altered</div><div class="rows">{history_rows}</div>{tip_html}</section><section><div class="q">Reasons</div><ul class="reasons">{reasons}</ul></section><footer>Non-mutating snapshot · report v{version} · generated at {generated} ms since the Unix epoch</footer></div></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Memory Trust Report</title><style>{style}</style></head><body><div class="wrap"><div class="kicker">Nahuali · memory trust report</div><h1>Memory Trust Report</h1><div class="verdict {verdict_class}">Trustworthy: {verdict_text}</div><section><div class="q">What do we know</div><div class="grid">{knowledge_cards}</div></section><section><div class="q">Why should we trust it</div><div class="rows">{trust_rows}</div></section><section><div class="q">What is missing or contradictory</div><div class="grid">{health_cards}</div></section><section><div class="q">Was the recorded history altered</div><div class="rows">{history_rows}</div>{tip_html}{root_html}</section><section><div class="q">Reasons</div><ul class="reasons">{reasons}</ul></section><footer>Non-mutating snapshot · report v{version} · generated at {generated} ms since the Unix epoch</footer></div></body></html>"#,
         style = HTML_STYLE,
         verdict_class = verdict_class,
         verdict_text = verdict_text,
@@ -295,6 +308,7 @@ fn render_html(report: &MemoryTrustReport) -> String {
         health_cards = health_cards,
         history_rows = history_rows,
         tip_html = tip_html,
+        root_html = root_html,
         reasons = reasons,
         version = report.version,
         generated = report.generated_at_ms,

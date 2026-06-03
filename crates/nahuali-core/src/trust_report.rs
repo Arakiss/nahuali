@@ -66,6 +66,12 @@ pub struct TrustIntegrity {
     #[cfg(feature = "tamper-evidence")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chain_tip: Option<String>,
+    /// Merkle commitment over the full chained ledger: one root for anchoring
+    /// and inclusion proofs, distinct from the linear `chain_tip`. A commitment,
+    /// not a proof, and not a trust gate. `None` when the ledger is unchained.
+    #[cfg(feature = "tamper-evidence")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub merkle_root: Option<String>,
 }
 
 /// A composed, non-mutating snapshot of how trustworthy the memory is.
@@ -126,6 +132,10 @@ impl MemoryEngine {
             chain_intact: audit.integrity.chain_intact,
             #[cfg(feature = "tamper-evidence")]
             chain_tip: self.chain_tip(),
+            // The default audit covers the whole ledger, so its Merkle root is
+            // the full-ledger commitment; reuse it rather than recomputing.
+            #[cfg(feature = "tamper-evidence")]
+            merkle_root: audit.integrity.merkle_root.clone(),
         };
 
         #[cfg(feature = "attestation")]
@@ -262,6 +272,8 @@ mod tests {
             chain_intact: true,
             #[cfg(feature = "tamper-evidence")]
             chain_tip: None,
+            #[cfg(feature = "tamper-evidence")]
+            merkle_root: None,
         }
     }
 
@@ -306,6 +318,8 @@ mod tests {
             chain_intact: true,
             #[cfg(feature = "tamper-evidence")]
             chain_tip: None,
+            #[cfg(feature = "tamper-evidence")]
+            merkle_root: None,
         };
 
         let report = assemble_trust_report(

@@ -65,6 +65,10 @@ fn print_human(report: &LedgerAudit) {
         }
     );
     println!(")");
+    #[cfg(feature = "tamper-evidence")]
+    if let Some(root) = &report.integrity.merkle_root {
+        println!("Merkle root: {root}");
+    }
 
     print_counts(report);
 
