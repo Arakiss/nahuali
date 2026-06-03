@@ -16,6 +16,11 @@ fn stdio_server_supports_consolidation_plan() {
 }
 
 #[test]
+fn stdio_server_publishes_a_stable_typed_tool_contract() {
+    mcp_stdio::contract::run();
+}
+
+#[test]
 fn stdio_server_supports_operator_loop_tools() {
     mcp_stdio::operator_loop::run();
 }

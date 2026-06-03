@@ -1,4 +1,5 @@
 pub mod consolidation_plan;
+pub mod contract;
 pub mod hooks;
 pub mod operator_loop;
 pub mod prompts;
