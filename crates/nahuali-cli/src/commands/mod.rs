@@ -3,6 +3,7 @@ mod artifacts;
 mod attestation;
 mod audit;
 mod demo;
+mod init;
 mod migration;
 mod migration_legacy;
 mod migration_timestamps;
@@ -620,6 +621,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
         )?,
         Command::Data { json } => reports::data(&mut memory, json)?,
         Command::Demo { .. }
+        | Command::Init { .. }
         | Command::Completions { .. }
         | Command::Validate { .. }
         | Command::BackupValidate { .. }

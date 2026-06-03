@@ -24,6 +24,7 @@ Options:
 const GROUPED_COMMANDS: &str = "\
 Getting started:
   demo                  See the tamper-evidence trust story (no database, no Docker)
+  init                  Wire your agent harness to use Nahuali (installs the skill)
 
 Capture:
   remember              Record an observed episode
@@ -141,6 +142,17 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     #[command(about = "See the tamper-evidence trust story — no database, no Docker, in seconds.")]
     Demo {},
+    #[command(
+        about = "Wire your agent harness to use Nahuali (installs the skill, prints the MCP config)."
+    )]
+    Init {
+        /// Show what would be written without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+        /// Overwrite an existing installed skill.
+        #[arg(long)]
+        force: bool,
+    },
     #[command(about = "Print operational memory status.")]
     Status {
         #[arg(long)]
