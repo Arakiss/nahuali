@@ -63,6 +63,7 @@ mod self_inspection;
 mod semantic;
 mod sleep;
 mod store;
+mod trust_report;
 mod validation;
 
 pub use adapters::{
@@ -188,6 +189,10 @@ pub use store::{
     GraphProjectionHealthSignal, GraphProjectionPendingIntention, GraphProjectionRebuildReport,
     GraphProjectionStatus, GraphProjectionValidation, MemoryEngine, SourceEpisodeOptions,
     SourceRecordOptions,
+};
+pub use trust_report::{
+    MEMORY_TRUST_REPORT_VERSION, MemoryTrustReport, TrustIntegrity, TrustKnowledge,
+    TrustReportOptions,
 };
 /// Compatibility alias for the initial pre-release memory engine name.
 ///
