@@ -89,8 +89,9 @@ impl NahualiMcpServer {
                 .ingest_document(&document, args.dry_run.unwrap_or(false))
                 .map_err(|error| error.to_string())
         })?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
-        Ok(Json(IngestResult { report }))
+        Ok(Json(IngestResult {
+            report: report.into(),
+        }))
     }
 
     #[tool(
@@ -127,15 +128,13 @@ impl NahualiMcpServer {
                     .ingest_document(document, args.dry_run.unwrap_or(false))
                     .map_err(|error| error.to_string())
             })?;
-            Some(serde_json::to_value(report).map_err(|error| error.to_string())?)
+            Some(report.into())
         } else {
             None
         };
-        let adapter_report =
-            serde_json::to_value(adapter_report).map_err(|error| error.to_string())?;
 
         Ok(Json(IngestTextResult {
-            adapter_report,
+            adapter_report: adapter_report.into(),
             report,
         }))
     }

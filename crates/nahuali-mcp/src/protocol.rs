@@ -361,13 +361,13 @@ pub(crate) struct RememberResult {
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct IngestResult {
-    pub(crate) report: Value,
+    pub(crate) report: IngestionReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct IngestTextResult {
-    pub(crate) adapter_report: Value,
-    pub(crate) report: Option<Value>,
+    pub(crate) adapter_report: TextIngestBuildReportView,
+    pub(crate) report: Option<IngestionReportView>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
