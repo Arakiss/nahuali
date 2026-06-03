@@ -1,6 +1,7 @@
 mod artifacts;
 #[cfg(feature = "attestation")]
 mod attestation;
+mod audit;
 mod migration;
 mod migration_legacy;
 mod migration_timestamps;
@@ -14,7 +15,7 @@ mod text;
 use std::path::PathBuf;
 
 use anyhow::Context;
-use nahuali_core::MemoryEngine;
+use nahuali_core::{LedgerAuditOptions, MemoryEngine};
 
 use crate::cli::{Cli, Command};
 
@@ -481,6 +482,22 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             attestation: path,
             json,
         } => attestation::verify(&mut memory, &path, json)?,
+        Command::Audit {
+            from,
+            to,
+            since,
+            until,
+            json,
+        } => audit::audit(
+            &memory,
+            LedgerAuditOptions {
+                from_sequence: from,
+                to_sequence: to,
+                since_ms: since,
+                until_ms: until,
+            },
+            json,
+        )?,
         Command::Maintenance { json } => reports::maintenance(&mut memory, &database, json)?,
         Command::Snapshot {
             output,

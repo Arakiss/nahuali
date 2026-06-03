@@ -75,6 +75,7 @@ Maintenance:
   semantic-rebuild      Rebuild the derived Qdrant semantic index from the projection
   semantic-status       Inspect the derived Qdrant semantic index status
   validate              Validate the SurrealDB memory_record ledger without mutating it
+  audit                 Audit what changed in the record ledger between two points
   maintenance           Print a non-destructive maintenance report
   snapshot              Write or dry-run an optional projection snapshot
   snapshot-validate     Validate an optional snapshot against record replay
@@ -697,6 +698,25 @@ pub(crate) enum Command {
     },
     #[command(about = "Validate the SurrealDB memory_record ledger without mutating it.")]
     Validate {
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(
+        about = "Audit what changed in the record ledger between two points without mutating it."
+    )]
+    Audit {
+        /// Exclusive lower sequence bound; audit changes after this sequence.
+        #[arg(long, value_name = "SEQUENCE")]
+        from: Option<u64>,
+        /// Inclusive upper sequence bound; audit changes through this sequence.
+        #[arg(long, value_name = "SEQUENCE")]
+        to: Option<u64>,
+        /// Inclusive lower timestamp bound in milliseconds since the Unix epoch.
+        #[arg(long, value_name = "MS")]
+        since: Option<u64>,
+        /// Inclusive upper timestamp bound in milliseconds since the Unix epoch.
+        #[arg(long, value_name = "MS")]
+        until: Option<u64>,
         #[arg(long)]
         json: bool,
     },
