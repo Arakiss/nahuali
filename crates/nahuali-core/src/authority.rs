@@ -161,6 +161,20 @@ mod tests {
     }
 
     #[test]
+    fn warns_for_recency_resolved_supersession() {
+        let health = health_with_signals(vec![signal(
+            HealthSignalKind::SupersededFact,
+            HealthSeverity::Medium,
+        )]);
+
+        let authority = AuthorityDecision::evaluate(&health);
+
+        assert_eq!(authority.mode, AuthorityMode::Warn);
+        assert!(!authority.can_trust);
+        assert_eq!(authority.score, 0.5);
+    }
+
+    #[test]
     fn deduplicates_signal_kinds_in_first_seen_order() {
         let health = health_with_signals(vec![
             signal(HealthSignalKind::UnsupportedFact, HealthSeverity::Medium),
@@ -191,6 +205,7 @@ mod tests {
             low_confidence_fact_count: 0,
             conflicting_fact_count: 0,
             stale_fact_count: 0,
+            superseded_fact_count: 0,
             isolated_entity_count: 0,
             blind_spot_count: signals.len(),
             average_fact_confidence: 0.0,

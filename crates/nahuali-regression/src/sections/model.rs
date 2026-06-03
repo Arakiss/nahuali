@@ -235,6 +235,7 @@ struct Expected {
     low_confidence_fact_count: Option<usize>,
     conflicting_fact_count: Option<usize>,
     stale_fact_count: Option<usize>,
+    superseded_fact_count: Option<usize>,
     isolated_entity_count: Option<usize>,
     blind_spot_count_min: Option<usize>,
     required_signal_kinds: Option<Vec<HealthSignalKind>>,

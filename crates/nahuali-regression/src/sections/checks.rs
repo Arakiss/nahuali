@@ -92,6 +92,12 @@ fn append_projection_checks(
     );
     check_eq(
         checks,
+        "superseded_fact_count",
+        health.superseded_fact_count,
+        expected.superseded_fact_count,
+    );
+    check_eq(
+        checks,
         "isolated_entity_count",
         health.isolated_entity_count,
         expected.isolated_entity_count,

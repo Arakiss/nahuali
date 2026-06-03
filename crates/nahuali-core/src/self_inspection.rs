@@ -248,6 +248,11 @@ fn finding_from_health_signal(signal: &HealthSignal) -> SelfInspectionFinding {
             "Stale memory",
             "Refresh or retire the stale memory with a new observed episode.",
         ),
+        HealthSignalKind::SupersededFact => (
+            SelfInspectionFindingKind::StaleMemory,
+            "Superseded memory",
+            "Retire or archive the older value now that a newer evidence-backed fact replaced it.",
+        ),
         HealthSignalKind::IsolatedEntity => (
             SelfInspectionFindingKind::BlindSpot,
             "Isolated entity",

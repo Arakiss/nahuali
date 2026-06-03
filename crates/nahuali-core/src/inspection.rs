@@ -30,6 +30,9 @@ pub struct KnowledgeHealth {
     pub conflicting_fact_count: usize,
     /// Number of facts older than the staleness threshold.
     pub stale_fact_count: usize,
+    /// Number of facts retired by a newer, evidence-backed value for the same
+    /// `(scope, subject, predicate)`.
+    pub superseded_fact_count: usize,
     /// Number of entities with no relation edges.
     pub isolated_entity_count: usize,
     /// Number of health signals requiring caller attention.
@@ -93,6 +96,20 @@ pub enum HealthSignalKind {
     ConflictingFact,
     /// A fact is older than the staleness threshold.
     StaleFact,
+    /// A fact was replaced by a newer, evidence-backed fact for the same
+    /// `(scope, subject, predicate)`.
+    ///
+    /// Exact-match syntactic supersession: the retired value differs from the
+    /// current one, the newest fact holds a unique maximum timestamp, and that
+    /// newest fact carries a source episode distinct from the value it retires
+    /// (a new observation, not a re-statement within one episode). Honest
+    /// limits: it cannot collapse an orderly value chain
+    /// (`draft` -> `reviewed` -> `published`) into a single signal, it is keyed
+    /// on ledger ingestion order rather than wall-clock causality, and an
+    /// unprovenanced newer value or two differing values from the same episode
+    /// are deliberately left as a [`HealthSignalKind::ConflictingFact`] instead
+    /// of a clean supersession.
+    SupersededFact,
     /// An entity appears in facts but has no relation edges.
     IsolatedEntity,
 }
@@ -190,7 +207,8 @@ impl KnowledgeHealth {
             });
         }
 
-        let conflicts = conflicting_facts(facts)
+        let (raw_conflicts, supersessions) = classify_fact_groups(facts);
+        let conflicts = raw_conflicts
             .into_iter()
             .filter(|conflict| {
                 !evidence_reviewed(
@@ -221,6 +239,46 @@ impl KnowledgeHealth {
                 ),
                 evidence_ids: conflict.evidence_ids.iter().cloned().collect(),
             });
+        }
+
+        // A newer observation disagrees with an older one for the same
+        // (scope, subject, predicate). We cannot prove this was a clean refresh
+        // rather than a cross-source contradiction, so it warrants caller
+        // uncertainty (Medium -> Warn): the disagreement is surfaced, never
+        // silently resolved into Certify, and never escalated to the hard Block
+        // of a same-observation `ConflictingFact` (High). Each retired value
+        // links both its own event and the superseding event so callers can see
+        // what replaced what.
+        let mut superseded_fact_count = 0;
+        for supersession in &supersessions {
+            for retired in &supersession.retired {
+                if evidence_reviewed(
+                    &[
+                        retired.event_id.as_str(),
+                        supersession.current_event_id.as_str(),
+                    ],
+                    &resolved_review_evidence,
+                ) {
+                    continue;
+                }
+                superseded_fact_count += 1;
+                signals.push(HealthSignal {
+                    kind: HealthSignalKind::SupersededFact,
+                    dimensions: vec![HealthDimension::Freshness, HealthDimension::Staleness],
+                    severity: HealthSeverity::Medium,
+                    message: format!(
+                        "{} {} value '{}' was superseded by '{}'.",
+                        supersession.subject,
+                        supersession.predicate,
+                        retired.value,
+                        supersession.current_value
+                    ),
+                    evidence_ids: vec![
+                        retired.event_id.clone(),
+                        supersession.current_event_id.clone(),
+                    ],
+                });
+            }
         }
 
         let stale_before_ms = now_ms.saturating_sub(STALE_AFTER_DAYS * DAY_MS);
@@ -278,6 +336,7 @@ impl KnowledgeHealth {
             low_confidence_fact_count,
             conflicting_fact_count: conflicts.len(),
             stale_fact_count: stale_facts.len(),
+            superseded_fact_count,
             isolated_entity_count: isolated_entities.len(),
             blind_spot_count: signals.len(),
             average_fact_confidence,
@@ -295,39 +354,114 @@ struct FactConflict {
     evidence_ids: BTreeSet<String>,
 }
 
-fn conflicting_facts(facts: &[Fact]) -> Vec<FactConflict> {
-    let mut groups: BTreeMap<(&str, &str), Vec<&Fact>> = BTreeMap::new();
+#[derive(Debug)]
+struct Supersession {
+    subject: String,
+    predicate: String,
+    current_value: String,
+    current_event_id: String,
+    retired: Vec<RetiredFact>,
+}
+
+#[derive(Debug)]
+struct RetiredFact {
+    value: String,
+    event_id: String,
+}
+
+/// Partition `(scope, subject, predicate)` groups that disagree on the object
+/// into clean supersessions and genuine conflicts.
+///
+/// A group with at least two distinct object values is a **clean
+/// supersession** when a single fact holds the maximum `created_at_ms` (no tie
+/// at the newest timestamp) and that newest fact carries a source episode. Only
+/// the older facts whose value differs from the surviving one *and* whose
+/// source episode differs from the winner's are retired. Every other
+/// disagreeing group stays a **conflict**: a tie at the newest timestamp, a
+/// newest value with no provenance, or two differing values recorded against
+/// the same episode keep the High-severity `ConflictingFact` instead of
+/// silently reclassifying a contradiction as a benign refresh. Grouping
+/// includes the scope key so a `project:alpha` fact never supersedes or
+/// conflicts with a `project:beta` fact that shares the same subject and
+/// predicate.
+fn classify_fact_groups(facts: &[Fact]) -> (Vec<FactConflict>, Vec<Supersession>) {
+    let mut groups: BTreeMap<(Option<&str>, &str, &str), Vec<&Fact>> = BTreeMap::new();
     for fact in facts {
+        let scope_key = fact.scope.as_ref().map(|scope| scope.key.as_str());
         groups
-            .entry((fact.subject.as_str(), fact.predicate.as_str()))
+            .entry((scope_key, fact.subject.as_str(), fact.predicate.as_str()))
             .or_default()
             .push(fact);
     }
 
-    groups
-        .into_iter()
-        .filter_map(|((subject, predicate), facts)| {
-            let values = facts
-                .iter()
-                .map(|fact| fact.object.clone())
-                .collect::<BTreeSet<_>>();
-            if values.len() <= 1 {
-                return None;
+    let mut conflicts = Vec::new();
+    let mut supersessions = Vec::new();
+
+    for ((_, subject, predicate), group) in groups {
+        let values = group
+            .iter()
+            .map(|fact| fact.object.clone())
+            .collect::<BTreeSet<_>>();
+        if values.len() <= 1 {
+            continue;
+        }
+
+        let max_ts = group
+            .iter()
+            .map(|fact| fact.created_at_ms)
+            .max()
+            .unwrap_or_default();
+        let newest = group
+            .iter()
+            .filter(|fact| fact.created_at_ms == max_ts)
+            .collect::<Vec<_>>();
+
+        if newest.len() == 1 {
+            let winner = newest[0];
+            if let Some(winner_episode) = winner.source_episode_id.as_deref() {
+                // A supersession is a *new observation* replacing an old claim,
+                // so the retired value must come from a different source episode
+                // than the winner. Two differing values recorded against the
+                // same episode are a contradiction within one observation, not a
+                // refresh, and stay a conflict below.
+                let retired = group
+                    .iter()
+                    .filter(|fact| {
+                        fact.event_id != winner.event_id
+                            && fact.object != winner.object
+                            && fact.source_episode_id.as_deref() != Some(winner_episode)
+                    })
+                    .map(|fact| RetiredFact {
+                        value: fact.object.clone(),
+                        event_id: fact.event_id.clone(),
+                    })
+                    .collect::<Vec<_>>();
+                if !retired.is_empty() {
+                    supersessions.push(Supersession {
+                        subject: subject.to_string(),
+                        predicate: predicate.to_string(),
+                        current_value: winner.object.clone(),
+                        current_event_id: winner.event_id.clone(),
+                        retired,
+                    });
+                    continue;
+                }
             }
+        }
 
-            let evidence_ids = facts
-                .iter()
-                .map(|fact| fact.event_id.clone())
-                .collect::<BTreeSet<_>>();
+        let evidence_ids = group
+            .iter()
+            .map(|fact| fact.event_id.clone())
+            .collect::<BTreeSet<_>>();
+        conflicts.push(FactConflict {
+            subject: subject.to_string(),
+            predicate: predicate.to_string(),
+            values,
+            evidence_ids,
+        });
+    }
 
-            Some(FactConflict {
-                subject: subject.to_string(),
-                predicate: predicate.to_string(),
-                values,
-                evidence_ids,
-            })
-        })
-        .collect()
+    (conflicts, supersessions)
 }
 
 fn entity_graph(data: &MemoryData) -> BTreeMap<String, usize> {
@@ -412,9 +546,9 @@ fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{Fact, MemoryData, Relation};
+    use crate::model::{Fact, MemoryData, MemoryScope, MemoryScopeKind, Relation};
 
-    use super::{HealthSignalKind, KnowledgeHealth};
+    use super::{HealthSeverity, HealthSignalKind, KnowledgeHealth};
 
     #[test]
     fn reports_conflicting_fact_assertions() {
@@ -497,6 +631,204 @@ mod tests {
         assert_eq!(health.isolated_entity_count, 0);
     }
 
+    #[test]
+    fn reports_clean_supersession_for_evidence_backed_refresh() {
+        let data = MemoryData {
+            event_count: 2,
+            last_event_id: Some("event_2".to_string()),
+            facts: vec![
+                sourced(
+                    "fact_1",
+                    "event_1",
+                    "episode_1",
+                    "Atlas",
+                    "status",
+                    "draft",
+                    1000,
+                    0.9,
+                ),
+                sourced(
+                    "fact_2",
+                    "event_2",
+                    "episode_2",
+                    "Atlas",
+                    "status",
+                    "published",
+                    1001,
+                    0.9,
+                ),
+            ],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, 1001);
+
+        assert_eq!(health.superseded_fact_count, 1);
+        assert_eq!(health.conflicting_fact_count, 0);
+        let superseded = health
+            .signals
+            .iter()
+            .find(|signal| signal.kind == HealthSignalKind::SupersededFact)
+            .expect("superseded signal present");
+        assert_eq!(superseded.severity, HealthSeverity::Medium);
+        assert!(superseded.evidence_ids.contains(&"event_1".to_string()));
+        assert!(superseded.evidence_ids.contains(&"event_2".to_string()));
+        assert!(
+            !health
+                .signals
+                .iter()
+                .any(|signal| signal.kind == HealthSignalKind::ConflictingFact)
+        );
+    }
+
+    #[test]
+    fn supersession_and_staleness_are_independent() {
+        let day = super::DAY_MS;
+        let now = 200 * day;
+        let data = MemoryData {
+            event_count: 3,
+            last_event_id: Some("event_3".to_string()),
+            facts: vec![
+                sourced(
+                    "fact_1",
+                    "event_1",
+                    "episode_1",
+                    "Atlas",
+                    "status",
+                    "draft",
+                    5 * day,
+                    0.9,
+                ),
+                sourced(
+                    "fact_2",
+                    "event_2",
+                    "episode_2",
+                    "Atlas",
+                    "status",
+                    "review",
+                    10 * day,
+                    0.9,
+                ),
+                sourced(
+                    "fact_3",
+                    "event_3",
+                    "episode_3",
+                    "Atlas",
+                    "status",
+                    "published",
+                    120 * day,
+                    0.9,
+                ),
+            ],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, now);
+
+        assert_eq!(health.superseded_fact_count, 2);
+        assert_eq!(health.stale_fact_count, 2);
+        assert_eq!(health.conflicting_fact_count, 0);
+    }
+
+    #[test]
+    fn supersession_groups_by_scope() {
+        let mut alpha = sourced(
+            "fact_1",
+            "event_1",
+            "episode_1",
+            "Atlas",
+            "status",
+            "draft",
+            1000,
+            0.9,
+        );
+        alpha.scope = Some(MemoryScope::new(MemoryScopeKind::Project, "alpha").expect("scope"));
+        let mut beta = sourced(
+            "fact_2",
+            "event_2",
+            "episode_2",
+            "Atlas",
+            "status",
+            "published",
+            1001,
+            0.9,
+        );
+        beta.scope = Some(MemoryScope::new(MemoryScopeKind::Project, "beta").expect("scope"));
+
+        let data = MemoryData {
+            event_count: 2,
+            last_event_id: Some("event_2".to_string()),
+            facts: vec![alpha, beta],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, 1001);
+
+        assert_eq!(health.superseded_fact_count, 0);
+        assert_eq!(health.conflicting_fact_count, 0);
+    }
+
+    #[test]
+    fn single_old_fact_is_stale_not_superseded() {
+        let now = 120 * super::DAY_MS;
+        let data = MemoryData {
+            event_count: 1,
+            last_event_id: Some("event_1".to_string()),
+            facts: vec![sourced(
+                "fact_1",
+                "event_1",
+                "episode_1",
+                "Lena",
+                "owns",
+                "Roadmap",
+                1,
+                0.8,
+            )],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, now);
+
+        assert_eq!(health.stale_fact_count, 1);
+        assert_eq!(health.superseded_fact_count, 0);
+        assert!(
+            !health
+                .signals
+                .iter()
+                .any(|signal| signal.kind == HealthSignalKind::SupersededFact)
+        );
+    }
+
+    #[test]
+    fn unprovenanced_newer_value_stays_conflict() {
+        let data = MemoryData {
+            event_count: 2,
+            last_event_id: Some("event_2".to_string()),
+            facts: vec![
+                fact("fact_1", "event_1", "Atlas", "status", "draft", 1000, 0.9),
+                fact(
+                    "fact_2",
+                    "event_2",
+                    "Atlas",
+                    "status",
+                    "published",
+                    1001,
+                    0.9,
+                ),
+            ],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, 1001);
+
+        assert_eq!(health.conflicting_fact_count, 1);
+        assert_eq!(health.superseded_fact_count, 0);
+        assert!(health.signals.iter().any(|signal| {
+            signal.kind == HealthSignalKind::ConflictingFact
+                && signal.severity == HealthSeverity::High
+        }));
+    }
+
     fn fact(
         id: &str,
         event_id: &str,
@@ -516,6 +848,31 @@ mod tests {
             confidence,
             scope: None,
             created_at_ms,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn sourced(
+        id: &str,
+        event_id: &str,
+        source_episode_id: &str,
+        subject: &str,
+        predicate: &str,
+        object: &str,
+        created_at_ms: u64,
+        confidence: f32,
+    ) -> Fact {
+        Fact {
+            source_episode_id: Some(source_episode_id.to_string()),
+            ..fact(
+                id,
+                event_id,
+                subject,
+                predicate,
+                object,
+                created_at_ms,
+                confidence,
+            )
         }
     }
 }

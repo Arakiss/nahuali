@@ -231,6 +231,8 @@ pub enum AnomalyKind {
     LowConfidenceMemory,
     /// Memory is stale.
     StaleMemory,
+    /// Memory was retired by a newer, evidence-backed value.
+    SupersededMemory,
     /// Entity is disconnected from relations.
     IsolatedEntity,
     /// Deadline is overdue.
@@ -573,6 +575,11 @@ fn append_health_alerts(
                 "Stale memory",
                 "Record a fresh observation before relying on this memory.",
             ),
+            HealthSignalKind::SupersededFact => (
+                AnomalyKind::SupersededMemory,
+                "Superseded memory",
+                "A newer evidence-backed value replaced this one; retire or archive the older value.",
+            ),
             HealthSignalKind::IsolatedEntity => (
                 AnomalyKind::IsolatedEntity,
                 "Disconnected entity",
@@ -819,7 +826,9 @@ fn anomaly_kind_from_reconciliation(kind: &IntentionReconciliationIssueKind) -> 
 fn review_action(kind: &AnomalyKind) -> ReviewRecordedAction {
     match kind {
         AnomalyKind::Contradiction => ReviewRecordedAction::ResolveContradiction,
-        AnomalyKind::StaleMemory => ReviewRecordedAction::RefreshMemory,
+        AnomalyKind::StaleMemory | AnomalyKind::SupersededMemory => {
+            ReviewRecordedAction::RefreshMemory
+        }
         AnomalyKind::IsolatedEntity => ReviewRecordedAction::LinkMemory,
         AnomalyKind::NoEpisodes
         | AnomalyKind::UnsupportedMemory
@@ -842,6 +851,7 @@ fn kind_key(kind: &AnomalyKind) -> &'static str {
         AnomalyKind::UnsupportedMemory => "unsupported_memory",
         AnomalyKind::LowConfidenceMemory => "low_confidence_memory",
         AnomalyKind::StaleMemory => "stale_memory",
+        AnomalyKind::SupersededMemory => "superseded_memory",
         AnomalyKind::IsolatedEntity => "isolated_entity",
         AnomalyKind::OverdueDeadline => "overdue_deadline",
         AnomalyKind::WaitingOnDependency => "waiting_on_dependency",

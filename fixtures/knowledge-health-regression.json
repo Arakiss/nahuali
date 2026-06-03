@@ -172,7 +172,59 @@
     },
     {
       "id": "conflicting_fact_memory",
-      "goal": "Conflicting assertions about the same subject and predicate should surface before recall is trusted.",
+      "goal": "Two values for the same subject and predicate recorded against a single observation are a contradiction, not a refresh, and must block trust.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "source",
+          "content": "Atlas is recorded as both draft and published",
+          "tags": ["release"]
+        },
+        {
+          "type": "fact",
+          "subject": "Atlas",
+          "predicate": "status",
+          "object": "draft",
+          "source_episode_ref": "source",
+          "confidence": 0.9
+        },
+        {
+          "type": "fact",
+          "subject": "Atlas",
+          "predicate": "status",
+          "object": "published",
+          "source_episode_ref": "source",
+          "confidence": 0.9
+        }
+      ],
+      "expected": {
+        "event_count": 3,
+        "episode_count": 1,
+        "fact_count": 2,
+        "relation_count": 0,
+        "supported_fact_count": 2,
+        "unsupported_fact_count": 0,
+        "low_confidence_fact_count": 0,
+        "conflicting_fact_count": 1,
+        "stale_fact_count": 0,
+        "superseded_fact_count": 0,
+        "blind_spot_count_min": 1,
+        "required_signal_kinds": ["conflicting_fact", "isolated_entity"],
+        "required_signals": [
+          {
+            "kind": "conflicting_fact",
+            "severity": "high",
+            "dimensions": ["contradiction", "blind_spot"]
+          }
+        ],
+        "authority_mode": "block",
+        "authority_score": 0.0,
+        "authority_can_trust": false
+      }
+    },
+    {
+      "id": "superseded_fact_memory",
+      "goal": "A newer evidence-backed value from a distinct later observation supersedes the older one: the disagreement is surfaced as warn-level uncertainty, never silently certified and never hard-blocked.",
       "steps": [
         {
           "type": "remember",
@@ -211,19 +263,20 @@
         "supported_fact_count": 2,
         "unsupported_fact_count": 0,
         "low_confidence_fact_count": 0,
-        "conflicting_fact_count": 1,
+        "conflicting_fact_count": 0,
         "stale_fact_count": 0,
+        "superseded_fact_count": 1,
         "blind_spot_count_min": 1,
-        "required_signal_kinds": ["conflicting_fact", "isolated_entity"],
+        "required_signal_kinds": ["superseded_fact", "isolated_entity"],
         "required_signals": [
           {
-            "kind": "conflicting_fact",
-            "severity": "high",
-            "dimensions": ["contradiction", "blind_spot"]
+            "kind": "superseded_fact",
+            "severity": "medium",
+            "dimensions": ["freshness", "staleness"]
           }
         ],
-        "authority_mode": "block",
-        "authority_score": 0.0,
+        "authority_mode": "warn",
+        "authority_score": 0.5,
         "authority_can_trust": false
       }
     },

@@ -438,6 +438,7 @@ fn signal_kind_name(kind: &HealthSignalKind) -> &'static str {
         HealthSignalKind::LowConfidenceFact => "low_confidence_fact",
         HealthSignalKind::ConflictingFact => "conflicting_fact",
         HealthSignalKind::StaleFact => "stale_fact",
+        HealthSignalKind::SupersededFact => "superseded_fact",
         HealthSignalKind::IsolatedEntity => "isolated_entity",
     }
 }
