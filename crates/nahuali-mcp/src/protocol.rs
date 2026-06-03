@@ -281,6 +281,15 @@ pub(crate) struct RecallArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AuditArgs {
+    pub(crate) from: Option<u64>,
+    pub(crate) to: Option<u64>,
+    pub(crate) since: Option<u64>,
+    pub(crate) until: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RecallKindArg {
     Entity,

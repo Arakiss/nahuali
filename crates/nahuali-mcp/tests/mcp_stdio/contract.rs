@@ -15,6 +15,7 @@ use super::support::{McpProcess, temp_store};
 const EXPECTED_TOOL_CONTRACT: &[(&str, &str)] = &[
     ("anomalies", "AnomaliesResult"),
     ("anomaly_acknowledge", "AnomalyAcknowledgeResult"),
+    ("audit", "AuditResult"),
     ("briefing", "BriefingResult"),
     ("claim", "ClaimResult"),
     ("consolidation_plan", "ConsolidationPlanResult"),
@@ -254,6 +255,27 @@ fn assert_key_output_shapes(tools: &[Value]) {
             .is_some_and(|properties| !properties.is_empty()),
         "ingest report must resolve to a non-empty typed view"
     );
+
+    // audit -> a typed diff with restated integrity and per-event entries.
+    let audit = &tool(tools, "audit")["outputSchema"];
+    for field in ["from_sequence", "counts", "integrity", "entries"] {
+        assert!(
+            has_property(audit, field),
+            "audit result must declare `{field}`"
+        );
+    }
+    let integrity = resolve(audit, &audit["properties"]["integrity"]);
+    assert!(
+        has_property(integrity, "verified"),
+        "audit integrity view must declare `verified`"
+    );
+    let entry = resolve(audit, &audit["properties"]["entries"]);
+    for field in ["sequence", "kind", "summary"] {
+        assert!(
+            has_property(entry, field),
+            "audit entry view must declare `{field}`"
+        );
+    }
 }
 
 /// The error contract: two stable channels a client must tell apart. Parameters

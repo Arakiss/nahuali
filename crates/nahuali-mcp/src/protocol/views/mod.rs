@@ -4,6 +4,7 @@
 
 use serde::Serialize;
 
+mod audit;
 mod briefing;
 mod cognition;
 mod graph;
@@ -18,6 +19,7 @@ mod review;
 mod self_inspection;
 mod semantic;
 
+pub(crate) use audit::*;
 pub(crate) use briefing::*;
 pub(crate) use cognition::*;
 pub(crate) use graph::*;

@@ -103,6 +103,7 @@ fn assert_tool_catalog(server: &mut McpProcess) {
         vec![
             "anomalies",
             "anomaly_acknowledge",
+            "audit",
             "briefing",
             "claim",
             "consolidation_plan",

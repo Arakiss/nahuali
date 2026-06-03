@@ -424,7 +424,8 @@ mod tests {
                 "projection_validate",
                 "semantic_status",
                 "semantic_rebuild",
-                "validate"
+                "validate",
+                "audit"
             ]
         );
         assert!(tools.iter().any(
@@ -503,6 +504,7 @@ mod tests {
             vec![
                 "anomalies",
                 "anomaly_acknowledge",
+                "audit",
                 "briefing",
                 "claim",
                 "consolidation_plan",

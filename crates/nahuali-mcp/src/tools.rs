@@ -1,9 +1,10 @@
 use nahuali_core::{
     BriefingOptions, ConsolidationPlanOptions, DEFAULT_TEXT_CHUNK_BYTES, IntentionKind,
     IntentionPriority, IntentionReconciliationOptions, IntentionStatus, IntentionUpdateOptions,
-    MemoryEngine, MemoryHookOptions, MemoryIngestDocument, OperatorReviewOptions, ProactiveOptions,
-    RecallOptions, ReflectionOptions, SelfInspectionReviewAction, SelfInspectionReviewPriority,
-    SleepModeOptions, SourceKind, TextChunking, TextIngestOptions, build_text_ingest_document,
+    LedgerAuditOptions, MemoryEngine, MemoryHookOptions, MemoryIngestDocument,
+    OperatorReviewOptions, ProactiveOptions, RecallOptions, ReflectionOptions,
+    SelfInspectionReviewAction, SelfInspectionReviewPriority, SleepModeOptions, SourceKind,
+    TextChunking, TextIngestOptions, build_text_ingest_document,
 };
 use rmcp::{
     Json,
@@ -13,20 +14,20 @@ use rmcp::{
 
 use crate::{
     protocol::{
-        AnomaliesResult, AnomalyAcknowledgeArgs, AnomalyAcknowledgeResult, AuthorityDecisionView,
-        BriefingArgs, BriefingResult, ClaimResult, ClaimView, ConsolidationPlanArgs,
-        ConsolidationPlanResult, DeadlinesResult, FactArgs, FactResult, FactView,
-        GoalProgressResult, GraphArgs, GraphResult, IngestArgs, IngestResult, IngestTextArgs,
-        IngestTextResult, InspectResult, IntentionArgs, IntentionKindArg, IntentionPriorityArg,
-        IntentionReconcileArgs, IntentionResult, IntentionStatusArgs, IntentionUpdateArgs,
-        IntentionView, LinkResult, LinkView, MemoryHookArgs, MemoryHookResult, ProactiveArgs,
-        ProactiveResult, ProcedureArgs, ProcedureResult, ProcedureView, ProjectionReportResult,
-        ProjectionStatusResult, ProjectionValidationResult, RecallArgs, RecallResultView,
-        RecallToolResult, ReconcileIntentionsResult, RecordLedgerIssueView, ReflectArgs,
-        ReflectResult, RelateArgs, RelateResult, RelationView, RememberArgs, RememberResult,
-        ReviewArgs, ReviewResolveArgs, ReviewResolveResult, ReviewResult, SelfInspectResult,
-        SemanticReportResult, SemanticStatusResult, SourceKindArg, TextChunkingArg, ValidateResult,
-        parse_scope_arg,
+        AnomaliesResult, AnomalyAcknowledgeArgs, AnomalyAcknowledgeResult, AuditArgs, AuditResult,
+        AuthorityDecisionView, BriefingArgs, BriefingResult, ClaimResult, ClaimView,
+        ConsolidationPlanArgs, ConsolidationPlanResult, DeadlinesResult, FactArgs, FactResult,
+        FactView, GoalProgressResult, GraphArgs, GraphResult, IngestArgs, IngestResult,
+        IngestTextArgs, IngestTextResult, InspectResult, IntentionArgs, IntentionKindArg,
+        IntentionPriorityArg, IntentionReconcileArgs, IntentionResult, IntentionStatusArgs,
+        IntentionUpdateArgs, IntentionView, LinkResult, LinkView, MemoryHookArgs, MemoryHookResult,
+        ProactiveArgs, ProactiveResult, ProcedureArgs, ProcedureResult, ProcedureView,
+        ProjectionReportResult, ProjectionStatusResult, ProjectionValidationResult, RecallArgs,
+        RecallResultView, RecallToolResult, ReconcileIntentionsResult, RecordLedgerIssueView,
+        ReflectArgs, ReflectResult, RelateArgs, RelateResult, RelationView, RememberArgs,
+        RememberResult, ReviewArgs, ReviewResolveArgs, ReviewResolveResult, ReviewResult,
+        SelfInspectResult, SemanticReportResult, SemanticStatusResult, SourceKindArg,
+        TextChunkingArg, ValidateResult, parse_scope_arg,
     },
     server::NahualiMcpServer,
 };
@@ -976,6 +977,21 @@ impl NahualiMcpServer {
             })
         })?;
         Ok(Json(validation))
+    }
+
+    #[tool(
+        description = "Use when you need a non-mutating diff of what the append-only memory_record ledger recorded between two points, with the integrity of that history restated alongside it. Bound the range with `from`/`to` (exclusive then inclusive sequence) and optional `since`/`until` (millisecond timestamps); omit all to audit the whole ledger. It reports per-kind counts, per-event entries, and whether the history through the upper bound verifies. Then run `validate` if integrity does not verify.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    fn audit(&self, Parameters(args): Parameters<AuditArgs>) -> Result<Json<AuditResult>, String> {
+        let options = LedgerAuditOptions {
+            from_sequence: args.from,
+            to_sequence: args.to,
+            since_ms: args.since,
+            until_ms: args.until,
+        };
+        let audit = self.with_memory(|memory| Ok(memory.audit_ledger(&options)))?;
+        Ok(Json(audit.into()))
     }
 }
 

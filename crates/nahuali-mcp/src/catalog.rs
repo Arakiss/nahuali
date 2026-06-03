@@ -160,6 +160,10 @@ pub fn tool_catalog() -> Vec<McpTool> {
             name: "validate",
             description: "Use when you need to confirm the append-only SurrealDB memory_record ledger is intact and report record counts and any migration needs. It is read-only and checks the ground-truth ledger itself, not a derived tier. Then run `projection_validate`/`semantic_status` to check the derived tiers if the ledger is healthy.",
         },
+        McpTool {
+            name: "audit",
+            description: "Use when you need a non-mutating diff of what the append-only memory_record ledger recorded between two points, with the integrity of that history restated alongside it. Bound the range with `from`/`to` (exclusive then inclusive sequence) and optional `since`/`until` (millisecond timestamps); omit all to audit the whole ledger. It reports per-kind counts, per-event entries, and whether the history through the upper bound verifies. Then run `validate` if integrity does not verify.",
+        },
     ]
 }
 
