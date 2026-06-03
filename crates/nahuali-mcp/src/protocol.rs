@@ -464,14 +464,14 @@ pub(crate) struct ProjectionValidationResult {
 pub(crate) struct SemanticStatusResult {
     pub(crate) database: String,
     pub(crate) semantic_index_role: &'static str,
-    pub(crate) status: Value,
+    pub(crate) status: SemanticIndexStatusView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct SemanticReportResult {
     pub(crate) database: String,
     pub(crate) semantic_index_role: &'static str,
-    pub(crate) report: Value,
+    pub(crate) report: SemanticIndexReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]

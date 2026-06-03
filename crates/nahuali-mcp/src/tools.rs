@@ -912,11 +912,10 @@ impl NahualiMcpServer {
                 .semantic_index_status()
                 .map_err(|error| error.to_string())
         })?;
-        let status = serde_json::to_value(status).map_err(|error| error.to_string())?;
         Ok(Json(SemanticStatusResult {
             database: self.database.display().to_string(),
             semantic_index_role: "derived",
-            status,
+            status: status.into(),
         }))
     }
 
@@ -935,11 +934,10 @@ impl NahualiMcpServer {
                 .rebuild_semantic_index()
                 .map_err(|error| error.to_string())
         })?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
         Ok(Json(SemanticReportResult {
             database: self.database.display().to_string(),
             semantic_index_role: "derived",
-            report,
+            report: report.into(),
         }))
     }
 
