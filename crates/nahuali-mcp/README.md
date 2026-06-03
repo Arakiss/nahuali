@@ -77,6 +77,13 @@ read-only JSON resources for database summary, sources, health, entities,
 episodes, claims, links, facts, relations, procedures, intentions, and records,
 plus prompts for health-checked recall and evidence-backed claim recording.
 
+Every tool advertises a typed JSON Schema for its output in the `tools/list`
+response and returns matching `structuredContent`, so a client can validate
+results against the advertised schema instead of parsing prose. An stdio
+integration test freezes this surface: the tool-name set, the typed output view
+each tool maps to, and the nested fields hosts rely on, such as the trust view
+on recall results.
+
 Recall tool responses include an authority decision and the health report used
 to produce it, so clients can distinguish `certify`, `advisory`, `warn`, and
 `block` outcomes without issuing separate calls. Authority JSON includes stable

@@ -376,6 +376,10 @@ clients. Tool names include:
 - validation and ingestion: `validate`, `ingest`, and `ingest_text`
 
 MCP responses are structured so clients do not need to scrape human CLI output.
+Each tool advertises a typed JSON Schema for its output in `tools/list` and
+returns matching structured content, so a host can validate results against the
+schema instead of parsing prose. An integration test freezes that surface
+against drift.
 
 ## What Nahuali Checks
 
