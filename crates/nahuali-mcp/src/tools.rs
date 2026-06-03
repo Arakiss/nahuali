@@ -856,11 +856,10 @@ impl NahualiMcpServer {
                 .projection_status()
                 .map_err(|error| error.to_string())
         })?;
-        let status = serde_json::to_value(status).map_err(|error| error.to_string())?;
         Ok(Json(ProjectionStatusResult {
             database: self.database.display().to_string(),
             projection_role: "derived_from_memory_record",
-            status,
+            status: status.into(),
         }))
     }
 
@@ -879,11 +878,10 @@ impl NahualiMcpServer {
                 .projection_rebuild()
                 .map_err(|error| error.to_string())
         })?;
-        let report = serde_json::to_value(report).map_err(|error| error.to_string())?;
         Ok(Json(ProjectionReportResult {
             database: self.database.display().to_string(),
             projection_role: "derived_from_memory_record",
-            report,
+            report: report.into(),
         }))
     }
 
@@ -897,11 +895,10 @@ impl NahualiMcpServer {
                 .projection_validate()
                 .map_err(|error| error.to_string())
         })?;
-        let validation = serde_json::to_value(validation).map_err(|error| error.to_string())?;
         Ok(Json(ProjectionValidationResult {
             database: self.database.display().to_string(),
             projection_role: "derived_from_memory_record",
-            validation,
+            validation: validation.into(),
         }))
     }
 

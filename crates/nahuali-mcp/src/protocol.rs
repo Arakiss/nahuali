@@ -443,21 +443,21 @@ pub(crate) struct GoalProgressResult {
 pub(crate) struct ProjectionStatusResult {
     pub(crate) database: String,
     pub(crate) projection_role: &'static str,
-    pub(crate) status: Value,
+    pub(crate) status: GraphProjectionStatusView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct ProjectionReportResult {
     pub(crate) database: String,
     pub(crate) projection_role: &'static str,
-    pub(crate) report: Value,
+    pub(crate) report: GraphProjectionRebuildReportView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct ProjectionValidationResult {
     pub(crate) database: String,
     pub(crate) projection_role: &'static str,
-    pub(crate) validation: Value,
+    pub(crate) validation: GraphProjectionValidationView,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
