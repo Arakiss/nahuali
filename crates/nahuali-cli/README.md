@@ -248,8 +248,9 @@ and exits non-zero when that history fails verification.
 knowledge counts, authority, restated ledger integrity (with the chain tip under
 `tamper-evidence`), knowledge health, an overall `trustworthy` flag, and the
 reasons behind it. Under the `attestation` feature, `--attestation <PATH>` folds
-in a verified signed checkpoint. It exits non-zero only when the recorded history
-fails ledger integrity verification.
+in a verified signed checkpoint. `--html <PATH>` also writes a self-contained
+HTML dossier (inline styles, no network calls) that renders offline. It exits
+non-zero only when the recorded history fails ledger integrity verification.
 
 `maintenance` reports the non-destructive local maintenance state. `snapshot`
 writes an optional projection artifact or previews it with `--dry-run`.
