@@ -35,6 +35,7 @@
 mod adapters;
 #[cfg(feature = "attestation")]
 mod attestation;
+mod audit;
 mod authority;
 mod backup;
 mod briefing;
@@ -72,6 +73,10 @@ pub use adapters::{
 pub use attestation::{
     AttestationVerdict, LEDGER_ATTESTATION_ALGORITHM, LEDGER_ATTESTATION_VERSION,
     LedgerAttestation, sign_chain_tip, verify_chain_tip,
+};
+pub use audit::{
+    LedgerAudit, LedgerAuditCounts, LedgerAuditEntry, LedgerAuditEventKind, LedgerAuditIntegrity,
+    LedgerAuditOptions, audit_events,
 };
 pub use authority::{AuthorityDecision, AuthorityMode, AuthorityRecall};
 pub use backup::{
