@@ -72,7 +72,8 @@ The server exposes tools for `remember`, `claim`, `fact`, `link`, `relate`,
 `briefing`, `memory_hook`, `recall`, `inspect`, `graph`, `self_inspect`,
 `review`, `reflect`, `consolidation_plan`, `review_resolve`,
 `projection_status`, `projection_rebuild`, `projection_validate`,
-`semantic_status`, `semantic_rebuild`, `validate`, and `audit`. It also exposes
+`semantic_status`, `semantic_rebuild`, `validate`, `audit`, and `trust_report`.
+It also exposes
 read-only JSON resources for database summary, sources, health, entities,
 episodes, claims, links, facts, relations, procedures, intentions, and records,
 plus prompts for health-checked recall and evidence-backed claim recording.
@@ -152,6 +153,11 @@ and optional `since`/`until` (millisecond timestamps); it reports per-kind
 counts, per-event entries, and whether the history through the upper bound
 verifies (checksums, sequence contiguity, and the hash chain and anchoring tips
 under `tamper-evidence`).
+
+The `trust_report` tool returns one composed, non-mutating verdict over knowledge
+counts, authority, restated ledger integrity, knowledge health, and an overall
+`trustworthy` flag with the reasons behind it, so a host can read whether the
+memory can be trusted without issuing several calls.
 
 The `self_inspect` tool returns a non-mutating consolidation report with health,
 authority, findings, proposed review items, and an explicit

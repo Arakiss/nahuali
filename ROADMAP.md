@@ -65,6 +65,8 @@ The current public foundation includes:
   proactive reports
 - non-mutating ledger audit/diff between two points, with integrity restated and
   optional anchoring on a signed checkpoint
+- composed memory trust report that answers what we know, why to trust it, what
+  is missing, and whether history was altered in one non-mutating verdict
 - synthetic regression fixtures and release-gate scripts
 
 ## Near-Term: Public Beta Hardening

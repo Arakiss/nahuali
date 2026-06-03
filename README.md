@@ -54,6 +54,11 @@ own.
   so even a full re-chain of the history — which repairs every internal link —
   fails verification against a receipt the attacker cannot forge.
 
+The `trust-report` command (and the `trust_report` tool / `GET /v1/trust-report`)
+composes these into one non-mutating verdict: knowledge counts, authority,
+restated ledger integrity, knowledge health, and an overall `trustworthy` flag
+with the reasons behind it.
+
 None of this claims remembered information is *true*. It makes the current basis
 for trust inspectable and the recorded history verifiable, and leaves the
 decision to act with the operator.
@@ -387,7 +392,7 @@ clients. Tool names include:
   `consolidation_plan`, `review`, and `review_resolve`
 - derived-tier maintenance: `projection_status`, `projection_rebuild`,
   `projection_validate`, `semantic_status`, and `semantic_rebuild`
-- ledger inspection: `validate` and `audit`
+- ledger inspection: `validate`, `audit`, and `trust_report`
 - ingestion: `ingest` and `ingest_text`
 
 MCP responses are structured so clients do not need to scrape human CLI output.

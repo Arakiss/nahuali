@@ -35,7 +35,7 @@ Core endpoint groups:
   `/v1/intention`, `/v1/intention/update`, `/v1/intention/status`, and
   `/v1/anomaly/acknowledge`
 - recall and context: `POST /v1/recall`, `/v1/session-resume`,
-  `/v1/memory-health`, and `GET /v1/graph`, `/v1/audit`
+  `/v1/memory-health`, and `GET /v1/graph`, `/v1/audit`, `/v1/trust-report`
 - operator reports: `POST /v1/intention/reconcile`, `/v1/proactive`,
   `/v1/deadlines`, `/v1/anomalies`, `/v1/review/resolve`, and
   `GET /v1/goal-progress`, `/v1/timeline`, `/v1/pending`

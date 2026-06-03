@@ -244,6 +244,13 @@ restates the integrity of the history through the upper bound (checksums,
 sequence contiguity, and the hash chain and anchoring tips under `tamper-evidence`),
 and exits non-zero when that history fails verification.
 
+`trust-report` composes the trust primitives into one non-mutating verdict:
+knowledge counts, authority, restated ledger integrity (with the chain tip under
+`tamper-evidence`), knowledge health, an overall `trustworthy` flag, and the
+reasons behind it. Under the `attestation` feature, `--attestation <PATH>` folds
+in a verified signed checkpoint. It exits non-zero only when the recorded history
+fails ledger integrity verification.
+
 `maintenance` reports the non-destructive local maintenance state. `snapshot`
 writes an optional projection artifact or previews it with `--dry-run`.
 `snapshot-validate` checks that artifact against a fresh replay of the current
