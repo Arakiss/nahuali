@@ -513,7 +513,7 @@ fn fact_statement(fact: &Fact) -> String {
     format!("{} {} {}", fact.subject, fact.predicate, fact.object)
 }
 
-fn resolved_review_evidence(data: &MemoryData) -> Vec<BTreeSet<String>> {
+pub(crate) fn resolved_review_evidence(data: &MemoryData) -> Vec<BTreeSet<String>> {
     data.review_decisions
         .iter()
         .filter(|decision| decision.outcome == ReviewDecisionOutcome::Resolved)
@@ -522,7 +522,10 @@ fn resolved_review_evidence(data: &MemoryData) -> Vec<BTreeSet<String>> {
         .collect()
 }
 
-fn evidence_reviewed(evidence_ids: &[&str], resolved_evidence: &[BTreeSet<String>]) -> bool {
+pub(crate) fn evidence_reviewed(
+    evidence_ids: &[&str],
+    resolved_evidence: &[BTreeSet<String>],
+) -> bool {
     !evidence_ids.is_empty()
         && resolved_evidence.iter().any(|reviewed| {
             evidence_ids

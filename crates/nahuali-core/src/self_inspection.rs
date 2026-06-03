@@ -2,9 +2,10 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::inspection::{evidence_reviewed, resolved_review_evidence};
 use crate::{
-    AuthorityDecision, HealthDimension, HealthSeverity, HealthSignal, HealthSignalKind,
-    IntentionPriority, IntentionStatus, KnowledgeHealth, MemoryData,
+    AuthorityDecision, Claim, HealthDimension, HealthSeverity, HealthSignal, HealthSignalKind,
+    IntentionPriority, IntentionStatus, KnowledgeHealth, Link, MemoryData,
 };
 
 #[path = "self_inspection_source.rs"]
@@ -15,6 +16,12 @@ pub const SELF_INSPECTION_REPORT_VERSION: u32 = 1;
 
 const DAY_MS: u64 = 24 * 60 * 60 * 1000;
 const STALE_INTENTION_AFTER_DAYS: u64 = 30;
+/// Minimum items of a kind before an overconfidence finding may be raised.
+const CONFIDENCE_ALIGNMENT_MIN_SAMPLES: usize = 5;
+/// Supplied confidence at or above this, with no source episode, is overconfident.
+const OVERCONFIDENT_CONFIDENCE: f32 = 0.75;
+/// Supplied confidence at or below this, despite a source episode, is conservative.
+const CONSERVATIVE_CONFIDENCE: f32 = 0.25;
 
 /// Non-mutating self-inspection report for the current memory projection.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -31,6 +38,8 @@ pub struct SelfInspectionReport {
     pub authority: AuthorityDecision,
     /// Aggregate finding counts.
     pub summary: SelfInspectionSummary,
+    /// Non-mutating audit of how well supplied confidence tracks evidence presence.
+    pub confidence_alignment: ConfidenceProvenanceAlignment,
     /// Findings that should be reviewed before memory is trusted or improved.
     pub findings: Vec<SelfInspectionFinding>,
     /// Proposed operator review queue. These items do not mutate memory.
@@ -56,6 +65,8 @@ pub struct SelfInspectionSummary {
     pub source_coverage_count: usize,
     /// Number of low-confidence findings.
     pub low_confidence_count: usize,
+    /// Number of overconfident-unsourced (confidence-provenance mismatch) findings.
+    pub confidence_mismatch_count: usize,
     /// Number of consolidation opportunity findings.
     pub consolidation_opportunity_count: usize,
     /// Number of latent-intention findings.
@@ -101,6 +112,8 @@ pub enum SelfInspectionFindingKind {
     SourceCoverage,
     /// A memory item has low confidence.
     LowConfidence,
+    /// Assertional memory states high confidence but carries no source episode.
+    ConfidenceProvenanceMismatch,
     /// Multiple records suggest a useful consolidation opportunity.
     ConsolidationOpportunity,
     /// An active intention needs review or evidence before it should guide work.
@@ -179,6 +192,56 @@ pub struct SelfInspectionWriteBackPolicy {
     pub message: String,
 }
 
+/// Non-mutating audit of how well supplied confidence tracks evidence presence,
+/// reported separately per memory kind.
+///
+/// This is an evidence-PRESENCE audit, NOT calibration against truth: a claim at
+/// 0.9 confidence with a source episode scores as aligned even if the claim is
+/// false, and a correct claim with no attached episode scores as overconfident.
+/// `evidence_backed` is already reported as the health supported/unsupported
+/// fact counts; this report adds only the confidence-versus-provenance
+/// bucketing, no new ground truth about correctness. Kinds are separated because
+/// procedures and preferences are operational and legitimately lack a source
+/// episode, so an overconfidence *finding* is only raised for assertional claims
+/// and links, never procedures.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ConfidenceProvenanceAlignment {
+    /// Alignment over the projected claims.
+    pub claims: ConfidenceProvenanceKindReport,
+    /// Alignment over the projected links.
+    pub links: ConfidenceProvenanceKindReport,
+    /// Alignment over procedures and preferences (reported, never a finding).
+    pub procedures: ConfidenceProvenanceKindReport,
+}
+
+/// Per-kind confidence-versus-provenance alignment numbers.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ConfidenceProvenanceKindReport {
+    /// Number of items of this kind in the projection.
+    pub sample_count: usize,
+    /// Number of items that carry a source episode.
+    pub evidence_backed_count: usize,
+    /// Mean squared difference between supplied confidence and evidence
+    /// backedness (1.0 with a source episode, 0.0 without), rounded to two
+    /// decimals. 0.0 is perfect alignment; values near 1.0 are maximally
+    /// misaligned. This is an evidence-presence error, not a calibration or
+    /// accuracy metric.
+    pub evidence_alignment_error: f32,
+    /// Items asserting high confidence (>= 0.75) with no source episode.
+    pub overconfident_count: usize,
+    /// Items asserting low confidence (<= 0.25) despite carrying a source episode.
+    pub conservative_count: usize,
+    /// True when `sample_count` is below the reliability threshold; the ratios
+    /// above are reported but must not be read as a trustworthy signal, and no
+    /// overconfidence finding is raised.
+    pub insufficient_samples: bool,
+}
+
+struct KindAlignment {
+    report: ConfidenceProvenanceKindReport,
+    overconfident_event_ids: Vec<String>,
+}
+
 pub(crate) fn self_inspect(data: &MemoryData) -> SelfInspectionReport {
     self_inspect_at(data, now_ms())
 }
@@ -196,6 +259,39 @@ pub(crate) fn self_inspect_at(data: &MemoryData, now_ms: u64) -> SelfInspectionR
     source::append_source_coverage_findings(data, &mut findings);
     append_latent_intentions(data, now_ms, &mut findings);
 
+    let claim_align = align_kind(projected_claims(data).iter().map(|claim| {
+        (
+            claim.event_id.as_str(),
+            claim.confidence,
+            claim.source_episode_id.is_some(),
+        )
+    }));
+    let link_align = align_kind(projected_links(data).iter().map(|link| {
+        (
+            link.event_id.as_str(),
+            link.confidence,
+            link.source_episode_id.is_some(),
+        )
+    }));
+    let procedure_align = align_kind(data.procedures.iter().map(|procedure| {
+        (
+            procedure.event_id.as_str(),
+            procedure.confidence,
+            procedure.source_episode_id.is_some(),
+        )
+    }));
+
+    // Only assertional kinds (claims, links) can be "overconfident"; procedures
+    // and preferences are operational and legitimately lack a source episode.
+    append_confidence_mismatch_finding(data, "claim", &claim_align, &mut findings);
+    append_confidence_mismatch_finding(data, "link", &link_align, &mut findings);
+
+    let confidence_alignment = ConfidenceProvenanceAlignment {
+        claims: claim_align.report,
+        links: link_align.report,
+        procedures: procedure_align.report,
+    };
+
     let review_queue = findings
         .iter()
         .map(review_item_from_finding)
@@ -209,6 +305,7 @@ pub(crate) fn self_inspect_at(data: &MemoryData, now_ms: u64) -> SelfInspectionR
         health,
         authority,
         summary,
+        confidence_alignment,
         findings,
         review_queue,
         write_back_policy: SelfInspectionWriteBackPolicy {
@@ -362,6 +459,106 @@ fn append_latent_intentions(
     }
 }
 
+fn align_kind<'a>(items: impl Iterator<Item = (&'a str, f32, bool)>) -> KindAlignment {
+    let items = items.collect::<Vec<_>>();
+    let sample_count = items.len();
+    let evidence_backed_count = items.iter().filter(|(_, _, backed)| *backed).count();
+    let evidence_alignment_error = if sample_count == 0 {
+        0.0
+    } else {
+        let total = items
+            .iter()
+            .map(|(_, confidence, backed)| {
+                let target = if *backed { 1.0 } else { 0.0 };
+                let delta = confidence - target;
+                delta * delta
+            })
+            .sum::<f32>();
+        round2(total / sample_count as f32)
+    };
+    let overconfident_event_ids = items
+        .iter()
+        .filter(|(_, confidence, backed)| *confidence >= OVERCONFIDENT_CONFIDENCE && !*backed)
+        .map(|(event_id, _, _)| event_id.to_string())
+        .collect::<Vec<_>>();
+    let conservative_count = items
+        .iter()
+        .filter(|(_, confidence, backed)| *confidence <= CONSERVATIVE_CONFIDENCE && *backed)
+        .count();
+    KindAlignment {
+        report: ConfidenceProvenanceKindReport {
+            sample_count,
+            evidence_backed_count,
+            evidence_alignment_error,
+            overconfident_count: overconfident_event_ids.len(),
+            conservative_count,
+            insufficient_samples: sample_count < CONFIDENCE_ALIGNMENT_MIN_SAMPLES,
+        },
+        overconfident_event_ids,
+    }
+}
+
+fn append_confidence_mismatch_finding(
+    data: &MemoryData,
+    kind_label: &str,
+    align: &KindAlignment,
+    findings: &mut Vec<SelfInspectionFinding>,
+) {
+    if align.report.insufficient_samples || align.overconfident_event_ids.is_empty() {
+        return;
+    }
+    let resolved = resolved_review_evidence(data);
+    let unresolved = align
+        .overconfident_event_ids
+        .iter()
+        .filter(|event_id| !evidence_reviewed(&[event_id.as_str()], &resolved))
+        .cloned()
+        .collect::<Vec<_>>();
+    if unresolved.is_empty() {
+        return;
+    }
+    let detail = format!(
+        "{} {kind_label}(s) state confidence at or above 0.75 with no source episode.",
+        unresolved.len()
+    );
+    findings.push(SelfInspectionFinding {
+        id: finding_id(
+            &SelfInspectionFindingKind::ConfidenceProvenanceMismatch,
+            &unresolved,
+            &detail,
+        ),
+        kind: SelfInspectionFindingKind::ConfidenceProvenanceMismatch,
+        severity: HealthSeverity::Low,
+        title: "Overconfident unsourced memory".to_string(),
+        detail,
+        dimensions: vec![HealthDimension::Confidence, HealthDimension::UnsupportedMemory],
+        evidence_ids: unresolved,
+        suggested_action:
+            "Attach a source episode or lower the stated confidence for high-confidence memory that has no evidence."
+                .to_string(),
+    });
+}
+
+fn projected_claims(data: &MemoryData) -> &[Claim] {
+    if data.claims.is_empty() {
+        &data.facts
+    } else {
+        &data.claims
+    }
+}
+
+fn projected_links(data: &MemoryData) -> &[Link] {
+    if data.links.is_empty() {
+        &data.relations
+    } else {
+        &data.links
+    }
+}
+
+fn round2(value: f32) -> f32 {
+    (value * 100.0).round() / 100.0
+}
+
 fn review_item_from_finding(finding: &SelfInspectionFinding) -> SelfInspectionReviewItem {
     SelfInspectionReviewItem {
         id: review_id(&finding.id),
@@ -396,6 +593,9 @@ fn review_action(kind: &SelfInspectionFindingKind) -> SelfInspectionReviewAction
         SelfInspectionFindingKind::WeakEvidence => SelfInspectionReviewAction::CaptureEvidence,
         SelfInspectionFindingKind::SourceCoverage => SelfInspectionReviewAction::CaptureEvidence,
         SelfInspectionFindingKind::LowConfidence => SelfInspectionReviewAction::CaptureEvidence,
+        SelfInspectionFindingKind::ConfidenceProvenanceMismatch => {
+            SelfInspectionReviewAction::CaptureEvidence
+        }
         SelfInspectionFindingKind::ConsolidationOpportunity => {
             SelfInspectionReviewAction::ConsolidatePattern
         }
@@ -415,6 +615,10 @@ fn summarize(
         weak_evidence_count: count_kind(findings, SelfInspectionFindingKind::WeakEvidence),
         source_coverage_count: count_kind(findings, SelfInspectionFindingKind::SourceCoverage),
         low_confidence_count: count_kind(findings, SelfInspectionFindingKind::LowConfidence),
+        confidence_mismatch_count: count_kind(
+            findings,
+            SelfInspectionFindingKind::ConfidenceProvenanceMismatch,
+        ),
         consolidation_opportunity_count: count_kind(
             findings,
             SelfInspectionFindingKind::ConsolidationOpportunity,
@@ -467,6 +671,7 @@ fn kind_slug(kind: &SelfInspectionFindingKind) -> &'static str {
         SelfInspectionFindingKind::WeakEvidence => "weak_evidence",
         SelfInspectionFindingKind::SourceCoverage => "source_coverage",
         SelfInspectionFindingKind::LowConfidence => "low_confidence",
+        SelfInspectionFindingKind::ConfidenceProvenanceMismatch => "confidence_provenance_mismatch",
         SelfInspectionFindingKind::ConsolidationOpportunity => "consolidation_opportunity",
         SelfInspectionFindingKind::LatentIntention => "latent_intention",
     }
@@ -491,8 +696,10 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Claim, Entity, Episode, Intention, IntentionKind, IntentionPriority, IntentionStatus,
-        MemoryData, SelfInspectionFindingKind, SourceDocument, SourceKind,
+        AuthorityDecision, Claim, Entity, Episode, Intention, IntentionKind, IntentionPriority,
+        IntentionStatus, MemoryData, Procedure, ProcedureKind, ReviewDecision,
+        ReviewDecisionAction, ReviewDecisionOutcome, SelfInspectionFindingKind, SourceDocument,
+        SourceKind,
         self_inspection::{DAY_MS, self_inspect_at},
     };
 
@@ -691,8 +898,201 @@ mod tests {
         assert_eq!(report.summary.latent_intention_count, 1);
     }
 
+    #[test]
+    fn confidence_alignment_reports_exact_error_and_skips_small_samples() {
+        let data = MemoryData {
+            event_count: 2,
+            claims: vec![
+                conf_claim("c1", 0.8, Some("episode_1")),
+                conf_claim("c2", 0.8, None),
+            ],
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+        let claims = &report.confidence_alignment.claims;
+
+        // ((0.8 - 1.0)^2 + (0.8 - 0.0)^2) / 2 = 0.34
+        assert_eq!(claims.evidence_alignment_error, 0.34);
+        assert_eq!(claims.sample_count, 2);
+        assert_eq!(claims.evidence_backed_count, 1);
+        assert_eq!(claims.overconfident_count, 1);
+        assert!(claims.insufficient_samples);
+        // A two-item bucket is too small to manufacture a finding.
+        assert!(!has_kind(
+            &report,
+            SelfInspectionFindingKind::ConfidenceProvenanceMismatch
+        ));
+        assert_eq!(report.summary.confidence_mismatch_count, 0);
+    }
+
+    #[test]
+    fn confidence_alignment_perfectly_aligned_is_zero() {
+        let claims = (0..5)
+            .map(|index| conf_claim(&format!("c{index}"), 1.0, Some("episode_1")))
+            .collect::<Vec<_>>();
+        let data = MemoryData {
+            event_count: 5,
+            claims,
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+        let claims = &report.confidence_alignment.claims;
+
+        assert_eq!(claims.evidence_alignment_error, 0.0);
+        assert_eq!(claims.overconfident_count, 0);
+        assert!(!claims.insufficient_samples);
+        assert!(!has_kind(
+            &report,
+            SelfInspectionFindingKind::ConfidenceProvenanceMismatch
+        ));
+    }
+
+    #[test]
+    fn confidence_alignment_maximal_misalignment_raises_finding() {
+        let claims = (0..5)
+            .map(|index| conf_claim(&format!("c{index}"), 1.0, None))
+            .collect::<Vec<_>>();
+        let data = MemoryData {
+            event_count: 5,
+            claims,
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+        let claims = &report.confidence_alignment.claims;
+
+        // every item: (1.0 - 0.0)^2 = 1.0
+        assert_eq!(claims.evidence_alignment_error, 1.0);
+        assert_eq!(claims.overconfident_count, 5);
+        assert!(!claims.insufficient_samples);
+        assert!(has_kind(
+            &report,
+            SelfInspectionFindingKind::ConfidenceProvenanceMismatch
+        ));
+        assert_eq!(report.summary.confidence_mismatch_count, 1);
+    }
+
+    #[test]
+    fn overconfident_preferences_are_reported_but_raise_no_finding() {
+        let procedures = (0..5)
+            .map(|index| preference(&format!("p{index}"), 0.9, None))
+            .collect::<Vec<_>>();
+        let data = MemoryData {
+            event_count: 5,
+            procedures,
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+
+        // Procedures are operational: reported, but never an overconfidence finding.
+        assert_eq!(
+            report.confidence_alignment.procedures.overconfident_count,
+            5
+        );
+        assert!(!has_kind(
+            &report,
+            SelfInspectionFindingKind::ConfidenceProvenanceMismatch
+        ));
+        assert_eq!(report.summary.confidence_mismatch_count, 0);
+    }
+
+    #[test]
+    fn review_resolved_overconfidence_raises_no_finding() {
+        let claims = (0..5)
+            .map(|index| conf_claim(&format!("c{index}"), 1.0, None))
+            .collect::<Vec<_>>();
+        let resolved_ids = (0..5).map(|index| format!("c{index}")).collect::<Vec<_>>();
+        let data = MemoryData {
+            event_count: 5,
+            claims,
+            review_decisions: vec![resolved_decision(resolved_ids)],
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+
+        // Still observed in the raw report...
+        assert_eq!(report.confidence_alignment.claims.overconfident_count, 5);
+        // ...but the operator already resolved it, so no finding fires.
+        assert!(!has_kind(
+            &report,
+            SelfInspectionFindingKind::ConfidenceProvenanceMismatch
+        ));
+    }
+
+    #[test]
+    fn confidence_alignment_does_not_change_authority() {
+        let claims = (0..5)
+            .map(|index| conf_claim(&format!("c{index}"), 1.0, None))
+            .collect::<Vec<_>>();
+        let data = MemoryData {
+            event_count: 5,
+            claims,
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+
+        // The overconfidence finding lives in findings, never in health.signals,
+        // so authority stays purely health-derived.
+        assert!(has_kind(
+            &report,
+            SelfInspectionFindingKind::ConfidenceProvenanceMismatch
+        ));
+        assert_eq!(
+            report.authority,
+            AuthorityDecision::evaluate(&report.health)
+        );
+    }
+
     fn has_kind(report: &crate::SelfInspectionReport, kind: SelfInspectionFindingKind) -> bool {
         report.findings.iter().any(|finding| finding.kind == kind)
+    }
+
+    fn conf_claim(id: &str, confidence: f32, source: Option<&str>) -> Claim {
+        Claim {
+            id: id.to_string(),
+            event_id: id.to_string(),
+            subject: id.to_string(),
+            predicate: "attribute".to_string(),
+            object: "value".to_string(),
+            source_episode_id: source.map(str::to_string),
+            confidence,
+            scope: None,
+            created_at_ms: 0,
+        }
+    }
+
+    fn preference(id: &str, confidence: f32, source: Option<&str>) -> Procedure {
+        Procedure {
+            id: id.to_string(),
+            event_id: id.to_string(),
+            kind: ProcedureKind::Preference,
+            name: id.to_string(),
+            body: "body".to_string(),
+            source_episode_id: source.map(str::to_string),
+            confidence,
+            scope: None,
+            created_at_ms: 0,
+        }
+    }
+
+    fn resolved_decision(evidence_ids: Vec<String>) -> ReviewDecision {
+        ReviewDecision {
+            id: "decision_1".to_string(),
+            event_id: "decision_event".to_string(),
+            review_id: "review_1".to_string(),
+            finding_id: "finding_1".to_string(),
+            action: ReviewDecisionAction::CaptureEvidence,
+            outcome: ReviewDecisionOutcome::Resolved,
+            note: "resolved".to_string(),
+            evidence_ids,
+            scope: None,
+            created_at_ms: 0,
+        }
     }
 
     fn entity(name: &str) -> Entity {

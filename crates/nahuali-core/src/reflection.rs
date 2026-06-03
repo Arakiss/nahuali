@@ -325,6 +325,9 @@ fn action_for_kind(kind: &SelfInspectionFindingKind) -> SelfInspectionReviewActi
         SelfInspectionFindingKind::WeakEvidence => SelfInspectionReviewAction::CaptureEvidence,
         SelfInspectionFindingKind::SourceCoverage => SelfInspectionReviewAction::CaptureEvidence,
         SelfInspectionFindingKind::LowConfidence => SelfInspectionReviewAction::CaptureEvidence,
+        SelfInspectionFindingKind::ConfidenceProvenanceMismatch => {
+            SelfInspectionReviewAction::CaptureEvidence
+        }
         SelfInspectionFindingKind::ConsolidationOpportunity => {
             SelfInspectionReviewAction::ConsolidatePattern
         }
