@@ -50,6 +50,8 @@ mod inspection;
 mod intention;
 mod interchange;
 mod maintenance;
+#[cfg(feature = "tamper-evidence")]
+mod merkle;
 mod model;
 mod operator_review;
 mod proactive;
@@ -136,6 +138,11 @@ pub use interchange::{
 pub use maintenance::{
     MEMORY_SNAPSHOT_VERSION, MaintenanceReport, MemorySnapshot, SnapshotIssue, SnapshotIssueKind,
     SnapshotIssueSeverity, SnapshotSummary, SnapshotValidation,
+};
+#[cfg(feature = "tamper-evidence")]
+pub use merkle::{
+    MerkleProof, MerkleSibling, ledger_inclusion_proof, ledger_merkle_root, merkle_proof,
+    merkle_root, verify_merkle_proof,
 };
 pub use model::{
     Claim, Entity, Episode, Fact, Intention, IntentionKind, IntentionPriority, IntentionStatus,
