@@ -135,6 +135,7 @@ fn assert_tool_catalog(server: &mut McpProcess) {
             "self_inspect",
             "semantic_rebuild",
             "semantic_status",
+            "trust_report",
             "validate"
         ]
     );

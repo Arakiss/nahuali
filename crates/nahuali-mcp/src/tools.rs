@@ -27,7 +27,7 @@ use crate::{
         ReflectArgs, ReflectResult, RelateArgs, RelateResult, RelationView, RememberArgs,
         RememberResult, ReviewArgs, ReviewResolveArgs, ReviewResolveResult, ReviewResult,
         SelfInspectResult, SemanticReportResult, SemanticStatusResult, SourceKindArg,
-        TextChunkingArg, ValidateResult, parse_scope_arg,
+        TextChunkingArg, TrustReportResult, ValidateResult, parse_scope_arg,
     },
     server::NahualiMcpServer,
 };
@@ -992,6 +992,15 @@ impl NahualiMcpServer {
         };
         let audit = self.with_memory(|memory| Ok(memory.audit_ledger(&options)))?;
         Ok(Json(audit.into()))
+    }
+
+    #[tool(
+        description = "Use when you need one composed, non-mutating verdict on whether the memory can be trusted before relying on it: knowledge counts, authority, restated ledger integrity, knowledge health, and an overall trustworthy verdict with reasons. It answers what we know, why to trust it, what is missing, and whether the recorded history was altered, in a single report. Then act on the reasons, for example with `review` or by capturing missing evidence.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    fn trust_report(&self) -> Result<Json<TrustReportResult>, String> {
+        let report = self.with_memory(|memory| Ok(memory.trust_report()))?;
+        Ok(Json(report.into()))
     }
 }
 

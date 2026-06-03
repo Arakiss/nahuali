@@ -425,7 +425,8 @@ mod tests {
                 "semantic_status",
                 "semantic_rebuild",
                 "validate",
-                "audit"
+                "audit",
+                "trust_report"
             ]
         );
         assert!(tools.iter().any(
@@ -536,6 +537,7 @@ mod tests {
                 "self_inspect",
                 "semantic_rebuild",
                 "semantic_status",
+                "trust_report",
                 "validate"
             ]
         );

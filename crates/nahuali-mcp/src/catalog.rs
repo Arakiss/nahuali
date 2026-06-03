@@ -164,6 +164,10 @@ pub fn tool_catalog() -> Vec<McpTool> {
             name: "audit",
             description: "Use when you need a non-mutating diff of what the append-only memory_record ledger recorded between two points, with the integrity of that history restated alongside it. Bound the range with `from`/`to` (exclusive then inclusive sequence) and optional `since`/`until` (millisecond timestamps); omit all to audit the whole ledger. It reports per-kind counts, per-event entries, and whether the history through the upper bound verifies. Then run `validate` if integrity does not verify.",
         },
+        McpTool {
+            name: "trust_report",
+            description: "Use when you need one composed, non-mutating verdict on whether the memory can be trusted before relying on it: knowledge counts, authority, restated ledger integrity, knowledge health, and an overall trustworthy verdict with reasons. It answers what we know, why to trust it, what is missing, and whether the recorded history was altered, in a single report. Then act on the reasons, for example with `review` or by capturing missing evidence.",
+        },
     ]
 }
 

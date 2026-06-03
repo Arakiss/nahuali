@@ -18,6 +18,7 @@ mod records;
 mod review;
 mod self_inspection;
 mod semantic;
+mod trust_report;
 
 pub(crate) use audit::*;
 pub(crate) use briefing::*;
@@ -33,6 +34,7 @@ pub(crate) use records::*;
 pub(crate) use review::*;
 pub(crate) use self_inspection::*;
 pub(crate) use semantic::*;
+pub(crate) use trust_report::*;
 
 /// Serialize a value and extract its JSON string form, used to mirror core
 /// enums as their snake_case wire representation. Shared by every view module.

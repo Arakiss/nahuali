@@ -47,6 +47,7 @@ const EXPECTED_TOOL_CONTRACT: &[(&str, &str)] = &[
     ("self_inspect", "SelfInspectResult"),
     ("semantic_rebuild", "SemanticReportResult"),
     ("semantic_status", "SemanticStatusResult"),
+    ("trust_report", "TrustReportResult"),
     ("validate", "ValidateResult"),
 ];
 
@@ -276,6 +277,26 @@ fn assert_key_output_shapes(tools: &[Value]) {
             "audit entry view must declare `{field}`"
         );
     }
+
+    // trust_report -> a composed verdict over knowledge, integrity, and health.
+    let trust = &tool(tools, "trust_report")["outputSchema"];
+    for field in [
+        "knowledge",
+        "authority",
+        "integrity",
+        "health",
+        "trustworthy",
+    ] {
+        assert!(
+            has_property(trust, field),
+            "trust_report result must declare `{field}`"
+        );
+    }
+    let trust_integrity = resolve(trust, &trust["properties"]["integrity"]);
+    assert!(
+        has_property(trust_integrity, "ledger_verified"),
+        "trust_report integrity view must declare `ledger_verified`"
+    );
 }
 
 /// The error contract: two stable channels a client must tell apart. Parameters
