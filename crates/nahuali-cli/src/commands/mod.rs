@@ -23,11 +23,16 @@ use nahuali_core::{LedgerAuditOptions, MemoryEngine, TrustReportOptions};
 use crate::cli::{Cli, Command};
 
 pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
+    let verbose = cli.verbose;
     let database = cli.database.unwrap_or_else(default_database_name);
     if preopen::handle(&cli.command, &database)? {
         return Ok(());
     }
 
+    let started = std::time::Instant::now();
+    if verbose {
+        verbose_open_line(&database);
+    }
     let mut memory = MemoryEngine::open(&database)
         .with_context(|| format!("failed to open {}", database.display()))?;
 
@@ -639,7 +644,24 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
         }
     }
 
+    if verbose {
+        eprintln!("nahuali: done in {} ms", started.elapsed().as_millis());
+    }
     Ok(())
+}
+
+/// Print the effective connection target to stderr for `--verbose`. The defaults
+/// mirror nahuali-core's resolution (localhost:18000, namespace "nahuali").
+fn verbose_open_line(database: &std::path::Path) {
+    let endpoint = std::env::var("NAHUALI_DB_URL").unwrap_or_else(|_| "localhost:18000".to_string());
+    let namespace =
+        std::env::var("NAHUALI_DB_NAMESPACE").unwrap_or_else(|_| "nahuali".to_string());
+    eprintln!(
+        "nahuali: opening \"{}\" @ {} (ns {})",
+        database.display(),
+        endpoint,
+        namespace
+    );
 }
 
 fn default_database_name() -> PathBuf {

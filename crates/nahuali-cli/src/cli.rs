@@ -135,6 +135,13 @@ pub(crate) struct Cli {
     )]
     pub(crate) database: Option<PathBuf>,
 
+    #[arg(
+        long,
+        global = true,
+        help = "Print connection and timing activity to stderr (stdout stays clean)"
+    )]
+    pub(crate) verbose: bool,
+
     #[command(subcommand)]
     pub(crate) command: Command,
 }
