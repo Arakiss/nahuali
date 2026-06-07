@@ -42,68 +42,88 @@ pub(crate) fn backup_issue_kind_name(kind: &BackupIssueKind) -> &'static str {
     }
 }
 
+/// Shorten `text` to a single scannable line of at most `max` characters.
+fn one_line(text: &str, max: usize) -> String {
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= max {
+        flat
+    } else {
+        let head: String = flat.chars().take(max).collect();
+        format!("{}\u{2026}", head.trim_end())
+    }
+}
+
 pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
-    println!("Session briefing");
-    println!("Events: {}", report.event_count);
-    println!("Sources: {}", report.summary.source_count);
-    println!("Episodes: {}", report.summary.episode_count);
-    println!("Entities: {}", report.summary.entity_count);
+    println!("{}", crate::style::heading("Session briefing"));
     println!(
         "{}",
         crate::style::store_trust_line(&report.authority.mode, report.authority.score)
     );
-    println!("Health signals: {}", report.health.blind_spot_count);
+    // One compact counts line instead of eight stacked lines.
     println!(
-        "Active intentions: {}",
-        report.summary.active_intention_count
-    );
-    println!(
-        "High-priority review items: {}",
-        report.summary.high_priority_review_count
+        "{}",
+        crate::style::dim(&format!(
+            "{} events · {} episodes · {} entities · {} sources · {} health signals · {} intentions · {} review",
+            report.event_count,
+            report.summary.episode_count,
+            report.summary.entity_count,
+            report.summary.source_count,
+            report.health.blind_spot_count,
+            report.summary.active_intention_count,
+            report.summary.high_priority_review_count,
+        ))
     );
 
     if !report.recent_episodes.is_empty() {
-        println!("Recent episodes:");
+        println!("\n{}", crate::style::heading("Recent episodes"));
         for episode in &report.recent_episodes {
-            println!("- {} {}", episode.id, episode.content);
-            if let Some(source_id) = &episode.source_id {
-                println!("  source: {source_id}");
-            }
+            // One scannable line per episode, with id/mentions dimmed beneath.
+            println!("  · {}", one_line(&episode.content, 96));
+            let mut meta = vec![crate::style::dim(&episode.id)];
             if !episode.mentions.is_empty() {
-                println!("  mentions: {}", episode.mentions.join(", "));
+                meta.push(crate::style::dim(&format!(
+                    "@{}",
+                    episode.mentions.join(", ")
+                )));
             }
+            println!("    {}", meta.join("  "));
         }
     }
 
     if !report.active_intentions.is_empty() {
-        println!("Active intentions:");
+        println!("\n{}", crate::style::heading("Active intentions"));
         for intention in &report.active_intentions {
             println!(
-                "- [{:?}] {} ({:?})",
-                intention.priority, intention.description, intention.kind
+                "  · [{:?}] {}",
+                intention.priority,
+                one_line(&intention.description, 88)
             );
-            if let Some(source_episode_id) = &intention.source_episode_id {
-                println!("  evidence: {source_episode_id}");
-            }
         }
     }
 
     if !report.review_items.is_empty() {
-        println!("Review items:");
+        println!("\n{}", crate::style::heading("Review items"));
         for item in &report.review_items {
-            println!("- [{:?}] {} ({:?})", item.priority, item.title, item.action);
-            println!("  {}", item.operator_guidance);
-            if !item.evidence_ids.is_empty() {
-                println!("  evidence: {}", item.evidence_ids.join(", "));
-            }
+            println!("  · [{:?}] {}", item.priority, one_line(&item.title, 88));
+            println!(
+                "    {}",
+                crate::style::dim(&one_line(&item.operator_guidance, 96))
+            );
         }
     }
 
     if !report.graph_seeds.is_empty() {
-        println!("Graph seeds:");
-        for seed in &report.graph_seeds {
-            println!("- {} mentions={}", seed.label, seed.mention_count);
-        }
+        let seeds = report
+            .graph_seeds
+            .iter()
+            .map(|seed| format!("{} (×{})", seed.label, seed.mention_count))
+            .collect::<Vec<_>>()
+            .join(" · ");
+        println!(
+            "\n{}  {}",
+            crate::style::heading("Graph seeds"),
+            crate::style::dim(&seeds)
+        );
     }
 }
 

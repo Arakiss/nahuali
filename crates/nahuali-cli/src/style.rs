@@ -14,6 +14,8 @@ const CYAN: &str = "\x1b[36m";
 const YELLOW: &str = "\x1b[33m";
 const RED: &str = "\x1b[31m";
 const RESET: &str = "\x1b[0m";
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
 
 /// Whether colored output should be emitted on stdout.
 ///
@@ -104,4 +106,14 @@ pub(crate) fn confirm(action: &str, summary: &str, id: &str) -> String {
     } else {
         format!("{check} {action} · {summary}\n  {id}")
     }
+}
+
+/// A bold section heading for human-readable reports.
+pub(crate) fn heading(text: &str) -> String {
+    paint(text, BOLD)
+}
+
+/// A dimmed (faint) string for secondary detail such as ids and counts.
+pub(crate) fn dim(text: &str) -> String {
+    paint(text, DIM)
 }

@@ -251,7 +251,7 @@ fn briefing_is_scriptable() {
     let human = run_ok(&store, &["briefing", "--episode-limit", "1"]);
     assert!(human.contains("Session briefing"));
     assert!(human.contains("Store trust: BLOCK"));
-    assert!(human.contains("Graph seeds:"));
+    assert!(human.contains("Graph seeds"));
 
     let _ = fs::remove_file(store);
 }
