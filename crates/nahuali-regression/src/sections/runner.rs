@@ -3,6 +3,9 @@ fn main() -> anyhow::Result<()> {
     if cli.livr {
         return run_livr_report(cli.output);
     }
+    if cli.arp {
+        return run_arp_report(cli.output);
+    }
 
     let report = run_fixture_file(&cli.fixtures)?;
     let encoded = serde_json::to_string_pretty(&report)?;
@@ -67,6 +70,44 @@ fn run_livr_report(output: Option<PathBuf>) -> anyhow::Result<()> {
 #[cfg(not(feature = "attestation"))]
 fn run_livr_report(_output: Option<PathBuf>) -> anyhow::Result<()> {
     bail!("--livr requires building nahuali-regression with --features attestation");
+}
+
+/// Compute the ARP key-lifecycle report, emit it as versioned JSON, and gate on
+/// every scenario matching its expected verdict.
+#[cfg(feature = "attestation")]
+fn run_arp_report(output: Option<PathBuf>) -> anyhow::Result<()> {
+    use nahuali_core::run_arp;
+
+    let report = run_arp();
+    let encoded = serde_json::to_string_pretty(&report)?;
+
+    if let Some(output) = output {
+        if let Some(parent) = output.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        fs::write(&output, format!("{encoded}\n"))
+            .with_context(|| format!("failed to write {}", output.display()))?;
+    } else {
+        println!("{encoded}");
+    }
+
+    if !report.all_pass {
+        bail!(
+            "ARP key-lifecycle coverage failed: {}/{} scenarios matched expectation",
+            report.passed,
+            report.case_count
+        );
+    }
+
+    Ok(())
+}
+
+/// On a default build the attestation surface is absent, so the ARP report
+/// cannot be computed. Fail with an actionable message instead of a missing symbol.
+#[cfg(not(feature = "attestation"))]
+fn run_arp_report(_output: Option<PathBuf>) -> anyhow::Result<()> {
+    bail!("--arp requires building nahuali-regression with --features attestation");
 }
 
 fn run_fixture_file(path: &Path) -> anyhow::Result<RegressionReport> {

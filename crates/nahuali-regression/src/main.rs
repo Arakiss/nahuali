@@ -47,6 +47,12 @@ struct Cli {
     /// false positives.
     #[arg(long)]
     livr: bool,
+
+    /// Emit the computed ARP (Attestation Recovery Profile) report instead of
+    /// running fixtures. Requires `--features attestation`; the gate fails if any
+    /// key-lifecycle scenario does not match its expected verdict.
+    #[arg(long)]
+    arp: bool,
 }
 
 include!("sections/runner.rs");
