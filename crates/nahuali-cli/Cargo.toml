@@ -17,7 +17,7 @@ name = "nahuali"
 path = "src/main.rs"
 
 [features]
-default = ["tui"]
+default = ["tui", "tamper-evidence"]
 # The interactive `explore` governance cockpit (ratatui via nahuali-ui). On by
 # default; build with --no-default-features to drop it (and ratatui) for a
 # minimal/server CLI.
