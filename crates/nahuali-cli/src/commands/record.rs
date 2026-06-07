@@ -23,7 +23,17 @@ pub(crate) fn remember(
     if json {
         println!("{}", serde_json::to_string(&episode)?);
     } else {
-        println!("remembered {}", episode.id);
+        let mut summary = format!("\"{}\"", excerpt(&episode.content, 72));
+        if !episode.tags.is_empty() {
+            summary.push_str(&format!(" · tags: {}", episode.tags.join(", ")));
+        }
+        if !episode.mentions.is_empty() {
+            summary.push_str(&format!(" · mentions: {}", episode.mentions.join(", ")));
+        }
+        println!(
+            "{}",
+            crate::style::confirm("Episode recorded", &summary, &episode.id)
+        );
     }
     Ok(())
 }
@@ -57,7 +67,20 @@ pub(crate) fn claim(
     if json {
         println!("{}", serde_json::to_string(&claim)?);
     } else {
-        println!("claimed {}", claim.id);
+        println!(
+            "{}",
+            crate::style::confirm(
+                "Claim asserted",
+                &assertion_summary(
+                    &claim.subject,
+                    &claim.predicate,
+                    &claim.object,
+                    claim.confidence,
+                    claim.source_episode_id.is_some()
+                ),
+                &claim.id
+            )
+        );
     }
     Ok(())
 }
@@ -91,7 +114,20 @@ pub(crate) fn fact(
     if json {
         println!("{}", serde_json::to_string(&fact)?);
     } else {
-        println!("asserted {}", fact.id);
+        println!(
+            "{}",
+            crate::style::confirm(
+                "Fact asserted",
+                &assertion_summary(
+                    &fact.subject,
+                    &fact.predicate,
+                    &fact.object,
+                    fact.confidence,
+                    fact.source_episode_id.is_some()
+                ),
+                &fact.id
+            )
+        );
     }
     Ok(())
 }
@@ -121,7 +157,20 @@ pub(crate) fn link(memory: &mut MemoryEngine, args: LinkArgs, json: bool) -> any
     if json {
         println!("{}", serde_json::to_string(&link)?);
     } else {
-        println!("linked {}", link.id);
+        println!(
+            "{}",
+            crate::style::confirm(
+                "Link recorded",
+                &assertion_summary(
+                    &link.from,
+                    &link.relation,
+                    &link.to,
+                    link.confidence,
+                    link.source_episode_id.is_some()
+                ),
+                &link.id
+            )
+        );
     }
     Ok(())
 }
@@ -151,7 +200,20 @@ pub(crate) fn relate(memory: &mut MemoryEngine, args: LinkArgs, json: bool) -> a
     if json {
         println!("{}", serde_json::to_string(&relation)?);
     } else {
-        println!("related {}", relation.id);
+        println!(
+            "{}",
+            crate::style::confirm(
+                "Relation recorded",
+                &assertion_summary(
+                    &relation.from,
+                    &relation.relation,
+                    &relation.to,
+                    relation.confidence,
+                    relation.source_episode_id.is_some()
+                ),
+                &relation.id
+            )
+        );
     }
     Ok(())
 }
@@ -183,7 +245,11 @@ pub(crate) fn procedure(
     if json {
         println!("{}", serde_json::to_string(&procedure)?);
     } else {
-        println!("recorded {}", procedure.id);
+        let summary = format!("{} · {}", procedure.name, excerpt(&procedure.body, 56));
+        println!(
+            "{}",
+            crate::style::confirm("Procedure recorded", &summary, &procedure.id)
+        );
     }
     Ok(())
 }
@@ -215,7 +281,11 @@ pub(crate) fn preference(
     if json {
         println!("{}", serde_json::to_string(&preference)?);
     } else {
-        println!("recorded {}", preference.id);
+        let summary = format!("{} · {}", preference.name, excerpt(&preference.body, 56));
+        println!(
+            "{}",
+            crate::style::confirm("Preference recorded", &summary, &preference.id)
+        );
     }
     Ok(())
 }
@@ -247,7 +317,16 @@ pub(crate) fn intention(
     if json {
         println!("{}", serde_json::to_string(&intention)?);
     } else {
-        println!("recorded {}", intention.id);
+        let summary = format!(
+            "\"{}\" · {:?}/{:?}",
+            excerpt(&intention.description, 60),
+            intention.kind,
+            intention.priority
+        );
+        println!(
+            "{}",
+            crate::style::confirm("Intention noted", &summary, &intention.id)
+        );
     }
     Ok(())
 }
@@ -263,7 +342,14 @@ pub(crate) fn intention_status(
     if json {
         println!("{}", serde_json::to_string(&intention)?);
     } else {
-        println!("updated {} {:?}", intention.id, intention.status);
+        println!(
+            "{}",
+            crate::style::confirm(
+                &format!("Intention {:?}", intention.status),
+                "",
+                &intention.id
+            )
+        );
     }
     Ok(())
 }
@@ -309,7 +395,10 @@ pub(crate) fn intention_update(
     if json {
         println!("{}", serde_json::to_string(&intention)?);
     } else {
-        println!("updated {}", intention.id);
+        println!(
+            "{}",
+            crate::style::confirm("Intention updated", "", &intention.id)
+        );
     }
     Ok(())
 }
@@ -351,7 +440,14 @@ fn print_intention_status_update(
     if json {
         println!("{}", serde_json::to_string(&intention)?);
     } else {
-        println!("updated {} {:?}", intention.id, intention.status);
+        println!(
+            "{}",
+            crate::style::confirm(
+                &format!("Intention {:?}", intention.status),
+                "",
+                &intention.id
+            )
+        );
     }
     Ok(())
 }
@@ -406,6 +502,26 @@ pub(crate) struct IntentionUpdateArgs {
     pub(crate) clear_goal: bool,
     pub(crate) progress: Option<u8>,
     pub(crate) clear_progress: bool,
+}
+
+/// Truncate `text` to at most `max` characters for a one-line confirmation.
+fn excerpt(text: &str, max: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.chars().count() <= max {
+        trimmed.to_string()
+    } else {
+        let head: String = trimmed.chars().take(max).collect();
+        format!("{head}\u{2026}")
+    }
+}
+
+/// Human summary for an asserted triple (claim, fact, link, or relation),
+/// noting confidence and whether it carries source evidence.
+fn assertion_summary(a: &str, rel: &str, b: &str, confidence: f32, sourced: bool) -> String {
+    format!(
+        "{a} {rel} {b} (confidence {confidence:.2}, {})",
+        if sourced { "sourced" } else { "unsourced" }
+    )
 }
 
 fn resolve_source_episode_id(

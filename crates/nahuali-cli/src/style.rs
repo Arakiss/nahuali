@@ -92,3 +92,16 @@ pub(crate) fn store_trust_line(mode: &AuthorityMode, score: f32) -> String {
         score
     )
 }
+
+/// A styled write confirmation for the human (non-JSON) path: a green check, the
+/// action plus a short human summary, and the record id beneath. The `--json`
+/// path is untouched, so machine output stays clean — this only makes the
+/// human read say what happened instead of echoing an opaque id.
+pub(crate) fn confirm(action: &str, summary: &str, id: &str) -> String {
+    let check = paint("\u{2713}", GREEN);
+    if summary.is_empty() {
+        format!("{check} {action}  {id}")
+    } else {
+        format!("{check} {action} · {summary}\n  {id}")
+    }
+}

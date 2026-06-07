@@ -11,7 +11,7 @@ fn source_last_operator_path_produces_supported_memory() {
             "product",
         ],
     );
-    assert!(remembered.starts_with("remembered episode_"));
+    assert!(remembered.contains("episode_") && remembered.contains("recorded"));
 
     let asserted = run_ok(
         &store,
@@ -25,7 +25,7 @@ fn source_last_operator_path_produces_supported_memory() {
             "--source-last",
         ],
     );
-    assert!(asserted.starts_with("asserted fact_"));
+    assert!(asserted.contains("fact_") && asserted.contains("asserted"));
 
     let related = run_ok(
         &store,
@@ -39,7 +39,7 @@ fn source_last_operator_path_produces_supported_memory() {
             "--source-last",
         ],
     );
-    assert!(related.starts_with("related relation_"));
+    assert!(related.contains("relation_") && related.contains("Relation"));
 
     let recalled = run_ok(&store, &["recall", "Lena release"]);
     assert!(recalled.starts_with("- [Claim]"));
@@ -529,7 +529,7 @@ fn intention_lifecycle_is_scriptable() {
             "Review next launch window",
         ],
     );
-    assert!(human.contains("updated intention_"));
+    assert!(human.contains("intention_") && human.contains("Intention"));
     assert!(human.contains("Deferred"));
 
     let human_reconcile = run_ok(
