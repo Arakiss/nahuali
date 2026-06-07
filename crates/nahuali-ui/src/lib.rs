@@ -15,3 +15,5 @@
 pub mod render;
 pub mod style;
 pub mod theme;
+#[cfg(feature = "tui")]
+pub mod tui;
