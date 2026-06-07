@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "id": "cdr-seeded-defects",
+      "goal": "Contradiction & Staleness Detection Rate: over a labeled corpus of six seeded health defects (2 same-observation contradictions, 2 recency-resolved supersessions, 2 time-stale facts) the engine detects every one — full per-signal detection. Deterministic event timestamps make the rate reproducible.",
+      "inspect_at_ms": 17280000000,
+      "steps": [
+        { "type": "raw_event", "sequence": 1, "timestamp_ms": 17107200000, "payload": { "type": "episode_recorded", "id": "ep_obs", "content": "Current platform review", "tags": ["platform"] } },
+        { "type": "raw_event", "sequence": 2, "timestamp_ms": 16934400000, "payload": { "type": "episode_recorded", "id": "ep_old_tier", "content": "Earlier tier note", "tags": ["platform"] } },
+        { "type": "raw_event", "sequence": 3, "timestamp_ms": 16934400000, "payload": { "type": "episode_recorded", "id": "ep_old_owner", "content": "Earlier owner note", "tags": ["platform"] } },
+        { "type": "raw_event", "sequence": 4, "timestamp_ms": 0, "payload": { "type": "episode_recorded", "id": "ep_stale", "content": "Legacy import", "tags": ["platform"] } },
+
+        { "type": "raw_event", "sequence": 5, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_atlas_draft", "subject": "Atlas", "predicate": "status", "object": "draft", "source_episode_id": "ep_obs", "confidence": 0.9 } },
+        { "type": "raw_event", "sequence": 6, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_atlas_published", "subject": "Atlas", "predicate": "status", "object": "published", "source_episode_id": "ep_obs", "confidence": 0.9 } },
+        { "type": "raw_event", "sequence": 7, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_borealis_useast", "subject": "Borealis", "predicate": "region", "object": "us-east", "source_episode_id": "ep_obs", "confidence": 0.9 } },
+        { "type": "raw_event", "sequence": 8, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_borealis_euwest", "subject": "Borealis", "predicate": "region", "object": "eu-west", "source_episode_id": "ep_obs", "confidence": 0.9 } },
+
+        { "type": "raw_event", "sequence": 9, "timestamp_ms": 16934400000, "payload": { "type": "fact_asserted", "id": "f_cygnus_silver", "subject": "Cygnus", "predicate": "tier", "object": "silver", "source_episode_id": "ep_old_tier", "confidence": 0.9 } },
+        { "type": "raw_event", "sequence": 10, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_cygnus_gold", "subject": "Cygnus", "predicate": "tier", "object": "gold", "source_episode_id": "ep_obs", "confidence": 0.9 } },
+        { "type": "raw_event", "sequence": 11, "timestamp_ms": 16934400000, "payload": { "type": "fact_asserted", "id": "f_draco_lena", "subject": "Draco", "predicate": "owner", "object": "Lena", "source_episode_id": "ep_old_owner", "confidence": 0.9 } },
+        { "type": "raw_event", "sequence": 12, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_draco_mateo", "subject": "Draco", "predicate": "owner", "object": "Mateo", "source_episode_id": "ep_obs", "confidence": 0.9 } },
+
+        { "type": "raw_event", "sequence": 13, "timestamp_ms": 0, "payload": { "type": "fact_asserted", "id": "f_eridanus_launch", "subject": "Eridanus", "predicate": "launch", "object": "2019", "source_episode_id": "ep_stale", "confidence": 0.9 } },
+        { "type": "raw_event", "sequence": 14, "timestamp_ms": 0, "payload": { "type": "fact_asserted", "id": "f_fornax_version", "subject": "Fornax", "predicate": "version", "object": "1.0", "source_episode_id": "ep_stale", "confidence": 0.9 } },
+
+        { "type": "write_raw_records" }
+      ],
+      "expected": {
+        "event_count": 14,
+        "episode_count": 4,
+        "fact_count": 10,
+        "relation_count": 0,
+        "supported_fact_count": 10,
+        "unsupported_fact_count": 0,
+        "low_confidence_fact_count": 0,
+        "conflicting_fact_count": 2,
+        "superseded_fact_count": 2,
+        "stale_fact_count": 2,
+        "required_signal_kinds": ["conflicting_fact", "superseded_fact", "stale_fact"],
+        "required_signals": [
+          { "kind": "conflicting_fact", "severity": "high", "dimensions": ["contradiction", "blind_spot"] },
+          { "kind": "superseded_fact", "severity": "medium", "dimensions": ["freshness", "staleness"] },
+          { "kind": "stale_fact", "severity": "medium", "dimensions": ["freshness", "staleness"] }
+        ],
+        "authority_mode": "block",
+        "authority_can_trust": false
+      }
+    },
+    {
+      "id": "cdr-clean-control",
+      "goal": "Contradiction & Staleness Detection Rate, false-positive control: an internally consistent, fresh, single-valued, sourced store must trigger zero contradiction, supersession, or staleness signals — the engine does not hallucinate defects in clean memory.",
+      "steps": [
+        { "type": "remember", "bind": "src", "content": "Clean platform registry review.", "tags": ["platform"] },
+        { "type": "fact", "subject": "Atlas", "predicate": "status", "object": "published", "source_episode_ref": "src", "confidence": 0.9 },
+        { "type": "fact", "subject": "Borealis", "predicate": "region", "object": "eu-west", "source_episode_ref": "src", "confidence": 0.9 },
+        { "type": "fact", "subject": "Cygnus", "predicate": "tier", "object": "gold", "source_episode_ref": "src", "confidence": 0.9 },
+        { "type": "fact", "subject": "Draco", "predicate": "owner", "object": "Mateo", "source_episode_ref": "src", "confidence": 0.9 }
+      ],
+      "expected": {
+        "fact_count": 4,
+        "relation_count": 0,
+        "supported_fact_count": 4,
+        "unsupported_fact_count": 0,
+        "conflicting_fact_count": 0,
+        "superseded_fact_count": 0,
+        "stale_fact_count": 0
+      }
+    }
+  ]
+}
