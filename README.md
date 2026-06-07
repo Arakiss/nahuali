@@ -117,11 +117,22 @@ small store cannot report a misleading rate:
 cargo run -p nahuali-regression -- --fixtures fixtures/provenance-coverage-regression.json
 ```
 
+**Contradiction & Staleness Detection Rate (CDR).** Detection of seeded
+knowledge-health defects — same-observation contradictions, recency-resolved
+supersessions, and time-stale facts — over a labeled corpus, paired with a clean
+control that must produce zero false positives. The engine detects all six
+seeded defects and stays silent on the consistent store:
+
+```bash
+cargo run -p nahuali-regression -- --fixtures fixtures/contradiction-staleness-regression.json
+```
+
 Honest limits: LIVR measures detection against a fixed synthetic injection
 method, so a passing rate proves self-consistency detection, not the absence of
 all tampering. PCR is an evidence-*presence* audit, not a calibration or
 accuracy metric — it says a claim cites an observation, not that the claim is
-true.
+true. CDR measures detection of the defect classes the health pipeline models,
+not every possible inconsistency.
 
 ## How Nahuali Compares
 
