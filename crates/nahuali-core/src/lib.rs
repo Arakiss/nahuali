@@ -34,6 +34,8 @@
 
 mod adapters;
 #[cfg(feature = "attestation")]
+mod arp;
+#[cfg(feature = "attestation")]
 mod attestation;
 mod audit;
 mod authority;
@@ -74,6 +76,8 @@ pub use adapters::{
     DEFAULT_TEXT_CHUNK_BYTES, TEXT_INGEST_ADAPTER_VERSION, TextChunking, TextIngestBuildReport,
     TextIngestIssue, TextIngestIssueKind, TextIngestOptions, build_text_ingest_document,
 };
+#[cfg(feature = "attestation")]
+pub use arp::{ARP_REPORT_VERSION, ArpCase, ArpReport, run_arp};
 #[cfg(feature = "attestation")]
 pub use attestation::{
     AttestationKey, AttestationKeyStatus, AttestationKeyring, AttestationVerdict,
