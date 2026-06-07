@@ -226,6 +226,29 @@ impl MemoryEngine {
             sequence: attestation.sequence,
         })
     }
+
+    /// Like [`Self::verify_chain_tip_attestation`], but also requires the
+    /// receipt's signing key to be trusted and active in `keyring`. A receipt
+    /// under a revoked or unknown key is not honored even when its signature
+    /// verifies, which is what lets a leaked key be retired without rewriting
+    /// history.
+    pub fn verify_chain_tip_attestation_with_keyring(
+        &self,
+        attestation: &LedgerAttestation,
+        keyring: &AttestationKeyring,
+    ) -> Result<TrustedAttestationVerdict> {
+        match (self.chain_tip(), self.events().last().map(|e| e.sequence)) {
+            (Some(tip), Some(sequence)) => {
+                verify_attestation_with_keyring(attestation, sequence, &tip, keyring)
+            }
+            _ => Ok(TrustedAttestationVerdict {
+                signature_valid: false,
+                matches_tip: false,
+                key_trusted: keyring.authorizes(&attestation.public_key),
+                key_revoked: keyring.is_revoked(&attestation.public_key),
+            }),
+        }
+    }
 }
 
 /// Status of a key in the operator's attestation keyring.
