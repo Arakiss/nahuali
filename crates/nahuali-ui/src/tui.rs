@@ -28,6 +28,15 @@ pub struct Item {
     /// `(label, color)` of the item's trust verdict, if it carries one.
     pub trust: Option<(String, Rgb)>,
     pub evidence: Option<String>,
+    /// Extra key/value detail lines (scope, confidence, id, …).
+    pub meta: Vec<(String, String)>,
+}
+
+/// A store-level governance signal shown in the cockpit's bottom bar.
+pub struct Signal {
+    pub label: String,
+    pub value: String,
+    pub color: Rgb,
 }
 
 /// A point-in-time view of a store for the cockpit.
@@ -37,6 +46,8 @@ pub struct Snapshot {
     pub store_trust_color: Rgb,
     pub store_trust_score: f32,
     pub items: Vec<Item>,
+    /// Store-level governance signals (health, review queue, provenance, …).
+    pub signals: Vec<Signal>,
 }
 
 fn color(c: Rgb) -> Color {
@@ -170,6 +181,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(0),
+            Constraint::Length(3),
             Constraint::Length(1),
         ])
         .split(frame.area());
@@ -193,7 +205,39 @@ fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_stateful_widget(list, body[0], &mut app.list);
     frame.render_widget(detail, body[1]);
 
-    draw_footer(frame, rows[2]);
+    draw_signals(frame, &app.snapshot.signals, rows[2]);
+    draw_footer(frame, rows[3]);
+}
+
+fn draw_signals(frame: &mut Frame, signals: &[Signal], area: Rect) {
+    let mut spans: Vec<Span> = Vec::new();
+    for signal in signals {
+        if !spans.is_empty() {
+            spans.push(Span::styled("    ", Style::default()));
+        }
+        spans.push(Span::styled(
+            format!("{} ", signal.label),
+            Style::default().fg(color(theme::INK_FAINT)),
+        ));
+        spans.push(Span::styled(
+            signal.value.clone(),
+            Style::default()
+                .fg(color(signal.color))
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    let panel = Paragraph::new(Line::from(spans)).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(color(theme::INK_FAINT)))
+            .title(Span::styled(
+                " signals ",
+                Style::default()
+                    .fg(color(theme::CLAY))
+                    .add_modifier(Modifier::BOLD),
+            )),
+    );
+    frame.render_widget(panel, area);
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
@@ -316,6 +360,15 @@ fn detail_paragraph(item: Option<&Item>) -> Paragraph<'static> {
                     ),
                 ]));
             }
+            for (key, value) in &item.meta {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("{key:<7}"),
+                        Style::default().fg(color(theme::INK_FAINT)),
+                    ),
+                    Span::styled(value.clone(), Style::default().fg(color(theme::INK_DIM))),
+                ]));
+            }
         }
     }
 
@@ -355,6 +408,7 @@ mod tests {
             detail: "detail".to_string(),
             trust: None,
             evidence: None,
+            meta: Vec::new(),
         }
     }
 
@@ -365,6 +419,7 @@ mod tests {
             store_trust_color: theme::GREEN,
             store_trust_score: 1.0,
             items: (0..n).map(|i| item(&format!("episode{i}"))).collect(),
+            signals: Vec::new(),
         }
     }
 
@@ -401,6 +456,7 @@ mod tests {
                 item("claim"),
                 item("intention"),
             ],
+            signals: Vec::new(),
         }
     }
 

@@ -3,18 +3,17 @@
 //!
 //! Nahuali is agent-first, but a human supervises what the agent stored. This
 //! reduces the engine's memory to a plain `Snapshot` of display strings — each
-//! item carrying a provenance signal (observed / evidenced / no source) — and
-//! launches the interactive TUI.
+//! item carrying a provenance signal (observed / evidenced / no source) and a
+//! few detail fields — plus store-level governance signals, and launches the
+//! interactive TUI.
 
 use std::path::Path;
 
-use nahuali_core::{BriefingOptions, MemoryEngine};
+use nahuali_core::{BriefingOptions, MemoryEngine, MemoryScope};
 use nahuali_ui::theme::{self, Rgb};
-use nahuali_ui::tui::{Item, Snapshot};
+use nahuali_ui::tui::{Item, Signal, Snapshot};
 
 pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Result<()> {
-    // Only the store-level authority is needed from the briefing; items come
-    // from the full projected data below.
     let briefing = memory.briefing_with_options(BriefingOptions {
         episode_limit: 0,
         intention_limit: 0,
@@ -35,6 +34,7 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
             detail: episode.content.clone(),
             trust: Some(("observed".to_string(), theme::GREEN)),
             evidence: episode.source_id.clone(),
+            meta: meta(None, &episode.scope, &episode.id),
         });
     }
     for claim in &data.claims {
@@ -44,6 +44,7 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
             &claim.predicate,
             &claim.object,
             &claim.source_episode_id,
+            meta(Some(claim.confidence), &claim.scope, &claim.id),
         ));
     }
     for fact in &data.facts {
@@ -53,6 +54,7 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
             &fact.predicate,
             &fact.object,
             &fact.source_episode_id,
+            meta(Some(fact.confidence), &fact.scope, &fact.id),
         ));
     }
     for link in &data.links {
@@ -62,6 +64,7 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
             &link.relation,
             &link.to,
             &link.source_episode_id,
+            meta(Some(link.confidence), &link.scope, &link.id),
         ));
     }
     for relation in &data.relations {
@@ -71,6 +74,7 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
             &relation.relation,
             &relation.to,
             &relation.source_episode_id,
+            meta(Some(relation.confidence), &relation.scope, &relation.id),
         ));
     }
     for procedure in &data.procedures {
@@ -80,18 +84,22 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
             detail: procedure.body.clone(),
             trust: Some(provenance(procedure.source_episode_id.is_some())),
             evidence: procedure.source_episode_id.clone(),
+            meta: meta(Some(procedure.confidence), &procedure.scope, &procedure.id),
         });
     }
     for intention in &data.intentions {
+        let mut detail_meta = vec![
+            ("priority".to_string(), format!("{:?}", intention.priority)),
+            ("status".to_string(), format!("{:?}", intention.status)),
+        ];
+        detail_meta.extend(meta(None, &intention.scope, &intention.id));
         items.push(Item {
             kind: "intention".to_string(),
             title: excerpt(&intention.description, 64),
-            detail: format!(
-                "{}\n[{:?} · {:?}]",
-                intention.description, intention.priority, intention.status
-            ),
+            detail: intention.description.clone(),
             trust: Some((format!("{:?}", intention.status), theme::BLUE)),
             evidence: intention.source_episode_id.clone(),
+            meta: detail_meta,
         });
     }
     for entity in &data.entities {
@@ -101,6 +109,10 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
             detail: format!("Entity, mentioned {} time(s).", entity.mention_count),
             trust: None,
             evidence: None,
+            meta: vec![
+                ("mentions".to_string(), entity.mention_count.to_string()),
+                ("id".to_string(), entity.id.clone()),
+            ],
         });
     }
 
@@ -109,11 +121,108 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
         store_trust_label: store_label,
         store_trust_color: store_color,
         store_trust_score: store_score,
+        signals: signals(memory, &briefing),
         items,
     };
 
     nahuali_ui::tui::run(snapshot)?;
     Ok(())
+}
+
+/// Store-level governance signals — what a human supervisor watches.
+fn signals(memory: &MemoryEngine, briefing: &nahuali_core::MemoryBriefingReport) -> Vec<Signal> {
+    let data = memory.data();
+    // Provenance coverage: derived items (claims/facts/links/relations/procedures)
+    // that cite a source episode, over the total.
+    let total = data.claims.len()
+        + data.facts.len()
+        + data.links.len()
+        + data.relations.len()
+        + data.procedures.len();
+    let evidenced = data
+        .claims
+        .iter()
+        .filter(|c| c.source_episode_id.is_some())
+        .count()
+        + data
+            .facts
+            .iter()
+            .filter(|f| f.source_episode_id.is_some())
+            .count()
+        + data
+            .links
+            .iter()
+            .filter(|l| l.source_episode_id.is_some())
+            .count()
+        + data
+            .relations
+            .iter()
+            .filter(|r| r.source_episode_id.is_some())
+            .count()
+        + data
+            .procedures
+            .iter()
+            .filter(|p| p.source_episode_id.is_some())
+            .count();
+    let provenance_color = if total == 0 || evidenced == total {
+        theme::GREEN
+    } else if evidenced * 2 >= total {
+        theme::AMBER
+    } else {
+        theme::RED
+    };
+
+    let health = briefing.health.blind_spot_count;
+    let review = briefing.summary.high_priority_review_count;
+
+    vec![
+        Signal {
+            label: "events".to_string(),
+            value: briefing.event_count.to_string(),
+            color: theme::INK_DIM,
+        },
+        Signal {
+            label: "health signals".to_string(),
+            value: health.to_string(),
+            color: if health == 0 {
+                theme::GREEN
+            } else {
+                theme::AMBER
+            },
+        },
+        Signal {
+            label: "review".to_string(),
+            value: review.to_string(),
+            color: if review == 0 {
+                theme::GREEN
+            } else {
+                theme::AMBER
+            },
+        },
+        Signal {
+            label: "active intentions".to_string(),
+            value: briefing.summary.active_intention_count.to_string(),
+            color: theme::BLUE,
+        },
+        Signal {
+            label: "evidenced".to_string(),
+            value: format!("{evidenced}/{total}"),
+            color: provenance_color,
+        },
+    ]
+}
+
+/// Common detail fields for an item: confidence (if any), scope (if any), id.
+fn meta(confidence: Option<f32>, scope: &Option<MemoryScope>, id: &str) -> Vec<(String, String)> {
+    let mut fields = Vec::new();
+    if let Some(confidence) = confidence {
+        fields.push(("conf".to_string(), format!("{confidence:.2}")));
+    }
+    if let Some(scope) = scope {
+        fields.push(("scope".to_string(), format!("{scope:?}")));
+    }
+    fields.push(("id".to_string(), id.to_string()));
+    fields
 }
 
 /// Provenance signal: evidenced (sourced) in green, no-source in amber.
@@ -126,7 +235,14 @@ fn provenance(sourced: bool) -> (String, Rgb) {
 }
 
 /// Build a triple item (claim/fact/link/relation) with its provenance signal.
-fn triple(kind: &str, a: &str, rel: &str, b: &str, source: &Option<String>) -> Item {
+fn triple(
+    kind: &str,
+    a: &str,
+    rel: &str,
+    b: &str,
+    source: &Option<String>,
+    meta: Vec<(String, String)>,
+) -> Item {
     let text = format!("{a} {rel} {b}");
     Item {
         kind: kind.to_string(),
@@ -134,6 +250,7 @@ fn triple(kind: &str, a: &str, rel: &str, b: &str, source: &Option<String>) -> I
         detail: text,
         trust: Some(provenance(source.is_some())),
         evidence: source.clone(),
+        meta,
     }
 }
 
