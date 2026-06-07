@@ -83,6 +83,72 @@ None of this claims remembered information is *true*. It makes the current basis
 for trust inspectable and the recorded history verifiable, and leaves the
 decision to act with the operator.
 
+## Governance Benchmarks
+
+Trust should be a number you can recompute, not a word in a README. Nahuali
+defines its own governance benchmarks: each injects a fixed, labeled corpus,
+runs the real engine validators over it, and computes a rate. The measurement
+lives in the library and the release gate, so anyone can rerun it — the same
+reproducibility the engine asks of memory, applied to its own numbers.
+
+**Ledger Integrity Verification Rate (LIVR).** Detection rate `TP / (TP + FN)`
+of ledger tampering, reported per detector tier over an eight-class synthetic
+attack corpus, with the per-tier blind spot made explicit rather than averaged
+away:
+
+| Detector tier | Detection rate | What it adds |
+|---|---|---|
+| checksum-only | 0.25 | the naive baseline: only a stale or corrupted per-event checksum |
+| replay-chain | 0.75 | + in-place rewrites, timestamp skew, sequence gaps, cross-ledger grafts |
+| attestation-tip | 1.00 | + fully re-chained suffixes — with zero false positives on the clean and legacy-unchained controls |
+
+```bash
+cargo run -p nahuali-regression --features attestation -- --livr
+```
+
+**Provenance Coverage Rate (PCR).** The fraction of assertional memory that is
+traceable to a source episode (`evidence_backed / total`), with its inverse, the
+overconfidence rate (high-confidence-but-unsourced). The labeled fixture seeds a
+known mix and the engine recovers it exactly — 0.75 coverage and 0.25
+overconfidence over eight claims — with an `insufficient_samples` guard so a
+small store cannot report a misleading rate:
+
+```bash
+cargo run -p nahuali-regression -- --fixtures fixtures/provenance-coverage-regression.json
+```
+
+Honest limits: LIVR measures detection against a fixed synthetic injection
+method, so a passing rate proves self-consistency detection, not the absence of
+all tampering. PCR is an evidence-*presence* audit, not a calibration or
+accuracy metric — it says a claim cites an observation, not that the claim is
+true.
+
+## How Nahuali Compares
+
+Most open-source agent-memory engines (Mem0, Zep/Graphiti, Letta, Cognee)
+optimize for **recall accuracy** — extracting and retrieving the right context —
+and publish their LOCOMO and LongMemEval scores. Nahuali optimizes for a
+different axis: **whether you can trust and verify** what memory returns. The two
+are complementary, and the honest comparison cuts both ways:
+
+| Axis | Nahuali | Recall-first engines |
+|---|---|---|
+| Tamper-evidence over the memory log | hash chain + Merkle proofs + Ed25519 tip attestation | none in the OSS layer |
+| Confidence-vs-provenance recall trust | flags overconfident unsourced memory, gates recall | stores asserted facts without a provenance audit |
+| Deterministic core (no LLM in recall/ingest) | yes — reviewable, reproducible | LLM-driven extraction (non-deterministic) |
+| Point-in-time / bi-temporal recall | staleness is detected, not yet a query filter | Zep's bi-temporal model leads here |
+| Raw recall accuracy (LOCOMO/LongMemEval) | not the goal; a credible floor, not the lead | strong published numbers |
+| Ecosystem, integrations, traction | pre-release, narrow surface | large communities and framework integrations |
+
+To our knowledge, no other open-source agent-memory engine combines all three of
+a hash-chained Merkle-proofed ledger, detached Ed25519 tip attestation, and a
+per-recall confidence-vs-provenance trust verdict over its memory ledger.
+Projects exist that ship subsets — tamper-evident action logs, or trust scoring
+without cryptographic attestation — but not the full combination. If you only
+need maximum recall accuracy, a recall-first engine is the better fit; Nahuali is
+for when you also have to defend what the memory says and prove it was not
+rewritten.
+
 ## What Exists Today
 
 - `nahuali-core`: the canonical Rust engine.
