@@ -161,7 +161,8 @@ pub(crate) enum Command {
     },
     #[command(
         about = "Record an observed episode.",
-        after_help = "Examples:\n  nahuali remember \"Shipped the recall CLI grouping\" --tag cli\n  nahuali remember \"Met with the design team\" --mention alice --scope project:nahuali\n  nahuali remember \"Fixed flaky test\" -t ci -t fix"
+        visible_alias = "episode",
+        after_help = "Examples:\n  nahuali remember \"Shipped the recall CLI grouping\" --tag cli\n  nahuali remember \"Met with the design team\" --mention alice --scope project:nahuali\n  nahuali remember \"Fixed flaky test\" -t ci -t fix\n\nThe `episode` alias is accepted for compatibility with the prior CLI vocabulary."
     )]
     Remember {
         #[arg(help = "Episode text to record (joined into a single observed episode)")]
