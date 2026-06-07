@@ -35,21 +35,41 @@ const LEDGER_LEN: u64 = 6;
 const TARGET: usize = 2;
 
 /// A tampering pattern injected into the synthetic ledger, or the clean control.
+///
+/// The corpus is grouped by the weakest tier that catches each class, so the
+/// per-tier detection rates below stay honest and stable as classes are added:
+/// two checksum-catchable classes, four that need the replay chain, and two
+/// fully re-chained suffixes that only the anchored tip can see.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AttackClass {
     /// No tampering: the control. A tier that flags it scores a false positive.
     Clean,
+    /// A single event's stored checksum is corrupted.
+    ChecksumMutation,
+    /// A middle event's payload is edited but its stored checksum is left
+    /// untouched (a clumsy edit or accidental corruption), so the self-contained
+    /// checksum no longer matches the body.
+    PayloadEditNoRecompute,
     /// A middle event's payload is rewritten and its own checksum recomputed,
     /// keeping the recorded chain link -- the strongest attack on a
     /// checksum-only model.
     InPlaceRewrite,
+    /// A middle event's timestamp is skewed and its checksum recomputed, keeping
+    /// the recorded chain link. The forged checksum is self-consistent, but the
+    /// timestamp is bound into the chain hash, so the next link no longer matches.
+    TimestampSkew,
+    /// A middle event is dropped, leaving a sequence discontinuity.
+    SequenceGap,
+    /// A middle event is replaced by an event grafted from a different ledger:
+    /// its own checksum is valid, but its chain link belongs to a foreign chain.
+    CrossLedgerGraft,
     /// A middle event is rewritten and the whole suffix re-chained, so every
     /// link is internally consistent again.
     SuffixRechain,
-    /// A middle event is dropped, leaving a sequence discontinuity.
-    SequenceGap,
-    /// A single event's stored checksum is corrupted.
-    ChecksumMutation,
+    /// A middle event's payload is truncated (content redacted) and the whole
+    /// suffix re-chained, so the ledger stays internally consistent -- a
+    /// redaction the replay chain cannot see, only the anchored tip can.
+    PayloadTruncationRechain,
 }
 
 impl AttackClass {
@@ -74,12 +94,19 @@ struct TierResult {
     undetected: Vec<AttackClass>,
 }
 
-const CLASSES: [AttackClass; 5] = [
+const CLASSES: [AttackClass; 9] = [
     AttackClass::Clean,
-    AttackClass::InPlaceRewrite,
-    AttackClass::SuffixRechain,
-    AttackClass::SequenceGap,
+    // checksum-catchable
     AttackClass::ChecksumMutation,
+    AttackClass::PayloadEditNoRecompute,
+    // need the replay chain
+    AttackClass::InPlaceRewrite,
+    AttackClass::TimestampSkew,
+    AttackClass::SequenceGap,
+    AttackClass::CrossLedgerGraft,
+    // only the anchored tip
+    AttackClass::SuffixRechain,
+    AttackClass::PayloadTruncationRechain,
 ];
 
 const TIERS: [DetectorTier; 3] = [
@@ -239,6 +266,65 @@ fn inject(clean: &[EventEnvelope], class: AttackClass) -> Vec<EventEnvelope> {
         AttackClass::ChecksumMutation => {
             events[TARGET].checksum = "0000000000000000".to_string();
         }
+        AttackClass::PayloadEditNoRecompute => {
+            // Edit the body but leave the stored checksum as-is: the self-contained
+            // checksum is now stale, so even the naive tier catches it.
+            events[TARGET].payload = episode_event(events[TARGET].sequence, "uncomputed edit");
+            assert!(
+                !events[TARGET].validate_checksum(),
+                "the stale checksum no longer matches the edited body"
+            );
+        }
+        AttackClass::TimestampSkew => {
+            let original = &events[TARGET];
+            // Skew the timestamp by a day and recompute the per-event checksum
+            // (new() recomputes it), preserving the recorded chain link.
+            let mut forged = EventEnvelope::new(
+                original.sequence,
+                original.timestamp_ms.wrapping_add(86_400_000),
+                original.payload.clone(),
+            );
+            forged.prev_hash = original.prev_hash.clone();
+            assert!(forged.validate_checksum(), "the skewed checksum is valid");
+            events[TARGET] = forged;
+        }
+        AttackClass::CrossLedgerGraft => {
+            // Graft an event from a *different* ledger: its own checksum is valid,
+            // but its chain link points at a foreign predecessor.
+            let foreign_prev =
+                EventEnvelope::with_chain(1, 999, episode_event(99, "foreign genesis"), None)
+                    .chain_hash();
+            let target = &events[TARGET];
+            let graft = EventEnvelope::with_chain(
+                target.sequence,
+                target.timestamp_ms,
+                episode_event(target.sequence, "cross-ledger graft"),
+                Some(&foreign_prev),
+            );
+            assert!(graft.validate_checksum(), "the grafted checksum is valid");
+            events[TARGET] = graft;
+        }
+        AttackClass::PayloadTruncationRechain => {
+            // Truncate the target's content, then re-chain the whole ledger so
+            // every link is internally consistent again -- like SuffixRechain but
+            // via a redaction rather than a replacement.
+            let mut rechained: Vec<EventEnvelope> = Vec::new();
+            for (index, event) in clean.iter().enumerate() {
+                let prev = rechained.last().map(EventEnvelope::chain_hash);
+                let payload = if index == TARGET {
+                    episode_event(event.sequence, "")
+                } else {
+                    event.payload.clone()
+                };
+                rechained.push(EventEnvelope::with_chain(
+                    event.sequence,
+                    event.timestamp_ms,
+                    payload,
+                    prev.as_deref(),
+                ));
+            }
+            events = rechained;
+        }
     }
     events
 }
@@ -273,39 +359,50 @@ fn tier(results: &[TierResult], tier: DetectorTier) -> &TierResult {
 fn livr_detection_rate_is_computed_per_tier() {
     let results = run_livr();
 
-    // Four tampered classes plus the clean control.
+    // Eight tampered classes plus the clean control.
     let tampered = CLASSES.iter().filter(|class| class.is_tampered()).count();
-    assert_eq!(tampered, 4);
+    assert_eq!(tampered, 8);
 
-    // The naive baseline catches only the corrupted checksum (1 of 4).
+    // The naive baseline catches only the two classes that leave a stale or
+    // corrupted per-event checksum (2 of 8): everything else forges a valid one.
     let checksum = tier(&results, DetectorTier::ChecksumOnly);
     assert_eq!(checksum.detection_rate, 0.25);
-    assert_eq!(checksum.true_positives, 1);
-    assert_eq!(checksum.false_negatives, 3);
+    assert_eq!(checksum.true_positives, 2);
+    assert_eq!(checksum.false_negatives, 6);
     assert_eq!(checksum.false_positives, 0);
     assert_eq!(
         checksum.undetected,
         vec![
             AttackClass::InPlaceRewrite,
-            AttackClass::SuffixRechain,
+            AttackClass::TimestampSkew,
             AttackClass::SequenceGap,
+            AttackClass::CrossLedgerGraft,
+            AttackClass::SuffixRechain,
+            AttackClass::PayloadTruncationRechain,
         ]
     );
 
-    // Replaying the chain catches the in-place rewrite and the sequence gap that
-    // the checksum alone cannot, but it is blind to a fully re-chained suffix.
+    // Replaying the chain catches every in-place edit, the timestamp skew, the
+    // sequence gap, and the cross-ledger graft that the checksum alone cannot
+    // (6 of 8), but it is blind to a fully re-chained suffix in either form.
     let replay = tier(&results, DetectorTier::ReplayChain);
     assert_eq!(replay.detection_rate, 0.75);
-    assert_eq!(replay.true_positives, 3);
-    assert_eq!(replay.false_negatives, 1);
+    assert_eq!(replay.true_positives, 6);
+    assert_eq!(replay.false_negatives, 2);
     assert_eq!(replay.false_positives, 0);
-    assert_eq!(replay.undetected, vec![AttackClass::SuffixRechain]);
+    assert_eq!(
+        replay.undetected,
+        vec![
+            AttackClass::SuffixRechain,
+            AttackClass::PayloadTruncationRechain,
+        ]
+    );
 
-    // The anchored tip receipt closes that one blind spot: full detection, and
+    // The anchored tip receipt closes both blind spots: full detection, and
     // still no false positive on the clean control.
     let attestation = tier(&results, DetectorTier::AttestationTip);
     assert_eq!(attestation.detection_rate, 1.0);
-    assert_eq!(attestation.true_positives, 4);
+    assert_eq!(attestation.true_positives, 8);
     assert_eq!(attestation.false_negatives, 0);
     assert_eq!(attestation.false_positives, 0);
     assert!(attestation.undetected.is_empty());
