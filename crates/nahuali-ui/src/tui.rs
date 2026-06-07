@@ -45,27 +45,85 @@ fn color(c: Rgb) -> Color {
 
 struct App {
     snapshot: Snapshot,
+    /// Distinct kinds present, in first-seen order; the filter cycles All → each.
+    kinds: Vec<String>,
+    /// 0 = all kinds; otherwise `kinds[filter - 1]`.
+    filter: usize,
+    /// Indices into `snapshot.items` matching the active filter.
+    visible: Vec<usize>,
     list: ListState,
 }
 
 impl App {
     fn new(snapshot: Snapshot) -> Self {
-        let mut list = ListState::default();
-        if !snapshot.items.is_empty() {
-            list.select(Some(0));
+        let mut kinds: Vec<String> = Vec::new();
+        for item in &snapshot.items {
+            if !kinds.iter().any(|kind| kind == &item.kind) {
+                kinds.push(item.kind.clone());
+            }
         }
-        Self { snapshot, list }
+        let mut app = Self {
+            snapshot,
+            kinds,
+            filter: 0,
+            visible: Vec::new(),
+            list: ListState::default(),
+        };
+        app.recompute_visible();
+        app
     }
 
-    /// Move the selection by `delta`, wrapping around the ends.
+    /// Rebuild the visible index set for the active filter and reset selection.
+    fn recompute_visible(&mut self) {
+        self.visible = self
+            .snapshot
+            .items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| self.filter == 0 || item.kind == self.kinds[self.filter - 1])
+            .map(|(index, _)| index)
+            .collect();
+        self.list.select((!self.visible.is_empty()).then_some(0));
+    }
+
+    /// Cycle the kind filter by `dir`, wrapping through All and each kind.
+    fn cycle_filter(&mut self, dir: isize) {
+        let slots = self.kinds.len() as isize + 1;
+        self.filter = (self.filter as isize + dir).rem_euclid(slots) as usize;
+        self.recompute_visible();
+    }
+
+    /// Move the selection by `delta` within the visible set, wrapping.
     fn step(&mut self, delta: isize) {
-        let len = self.snapshot.items.len();
+        let len = self.visible.len();
         if len == 0 {
             return;
         }
         let current = self.list.selected().unwrap_or(0) as isize;
         let next = (current + delta).rem_euclid(len as isize) as usize;
         self.list.select(Some(next));
+    }
+
+    fn selected_item(&self) -> Option<&Item> {
+        self.list
+            .selected()
+            .and_then(|row| self.visible.get(row))
+            .and_then(|&index| self.snapshot.items.get(index))
+    }
+
+    fn visible_items(&self) -> Vec<&Item> {
+        self.visible
+            .iter()
+            .filter_map(|&index| self.snapshot.items.get(index))
+            .collect()
+    }
+
+    fn filter_label(&self) -> String {
+        if self.filter == 0 {
+            "all".to_string()
+        } else {
+            self.kinds[self.filter - 1].clone()
+        }
     }
 }
 
@@ -97,6 +155,8 @@ fn event_loop<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Resu
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
                 KeyCode::Down | KeyCode::Char('j') => app.step(1),
                 KeyCode::Up | KeyCode::Char('k') => app.step(-1),
+                KeyCode::Tab => app.cycle_filter(1),
+                KeyCode::BackTab => app.cycle_filter(-1),
                 KeyCode::Home => app.list.select(Some(0)),
                 _ => {}
             }
@@ -126,8 +186,9 @@ fn draw(frame: &mut Frame, app: &mut App) {
     // list column's real width (minus borders, the ▸ symbol, the dot, and the
     // kind column) so they end in an ellipsis instead of a raw terminal cut.
     let title_width = (body[0].width as usize).saturating_sub(16);
-    let detail = detail_paragraph(app.list.selected().and_then(|i| app.snapshot.items.get(i)));
-    let list = item_list(&app.snapshot.items, title_width);
+    let detail = detail_paragraph(app.selected_item());
+    let visible = app.visible_items();
+    let list = item_list(&visible, title_width, &app.filter_label());
 
     frame.render_stateful_widget(list, body[0], &mut app.list);
     frame.render_widget(detail, body[1]);
@@ -162,7 +223,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(header, area);
 }
 
-fn item_list(items: &[Item], title_width: usize) -> List<'static> {
+fn item_list(items: &[&Item], title_width: usize, filter_label: &str) -> List<'static> {
     let rows: Vec<ListItem> = items
         .iter()
         .map(|item| {
@@ -184,7 +245,7 @@ fn item_list(items: &[Item], title_width: usize) -> List<'static> {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(color(theme::INK_FAINT)))
                 .title(Span::styled(
-                    format!(" memory · {} items ", items.len()),
+                    format!(" memory · {} ({}) ", filter_label, items.len()),
                     Style::default()
                         .fg(color(theme::CLAY))
                         .add_modifier(Modifier::BOLD),
@@ -275,6 +336,8 @@ fn draw_footer(frame: &mut Frame, area: Rect) {
     let footer = Paragraph::new(Line::from(vec![
         Span::styled("  ↑↓/jk ", Style::default().fg(color(theme::CLAY))),
         Span::styled("move   ", Style::default().fg(color(theme::INK_FAINT))),
+        Span::styled("tab ", Style::default().fg(color(theme::CLAY))),
+        Span::styled("filter   ", Style::default().fg(color(theme::INK_FAINT))),
         Span::styled("q/Esc ", Style::default().fg(color(theme::CLAY))),
         Span::styled("quit", Style::default().fg(color(theme::INK_FAINT))),
     ]));
@@ -324,5 +387,53 @@ mod tests {
         assert_eq!(app.list.selected(), None);
         app.step(1);
         assert_eq!(app.list.selected(), None);
+    }
+
+    fn mixed() -> Snapshot {
+        Snapshot {
+            database: "memory".to_string(),
+            store_trust_label: "ADVISORY".to_string(),
+            store_trust_color: theme::BLUE,
+            store_trust_score: 0.75,
+            items: vec![
+                item("episode"),
+                item("episode"),
+                item("claim"),
+                item("intention"),
+            ],
+        }
+    }
+
+    #[test]
+    fn filter_cycles_through_kinds_and_narrows_the_visible_set() {
+        let mut app = App::new(mixed());
+        assert_eq!(app.kinds, vec!["episode", "claim", "intention"]);
+        assert_eq!(app.filter_label(), "all");
+        assert_eq!(app.visible.len(), 4);
+
+        app.cycle_filter(1);
+        assert_eq!(app.filter_label(), "episode");
+        assert_eq!(app.visible.len(), 2);
+
+        app.cycle_filter(1);
+        assert_eq!(app.filter_label(), "claim");
+        assert_eq!(app.visible.len(), 1);
+
+        // Backward from claim returns to episode, then to all (with wrap intact).
+        app.cycle_filter(-1);
+        assert_eq!(app.filter_label(), "episode");
+        app.cycle_filter(-1);
+        assert_eq!(app.filter_label(), "all");
+        assert_eq!(app.visible.len(), 4);
+    }
+
+    #[test]
+    fn selected_item_follows_the_active_filter() {
+        let mut app = App::new(mixed());
+        app.cycle_filter(2); // all -> episode -> claim
+        assert_eq!(
+            app.selected_item().map(|item| item.kind.as_str()),
+            Some("claim")
+        );
     }
 }
