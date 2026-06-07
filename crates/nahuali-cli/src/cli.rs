@@ -44,6 +44,7 @@ Capture:
 Recall & inspect:
   recall                Recall matching memory with optional authority context
   status                Print operational memory status
+  explore               Open the interactive governance cockpit (TUI: memory + trust)
   inspect               Inspect knowledge health before trusting memory
   self-inspect          Produce a non-mutating self-inspection consolidation report
   graph                 Traverse the projected memory graph around a seed
@@ -166,6 +167,12 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
+    #[cfg(feature = "tui")]
+    #[command(
+        about = "Open the interactive governance cockpit to browse memory and trust.",
+        visible_alias = "tui"
+    )]
+    Explore,
     #[command(
         about = "Record an observed episode.",
         visible_alias = "episode",

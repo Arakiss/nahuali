@@ -17,7 +17,11 @@ name = "nahuali"
 path = "src/main.rs"
 
 [features]
-default = []
+default = ["tui"]
+# The interactive `explore` governance cockpit (ratatui via nahuali-ui). On by
+# default; build with --no-default-features to drop it (and ratatui) for a
+# minimal/server CLI.
+tui = ["nahuali-ui/tui"]
 # Forward nahuali-core's tamper-evident hash chain. Off by default (default
 # builds write byte-identical records). With this feature, recorded events are
 # chained and `validate` detects an in-place rewrite of any historical record.

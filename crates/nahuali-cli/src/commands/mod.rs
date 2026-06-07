@@ -3,6 +3,8 @@ mod artifacts;
 mod attestation;
 mod audit;
 mod demo;
+#[cfg(feature = "tui")]
+mod explore;
 mod init;
 mod migration;
 mod migration_legacy;
@@ -38,6 +40,8 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
 
     match cli.command {
         Command::Status { json } => reports::status(&mut memory, &database, json)?,
+        #[cfg(feature = "tui")]
+        Command::Explore => explore::explore(&mut memory, &database)?,
         Command::Remember {
             content,
             tags,

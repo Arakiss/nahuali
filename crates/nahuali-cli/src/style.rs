@@ -13,7 +13,7 @@ use nahuali_ui::theme::{self, Rgb};
 
 /// Plain-language label plus a short gloss for an authority mode, e.g.
 /// `CERTIFY · trustworthy`. Keeps the English mode token plus a short gloss.
-fn authority_label(mode: &AuthorityMode) -> &'static str {
+pub(crate) fn authority_label(mode: &AuthorityMode) -> &'static str {
     match mode {
         AuthorityMode::Certify => "CERTIFY · trustworthy",
         AuthorityMode::Advisory => "ADVISORY · use with judgment",
@@ -33,7 +33,7 @@ fn trust_label(mode: &RecallResultTrustMode) -> &'static str {
 }
 
 /// Palette color for an authority mode, by severity.
-fn authority_color(mode: &AuthorityMode) -> Rgb {
+pub(crate) fn authority_color(mode: &AuthorityMode) -> Rgb {
     match mode {
         AuthorityMode::Certify => theme::GREEN,
         AuthorityMode::Advisory => theme::BLUE,
