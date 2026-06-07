@@ -32,6 +32,27 @@ impl MemoryEngine {
         semantic::rebuild_index(&self.data, config)
     }
 
+    /// Synchronize the Qdrant semantic index with the current projection without
+    /// dropping the collection.
+    ///
+    /// Unlike [`Self::rebuild_semantic_index`], this is non-destructive and
+    /// idempotent: it ensures the collection exists and upserts the current
+    /// points, so an agent can keep recall current after each batch of writes
+    /// with no gap. After changing the embedder (which changes the vector
+    /// space), use the rebuild path instead.
+    pub fn sync_semantic_index(&self) -> Result<SemanticIndexReport> {
+        let config = semantic_config_for_database(&self.path)?;
+        self.sync_semantic_index_with_config(&config)
+    }
+
+    /// Synchronize the Qdrant semantic index with an explicit configuration.
+    pub fn sync_semantic_index_with_config(
+        &self,
+        config: &SemanticConfig,
+    ) -> Result<SemanticIndexReport> {
+        semantic::sync_index(&self.data, config)
+    }
+
     /// Return Qdrant semantic index status for the environment configuration.
     pub fn semantic_index_status(&self) -> Result<SemanticIndexStatus> {
         let config = semantic_config_for_database(&self.path)?;

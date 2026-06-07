@@ -54,6 +54,70 @@ pub(crate) fn rebuild_index(
     })
 }
 
+/// Synchronize the Qdrant semantic index with the current projection *without*
+/// dropping the collection.
+///
+/// [`rebuild_index`] deletes and recreates the collection, which leaves a window
+/// with no index and means recall silently degrades after every write until a
+/// caller runs a full rebuild. `sync_index` instead ensures the collection
+/// exists and upserts the current points by their deterministic IDs: it is
+/// idempotent and safe to run after each batch of writes to keep recall current
+/// with no gap. Because it never drops the collection it cannot change the
+/// vector space — after switching the embedder (which changes the dimensions),
+/// run [`rebuild_index`] instead.
+pub(crate) fn sync_index(data: &MemoryData, config: &SemanticConfig) -> Result<SemanticIndexReport> {
+    let embedder = config.embedder()?;
+    let embedding = EmbeddingProviderConfig {
+        dimensions: embedder.dimensions(),
+        ..config.embedding.clone()
+    };
+    let client = QdrantRestClient::new(config);
+    if !client.collection_exists(&config.collection_name)? {
+        client.create_collection(&config.collection_name, &embedding)?;
+    }
+
+    let documents = semantic_documents(data);
+    let points = documents
+        .iter()
+        .map(|document| {
+            let vector = embedder.embed(&document.text);
+            QdrantPoint {
+                id: document.point_id,
+                vector,
+                payload: document.payload.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
+    if !points.is_empty() {
+        client.upsert_points(&config.collection_name, &points)?;
+    }
+
+    Ok(SemanticIndexReport {
+        collection_name: config.collection_name.clone(),
+        qdrant_url: config.qdrant_url.clone(),
+        embedding,
+        source_event_count: data.event_count,
+        indexed_point_count: points.len(),
+        deleted_existing_collection: false,
+        points: documents
+            .into_iter()
+            .map(|document| SemanticPointSummary {
+                point_id: document.point_id,
+                kind: document.payload.kind(),
+                id: document.payload.id,
+                event_id: document.payload.event_id,
+                event_ids: document.payload.event_ids,
+                surreal_table: document.payload.surreal_table,
+                surreal_id: document.payload.surreal_id,
+                scope_key: document.payload.scope_key,
+                entity_names: document.payload.entity_names,
+                source_ids: document.payload.source_ids,
+                text: document.text,
+            })
+            .collect(),
+    })
+}
+
 pub(crate) fn index_status(config: &SemanticConfig) -> Result<SemanticIndexStatus> {
     let client = QdrantRestClient::new(config);
     let collection_exists = client.collection_exists(&config.collection_name)?;
