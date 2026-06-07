@@ -1,0 +1,14 @@
+[package]
+name = "nahuali-ui"
+version = "0.3.0-beta.0"
+publish = false
+edition.workspace = true
+license-file.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+description = "Clay-on-coffee terminal presentation layer for Nahuali — one visual identity shared across the CLI reports and the explore TUI"
+keywords = ["cli", "tui", "terminal", "ui", "governance"]
+categories = ["command-line-interface"]
+
+[dependencies]

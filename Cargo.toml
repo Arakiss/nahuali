@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/nahuali-core",
+  "crates/nahuali-ui",
   "crates/nahuali-cli",
   "crates/nahuali-mcp",
   "crates/nahuali-api",
@@ -18,6 +19,7 @@ authors = ["Nahuali contributors"]
 
 [workspace.dependencies]
 nahuali-core = { version = "=0.3.0-beta.0", path = "crates/nahuali-core" }
+nahuali-ui = { version = "=0.3.0-beta.0", path = "crates/nahuali-ui" }
 anyhow = "1.0"
 axum = "0.8.9"
 clap = { version = "4.5", features = ["derive"] }
