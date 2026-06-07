@@ -9,9 +9,9 @@
 
 use std::path::Path;
 
-use nahuali_core::{BriefingOptions, MemoryEngine, MemoryScope};
+use nahuali_core::{BriefingOptions, LedgerAuditOptions, MemoryEngine, MemoryScope};
 use nahuali_ui::theme::{self, Rgb};
-use nahuali_ui::tui::{Item, Signal, Snapshot};
+use nahuali_ui::tui::{Integrity, Item, Signal, Snapshot};
 
 pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Result<()> {
     let briefing = memory.briefing_with_options(BriefingOptions {
@@ -23,6 +23,16 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
     let store_label = crate::style::authority_label(&briefing.authority.mode).to_string();
     let store_color = crate::style::authority_color(&briefing.authority.mode);
     let store_score = briefing.authority.score;
+
+    // The tamper-evidence posture — the differentiator, surfaced honestly. In a
+    // build without the hash-chain feature, merkle_root is None (chain off).
+    let audit = memory.audit_ledger(&LedgerAuditOptions::default());
+    let integrity = Integrity {
+        verified: audit.integrity.verified,
+        records: briefing.event_count,
+        chain_intact: audit.integrity.chain_intact,
+        merkle_root: audit.integrity.merkle_root.clone(),
+    };
 
     let data = memory.data();
     let mut items = Vec::new();
@@ -121,6 +131,7 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
         store_trust_label: store_label,
         store_trust_color: store_color,
         store_trust_score: store_score,
+        integrity,
         signals: signals(memory, &briefing),
         items,
     };

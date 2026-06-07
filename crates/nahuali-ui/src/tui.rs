@@ -39,12 +39,24 @@ pub struct Signal {
     pub color: Rgb,
 }
 
+/// The ledger's tamper-evidence posture — Nahuali's core differentiator,
+/// surfaced honestly: `chain_intact` + a `merkle_root` only when the binary was
+/// built with the hash-chain feature; otherwise it is an append-only,
+/// checksummed, replay-verified ledger without the cryptographic chain.
+pub struct Integrity {
+    pub verified: bool,
+    pub records: usize,
+    pub chain_intact: bool,
+    pub merkle_root: Option<String>,
+}
+
 /// A point-in-time view of a store for the cockpit.
 pub struct Snapshot {
     pub database: String,
     pub store_trust_label: String,
     pub store_trust_color: Rgb,
     pub store_trust_score: f32,
+    pub integrity: Integrity,
     pub items: Vec<Item>,
     /// Store-level governance signals (health, review queue, provenance, …).
     pub signals: Vec<Signal>,
@@ -179,7 +191,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(4),
             Constraint::Min(0),
             Constraint::Length(3),
             Constraint::Length(1),
@@ -241,7 +253,7 @@ fn draw_signals(frame: &mut Frame, signals: &[Signal], area: Rect) {
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
-    let header = Paragraph::new(Line::from(vec![
+    let trust = Line::from(vec![
         Span::styled(
             format!(" {} ", app.snapshot.store_trust_label),
             Style::default()
@@ -252,8 +264,8 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
             format!("· score {:.2}", app.snapshot.store_trust_score),
             Style::default().fg(color(theme::INK_FAINT)),
         ),
-    ]))
-    .block(
+    ]);
+    let header = Paragraph::new(vec![trust, integrity_line(&app.snapshot.integrity)]).block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(color(theme::INK_FAINT)))
@@ -265,6 +277,61 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
             )),
     );
     frame.render_widget(header, area);
+}
+
+/// The integrity line — Nahuali's differentiator, stated honestly: a green
+/// `tamper-evident · merkle …` when the ledger is hash-chained, or an amber
+/// `append-only · hash chain off` when this build lacks the chain feature.
+fn integrity_line(integrity: &Integrity) -> Line<'static> {
+    let (verdict, verdict_color) = if integrity.verified {
+        ("\u{2713} verified", theme::GREEN)
+    } else {
+        ("\u{2717} unverified", theme::RED)
+    };
+    let mut spans = vec![
+        Span::styled(" Ledger ", Style::default().fg(color(theme::INK_FAINT))),
+        Span::styled(
+            verdict,
+            Style::default()
+                .fg(color(verdict_color))
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" · {} records · ", integrity.records),
+            Style::default().fg(color(theme::INK_FAINT)),
+        ),
+    ];
+    match &integrity.merkle_root {
+        Some(root) => {
+            let short: String = root.chars().take(10).collect();
+            let chain_color = if integrity.chain_intact {
+                theme::GREEN
+            } else {
+                theme::RED
+            };
+            spans.push(Span::styled(
+                "tamper-evident",
+                Style::default()
+                    .fg(color(chain_color))
+                    .add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled(
+                format!(" · merkle {short}\u{2026}"),
+                Style::default().fg(color(theme::INK_FAINT)),
+            ));
+        }
+        None => {
+            spans.push(Span::styled(
+                "append-only",
+                Style::default().fg(color(theme::INK_DIM)),
+            ));
+            spans.push(Span::styled(
+                " · hash chain off",
+                Style::default().fg(color(theme::AMBER)),
+            ));
+        }
+    }
+    Line::from(spans)
 }
 
 fn item_list(items: &[&Item], title_width: usize, filter_label: &str) -> List<'static> {
@@ -418,6 +485,12 @@ mod tests {
             store_trust_label: "CERTIFY".to_string(),
             store_trust_color: theme::GREEN,
             store_trust_score: 1.0,
+            integrity: Integrity {
+                verified: true,
+                records: n,
+                chain_intact: true,
+                merkle_root: None,
+            },
             items: (0..n).map(|i| item(&format!("episode{i}"))).collect(),
             signals: Vec::new(),
         }
@@ -450,6 +523,12 @@ mod tests {
             store_trust_label: "ADVISORY".to_string(),
             store_trust_color: theme::BLUE,
             store_trust_score: 0.75,
+            integrity: Integrity {
+                verified: true,
+                records: 4,
+                chain_intact: true,
+                merkle_root: None,
+            },
             items: vec![
                 item("episode"),
                 item("episode"),
