@@ -38,5 +38,6 @@ anyhow.workspace = true
 clap.workspace = true
 clap_complete = "4.5"
 nahuali-core.workspace = true
+nahuali-ui.workspace = true
 serde.workspace = true
 serde_json.workspace = true

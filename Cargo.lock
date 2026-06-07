@@ -2575,6 +2575,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "nahuali-core",
+ "nahuali-ui",
  "serde",
  "serde_json",
 ]
