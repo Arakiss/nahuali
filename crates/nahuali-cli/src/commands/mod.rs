@@ -437,6 +437,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
         Command::SemanticRebuild { json } => {
             reports::semantic_rebuild(&mut memory, &database, json)?
         }
+        Command::SemanticSync { json } => reports::semantic_sync(&mut memory, &database, json)?,
         Command::SemanticStatus { json } => reports::semantic_status(&mut memory, &database, json)?,
         Command::ProjectionStatus { json } => {
             reports::projection_status(&mut memory, &database, json)?

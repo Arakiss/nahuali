@@ -77,6 +77,7 @@ Maintenance:
   projection-pending    Read projected pending intentions from SurrealDB graph tables
   projection-health     Read projected health signals from SurrealDB graph tables
   semantic-rebuild      Rebuild the derived Qdrant semantic index from the projection
+  semantic-sync         Synchronize the semantic index without dropping it (non-destructive)
   semantic-status       Inspect the derived Qdrant semantic index status
   validate              Validate the SurrealDB memory_record ledger without mutating it
   audit                 Audit what changed in the record ledger between two points
@@ -625,6 +626,13 @@ pub(crate) enum Command {
     },
     #[command(about = "Rebuild the derived Qdrant semantic index from the Rust projection.")]
     SemanticRebuild {
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(
+        about = "Synchronize the Qdrant semantic index without dropping it (non-destructive upsert)."
+    )]
+    SemanticSync {
         #[arg(long)]
         json: bool,
     },

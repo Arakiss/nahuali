@@ -572,6 +572,35 @@ pub(crate) fn semantic_rebuild(
     Ok(())
 }
 
+pub(crate) fn semantic_sync(
+    memory: &mut MemoryEngine,
+    database: &std::path::Path,
+    json: bool,
+) -> anyhow::Result<()> {
+    let report = memory.sync_semantic_index()?;
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "database": database.display().to_string(),
+                "report": report,
+            }))?
+        );
+    } else {
+        println!("Database: {}", database.display());
+        println!("Collection: {}", report.collection_name);
+        println!("Qdrant: {}", report.qdrant_url);
+        println!("Semantic index: derived (non-destructive sync)");
+        println!("Source events: {}", report.source_event_count);
+        println!("Synced points: {}", report.indexed_point_count);
+        println!(
+            "Embedding: {} dimensions={}",
+            report.embedding.model, report.embedding.dimensions
+        );
+    }
+    Ok(())
+}
+
 pub(crate) fn semantic_status(
     memory: &mut MemoryEngine,
     database: &std::path::Path,
