@@ -540,7 +540,8 @@ clients. Tool names include:
   `deadlines`, `anomalies`, `anomaly_acknowledge`, `self_inspect`, `reflect`,
   `consolidation_plan`, `review`, and `review_resolve`
 - derived-tier maintenance: `projection_status`, `projection_rebuild`,
-  `projection_validate`, `semantic_status`, and `semantic_rebuild`
+  `projection_validate`, `semantic_status`, `semantic_rebuild`, and
+  `semantic_sync`
 - ledger inspection: `validate`, `audit`, and `trust_report`
 - ingestion: `ingest` and `ingest_text`
 
