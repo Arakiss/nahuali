@@ -122,9 +122,12 @@ fn draw(frame: &mut Frame, app: &mut App) {
         .split(rows[1]);
 
     // Build owned widgets from immutable data first, then take the &mut borrow
-    // of the list state to render the stateful list.
+    // of the list state to render the stateful list. Titles are clipped to the
+    // list column's real width (minus borders, the ▸ symbol, the dot, and the
+    // kind column) so they end in an ellipsis instead of a raw terminal cut.
+    let title_width = (body[0].width as usize).saturating_sub(16);
     let detail = detail_paragraph(app.list.selected().and_then(|i| app.snapshot.items.get(i)));
-    let list = item_list(&app.snapshot.items);
+    let list = item_list(&app.snapshot.items, title_width);
 
     frame.render_stateful_widget(list, body[0], &mut app.list);
     frame.render_widget(detail, body[1]);
@@ -159,7 +162,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(header, area);
 }
 
-fn item_list(items: &[Item]) -> List<'static> {
+fn item_list(items: &[Item], title_width: usize) -> List<'static> {
     let rows: Vec<ListItem> = items
         .iter()
         .map(|item| {
@@ -170,7 +173,7 @@ fn item_list(items: &[Item]) -> List<'static> {
                     format!("{:<10}", item.kind),
                     Style::default().fg(color(theme::INK_FAINT)),
                 ),
-                Span::raw(item.title.clone()),
+                Span::raw(clip(&item.title, title_width)),
             ]))
         })
         .collect();
@@ -181,7 +184,7 @@ fn item_list(items: &[Item]) -> List<'static> {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(color(theme::INK_FAINT)))
                 .title(Span::styled(
-                    " memory ",
+                    format!(" memory · {} items ", items.len()),
                     Style::default()
                         .fg(color(theme::CLAY))
                         .add_modifier(Modifier::BOLD),
@@ -189,10 +192,24 @@ fn item_list(items: &[Item]) -> List<'static> {
         )
         .highlight_style(
             Style::default()
+                .bg(color(theme::SURFACE))
                 .fg(color(theme::CLAY))
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("▸ ")
+}
+
+/// Clip `text` to at most `max` display columns, ending in an ellipsis when it
+/// would otherwise be cut mid-word by the terminal at the panel edge.
+fn clip(text: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let head: String = text.chars().take(max.saturating_sub(1)).collect();
+    format!("{}\u{2026}", head.trim_end())
 }
 
 fn detail_paragraph(item: Option<&Item>) -> Paragraph<'static> {

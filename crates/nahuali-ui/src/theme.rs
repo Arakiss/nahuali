@@ -24,6 +24,8 @@ pub const INK: Rgb = Rgb(240, 238, 230);
 pub const INK_DIM: Rgb = Rgb(185, 177, 166);
 /// Tertiary text — ids, counts, rules.
 pub const INK_FAINT: Rgb = Rgb(131, 123, 113);
+/// A raised coffee surface — the selection bar / highlighted row background.
+pub const SURFACE: Rgb = Rgb(42, 36, 32);
 
 /// Whether styled (colored) output should be emitted on stdout right now.
 ///
