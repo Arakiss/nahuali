@@ -127,12 +127,23 @@ seeded defects and stays silent on the consistent store:
 cargo run -p nahuali-regression -- --fixtures fixtures/contradiction-staleness-regression.json
 ```
 
+**Attestation Recovery Profile (ARP).** A coverage check over the attestation
+key lifecycle: a live receipt is honored, a re-chained suffix voids the old
+receipt, a rotated key's receipt is honored, a revoked key's cryptographically
+valid receipt is rejected, and a receipt over a different ledger's tip is
+rejected. Reported as a pass/fail profile across the matrix, not a single rate:
+
+```bash
+cargo run -p nahuali-regression --features attestation -- --arp
+```
+
 Honest limits: LIVR measures detection against a fixed synthetic injection
 method, so a passing rate proves self-consistency detection, not the absence of
 all tampering. PCR is an evidence-*presence* audit, not a calibration or
 accuracy metric — it says a claim cites an observation, not that the claim is
 true. CDR measures detection of the defect classes the health pipeline models,
-not every possible inconsistency.
+not every possible inconsistency. ARP measures the keyring's behavior across a
+fixed lifecycle matrix, not the strength of the underlying signature scheme.
 
 ## How Nahuali Compares
 
@@ -227,6 +238,21 @@ nahuali --database .nahuali-demo attest-verify tip.json
 ledger, so it can gate a script or CI. A full re-chain of the history changes
 the tip, so the signed receipt stops verifying and forging a new one needs the
 private key.
+
+A bare self-attesting receipt trusts whatever key it carries, so a leaked seed
+would keep verifying forever. Pass a trusted-key ring to close that: a JSON file
+listing the keys you authorize, each `active` or `revoked`. Rotation is adding a
+new active key and re-attesting; revocation is flipping the old key to `revoked`.
+
+```bash
+nahuali --database .nahuali-demo attest-verify tip.json --keyring keyring.json
+```
+
+With `--keyring`, a receipt is honored only when it matches the live tip, its
+signature verifies, and its signing key is active in the ring — a revoked or
+unknown key is rejected even when the signature itself is valid, and the command
+exits non-zero. The keyring is operator-held config kept outside the store, like
+the receipts.
 
 `audit` is a non-mutating diff of what the ledger recorded between two points,
 with the integrity of that history restated next to it. It works in any build
