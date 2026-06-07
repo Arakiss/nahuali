@@ -317,6 +317,17 @@
         }
       }
     },
+    "/v1/semantic/sync": {
+      "post": {
+        "operationId": "syncSemantic",
+        "summary": "Non-destructively sync the Qdrant semantic index (upsert without dropping the collection).",
+        "requestBody": { "$ref": "#/components/requestBodies/EmptyRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonObject" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
     "/v1/review/resolve": {
       "post": {
         "operationId": "resolveReview",
@@ -654,7 +665,9 @@
           "scope": { "$ref": "#/components/schemas/MemoryScope" },
           "kinds": { "type": "array", "items": { "$ref": "#/components/schemas/MemoryKind" }, "default": [] },
           "require_evidence": { "type": "boolean", "default": false },
-          "semantic": { "type": "boolean", "default": false }
+          "semantic": { "type": "boolean", "default": false },
+          "as_of_ms": { "type": "integer", "minimum": 0, "description": "Inclusive upper bound: only memory created at or before this epoch-ms timestamp (point-in-time recall)." },
+          "since_ms": { "type": "integer", "minimum": 0, "description": "Inclusive lower bound: only memory created at or after this epoch-ms timestamp (exclude stale memory at query time)." }
         }
       },
       "ReviewResolveRequest": {

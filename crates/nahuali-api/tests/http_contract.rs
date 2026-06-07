@@ -54,6 +54,7 @@ fn openapi_contract_has_the_frozen_beta_path_set() {
             "/v1/review/resolve",
             "/v1/semantic/rebuild",
             "/v1/semantic/status",
+            "/v1/semantic/sync",
             "/v1/session-resume",
             "/v1/status",
             "/v1/timeline",

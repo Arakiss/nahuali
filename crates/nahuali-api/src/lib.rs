@@ -101,6 +101,7 @@ pub fn router(config: ApiConfig) -> Router {
         .route("/v1/projection/validate", post(projection_validate))
         .route("/v1/semantic/status", get(semantic_status))
         .route("/v1/semantic/rebuild", post(semantic_rebuild))
+        .route("/v1/semantic/sync", post(semantic_sync))
         .route("/v1/review/resolve", post(resolve_review))
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
@@ -590,7 +591,8 @@ async fn recall(
         scope: request.scope,
         kinds: request.kinds,
         require_evidence: request.require_evidence,
-        ..RecallOptions::default()
+        as_of_ms: request.as_of_ms,
+        since_ms: request.since_ms,
     };
 
     let authority_recall = memory.recall_with_authority_options(&request.query, options.clone())?;
@@ -732,6 +734,18 @@ async fn semantic_rebuild(State(state): State<ApiState>) -> ApiResult<SemanticRe
         database: state.database.display().to_string(),
         semantic_index_role: "derived",
         report: memory.rebuild_semantic_index()?,
+    }))
+}
+
+/// Non-destructive counterpart to `semantic_rebuild`: upsert current points into
+/// the Qdrant index without dropping the collection, so recall stays current
+/// without a gap.
+async fn semantic_sync(State(state): State<ApiState>) -> ApiResult<SemanticRebuildResponse> {
+    let memory = read_engine(&state).await?;
+    Ok(Json(SemanticRebuildResponse {
+        database: state.database.display().to_string(),
+        semantic_index_role: "derived",
+        report: memory.sync_semantic_index()?,
     }))
 }
 
@@ -903,6 +917,14 @@ struct RecallRequest {
     require_evidence: bool,
     #[serde(default)]
     semantic: bool,
+    /// Inclusive upper bound: only memory created at or before this epoch-ms
+    /// timestamp (point-in-time recall).
+    #[serde(default)]
+    as_of_ms: Option<u64>,
+    /// Inclusive lower bound: only memory created at or after this epoch-ms
+    /// timestamp (exclude stale memory at query time).
+    #[serde(default)]
+    since_ms: Option<u64>,
 }
 
 #[derive(Deserialize)]
