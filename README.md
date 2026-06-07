@@ -597,6 +597,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo doc -p nahuali-core --no-deps
 bash scripts/security-supply-chain-check.sh
+bash scripts/verify-governance-benchmarks.sh
 bash scripts/verify-controlled-beta.sh
 bash scripts/verify-dogfood-daily-workflow.sh
 bash scripts/verify-dogfood-migration.sh
