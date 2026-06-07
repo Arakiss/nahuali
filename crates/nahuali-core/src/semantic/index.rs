@@ -235,14 +235,33 @@ struct DeterministicEmbedder {
     dimensions: usize,
 }
 
+/// Hash `key` into one signed bucket of `vector`, the shared accumulation step
+/// for the deterministic embedder's tokens and character n-grams.
+fn deterministic_bump(vector: &mut [f32], key: &str) {
+    let hash = fnv1a64(key.as_bytes());
+    let index = (hash as usize) % vector.len();
+    vector[index] += if (hash >> 63) == 0 { 1.0 } else { -1.0 };
+}
+
 impl Embedder for DeterministicEmbedder {
     fn embed(&self, text: &str) -> Vec<f32> {
         let mut vector = vec![0.0; self.dimensions];
         for token in tokenize(text) {
-            let hash = fnv1a64(token.as_bytes());
-            let index = hash as usize % self.dimensions;
-            let sign = if (hash >> 63) == 0 { 1.0 } else { -1.0 };
-            vector[index] += sign;
+            // The whole token preserves exact-match strength: identical words
+            // still land in the same bucket.
+            deterministic_bump(&mut vector, &token);
+            // Character trigrams over a boundary-padded token (#token#) capture
+            // shared word shapes — morphology, common roots, substrings, and
+            // typos — so "release" and "releasing", or "product" and "products",
+            // overlap instead of being orthogonal the way whole-token hashing
+            // alone left them. This does not bridge true synonyms with no shared
+            // characters (car / automobile); the optional local model does that.
+            let padded = format!("#{token}#");
+            let chars = padded.chars().collect::<Vec<_>>();
+            for window in chars.windows(3) {
+                let gram = window.iter().collect::<String>();
+                deterministic_bump(&mut vector, &gram);
+            }
         }
 
         let norm = vector.iter().map(|value| value * value).sum::<f32>().sqrt();

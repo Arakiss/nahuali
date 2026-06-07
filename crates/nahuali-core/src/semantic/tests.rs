@@ -45,6 +45,33 @@ mod tests {
     }
 
     #[test]
+    fn deterministic_embedder_clusters_shared_word_shapes() {
+        let embedder = DeterministicEmbedder {
+            dimensions: crate::DEFAULT_EMBEDDING_DIMENSIONS,
+        };
+        let dot = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>();
+
+        // "releasing"/"release" and "product"/"products" share no whole word, so
+        // the old token-only hash scored these near-orthogonal. Character
+        // n-grams give them shared word shapes, so the related text now ranks
+        // clearly above an unrelated one.
+        let anchor = embedder.embed("the team is releasing the product");
+        let related = embedder.embed("release of our products");
+        let unrelated = embedder.embed("quarterly budget committee meeting");
+
+        let related_score = dot(&anchor, &related);
+        let unrelated_score = dot(&anchor, &unrelated);
+        assert!(
+            related_score > unrelated_score + 0.05,
+            "shared word shapes {related_score:.3} should beat unrelated {unrelated_score:.3}"
+        );
+        assert!(
+            related_score > 0.1,
+            "morphological variants should carry real similarity, got {related_score:.3}"
+        );
+    }
+
+    #[test]
     fn semantic_config_rejects_invalid_collection_names() {
         let error = SemanticConfig::local_with_collection("bad/name")
             .expect_err("invalid collection fails");
