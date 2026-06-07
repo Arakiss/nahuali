@@ -237,6 +237,38 @@ pub struct ConfidenceProvenanceKindReport {
     pub insufficient_samples: bool,
 }
 
+impl ConfidenceProvenanceKindReport {
+    /// Provenance-coverage rate for this kind: the fraction of items that carry
+    /// a source episode (`evidence_backed_count / sample_count`), rounded to two
+    /// decimals, or `None` when there are no items. This is the compliance-facing
+    /// number -- how much of this memory is traceable back to a recorded
+    /// observation -- and is recomputable by any caller from the same projection.
+    /// Read it together with `insufficient_samples`, which flags a `sample_count`
+    /// too small for the rate to be a trustworthy signal.
+    pub fn provenance_coverage_rate(&self) -> Option<f32> {
+        if self.sample_count == 0 {
+            return None;
+        }
+        Some(round2(
+            self.evidence_backed_count as f32 / self.sample_count as f32,
+        ))
+    }
+
+    /// Overconfidence rate for this kind: the fraction of items that assert high
+    /// confidence (>= 0.75) with no source episode (`overconfident_count /
+    /// sample_count`), rounded to two decimals, or `None` when there are no
+    /// items. The inverse risk signal to coverage: high coverage with a low
+    /// overconfidence rate is the healthy state.
+    pub fn overconfidence_rate(&self) -> Option<f32> {
+        if self.sample_count == 0 {
+            return None;
+        }
+        Some(round2(
+            self.overconfident_count as f32 / self.sample_count as f32,
+        ))
+    }
+}
+
 struct KindAlignment {
     report: ConfidenceProvenanceKindReport,
     overconfident_event_ids: Vec<String>,
@@ -702,6 +734,36 @@ mod tests {
         SourceKind,
         self_inspection::{DAY_MS, self_inspect_at},
     };
+
+    #[test]
+    fn provenance_coverage_and_overconfidence_rates_are_derived_from_counts() {
+        use crate::self_inspection::ConfidenceProvenanceKindReport;
+
+        // Eight claims: six sourced, and two of the unsourced ones assert high
+        // confidence -> 0.75 coverage, 0.25 overconfidence.
+        let report = ConfidenceProvenanceKindReport {
+            sample_count: 8,
+            evidence_backed_count: 6,
+            evidence_alignment_error: 0.0,
+            overconfident_count: 2,
+            conservative_count: 0,
+            insufficient_samples: false,
+        };
+        assert_eq!(report.provenance_coverage_rate(), Some(0.75));
+        assert_eq!(report.overconfidence_rate(), Some(0.25));
+
+        // An empty kind reports no rate rather than dividing by zero.
+        let empty = ConfidenceProvenanceKindReport {
+            sample_count: 0,
+            evidence_backed_count: 0,
+            evidence_alignment_error: 0.0,
+            overconfident_count: 0,
+            conservative_count: 0,
+            insufficient_samples: true,
+        };
+        assert_eq!(empty.provenance_coverage_rate(), None);
+        assert_eq!(empty.overconfidence_rate(), None);
+    }
 
     #[test]
     fn reports_contradictions_staleness_and_blind_spots() {
