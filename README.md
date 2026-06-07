@@ -307,6 +307,12 @@ The ledger is the source of truth. Snapshots, graph projection tables, and
 semantic vectors are maintenance or retrieval artifacts that must be rebuildable
 from the ledger.
 
+Keep the semantic index current with `semantic-sync`: a non-destructive,
+idempotent upsert that never drops the collection, safe to run after each batch
+of writes so recall does not gap. `semantic-rebuild` is the destructive
+counterpart — drop and recreate — needed when the embedder (and so the vector
+space) changes.
+
 Semantic vectors come from a deterministic local embedder by default. An
 optional `local-embeddings` build feature swaps in a static model2vec model for
 stronger semantic recall while staying fully local, offline, and deterministic;
