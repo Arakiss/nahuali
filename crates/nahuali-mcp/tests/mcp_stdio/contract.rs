@@ -47,6 +47,7 @@ const EXPECTED_TOOL_CONTRACT: &[(&str, &str)] = &[
     ("self_inspect", "SelfInspectResult"),
     ("semantic_rebuild", "SemanticReportResult"),
     ("semantic_status", "SemanticStatusResult"),
+    ("semantic_sync", "SemanticReportResult"),
     ("trust_report", "TrustReportResult"),
     ("validate", "ValidateResult"),
 ];

@@ -278,6 +278,12 @@ pub(crate) struct RecallArgs {
     pub(crate) scope: Option<ScopeArg>,
     pub(crate) kinds: Option<Vec<RecallKindArg>>,
     pub(crate) require_evidence: Option<bool>,
+    /// Inclusive upper bound: only memory created at or before this epoch-ms
+    /// timestamp (point-in-time recall).
+    pub(crate) as_of_ms: Option<u64>,
+    /// Inclusive lower bound: only memory created at or after this epoch-ms
+    /// timestamp (exclude stale memory at query time).
+    pub(crate) since_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

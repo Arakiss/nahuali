@@ -424,6 +424,7 @@ mod tests {
                 "projection_validate",
                 "semantic_status",
                 "semantic_rebuild",
+                "semantic_sync",
                 "validate",
                 "audit",
                 "trust_report"
@@ -537,6 +538,7 @@ mod tests {
                 "self_inspect",
                 "semantic_rebuild",
                 "semantic_status",
+                "semantic_sync",
                 "trust_report",
                 "validate"
             ]

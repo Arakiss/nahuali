@@ -704,7 +704,8 @@ impl NahualiMcpServer {
                     .map(Into::into)
                     .collect(),
                 require_evidence: args.require_evidence.unwrap_or(false),
-                ..RecallOptions::default()
+                as_of_ms: args.as_of_ms,
+                since_ms: args.since_ms,
             };
             memory
                 .recall_with_authority_options(&args.query, options)
@@ -934,6 +935,28 @@ impl NahualiMcpServer {
         let report = self.with_memory(|memory| {
             memory
                 .rebuild_semantic_index()
+                .map_err(|error| error.to_string())
+        })?;
+        Ok(Json(SemanticReportResult {
+            database: self.database.display().to_string(),
+            semantic_index_role: "derived",
+            report: report.into(),
+        }))
+    }
+
+    #[tool(
+        description = "Use when you have written memory and want recall to reflect it without dropping the index. It upserts current points into the derived Qdrant semantic index without recreating the collection, so recall does not gap. Use `semantic_rebuild` instead after changing the embedder. Then run `semantic_status` to confirm.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn semantic_sync(&self) -> Result<Json<SemanticReportResult>, String> {
+        let report = self.with_memory(|memory| {
+            memory
+                .sync_semantic_index()
                 .map_err(|error| error.to_string())
         })?;
         Ok(Json(SemanticReportResult {

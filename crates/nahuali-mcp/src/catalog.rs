@@ -157,6 +157,10 @@ pub fn tool_catalog() -> Vec<McpTool> {
             description: "Use when `semantic_status` shows the derived Qdrant semantic index is missing or stale. It rebuilds the index from projected memory and does not change ground truth. Then run `semantic_status` to confirm it is current.",
         },
         McpTool {
+            name: "semantic_sync",
+            description: "Use after writing memory to make recall reflect it without dropping the index: it upserts current points into the derived Qdrant semantic index without recreating the collection, so recall does not gap. Use `semantic_rebuild` instead after changing the embedder. Then run `semantic_status` to confirm.",
+        },
+        McpTool {
             name: "validate",
             description: "Use when you need to confirm the append-only SurrealDB memory_record ledger is intact and report record counts and any migration needs. It is read-only and checks the ground-truth ledger itself, not a derived tier. Then run `projection_validate`/`semantic_status` to check the derived tiers if the ledger is healthy.",
         },
