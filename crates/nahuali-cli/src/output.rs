@@ -53,6 +53,21 @@ fn one_line(text: &str, max: usize) -> String {
     }
 }
 
+/// Render one episode as a scannable two-line entry for the glance reports: the
+/// content truncated to a single line, then a dimmed line carrying the id and
+/// any mentions/tags. Keeps briefing, sleep, and project rendering identical.
+fn print_episode_line(content: &str, id: &str, mentions: &[String], tags: &[String]) {
+    println!("  · {}", one_line(content, 96));
+    let mut meta = vec![crate::style::dim(id)];
+    if !mentions.is_empty() {
+        meta.push(crate::style::dim(&format!("@{}", mentions.join(", "))));
+    }
+    if !tags.is_empty() {
+        meta.push(crate::style::dim(&format!("#{}", tags.join(", "))));
+    }
+    println!("    {}", meta.join("  "));
+}
+
 pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
     println!("{}", crate::style::heading("Session briefing"));
     println!(
@@ -77,16 +92,7 @@ pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
     if !report.recent_episodes.is_empty() {
         println!("\n{}", crate::style::heading("Recent episodes"));
         for episode in &report.recent_episodes {
-            // One scannable line per episode, with id/mentions dimmed beneath.
-            println!("  · {}", one_line(&episode.content, 96));
-            let mut meta = vec![crate::style::dim(&episode.id)];
-            if !episode.mentions.is_empty() {
-                meta.push(crate::style::dim(&format!(
-                    "@{}",
-                    episode.mentions.join(", ")
-                )));
-            }
-            println!("    {}", meta.join("  "));
+            print_episode_line(&episode.content, &episode.id, &episode.mentions, &[]);
         }
     }
 
@@ -206,15 +212,14 @@ pub(crate) fn print_sleep_report(report: &MemorySleepReport) {
     }
 
     if !report.recent_episodes.is_empty() {
-        println!("Recent episodes:");
+        println!("\n{}", crate::style::heading("Recent episodes"));
         for episode in &report.recent_episodes {
-            println!("- {} {}", episode.id, episode.content);
-            if !episode.tags.is_empty() {
-                println!("  tags: {}", episode.tags.join(", "));
-            }
-            if !episode.mentions.is_empty() {
-                println!("  mentions: {}", episode.mentions.join(", "));
-            }
+            print_episode_line(
+                &episode.content,
+                &episode.id,
+                &episode.mentions,
+                &episode.tags,
+            );
         }
     }
 
@@ -646,15 +651,14 @@ pub(crate) fn print_project_report(report: &MemoryProjectReport) {
     }
 
     if !report.episodes.is_empty() {
-        println!("Recent episodes:");
+        println!("\n{}", crate::style::heading("Recent episodes"));
         for episode in &report.episodes {
-            println!("- {} {}", episode.id, episode.content);
-            if !episode.mentions.is_empty() {
-                println!("  mentions: {}", episode.mentions.join(", "));
-            }
-            if !episode.tags.is_empty() {
-                println!("  tags: {}", episode.tags.join(", "));
-            }
+            print_episode_line(
+                &episode.content,
+                &episode.id,
+                &episode.mentions,
+                &episode.tags,
+            );
         }
     }
 
