@@ -653,9 +653,9 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
 /// Print the effective connection target to stderr for `--verbose`. The defaults
 /// mirror nahuali-core's resolution (localhost:18000, namespace "nahuali").
 fn verbose_open_line(database: &std::path::Path) {
-    let endpoint = std::env::var("NAHUALI_DB_URL").unwrap_or_else(|_| "localhost:18000".to_string());
-    let namespace =
-        std::env::var("NAHUALI_DB_NAMESPACE").unwrap_or_else(|_| "nahuali".to_string());
+    let endpoint =
+        std::env::var("NAHUALI_DB_URL").unwrap_or_else(|_| "localhost:18000".to_string());
+    let namespace = std::env::var("NAHUALI_DB_NAMESPACE").unwrap_or_else(|_| "nahuali".to_string());
     eprintln!(
         "nahuali: opening \"{}\" @ {} (ns {})",
         database.display(),
