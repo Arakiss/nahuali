@@ -277,6 +277,7 @@ fn run_fixture(fixture: Fixture) -> anyhow::Result<FixtureResult> {
         append_projection_checks(&mut checks, &reopened, &health, &fixture.expected);
         append_signal_checks(&mut checks, &health, &fixture.expected);
         append_authority_checks(&mut checks, &health, &fixture.expected);
+        append_confidence_alignment_checks(&mut checks, &reopened, &fixture.expected);
         append_recall_checks(&mut checks, recall_observations);
 
         checks.push(CheckResult {

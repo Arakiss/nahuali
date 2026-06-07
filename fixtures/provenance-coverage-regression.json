@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "id": "provenance-coverage-eight-claims",
+      "goal": "Provenance Coverage Rate: the engine recovers the exact sourced fraction and overconfidence rate over a labeled mix of sourced and unsourced assertional memory, and flags an under-sampled kind as insufficient.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "src",
+          "content": "Service registry reviewed in the platform standup.",
+          "tags": ["platform"]
+        },
+        {
+          "type": "fact",
+          "subject": "Service A",
+          "predicate": "owner",
+          "object": "Lena",
+          "source_episode_ref": "src",
+          "confidence": 0.8
+        },
+        {
+          "type": "fact",
+          "subject": "Service B",
+          "predicate": "owner",
+          "object": "Mateo",
+          "source_episode_ref": "src",
+          "confidence": 0.8
+        },
+        {
+          "type": "fact",
+          "subject": "Service C",
+          "predicate": "region",
+          "object": "eu-west",
+          "source_episode_ref": "src",
+          "confidence": 0.8
+        },
+        {
+          "type": "fact",
+          "subject": "Service D",
+          "predicate": "tier",
+          "object": "gold",
+          "source_episode_ref": "src",
+          "confidence": 0.8
+        },
+        {
+          "type": "fact",
+          "subject": "Service E",
+          "predicate": "status",
+          "object": "ga",
+          "source_episode_ref": "src",
+          "confidence": 0.8
+        },
+        {
+          "type": "fact",
+          "subject": "Service F",
+          "predicate": "sla",
+          "object": "99.9",
+          "source_episode_ref": "src",
+          "confidence": 0.8
+        },
+        {
+          "type": "fact",
+          "subject": "Service G",
+          "predicate": "owner",
+          "object": "unknown-team",
+          "confidence": 0.9
+        },
+        {
+          "type": "fact",
+          "subject": "Service H",
+          "predicate": "owner",
+          "object": "unverified-team",
+          "confidence": 0.9
+        },
+        {
+          "type": "relate",
+          "from": "Service A",
+          "relation": "depends_on",
+          "to": "Service B",
+          "source_episode_ref": "src",
+          "confidence": 0.8
+        },
+        {
+          "type": "relate",
+          "from": "Service G",
+          "relation": "depends_on",
+          "to": "Service H",
+          "confidence": 0.6
+        }
+      ],
+      "expected": {
+        "fact_count": 8,
+        "relation_count": 2,
+        "provenance_coverage": [
+          {
+            "kind": "claims",
+            "sample_count": 8,
+            "evidence_backed_count": 6,
+            "coverage_rate": 0.75,
+            "overconfident_count": 2,
+            "overconfidence_rate": 0.25,
+            "insufficient_samples": false
+          },
+          {
+            "kind": "links",
+            "sample_count": 2,
+            "evidence_backed_count": 1,
+            "coverage_rate": 0.5,
+            "insufficient_samples": true
+          }
+        ]
+      }
+    }
+  ]
+}

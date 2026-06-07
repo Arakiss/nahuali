@@ -172,6 +172,77 @@ fn append_signal_checks(
     }
 }
 
+fn append_confidence_alignment_checks(
+    checks: &mut Vec<CheckResult>,
+    memory: &MemoryEngine,
+    expected: &Expected,
+) {
+    let Some(coverages) = &expected.provenance_coverage else {
+        return;
+    };
+    let report = memory.self_inspect();
+    let alignment = &report.confidence_alignment;
+    for coverage in coverages {
+        let kind_report = match coverage.kind.as_str() {
+            "claims" => &alignment.claims,
+            "links" => &alignment.links,
+            "procedures" => &alignment.procedures,
+            other => {
+                checks.push(CheckResult {
+                    name: format!("coverage::{other}::kind"),
+                    passed: false,
+                    detail: format!("unknown confidence-alignment kind: {other}"),
+                });
+                continue;
+            }
+        };
+        check_eq(
+            checks,
+            &format!("coverage::{}::sample_count", coverage.kind),
+            kind_report.sample_count,
+            coverage.sample_count,
+        );
+        check_eq(
+            checks,
+            &format!("coverage::{}::evidence_backed_count", coverage.kind),
+            kind_report.evidence_backed_count,
+            coverage.evidence_backed_count,
+        );
+        check_eq(
+            checks,
+            &format!("coverage::{}::overconfident_count", coverage.kind),
+            kind_report.overconfident_count,
+            coverage.overconfident_count,
+        );
+        if let Some(expected_rate) = coverage.coverage_rate {
+            let actual = kind_report.provenance_coverage_rate();
+            checks.push(CheckResult {
+                name: format!("coverage::{}::coverage_rate", coverage.kind),
+                passed: actual.is_some_and(|rate| (rate - expected_rate).abs() < 0.005),
+                detail: format!("expected={expected_rate:.2} actual={actual:?}"),
+            });
+        }
+        if let Some(expected_rate) = coverage.overconfidence_rate {
+            let actual = kind_report.overconfidence_rate();
+            checks.push(CheckResult {
+                name: format!("coverage::{}::overconfidence_rate", coverage.kind),
+                passed: actual.is_some_and(|rate| (rate - expected_rate).abs() < 0.005),
+                detail: format!("expected={expected_rate:.2} actual={actual:?}"),
+            });
+        }
+        if let Some(expected_flag) = coverage.insufficient_samples {
+            checks.push(CheckResult {
+                name: format!("coverage::{}::insufficient_samples", coverage.kind),
+                passed: kind_report.insufficient_samples == expected_flag,
+                detail: format!(
+                    "expected={expected_flag} actual={}",
+                    kind_report.insufficient_samples
+                ),
+            });
+        }
+    }
+}
+
 fn append_recall_checks(
     checks: &mut Vec<CheckResult>,
     recall_observations: Vec<RecallObservation>,

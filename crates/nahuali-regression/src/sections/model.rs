@@ -243,6 +243,7 @@ struct Expected {
     authority_mode: Option<AuthorityMode>,
     authority_score: Option<f32>,
     authority_can_trust: Option<bool>,
+    provenance_coverage: Option<Vec<ExpectedKindCoverage>>,
     open_error_contains: Option<String>,
     check_count_min: Option<usize>,
 }
@@ -252,6 +253,21 @@ struct RequiredSignal {
     kind: HealthSignalKind,
     severity: Option<HealthSeverity>,
     dimensions: Option<Vec<HealthDimension>>,
+}
+
+/// Expected confidence-provenance alignment for one memory kind, used to gate
+/// the Provenance Coverage Rate benchmark. `kind` is `claims`, `links`, or
+/// `procedures`; every numeric field is optional so a fixture asserts only what
+/// it seeds.
+#[derive(Clone, Debug, Deserialize)]
+struct ExpectedKindCoverage {
+    kind: String,
+    sample_count: Option<usize>,
+    evidence_backed_count: Option<usize>,
+    coverage_rate: Option<f32>,
+    overconfident_count: Option<usize>,
+    overconfidence_rate: Option<f32>,
+    insufficient_samples: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
