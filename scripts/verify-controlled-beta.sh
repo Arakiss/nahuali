@@ -46,6 +46,7 @@ require_docker
 run_step "Public documentation contract" bash scripts/check-doc-release-refs.sh
 run_step "Public security and supply-chain hygiene" bash scripts/security-supply-chain-check.sh
 run_step "Service-backed dev stack" bash scripts/ensure-dev-stack.sh
+run_step "Governance benchmark suite" bash scripts/verify-governance-benchmarks.sh
 
 run_step "Build CLI once for beta checks" cargo build -p nahuali-cli --quiet
 TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
