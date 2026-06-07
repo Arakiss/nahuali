@@ -137,13 +137,25 @@ rejected. Reported as a pass/fail profile across the matrix, not a single rate:
 cargo run -p nahuali-regression --features attestation -- --arp
 ```
 
+**Trust Verdict Soundness (TVS).** The recall-side calibration check: one labeled
+store per authority mode, asserting the gate spans the full range correctly — a
+clean connected store certifies, an isolated-entity store degrades to advisory,
+an unsupported assertion warns, and a same-observation contradiction blocks. It
+shows the trust gate is calibrated, not merely present:
+
+```bash
+cargo run -p nahuali-regression -- --fixtures fixtures/trust-verdict-soundness-regression.json
+```
+
 Honest limits: LIVR measures detection against a fixed synthetic injection
 method, so a passing rate proves self-consistency detection, not the absence of
 all tampering. PCR is an evidence-*presence* audit, not a calibration or
 accuracy metric — it says a claim cites an observation, not that the claim is
 true. CDR measures detection of the defect classes the health pipeline models,
 not every possible inconsistency. ARP measures the keyring's behavior across a
-fixed lifecycle matrix, not the strength of the underlying signature scheme.
+fixed lifecycle matrix, not the strength of the underlying signature scheme. TVS
+asserts the gate's verdict on labeled stores, not the correctness of the
+underlying facts.
 
 ## How Nahuali Compares
 
