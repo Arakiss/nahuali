@@ -783,6 +783,12 @@ pub(crate) enum Command {
     AttestVerify {
         #[arg(value_name = "PATH")]
         attestation: PathBuf,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Trusted-key ring (JSON) to authorize the receipt against; rejects a revoked or unknown signing key even when its signature verifies"
+        )]
+        keyring: Option<PathBuf>,
         #[arg(long)]
         json: bool,
     },

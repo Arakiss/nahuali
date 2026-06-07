@@ -487,8 +487,9 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
         #[cfg(feature = "attestation")]
         Command::AttestVerify {
             attestation: path,
+            keyring,
             json,
-        } => attestation::verify(&mut memory, &path, json)?,
+        } => attestation::verify(&mut memory, &path, keyring.as_deref(), json)?,
         Command::Audit {
             from,
             to,

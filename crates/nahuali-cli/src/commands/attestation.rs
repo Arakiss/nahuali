@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::Context;
-use nahuali_core::{LedgerAttestation, MemoryEngine};
+use nahuali_core::{AttestationKeyring, LedgerAttestation, MemoryEngine};
 
 /// Sign the current chain tip with an Ed25519 seed read from `key_file`.
 ///
@@ -48,6 +48,7 @@ pub(crate) fn sign(
 pub(crate) fn verify(
     memory: &mut MemoryEngine,
     attestation_path: &Path,
+    keyring_path: Option<&Path>,
     json: bool,
 ) -> anyhow::Result<()> {
     let raw = std::fs::read_to_string(attestation_path).with_context(|| {
@@ -58,6 +59,11 @@ pub(crate) fn verify(
     })?;
     let attestation: LedgerAttestation = serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse attestation {}", attestation_path.display()))?;
+
+    if let Some(keyring_path) = keyring_path {
+        return verify_with_keyring(memory, &attestation, keyring_path, json);
+    }
+
     let verdict = memory.verify_chain_tip_attestation(&attestation)?;
 
     if json {
@@ -91,6 +97,53 @@ pub(crate) fn verify(
 
     if !verdict.is_valid() {
         anyhow::bail!("attestation does not vouch for the current ledger");
+    }
+    Ok(())
+}
+
+/// Verify a receipt against the live ledger AND an operator keyring, so a
+/// revoked or unknown signing key is rejected even when its signature verifies.
+fn verify_with_keyring(
+    memory: &MemoryEngine,
+    attestation: &LedgerAttestation,
+    keyring_path: &Path,
+    json: bool,
+) -> anyhow::Result<()> {
+    let raw = std::fs::read_to_string(keyring_path)
+        .with_context(|| format!("failed to read keyring {}", keyring_path.display()))?;
+    let keyring: AttestationKeyring = serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse keyring {}", keyring_path.display()))?;
+    let verdict = memory.verify_chain_tip_attestation_with_keyring(attestation, &keyring)?;
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "trusted": verdict.is_trusted(),
+                "matches_tip": verdict.matches_tip,
+                "signature_valid": verdict.signature_valid,
+                "key_trusted": verdict.key_trusted,
+                "key_revoked": verdict.key_revoked,
+                "attested_sequence": attestation.sequence,
+                "attested_tip": attestation.tip,
+            }))?
+        );
+    } else if verdict.is_trusted() {
+        println!(
+            "TRUSTED: the receipt matches the current ledger, the signature verifies, and the key is active in the keyring."
+        );
+    } else if verdict.key_revoked {
+        println!("REJECTED: the signing key is revoked in the keyring.");
+    } else if !verdict.key_trusted {
+        println!("REJECTED: the signing key is not present in the keyring.");
+    } else if !verdict.matches_tip {
+        println!("STALE: the ledger tip has moved since this attestation was signed.");
+    } else {
+        println!("INVALID: the signature does not verify against the attested tip.");
+    }
+
+    if !verdict.is_trusted() {
+        anyhow::bail!("attestation is not trusted under the supplied keyring");
     }
     Ok(())
 }
