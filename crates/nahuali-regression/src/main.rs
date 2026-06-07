@@ -40,6 +40,13 @@ struct Cli {
 
     #[arg(long, value_name = "PATH")]
     output: Option<PathBuf>,
+
+    /// Emit the computed LIVR (Ledger Integrity Verification Rate) report
+    /// instead of running fixtures. Requires `--features attestation`; the gate
+    /// fails if the attestation tier does not reach full detection with no
+    /// false positives.
+    #[arg(long)]
+    livr: bool,
 }
 
 include!("sections/runner.rs");

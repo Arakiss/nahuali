@@ -1,5 +1,9 @@
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    if cli.livr {
+        return run_livr_report(cli.output);
+    }
+
     let report = run_fixture_file(&cli.fixtures)?;
     let encoded = serde_json::to_string_pretty(&report)?;
 
@@ -19,6 +23,50 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Compute the LIVR integrity report, emit it as versioned JSON, and gate on
+/// the attestation tier reaching full detection with no false positives.
+#[cfg(feature = "attestation")]
+fn run_livr_report(output: Option<PathBuf>) -> anyhow::Result<()> {
+    use nahuali_core::{LivrDetectorTier, run_livr};
+
+    let report = run_livr();
+    let encoded = serde_json::to_string_pretty(&report)?;
+
+    if let Some(output) = output {
+        if let Some(parent) = output.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        fs::write(&output, format!("{encoded}\n"))
+            .with_context(|| format!("failed to write {}", output.display()))?;
+    } else {
+        println!("{encoded}");
+    }
+
+    let attestation = report
+        .tiers
+        .iter()
+        .find(|tier| tier.tier == LivrDetectorTier::AttestationTip)
+        .context("LIVR report is missing the attestation tier")?;
+
+    if attestation.detection_rate < 1.0 || attestation.false_positives > 0 {
+        bail!(
+            "LIVR attestation tier missed the clean target: detection_rate={:.2}, false_positives={}",
+            attestation.detection_rate,
+            attestation.false_positives
+        );
+    }
+
+    Ok(())
+}
+
+/// On a default build the attestation tier is absent, so the LIVR report cannot
+/// be computed. Fail with an actionable message instead of a missing symbol.
+#[cfg(not(feature = "attestation"))]
+fn run_livr_report(_output: Option<PathBuf>) -> anyhow::Result<()> {
+    bail!("--livr requires building nahuali-regression with --features attestation");
 }
 
 fn run_fixture_file(path: &Path) -> anyhow::Result<RegressionReport> {

@@ -13,6 +13,12 @@ publish = false
 name = "nahuali-regression"
 path = "src/main.rs"
 
+[features]
+default = []
+# Enable the `--livr` integrity report. The Ledger Integrity Verification Rate
+# needs the attestation-tip detector tier, so it forwards to the core feature.
+attestation = ["nahuali-core/attestation"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
