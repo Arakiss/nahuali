@@ -321,10 +321,13 @@ space, so rebuild the index with `semantic-rebuild` afterwards.
 
 ### Optional: stronger semantic recall with a local model
 
-The default deterministic embedder hashes tokens, so two phrasings that share no
-words look unrelated to it. A static [model2vec](https://github.com/MinishLab/model2vec)
-model places synonyms close instead. Nahuali never downloads models — you point
-it at a directory you control, so the core stays offline by construction.
+The default deterministic embedder hashes character n-grams, so phrasings that
+share word shapes — morphology, common roots, substrings, typos — land near each
+other (`release`/`releasing`, `product`/`products`). What it cannot do is bridge
+true synonyms with no shared characters: `car` and `automobile` still look
+unrelated to it. A static [model2vec](https://github.com/MinishLab/model2vec)
+model places those synonyms close instead. Nahuali never downloads models — you
+point it at a directory you control, so the core stays offline by construction.
 
 Fetch a model once (any model2vec export works; the directory must hold
 `tokenizer.json`, `model.safetensors`, and `config.json`):
