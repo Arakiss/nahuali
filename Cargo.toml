@@ -21,6 +21,7 @@ authors = ["Nahuali contributors"]
 nahuali-core = { version = "=0.3.0-beta.0", path = "crates/nahuali-core" }
 nahuali-ui = { version = "=0.3.0-beta.0", path = "crates/nahuali-ui" }
 anyhow = "1.0"
+comfy-table = "7"
 axum = "0.8.9"
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }

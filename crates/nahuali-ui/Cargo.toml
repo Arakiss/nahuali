@@ -12,3 +12,4 @@ keywords = ["cli", "tui", "terminal", "ui", "governance"]
 categories = ["command-line-interface"]
 
 [dependencies]
+comfy-table.workspace = true
