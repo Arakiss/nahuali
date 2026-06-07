@@ -263,6 +263,7 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
                 scope,
                 kinds,
                 require_evidence: args.require_evidence,
+                ..RecallOptions::default()
             },
         )?;
         if args.json {
@@ -287,6 +288,7 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
         scope,
         kinds,
         require_evidence: args.require_evidence,
+        ..RecallOptions::default()
     };
 
     if args.authority {

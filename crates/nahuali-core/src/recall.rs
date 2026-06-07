@@ -16,6 +16,14 @@ pub struct RecallOptions {
     pub kinds: Vec<MemoryKind>,
     /// Require a concrete evidence identifier on every returned result.
     pub require_evidence: bool,
+    /// Optional inclusive upper bound on memory age: only return memory created
+    /// at or before this millisecond timestamp. The point-in-time / "as of date
+    /// T" filter — recall what was known as of a checkpoint, for audit replay.
+    pub as_of_ms: Option<u64>,
+    /// Optional inclusive lower bound on memory age: only return memory created
+    /// at or after this millisecond timestamp. Set to `now - threshold` to
+    /// exclude stale memory at query time instead of only flagging it.
+    pub since_ms: Option<u64>,
 }
 
 impl Default for RecallOptions {
@@ -25,6 +33,8 @@ impl Default for RecallOptions {
             scope: None,
             kinds: Vec::new(),
             require_evidence: false,
+            as_of_ms: None,
+            since_ms: None,
         }
     }
 }
@@ -74,6 +84,9 @@ pub(crate) fn recall_with_options(
         if !scope_matches(entity.scope.as_ref(), options.scope.as_ref()) {
             continue;
         }
+        if !within_time_window(entity.last_seen_at_ms, &options) {
+            continue;
+        }
         let haystack = entity.name.clone();
         let matched_terms = matched_terms(&haystack, &terms);
         if !is_relevant_match(&matched_terms, &terms) {
@@ -100,6 +113,9 @@ pub(crate) fn recall_with_options(
         if !scope_matches(episode.scope.as_ref(), options.scope.as_ref()) {
             continue;
         }
+        if !within_time_window(episode.created_at_ms, &options) {
+            continue;
+        }
         let haystack = format!("{} {}", episode.content, episode.tags.join(" "));
         let matched_terms = matched_terms(&haystack, &terms);
         if !is_relevant_match(&matched_terms, &terms) {
@@ -124,6 +140,9 @@ pub(crate) fn recall_with_options(
 
     for claim in projected_claims(data) {
         if !scope_matches(claim.scope.as_ref(), options.scope.as_ref()) {
+            continue;
+        }
+        if !within_time_window(claim.created_at_ms, &options) {
             continue;
         }
         let haystack = format!("{} {} {}", claim.subject, claim.predicate, claim.object);
@@ -158,6 +177,9 @@ pub(crate) fn recall_with_options(
         if !scope_matches(link.scope.as_ref(), options.scope.as_ref()) {
             continue;
         }
+        if !within_time_window(link.created_at_ms, &options) {
+            continue;
+        }
         let haystack = format!("{} {} {}", link.from, link.relation, link.to);
         let matched_terms = matched_terms(&haystack, &terms);
         if !is_relevant_match(&matched_terms, &terms) {
@@ -190,6 +212,9 @@ pub(crate) fn recall_with_options(
         if !scope_matches(procedure.scope.as_ref(), options.scope.as_ref()) {
             continue;
         }
+        if !within_time_window(procedure.created_at_ms, &options) {
+            continue;
+        }
         let haystack = format!("{:?} {} {}", procedure.kind, procedure.name, procedure.body);
         let matched_terms = matched_terms(&haystack, &terms);
         if !is_relevant_match(&matched_terms, &terms) {
@@ -220,6 +245,9 @@ pub(crate) fn recall_with_options(
 
     for intention in &data.intentions {
         if !scope_matches(intention.scope.as_ref(), options.scope.as_ref()) {
+            continue;
+        }
+        if !within_time_window(intention.created_at_ms, &options) {
             continue;
         }
         let haystack = format!(
@@ -262,6 +290,19 @@ pub(crate) fn recall_with_options(
     });
     results.truncate(options.limit.max(1));
     results
+}
+
+/// Whether an item created at `created_at_ms` falls inside the optional
+/// `[since_ms, as_of_ms]` recall window. Both bounds are inclusive and
+/// independently optional; with neither set, every item passes.
+fn within_time_window(created_at_ms: u64, options: &RecallOptions) -> bool {
+    let below_ceiling = options
+        .as_of_ms
+        .is_none_or(|as_of_ms| created_at_ms <= as_of_ms);
+    let above_floor = options
+        .since_ms
+        .is_none_or(|since_ms| created_at_ms >= since_ms);
+    below_ceiling && above_floor
 }
 
 pub(crate) fn attach_result_trust(
@@ -658,6 +699,69 @@ mod tests {
 
         assert_eq!(results[0].kind, MemoryKind::Claim);
         assert_eq!(results[0].id, "claim_supported");
+    }
+
+    #[test]
+    fn time_window_filters_recall_by_creation_age() {
+        let data = MemoryData {
+            event_count: 3,
+            last_event_id: Some("event_3".to_string()),
+            episodes: vec![
+                Episode {
+                    id: "episode_old".to_string(),
+                    event_id: "event_1".to_string(),
+                    content: "Lena owned the release notes.".to_string(),
+                    tags: vec!["product".to_string()],
+                    mentions: Vec::new(),
+                    source_id: None,
+                    source_position: None,
+                    source_role: None,
+                    scope: None,
+                    created_at_ms: 100,
+                },
+                Episode {
+                    id: "episode_new".to_string(),
+                    event_id: "event_2".to_string(),
+                    content: "Mateo owns the release notes now.".to_string(),
+                    tags: vec!["product".to_string()],
+                    mentions: Vec::new(),
+                    source_id: None,
+                    source_position: None,
+                    source_role: None,
+                    scope: None,
+                    created_at_ms: 1000,
+                },
+            ],
+            ..MemoryData::default()
+        };
+
+        // Point-in-time: as of t=500, only the older episode was known.
+        let as_of = recall_with_options(
+            &data,
+            "release notes",
+            RecallOptions {
+                as_of_ms: Some(500),
+                ..RecallOptions::default()
+            },
+        );
+        assert_eq!(as_of.len(), 1);
+        assert_eq!(as_of[0].id, "episode_old");
+
+        // Freshness floor: since t=500, only the newer episode survives.
+        let since = recall_with_options(
+            &data,
+            "release notes",
+            RecallOptions {
+                since_ms: Some(500),
+                ..RecallOptions::default()
+            },
+        );
+        assert_eq!(since.len(), 1);
+        assert_eq!(since[0].id, "episode_new");
+
+        // No bounds: both are returned.
+        let unbounded = recall(&data, "release notes", 10);
+        assert_eq!(unbounded.len(), 2);
     }
 
     #[test]

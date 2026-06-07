@@ -202,6 +202,7 @@ pub(crate) fn project_view(
             scope: matched_entity
                 .as_ref()
                 .and_then(|entity| entity.scope.as_ref().cloned()),
+            ..RecallOptions::default()
         },
     );
     let review_items = associated_review_items(data, &focus, &graph_evidence_ids, review_limit);

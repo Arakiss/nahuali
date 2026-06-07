@@ -20,6 +20,31 @@ mod tests {
     }
 
     #[test]
+    fn semantic_filter_emits_a_created_at_range() {
+        use crate::RecallOptions;
+
+        let filter = super::SemanticQueryFilter::from_options(&RecallOptions {
+            as_of_ms: Some(500),
+            since_ms: Some(100),
+            ..RecallOptions::default()
+        });
+        let json = filter
+            .to_qdrant_filter()
+            .expect("a bounded window yields a filter");
+        let must = json["must"].as_array().expect("must clause is an array");
+        let range = must
+            .iter()
+            .find(|clause| clause["key"] == "created_at_ms")
+            .expect("a created_at_ms range clause is present");
+        assert_eq!(range["range"]["lte"], serde_json::json!(500));
+        assert_eq!(range["range"]["gte"], serde_json::json!(100));
+
+        // No temporal bounds (and nothing else set) yields no filter at all.
+        let empty = super::SemanticQueryFilter::from_options(&RecallOptions::default());
+        assert!(empty.to_qdrant_filter().is_none());
+    }
+
+    #[test]
     fn semantic_config_rejects_invalid_collection_names() {
         let error = SemanticConfig::local_with_collection("bad/name")
             .expect_err("invalid collection fails");

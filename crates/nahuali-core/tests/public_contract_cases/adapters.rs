@@ -363,6 +363,7 @@ fn public_api_filters_qdrant_semantic_recall_by_scope_and_kind() {
                 scope: Some(nahuali_scope.clone()),
                 kinds: vec![MemoryKind::Claim],
                 require_evidence: true,
+                ..RecallOptions::default()
             },
             &config,
         )

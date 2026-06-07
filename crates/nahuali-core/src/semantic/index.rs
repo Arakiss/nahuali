@@ -470,6 +470,8 @@ struct SemanticQueryFilter {
     scope_key: Option<String>,
     kinds: Vec<String>,
     require_evidence: bool,
+    as_of_ms: Option<u64>,
+    since_ms: Option<u64>,
 }
 
 impl SemanticQueryFilter {
@@ -483,6 +485,8 @@ impl SemanticQueryFilter {
                 .map(str::to_string)
                 .collect(),
             require_evidence: options.require_evidence,
+            as_of_ms: options.as_of_ms,
+            since_ms: options.since_ms,
         }
     }
 
@@ -504,6 +508,19 @@ impl SemanticQueryFilter {
             must.push(serde_json::json!({
                 "key": "has_evidence",
                 "match": { "value": true }
+            }));
+        }
+        if self.as_of_ms.is_some() || self.since_ms.is_some() {
+            let mut range = serde_json::Map::new();
+            if let Some(as_of_ms) = self.as_of_ms {
+                range.insert("lte".to_string(), serde_json::json!(as_of_ms));
+            }
+            if let Some(since_ms) = self.since_ms {
+                range.insert("gte".to_string(), serde_json::json!(since_ms));
+            }
+            must.push(serde_json::json!({
+                "key": "created_at_ms",
+                "range": serde_json::Value::Object(range)
             }));
         }
 

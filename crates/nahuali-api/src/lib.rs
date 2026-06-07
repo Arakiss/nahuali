@@ -590,6 +590,7 @@ async fn recall(
         scope: request.scope,
         kinds: request.kinds,
         require_evidence: request.require_evidence,
+        ..RecallOptions::default()
     };
 
     let authority_recall = memory.recall_with_authority_options(&request.query, options.clone())?;

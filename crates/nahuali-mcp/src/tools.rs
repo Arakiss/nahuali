@@ -704,6 +704,7 @@ impl NahualiMcpServer {
                     .map(Into::into)
                     .collect(),
                 require_evidence: args.require_evidence.unwrap_or(false),
+                ..RecallOptions::default()
             };
             memory
                 .recall_with_authority_options(&args.query, options)
