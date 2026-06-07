@@ -49,6 +49,8 @@ mod ingestion;
 mod inspection;
 mod intention;
 mod interchange;
+#[cfg(feature = "attestation")]
+mod livr;
 mod maintenance;
 #[cfg(feature = "tamper-evidence")]
 mod merkle;
@@ -134,6 +136,10 @@ pub use interchange::{
     InterchangeImportReadiness, InterchangeImportReport, InterchangeIntention, InterchangeIssue,
     InterchangeIssueKind, InterchangeLink, InterchangeProcedure, InterchangeSource,
     MEMORY_INTERCHANGE_VERSION, MemoryInterchange,
+};
+#[cfg(feature = "attestation")]
+pub use livr::{
+    LIVR_REPORT_VERSION, LivrAttackClass, LivrDetectorTier, LivrReport, LivrTierResult, run_livr,
 };
 pub use maintenance::{
     MEMORY_SNAPSHOT_VERSION, MaintenanceReport, MemorySnapshot, SnapshotIssue, SnapshotIssueKind,
