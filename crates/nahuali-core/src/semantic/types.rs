@@ -7,7 +7,11 @@ pub const DEFAULT_SEMANTIC_COLLECTION: &str = "nahuali_memory_items";
 /// Default dimensionality for the deterministic local embedding provider.
 pub const DEFAULT_EMBEDDING_DIMENSIONS: usize = 64;
 
-const LOCAL_EMBEDDING_MODEL: &str = "nahuali/deterministic-token-v1";
+// Bumped from `-token-v1` when the deterministic embedder moved from whole-token
+// hashing to character n-grams: that changed the vector space, so the recorded
+// embedding identity must change too, or an index built by the old embedder
+// would be queried by the new one under the same name and silently mismatch.
+const LOCAL_EMBEDDING_MODEL: &str = "nahuali/deterministic-ngram-v1";
 
 /// Configuration for Qdrant-backed semantic indexing.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
