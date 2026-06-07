@@ -389,6 +389,8 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             scope,
             kinds,
             require_evidence,
+            as_of_ms,
+            max_age_days,
             json,
         } => reports::recall(
             &mut memory,
@@ -400,6 +402,8 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
                 scope,
                 kinds,
                 require_evidence,
+                as_of_ms,
+                max_age_days,
                 json,
             },
         )?,

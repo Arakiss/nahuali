@@ -581,6 +581,18 @@ pub(crate) enum Command {
             help = "Only return results backed by recorded evidence"
         )]
         require_evidence: bool,
+        #[arg(
+            long = "as-of-ms",
+            value_name = "MS",
+            help = "Point-in-time recall: only memory created at or before this epoch-millisecond timestamp"
+        )]
+        as_of_ms: Option<u64>,
+        #[arg(
+            long = "max-age-days",
+            value_name = "DAYS",
+            help = "Exclude memory older than this many days at query time (audit-grade staleness filter)"
+        )]
+        max_age_days: Option<u64>,
         #[arg(long, help = "Emit machine-readable JSON instead of text")]
         json: bool,
     },

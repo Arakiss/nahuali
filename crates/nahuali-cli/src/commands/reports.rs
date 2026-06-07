@@ -124,6 +124,8 @@ pub(crate) struct RecallArgs {
     pub(crate) scope: Option<String>,
     pub(crate) kinds: Vec<CliRecallKind>,
     pub(crate) require_evidence: bool,
+    pub(crate) as_of_ms: Option<u64>,
+    pub(crate) max_age_days: Option<u64>,
     pub(crate) json: bool,
 }
 
@@ -255,6 +257,15 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
         .into_iter()
         .map(MemoryKind::from)
         .collect::<Vec<_>>();
+    let as_of_ms = args.as_of_ms;
+    // "Older than N days" is resolved to an inclusive lower bound at query time.
+    let since_ms = args.max_age_days.map(|days| {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_millis() as u64)
+            .unwrap_or(0);
+        now_ms.saturating_sub(days.saturating_mul(24 * 60 * 60 * 1000))
+    });
     if args.semantic {
         let recall = memory.hybrid_recall_with_options(
             &query,
@@ -263,7 +274,8 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
                 scope,
                 kinds,
                 require_evidence: args.require_evidence,
-                ..RecallOptions::default()
+                as_of_ms,
+                since_ms,
             },
         )?;
         if args.json {
@@ -288,7 +300,8 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
         scope,
         kinds,
         require_evidence: args.require_evidence,
-        ..RecallOptions::default()
+        as_of_ms,
+        since_ms,
     };
 
     if args.authority {
