@@ -228,6 +228,106 @@ impl MemoryEngine {
     }
 }
 
+/// Status of a key in the operator's attestation keyring.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttestationKeyStatus {
+    /// Receipts signed by this key are honored.
+    Active,
+    /// Receipts signed by this key are rejected even when the signature itself
+    /// verifies — the revocation path for a leaked or retired key.
+    Revoked,
+}
+
+/// One operator-trusted attestation key.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AttestationKey {
+    /// Optional human-readable key identifier or label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
+    /// Ed25519 public key, 32 bytes (hex).
+    pub public_key: String,
+    /// Whether receipts under this key are honored or rejected.
+    pub status: AttestationKeyStatus,
+}
+
+/// An operator-held set of trusted attestation keys, kept outside the store like
+/// the receipts themselves.
+///
+/// This is the recovery layer the self-attesting receipt cannot provide on its
+/// own: [`verify_chain_tip`] trusts whatever public key a receipt carries, so a
+/// leaked seed's receipts keep verifying forever. The keyring moves the trust
+/// decision to the operator. **Rotation** is adding a new [`AttestationKeyStatus::Active`]
+/// key (and re-attesting the current tip with it); **revocation** is flipping a
+/// key to [`AttestationKeyStatus::Revoked`] so its receipts stop being honored.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AttestationKeyring {
+    /// The trusted keys, in operator-defined order.
+    pub keys: Vec<AttestationKey>,
+}
+
+impl AttestationKeyring {
+    /// Whether `public_key` is present and [`AttestationKeyStatus::Active`].
+    pub fn authorizes(&self, public_key: &str) -> bool {
+        self.keys
+            .iter()
+            .any(|key| key.public_key == public_key && key.status == AttestationKeyStatus::Active)
+    }
+
+    /// Whether `public_key` is present and [`AttestationKeyStatus::Revoked`].
+    pub fn is_revoked(&self, public_key: &str) -> bool {
+        self.keys
+            .iter()
+            .any(|key| key.public_key == public_key && key.status == AttestationKeyStatus::Revoked)
+    }
+}
+
+/// Verdict combining a receipt's cryptographic validity with the operator
+/// keyring's authorization decision.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrustedAttestationVerdict {
+    /// The signature verifies against the recorded public key and `(sequence, tip)`.
+    pub signature_valid: bool,
+    /// The receipt's `(sequence, tip)` match the expected checkpoint.
+    pub matches_tip: bool,
+    /// The signing key is present and active in the keyring.
+    pub key_trusted: bool,
+    /// The signing key is present and revoked in the keyring.
+    pub key_revoked: bool,
+}
+
+impl TrustedAttestationVerdict {
+    /// Honored only when the receipt matches the checkpoint, the signature
+    /// verifies, and the signing key is trusted and not revoked.
+    pub fn is_trusted(&self) -> bool {
+        self.matches_tip && self.signature_valid && self.key_trusted && !self.key_revoked
+    }
+}
+
+/// Verify an attestation against an expected `(sequence, tip)` *and* an operator
+/// keyring.
+///
+/// Unlike [`verify_chain_tip`], which trusts whatever public key the receipt
+/// carries, this defers the trust decision to the operator: a receipt signed by
+/// a revoked or unknown key is not honored even when its signature is
+/// cryptographically valid. This is what lets a leaked key be retired without
+/// rewriting history — rotate to a new active key and revoke the old one.
+pub fn verify_attestation_with_keyring(
+    attestation: &LedgerAttestation,
+    sequence: u64,
+    tip: &str,
+    keyring: &AttestationKeyring,
+) -> Result<TrustedAttestationVerdict> {
+    let signature_valid = verify_chain_tip(attestation, sequence, tip)?;
+    let matches_tip = attestation.sequence == sequence && attestation.tip == tip;
+    Ok(TrustedAttestationVerdict {
+        signature_valid,
+        matches_tip,
+        key_trusted: keyring.authorizes(&attestation.public_key),
+        key_revoked: keyring.is_revoked(&attestation.public_key),
+    })
+}
+
 fn encode_hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
@@ -323,5 +423,87 @@ mod tests {
         let mut wrong_algorithm = attestation.clone();
         wrong_algorithm.algorithm = "rsa".to_string();
         assert!(verify_chain_tip(&wrong_algorithm, 1, "abcd").is_err());
+    }
+
+    fn rotated_seed() -> String {
+        let mut seed = [0u8; 32];
+        for (index, byte) in seed.iter_mut().enumerate() {
+            *byte = (index as u8) + 100;
+        }
+        encode_hex(&seed)
+    }
+
+    #[test]
+    fn keyring_honors_active_and_rejects_revoked_or_unknown_keys() {
+        let attestation = sign_chain_tip(&test_seed(), 7, "deadbeef").unwrap();
+        let public_key = attestation.public_key.clone();
+
+        let active = AttestationKeyring {
+            keys: vec![AttestationKey {
+                key_id: Some("primary".to_string()),
+                public_key: public_key.clone(),
+                status: AttestationKeyStatus::Active,
+            }],
+        };
+        let verdict =
+            verify_attestation_with_keyring(&attestation, 7, "deadbeef", &active).unwrap();
+        assert!(verdict.is_trusted());
+        assert!(verdict.key_trusted && !verdict.key_revoked);
+
+        // A revoked key: the signature still verifies, but the receipt is not honored.
+        let revoked = AttestationKeyring {
+            keys: vec![AttestationKey {
+                key_id: Some("primary".to_string()),
+                public_key,
+                status: AttestationKeyStatus::Revoked,
+            }],
+        };
+        let verdict =
+            verify_attestation_with_keyring(&attestation, 7, "deadbeef", &revoked).unwrap();
+        assert!(verdict.signature_valid && verdict.matches_tip);
+        assert!(verdict.key_revoked && !verdict.is_trusted());
+
+        // An unknown key (empty keyring): valid signature, but untrusted.
+        let verdict = verify_attestation_with_keyring(
+            &attestation,
+            7,
+            "deadbeef",
+            &AttestationKeyring::default(),
+        )
+        .unwrap();
+        assert!(verdict.signature_valid && !verdict.key_trusted && !verdict.is_trusted());
+    }
+
+    #[test]
+    fn keyring_supports_rotation_to_a_new_key() {
+        let old = sign_chain_tip(&test_seed(), 9, "cafe").unwrap();
+        let new = sign_chain_tip(&rotated_seed(), 9, "cafe").unwrap();
+        assert_ne!(old.public_key, new.public_key);
+
+        // After rotation the new key is active and the old key is revoked.
+        let keyring = AttestationKeyring {
+            keys: vec![
+                AttestationKey {
+                    key_id: Some("retired".to_string()),
+                    public_key: old.public_key.clone(),
+                    status: AttestationKeyStatus::Revoked,
+                },
+                AttestationKey {
+                    key_id: Some("current".to_string()),
+                    public_key: new.public_key.clone(),
+                    status: AttestationKeyStatus::Active,
+                },
+            ],
+        };
+        assert!(
+            verify_attestation_with_keyring(&new, 9, "cafe", &keyring)
+                .unwrap()
+                .is_trusted()
+        );
+        assert!(
+            !verify_attestation_with_keyring(&old, 9, "cafe", &keyring)
+                .unwrap()
+                .is_trusted()
+        );
     }
 }
