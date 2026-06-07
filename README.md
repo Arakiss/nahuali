@@ -147,7 +147,7 @@ are complementary, and the honest comparison cuts both ways:
 | Tamper-evidence over the memory log | hash chain + Merkle proofs + Ed25519 tip attestation | none in the OSS layer |
 | Confidence-vs-provenance recall trust | flags overconfident unsourced memory, gates recall | stores asserted facts without a provenance audit |
 | Deterministic core (no LLM in recall/ingest) | yes — reviewable, reproducible | LLM-driven extraction (non-deterministic) |
-| Point-in-time / bi-temporal recall | staleness is detected, not yet a query filter | Zep's bi-temporal model leads here |
+| Point-in-time / bi-temporal recall | created-time filtering (`--as-of-ms`, `--max-age-days`); not yet a full valid/invalid interval model | Zep's bi-temporal model still leads |
 | Raw recall accuracy (LOCOMO/LongMemEval) | not the goal; a credible floor, not the lead | strong published numbers |
 | Ecosystem, integrations, traction | pre-release, narrow surface | large communities and framework integrations |
 
