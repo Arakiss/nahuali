@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "id": "tvs-certify",
+      "goal": "Trust Verdict Soundness: a clean, fully-sourced, connected store with no health signals must Certify (score 1.0, can_trust). The top-left cell of the authority confusion matrix.",
+      "steps": [
+        { "type": "remember", "bind": "src", "content": "Lena leads the release.", "tags": ["product"] },
+        { "type": "relate", "from": "Lena", "relation": "leads", "to": "Release", "source_episode_ref": "src", "confidence": 0.9 }
+      ],
+      "expected": {
+        "relation_count": 1,
+        "unsupported_fact_count": 0,
+        "conflicting_fact_count": 0,
+        "stale_fact_count": 0,
+        "superseded_fact_count": 0,
+        "isolated_entity_count": 0,
+        "authority_mode": "certify",
+        "authority_score": 1.0,
+        "authority_can_trust": true
+      }
+    },
+    {
+      "id": "tvs-advisory",
+      "goal": "Trust Verdict Soundness: a sourced, high-confidence claim whose entities are unconnected raises only a Low isolated-entity signal, so the gate degrades to Advisory (score 0.75, not can_trust) without over-blocking.",
+      "steps": [
+        { "type": "remember", "bind": "src", "content": "Orion is on the roadmap.", "tags": ["product"] },
+        { "type": "fact", "subject": "Orion", "predicate": "status", "object": "planned", "source_episode_ref": "src", "confidence": 0.9 }
+      ],
+      "expected": {
+        "fact_count": 1,
+        "unsupported_fact_count": 0,
+        "conflicting_fact_count": 0,
+        "authority_mode": "advisory",
+        "authority_score": 0.75,
+        "authority_can_trust": false,
+        "required_signal_kinds": ["isolated_entity"]
+      }
+    },
+    {
+      "id": "tvs-warn",
+      "goal": "Trust Verdict Soundness: an unsupported assertion raises a Medium signal, so the gate must Warn (score 0.5, not can_trust) — usable only with explicit uncertainty.",
+      "steps": [
+        { "type": "remember", "bind": "src", "content": "Vega was mentioned in passing.", "tags": ["product"] },
+        { "type": "fact", "subject": "Vega", "predicate": "owner", "object": "unknown", "confidence": 0.9 }
+      ],
+      "expected": {
+        "fact_count": 1,
+        "unsupported_fact_count": 1,
+        "conflicting_fact_count": 0,
+        "authority_mode": "warn",
+        "authority_score": 0.5,
+        "authority_can_trust": false,
+        "required_signal_kinds": ["unsupported_fact"]
+      }
+    },
+    {
+      "id": "tvs-block",
+      "goal": "Trust Verdict Soundness: two values for the same subject and predicate from one observation is a High-severity contradiction, so the gate must Block (score 0.0, not can_trust). The bottom-right cell of the matrix.",
+      "steps": [
+        { "type": "remember", "bind": "src", "content": "Atlas status is disputed.", "tags": ["release"] },
+        { "type": "fact", "subject": "Atlas", "predicate": "status", "object": "draft", "source_episode_ref": "src", "confidence": 0.9 },
+        { "type": "fact", "subject": "Atlas", "predicate": "status", "object": "published", "source_episode_ref": "src", "confidence": 0.9 }
+      ],
+      "expected": {
+        "fact_count": 2,
+        "conflicting_fact_count": 1,
+        "authority_mode": "block",
+        "authority_score": 0.0,
+        "authority_can_trust": false,
+        "required_signal_kinds": ["conflicting_fact"]
+      }
+    }
+  ]
+}
