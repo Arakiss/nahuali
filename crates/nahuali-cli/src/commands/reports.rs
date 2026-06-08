@@ -92,6 +92,20 @@ pub(crate) fn briefing(
         );
     } else {
         output::print_briefing_report(&report);
+        // When a read-only archive is configured, surface it so an agent whose
+        // canonical briefing is thin on a topic knows historical reference
+        // exists (e.g. after a fresh-start migration). The archive is never
+        // authority; it is consulted on demand and clearly labeled.
+        if let Ok(archive_db) = std::env::var("NAHUALI_ARCHIVE_DB")
+            && !archive_db.trim().is_empty()
+        {
+            println!(
+                "\n{}",
+                crate::style::dim(&format!(
+                    "Archive: {archive_db} available as historical reference — `nahuali recall <topic> --archive`"
+                ))
+            );
+        }
     }
     Ok(())
 }
