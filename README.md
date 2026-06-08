@@ -364,6 +364,50 @@ design documents remain private during pre-release development. The public
 contract is the code, schema files, crate READMEs, fixtures, and validation
 scripts in this repository.
 
+## Resilience And Recovery
+
+The CLI talks to a SurrealDB server (and an optional Qdrant). A natural question
+for any operator: what happens when those services are down, and can data be
+lost?
+
+**Your data is not lost when a service is down.** The authoritative
+`memory_record` ledger lives in SurrealDB's own durable volume. A stopped or
+unreachable service means the CLI cannot *connect* — never that records were
+deleted. When the service returns, the history is intact and re-verifies.
+
+**While a service is unreachable, writes fail rather than queue.** A
+`remember`/`claim`/… that cannot reach the store returns an error and records
+nothing (there is no offline buffer yet); re-run it once the store is back. The
+CLI makes this calm and actionable: it states that data is safe, best-effort
+starts the local stack if its containers are merely stopped, and otherwise
+prints the exact command to bring it up:
+
+```text
+✗ Cannot reach the Nahuali store at ws://localhost:18000.
+  Your data is safe — nothing was lost or deleted; the database service
+  is just unreachable (the append-only ledger lives in its own volume).
+  Start the local stack and retry:
+      docker compose up -d
+```
+
+**Qdrant is optional and derived.** Lexical recall, capture, briefing, audit,
+and trust verdicts all work without Qdrant; only `recall --semantic` and the
+`semantic-*` commands need it.
+
+**Recovering after downtime is one command.** The ledger is ground truth and
+needs no reconciliation; the derived tiers (the SurrealDB graph projection and
+the Qdrant semantic index) can drift if a service was down while writes landed.
+`nahuali reconcile` re-verifies the ledger and rebuilds both derived tiers from
+it, reporting each — and skipping the semantic rebuild gracefully if Qdrant is
+still unreachable:
+
+```text
+Reconcile · memory
+  ledger    verified · chain intact · merkle 36628bbb4e…
+  graph     rebuilt · 11 nodes · 0 relations
+  semantic  synced · 7 points
+```
+
 ## Install From Source
 
 For the one-line binary install see [Quickstart](#quickstart); this section is
