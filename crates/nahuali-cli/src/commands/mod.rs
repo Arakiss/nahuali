@@ -35,8 +35,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
     if verbose {
         verbose_open_line(&database);
     }
-    let mut memory = MemoryEngine::open(&database)
-        .with_context(|| format!("failed to open {}", database.display()))?;
+    let mut memory = open_store(&database, verbose)?;
 
     match cli.command {
         Command::Status { json } => reports::status(&mut memory, &database, json)?,
@@ -666,6 +665,60 @@ fn verbose_open_line(database: &std::path::Path) {
         endpoint,
         namespace
     );
+}
+
+/// Open the store, but turn an unreachable database into a calm, actionable
+/// failure instead of a raw connection error: reassure that data is safe,
+/// best-effort start the local stack if it is just stopped, and otherwise print
+/// the exact command to bring it up. The ledger lives in the database's own
+/// durable volume, so an unreachable service never means lost data.
+fn open_store(database: &std::path::Path, verbose: bool) -> anyhow::Result<MemoryEngine> {
+    match MemoryEngine::open(database) {
+        Ok(engine) => Ok(engine),
+        Err(error) => {
+            let endpoint =
+                std::env::var("NAHUALI_DB_URL").unwrap_or_else(|_| "localhost:18000".to_string());
+            eprintln!();
+            eprintln!("\u{2717} Cannot reach the Nahuali store at ws://{endpoint}.");
+            eprintln!(
+                "  Your data is safe \u{2014} nothing was lost or deleted; the database service"
+            );
+            eprintln!("  is just unreachable (the append-only ledger lives in its own volume).");
+
+            let local = endpoint.contains("localhost") || endpoint.contains("127.0.0.1");
+            if local
+                && try_start_local_stack(verbose)
+                && let Ok(engine) = MemoryEngine::open(database)
+            {
+                eprintln!("  \u{2713} started the local stack and reconnected.");
+                return Ok(engine);
+            }
+
+            eprintln!("  Start the local stack and retry:");
+            eprintln!("      docker compose up -d");
+            Err(error).context("the Nahuali store is unreachable (your data is safe)")
+        }
+    }
+}
+
+/// Best-effort: if the standard local stack containers exist but are stopped,
+/// start them and wait briefly for readiness. Returns true only when `docker
+/// start` succeeds, so the caller can retry the connection. Never fatal.
+fn try_start_local_stack(verbose: bool) -> bool {
+    if verbose {
+        eprintln!("  \u{2192} attempting to start the local stack containers\u{2026}");
+    }
+    let started = std::process::Command::new("docker")
+        .args(["start", "nahual-mictlan-surrealdb", "nahual-tonalli-qdrant"])
+        .output();
+    match started {
+        Ok(output) if output.status.success() => {
+            // SurrealDB needs a moment to accept connections after a cold start.
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            true
+        }
+        _ => false,
+    }
 }
 
 fn default_database_name() -> PathBuf {
