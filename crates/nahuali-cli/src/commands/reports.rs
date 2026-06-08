@@ -352,7 +352,7 @@ fn print_archive_recall(query: &str, options: RecallOptions, enabled: bool) {
         ))
     );
 
-    let mut engine = match MemoryEngine::open(std::path::Path::new(&archive_db)) {
+    let engine = match MemoryEngine::open(std::path::Path::new(&archive_db)) {
         Ok(engine) => engine,
         Err(_) => {
             println!(
