@@ -401,6 +401,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             require_evidence,
             as_of_ms,
             max_age_days,
+            archive,
             json,
         } => reports::recall(
             &mut memory,
@@ -414,6 +415,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
                 require_evidence,
                 as_of_ms,
                 max_age_days,
+                archive,
                 json,
             },
         )?,

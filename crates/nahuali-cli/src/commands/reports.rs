@@ -126,6 +126,7 @@ pub(crate) struct RecallArgs {
     pub(crate) require_evidence: bool,
     pub(crate) as_of_ms: Option<u64>,
     pub(crate) max_age_days: Option<u64>,
+    pub(crate) archive: bool,
     pub(crate) json: bool,
 }
 
@@ -266,18 +267,18 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
             .unwrap_or(0);
         now_ms.saturating_sub(days.saturating_mul(24 * 60 * 60 * 1000))
     });
+    let archive = args.archive;
+    let options = RecallOptions {
+        limit: args.limit,
+        scope,
+        kinds,
+        require_evidence: args.require_evidence,
+        as_of_ms,
+        since_ms,
+    };
+
     if args.semantic {
-        let recall = memory.hybrid_recall_with_options(
-            &query,
-            RecallOptions {
-                limit: args.limit,
-                scope,
-                kinds,
-                require_evidence: args.require_evidence,
-                as_of_ms,
-                since_ms,
-            },
-        )?;
+        let recall = memory.hybrid_recall_with_options(&query, options.clone())?;
         if args.json {
             println!("{}", serde_json::to_string_pretty(&recall)?);
             return Ok(());
@@ -292,20 +293,12 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
             recall.embedding.model, recall.embedding.dimensions
         );
         print_hybrid_recall_results(recall.results);
+        print_archive_recall(&query, options, archive);
         return Ok(());
     }
 
-    let options = RecallOptions {
-        limit: args.limit,
-        scope,
-        kinds,
-        require_evidence: args.require_evidence,
-        as_of_ms,
-        since_ms,
-    };
-
     if args.authority {
-        let recall = memory.recall_with_authority_options(&query, options)?;
+        let recall = memory.recall_with_authority_options(&query, options.clone())?;
         if args.json {
             println!("{}", serde_json::to_string_pretty(&recall)?);
             return Ok(());
@@ -318,6 +311,7 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
             println!("- {reason}");
         }
         print_recall_results(recall.results);
+        print_archive_recall(&query, options, archive);
         return Ok(());
     }
 
@@ -330,9 +324,56 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
     // Human mode: enrich results with per-result trust so the trust layer is
     // visible by default (without `--authority`). The `--json` path above is
     // left untouched so its bytes stay identical.
-    let recall = memory.recall_with_authority_options(&query, options)?;
+    let recall = memory.recall_with_authority_options(&query, options.clone())?;
     print_recall_results(recall.results);
+    print_archive_recall(&query, options, archive);
     Ok(())
+}
+
+/// Federated read-only archive recall. When `--archive` is set, also query the
+/// configured archive store (`$NAHUALI_ARCHIVE_DB`, default `ts-archive`) and
+/// print its hits in a clearly-separated, low-authority "reference" section.
+/// The archive is opened in a second engine and never written to — the canonical
+/// store is untouched, so its trust genesis stays clean. Always lexical (the
+/// archive has no semantic index), and never fatal: an unavailable archive is
+/// noted, not raised.
+fn print_archive_recall(query: &str, options: RecallOptions, enabled: bool) {
+    if !enabled {
+        return;
+    }
+    let archive_db =
+        std::env::var("NAHUALI_ARCHIVE_DB").unwrap_or_else(|_| "ts-archive".to_string());
+
+    println!();
+    println!(
+        "{}",
+        crate::style::heading(&format!(
+            "From archive · {archive_db} · reference only (unverified)"
+        ))
+    );
+
+    let mut engine = match MemoryEngine::open(std::path::Path::new(&archive_db)) {
+        Ok(engine) => engine,
+        Err(_) => {
+            println!(
+                "{}",
+                crate::style::dim(&format!("  archive \"{archive_db}\" unavailable — skipped"))
+            );
+            return;
+        }
+    };
+    match engine.recall_with_authority_options(query, options) {
+        Ok(recall) if recall.results.is_empty() => {
+            println!("{}", crate::style::dim("  no archive matches"));
+        }
+        Ok(recall) => print_recall_results(recall.results),
+        Err(_) => println!(
+            "{}",
+            crate::style::dim(&format!(
+                "  archive \"{archive_db}\" query failed — skipped"
+            ))
+        ),
+    }
 }
 
 pub(crate) fn graph(

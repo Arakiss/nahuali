@@ -617,6 +617,11 @@ pub(crate) enum Command {
             help = "Exclude memory older than this many days at query time (audit-grade staleness filter)"
         )]
         max_age_days: Option<u64>,
+        #[arg(
+            long,
+            help = "Also consult the read-only archive store ($NAHUALI_ARCHIVE_DB, default ts-archive) as low-authority reference; never written to"
+        )]
+        archive: bool,
         #[arg(long, help = "Emit machine-readable JSON instead of text")]
         json: bool,
     },
