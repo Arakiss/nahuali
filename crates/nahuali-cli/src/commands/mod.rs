@@ -11,6 +11,7 @@ mod migration_legacy;
 mod migration_timestamps;
 mod migration_values;
 mod preopen;
+mod reconcile;
 mod record;
 mod reports;
 mod scope;
@@ -41,6 +42,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
         Command::Status { json } => reports::status(&mut memory, &database, json)?,
         #[cfg(feature = "tui")]
         Command::Explore => explore::explore(&mut memory, &database)?,
+        Command::Reconcile { json } => reconcile::reconcile(&mut memory, &database, json)?,
         Command::Remember {
             content,
             tags,

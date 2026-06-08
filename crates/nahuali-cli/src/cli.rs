@@ -70,6 +70,7 @@ Reports:
   hook                  Run a non-mutating memory hook for a host execution point
 
 Maintenance:
+  reconcile             Re-verify the ledger and rebuild the derived tiers (graph + semantic)
   projection-status     Inspect the SurrealDB graph projection status
   projection-rebuild    Rebuild the SurrealDB graph projection from the record ledger
   projection-validate   Validate the SurrealDB graph projection without mutating it
@@ -173,6 +174,13 @@ pub(crate) enum Command {
         visible_alias = "tui"
     )]
     Explore,
+    #[command(
+        about = "Re-verify the ledger and rebuild the derived tiers (graph + semantic) from it."
+    )]
+    Reconcile {
+        #[arg(long)]
+        json: bool,
+    },
     #[command(
         about = "Record an observed episode.",
         visible_alias = "episode",
