@@ -300,16 +300,29 @@ impl KnowledgeHealth {
         }
 
         let entity_graph = entity_graph(data);
-        let isolated_entities = entity_graph
-            .iter()
-            .filter_map(|(entity, relation_count)| {
-                if *relation_count == 0 {
-                    Some(entity.clone())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
+        // In a store that is building no knowledge yet — no facts and no relations,
+        // e.g. a pure episode log whose only entities come from `--mention` — every
+        // entity is trivially "isolated". That is noise, not a blind spot: an
+        // episode-first memory is legitimate, not a deficiency. Isolation is only a
+        // real gap once the store has knowledge (facts or relations) that leaves an
+        // entity disconnected. Without this gate, a clean episode log is wrongly
+        // capped at ADVISORY by a single orphan-from-mention signal.
+        let building_knowledge =
+            !projected_facts(data).is_empty() || !projected_relations(data).is_empty();
+        let isolated_entities = if building_knowledge {
+            entity_graph
+                .iter()
+                .filter_map(|(entity, relation_count)| {
+                    if *relation_count == 0 {
+                        Some(entity.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         for entity in &isolated_entities {
             signals.push(HealthSignal {
                 kind: HealthSignalKind::IsolatedEntity,
@@ -549,7 +562,7 @@ fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{Fact, MemoryData, MemoryScope, MemoryScopeKind, Relation};
+    use crate::model::{Entity, Fact, MemoryData, MemoryScope, MemoryScopeKind, Relation};
 
     use super::{HealthSeverity, HealthSignalKind, KnowledgeHealth};
 
@@ -632,6 +645,42 @@ mod tests {
 
         assert_eq!(health.entity_count, 2);
         assert_eq!(health.isolated_entity_count, 0);
+    }
+
+    #[test]
+    fn episode_only_store_does_not_flag_mentioned_entities_as_isolated() {
+        // A pure episode log: entities exist only from `--mention`, with no facts
+        // and no relations. Isolation is expected and must not be flagged — it
+        // would otherwise wrongly cap a clean episode log at ADVISORY.
+        let mentioned = |id: &str, name: &str| Entity {
+            id: id.to_string(),
+            name: name.to_string(),
+            mention_count: 1,
+            first_seen_at_ms: 1000,
+            last_seen_at_ms: 1000,
+            source_event_ids: vec!["event_1".to_string()],
+            scope: None,
+        };
+        let data = MemoryData {
+            event_count: 1,
+            last_event_id: Some("event_1".to_string()),
+            entities: vec![
+                mentioned("entity_1", "Syrinx"),
+                mentioned("entity_2", "Polaris"),
+            ],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, 1000);
+
+        assert_eq!(health.entity_count, 2);
+        assert_eq!(health.isolated_entity_count, 0);
+        assert!(
+            !health
+                .signals
+                .iter()
+                .any(|signal| signal.kind == HealthSignalKind::IsolatedEntity)
+        );
     }
 
     #[test]
