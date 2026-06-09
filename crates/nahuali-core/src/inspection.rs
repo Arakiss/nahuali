@@ -307,8 +307,7 @@ impl KnowledgeHealth {
         // real gap once the store has knowledge (facts or relations) that leaves an
         // entity disconnected. Without this gate, a clean episode log is wrongly
         // capped at ADVISORY by a single orphan-from-mention signal.
-        let building_knowledge =
-            !projected_facts(data).is_empty() || !projected_relations(data).is_empty();
+        let building_knowledge = !facts.is_empty() || !relations.is_empty();
         let isolated_entities = if building_knowledge {
             entity_graph
                 .iter()
@@ -562,7 +561,7 @@ fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{Entity, Fact, MemoryData, MemoryScope, MemoryScopeKind, Relation};
+    use crate::model::{Entity, Episode, Fact, MemoryData, MemoryScope, MemoryScopeKind, Relation};
 
     use super::{HealthSeverity, HealthSignalKind, KnowledgeHealth};
 
@@ -664,6 +663,18 @@ mod tests {
         let data = MemoryData {
             event_count: 1,
             last_event_id: Some("event_1".to_string()),
+            episodes: vec![Episode {
+                id: "episode_1".to_string(),
+                event_id: "event_1".to_string(),
+                content: "Worked on Syrinx and Polaris.".to_string(),
+                tags: Vec::new(),
+                mentions: vec!["Syrinx".to_string(), "Polaris".to_string()],
+                source_id: None,
+                source_position: None,
+                source_role: None,
+                scope: None,
+                created_at_ms: 1000,
+            }],
             entities: vec![
                 mentioned("entity_1", "Syrinx"),
                 mentioned("entity_2", "Polaris"),
@@ -675,12 +686,9 @@ mod tests {
 
         assert_eq!(health.entity_count, 2);
         assert_eq!(health.isolated_entity_count, 0);
-        assert!(
-            !health
-                .signals
-                .iter()
-                .any(|signal| signal.kind == HealthSignalKind::IsolatedEntity)
-        );
+        // A clean episode log with mentioned-but-unlinked entities raises no health
+        // signal at all, so it certifies — episode-first memory is first-class.
+        assert!(health.signals.is_empty());
     }
 
     #[test]
