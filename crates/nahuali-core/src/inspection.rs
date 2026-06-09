@@ -96,6 +96,11 @@ pub enum HealthSignalKind {
     ConflictingFact,
     /// A fact is older than the staleness threshold.
     StaleFact,
+    /// The store's most recent memory is older than the staleness threshold —
+    /// a dormant store that should be used with judgment rather than trusted as
+    /// current. Keeps an old, untouched episode log from silently certifying
+    /// (a clean, fresh log otherwise raises no signal).
+    StaleEpisode,
     /// A fact was replaced by a newer, evidence-backed fact for the same
     /// `(scope, subject, predicate)`.
     ///
@@ -296,6 +301,29 @@ impl KnowledgeHealth {
                 severity: HealthSeverity::Medium,
                 message: format!("Fact '{}' is stale.", fact_statement(fact)),
                 evidence_ids: vec![fact.event_id.clone()],
+            });
+        }
+
+        // Freshness as a trust dimension: if the store's most recent memory is
+        // older than the staleness threshold, the store is dormant — flag it so a
+        // stale, untouched episode log does not silently certify. A clean, fresh
+        // log raises no signal and still certifies. Low severity: an old episode
+        // is true history, not wrong — "use with judgment", not "verify".
+        if let Some(latest_ms) = data
+            .episodes
+            .iter()
+            .map(|episode| episode.created_at_ms)
+            .max()
+            && latest_ms < stale_before_ms
+        {
+            signals.push(HealthSignal {
+                kind: HealthSignalKind::StaleEpisode,
+                dimensions: vec![HealthDimension::Freshness, HealthDimension::Staleness],
+                severity: HealthSeverity::Low,
+                message: format!(
+                    "The most recent memory is over {STALE_AFTER_DAYS} days old; the store may be stale."
+                ),
+                evidence_ids: Vec::new(),
             });
         }
 
@@ -689,6 +717,39 @@ mod tests {
         // A clean episode log with mentioned-but-unlinked entities raises no health
         // signal at all, so it certifies — episode-first memory is first-class.
         assert!(health.signals.is_empty());
+    }
+
+    #[test]
+    fn dormant_episode_log_is_flagged_stale() {
+        let day = super::DAY_MS;
+        let data = MemoryData {
+            event_count: 1,
+            last_event_id: Some("event_1".to_string()),
+            episodes: vec![Episode {
+                id: "episode_1".to_string(),
+                event_id: "event_1".to_string(),
+                content: "An old observation, untouched for months.".to_string(),
+                tags: Vec::new(),
+                mentions: Vec::new(),
+                source_id: None,
+                source_position: None,
+                source_role: None,
+                scope: None,
+                created_at_ms: 10 * day,
+            }],
+            ..MemoryData::default()
+        };
+
+        // "Now" is well past the staleness window since the only episode, so the
+        // dormant store must not silently certify.
+        let health = KnowledgeHealth::inspect_at(&data, 200 * day);
+
+        assert!(
+            health
+                .signals
+                .iter()
+                .any(|signal| signal.kind == HealthSignalKind::StaleEpisode)
+        );
     }
 
     #[test]
