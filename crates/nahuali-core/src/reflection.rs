@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AuthorityDecision, HealthDimension, HealthSeverity, KnowledgeHealth, MemoryData,
-    SelfInspectionFinding, SelfInspectionFindingKind, SelfInspectionReviewAction,
-    SelfInspectionReviewPriority, SelfInspectionWriteBackPolicy, self_inspection,
+    SelfInspectionFinding, SelfInspectionFindingKind, SelfInspectionReport,
+    SelfInspectionReviewAction, SelfInspectionReviewPriority, SelfInspectionWriteBackPolicy,
+    self_inspection,
 };
 
 /// Current reflection-cycle report format version.
@@ -139,9 +140,28 @@ pub struct ReflectionFinding {
 }
 
 pub(crate) fn reflect(data: &MemoryData, options: ReflectionOptions) -> MemoryReflectionReport {
+    reflect_from_inspection(data, self_inspection::self_inspect(data), options)
+}
+
+pub(crate) fn reflect_at(
+    data: &MemoryData,
+    options: ReflectionOptions,
+    generated_at_ms: u64,
+) -> MemoryReflectionReport {
+    reflect_from_inspection(
+        data,
+        self_inspection::self_inspect_at(data, generated_at_ms),
+        options,
+    )
+}
+
+fn reflect_from_inspection(
+    data: &MemoryData,
+    self_inspection: SelfInspectionReport,
+    options: ReflectionOptions,
+) -> MemoryReflectionReport {
     let cycle_limit = options.cycle_limit.max(1);
     let evidence_limit = options.evidence_limit.max(1);
-    let self_inspection = self_inspection::self_inspect(data);
     let mut cycles = grouped_cycles(&self_inspection.findings, evidence_limit);
     let total_cycle_count = cycles.len();
     let critical_cycle_count = cycles

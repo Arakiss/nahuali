@@ -172,7 +172,7 @@ pub(crate) fn sleep_mode_at(
 ) -> MemorySleepReport {
     let recent_episode_limit = options.recent_episode_limit.max(1);
     let candidate_limit = options.candidate_limit.max(1);
-    let reflection = reflection::reflect(data, options.reflection);
+    let reflection = reflection::reflect_at(data, options.reflection, generated_at_ms);
     let self_inspection = self_inspection::self_inspect_at(data, generated_at_ms);
     let recent_episodes = recent_episodes(data, recent_episode_limit);
     let mut consolidation_candidates =

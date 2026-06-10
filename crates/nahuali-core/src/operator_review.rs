@@ -124,6 +124,15 @@ pub(crate) fn operator_review(
     operator_review_from_self_inspection(report, options)
 }
 
+pub(crate) fn operator_review_at(
+    data: &MemoryData,
+    options: OperatorReviewOptions,
+    generated_at_ms: u64,
+) -> OperatorReviewReport {
+    let report = self_inspection::self_inspect_at(data, generated_at_ms);
+    operator_review_from_self_inspection(report, options)
+}
+
 pub(crate) fn operator_review_from_self_inspection(
     report: SelfInspectionReport,
     options: OperatorReviewOptions,

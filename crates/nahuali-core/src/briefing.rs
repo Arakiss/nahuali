@@ -166,17 +166,18 @@ pub(crate) fn briefing_at(
     let review_limit = options.review_limit.max(1);
     let graph_seed_limit = options.graph_seed_limit.max(1);
 
-    let health = KnowledgeHealth::inspect(data);
+    let health = KnowledgeHealth::inspect_at(data, generated_at_ms);
     let authority = AuthorityDecision::evaluate(&health);
     let recent_episodes = recent_episodes(data, episode_limit);
     let active_intentions = active_intentions(data, intention_limit);
-    let review = operator_review::operator_review(
+    let review = operator_review::operator_review_at(
         data,
         OperatorReviewOptions {
             limit: review_limit,
             min_priority: Some(SelfInspectionReviewPriority::High),
             ..OperatorReviewOptions::default()
         },
+        generated_at_ms,
     );
     let graph_seeds = graph_seeds(data, graph_seed_limit);
     let active_intention_count = data

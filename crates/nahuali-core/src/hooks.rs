@@ -155,12 +155,12 @@ pub(crate) fn memory_hook_at(
     generated_at_ms: u64,
 ) -> Result<MemoryHookReport> {
     let input = normalized_input(&options)?;
-    let health = KnowledgeHealth::inspect(data);
+    let health = KnowledgeHealth::inspect_at(data, generated_at_ms);
     let authority = AuthorityDecision::evaluate(&health);
     let briefing = briefing_for_hook(data, &options, generated_at_ms);
     let recall = recall_for_hook(data, &options, &input, &authority, &health);
     let self_inspection = self_inspection_for_hook(data, &options, generated_at_ms);
-    let reflection = reflection_for_hook(data, &options);
+    let reflection = reflection_for_hook(data, &options, generated_at_ms);
     let sleep = sleep_for_hook(data, &options, generated_at_ms);
     let summary = summarize(
         &briefing,
@@ -259,12 +259,17 @@ fn recall_for_hook(
 fn reflection_for_hook(
     data: &MemoryData,
     options: &MemoryHookOptions,
+    generated_at_ms: u64,
 ) -> Option<MemoryReflectionReport> {
     if matches!(
         options.kind,
         MemoryHookKind::SessionClose | MemoryHookKind::SleepCycle
     ) {
-        return Some(reflection::reflect(data, options.reflection.clone()));
+        return Some(reflection::reflect_at(
+            data,
+            options.reflection.clone(),
+            generated_at_ms,
+        ));
     }
 
     None

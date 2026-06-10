@@ -223,13 +223,14 @@ pub(crate) fn consolidation_plan_at(
         },
         generated_at_ms,
     );
-    let review = operator_review::operator_review(
+    let review = operator_review::operator_review_at(
         data,
         OperatorReviewOptions {
             limit: options.review_limit,
             min_priority: None,
             ..OperatorReviewOptions::default()
         },
+        generated_at_ms,
     );
     let operations = operations_from_reports(&sleep, &review);
     let stages = stages_from_operations(&operations);
