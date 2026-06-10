@@ -22,9 +22,10 @@ default = ["tui", "tamper-evidence"]
 # default; build with --no-default-features to drop it (and ratatui) for a
 # minimal/server CLI.
 tui = ["nahuali-ui/tui"]
-# Forward nahuali-core's tamper-evident hash chain. Off by default (default
-# builds write byte-identical records). With this feature, recorded events are
-# chained and `validate` detects an in-place rewrite of any historical record.
+# Forward nahuali-core's tamper-evident hash chain. On by default in this
+# crate: recorded events are chained and `validate` detects an in-place rewrite
+# of any historical record. Build with --no-default-features for a CLI that
+# writes records byte-identical to the core's default (unchained) format.
 tamper-evidence = ["nahuali-core/tamper-evidence"]
 # Forward the optional Ed25519 chain-tip attestation surface from nahuali-core.
 # Implies `tamper-evidence`. Off by default: the `attest-sign` / `attest-verify`

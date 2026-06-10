@@ -50,8 +50,9 @@ The current public foundation includes:
 - local MCP stdio server: `nahuali-mcp`
 - local HTTP API: `nahuali-api`
 - SurrealDB-backed record ledger
-- optional tamper-evident hash-chained ledger (off by default)
-- optional Ed25519 chain-tip attestation (off by default)
+- tamper-evident hash-chained ledger (default-on in the CLI build,
+  feature-gated in the core library)
+- optional Ed25519 chain-tip attestation (opt-in build feature)
 - rebuildable SurrealDB graph projection
 - rebuildable Qdrant semantic index
 - optional local model2vec embedder for stronger semantic recall (off by default)
