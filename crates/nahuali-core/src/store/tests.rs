@@ -40,6 +40,59 @@ mod tests {
     }
 
     #[test]
+    fn rejects_fabricated_evidence_citations_on_the_direct_write_path() {
+        let path = temp_path("rejects_fabricated_evidence_citations_on_the_direct_write_path");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let episode = memory
+            .remember("Lena owns release notes.", vec!["product".to_string()])
+            .unwrap();
+
+        let ghost = Some("episode_never_recorded".to_string());
+        let rejected = [
+            memory
+                .add_claim("Lena", "owns", "release notes", ghost.clone(), 0.9)
+                .err()
+                .map(|error| error.to_string()),
+            memory
+                .add_link("Lena", "owns", "Release Notes", ghost.clone(), 0.9)
+                .err()
+                .map(|error| error.to_string()),
+            memory
+                .add_procedure("release", "Write the notes.", ghost.clone(), 0.9)
+                .err()
+                .map(|error| error.to_string()),
+            memory
+                .add_intention(
+                    "Ship the notes",
+                    IntentionKind::Task,
+                    IntentionPriority::Medium,
+                    ghost,
+                )
+                .err()
+                .map(|error| error.to_string()),
+        ];
+        for error in rejected {
+            assert_eq!(
+                error.as_deref(),
+                Some("unknown source episode: episode_never_recorded")
+            );
+        }
+
+        // A real citation still writes, and none of the rejects landed.
+        memory
+            .add_claim("Lena", "owns", "release notes", Some(episode.id), 0.9)
+            .unwrap();
+        assert_eq!(memory.data().claims.len(), 1);
+        assert!(memory.data().links.is_empty());
+        assert!(memory.data().procedures.is_empty());
+        assert!(memory.data().intentions.is_empty());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn projects_facts_and_relations_from_events() {
         let path = temp_path("projects_facts_and_relations_from_events");
         let _ = fs::remove_file(&path);

@@ -354,6 +354,7 @@ impl MemoryEngine {
         if subject.is_empty() || predicate.is_empty() || object.is_empty() {
             return Err(NahualiError::EmptyContent);
         }
+        self.require_episode_exists(context.source_episode_id.as_deref())?;
 
         let claim_id = make_id(id_prefix);
         let scope = context
@@ -473,6 +474,7 @@ impl MemoryEngine {
         if from.is_empty() || relation.is_empty() || to.is_empty() {
             return Err(NahualiError::EmptyContent);
         }
+        self.require_episode_exists(context.source_episode_id.as_deref())?;
 
         let link_id = make_id(id_prefix);
         let scope = context
@@ -587,6 +589,7 @@ impl MemoryEngine {
         if name.is_empty() || body.is_empty() {
             return Err(NahualiError::EmptyContent);
         }
+        self.require_episode_exists(context.source_episode_id.as_deref())?;
 
         let procedure_id = make_id(id_prefix);
         let scope = context
@@ -649,6 +652,7 @@ impl MemoryEngine {
         if description.is_empty() {
             return Err(NahualiError::EmptyContent);
         }
+        self.require_episode_exists(source_episode_id.as_deref())?;
 
         let intention_id = make_id("intention");
         let scope = scope.or_else(|| self.scope_for_episode(source_episode_id.as_deref()));
@@ -791,6 +795,27 @@ impl MemoryEngine {
                 .find(|episode| episode.id == episode_id)
                 .and_then(|episode| episode.scope.clone())
         })
+    }
+
+    /// Reject a citation of an episode this store has never recorded.
+    ///
+    /// Recall trust treats a present `source_episode_id` as evidence, so the
+    /// direct write path must not let a fabricated citation mint
+    /// evidence-backed memory. This guards new writes only; ledger replay
+    /// stays tolerant of imported histories.
+    fn require_episode_exists(&self, episode_id: Option<&str>) -> Result<()> {
+        if let Some(episode_id) = episode_id
+            && !self
+                .data
+                .episodes
+                .iter()
+                .any(|episode| episode.id == episode_id)
+        {
+            return Err(NahualiError::UnknownSourceEpisode {
+                id: episode_id.to_string(),
+            });
+        }
+        Ok(())
     }
 }
 

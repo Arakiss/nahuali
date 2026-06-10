@@ -39,6 +39,12 @@ pub enum NahualiError {
         /// Requested source identifier.
         id: String,
     },
+    /// A cited source episode does not exist in the current projection.
+    #[error("unknown source episode: {id}")]
+    UnknownSourceEpisode {
+        /// Cited episode identifier.
+        id: String,
+    },
     /// The SurrealDB memory store could not be opened or queried.
     #[error("failed to use SurrealDB memory store at {path}: {source}")]
     Database {
