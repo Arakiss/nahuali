@@ -9,7 +9,7 @@ use nahuali_core::{
 
 /// Custom help template for the root command. clap renders every subcommand in a
 /// single flat `Commands:` block ordered only by display order, so the grouped
-/// section view lives in `{after-help}` (see [`GROUPED_COMMANDS`]) and the default
+/// section view lives in `{after-help}` (see [`grouped_commands`]) and the default
 /// `{subcommands}` token is intentionally omitted here. Grouping is presentational
 /// only: command names, flags, and behavior are unchanged.
 const ROOT_HELP_TEMPLATE: &str = "\
@@ -21,7 +21,7 @@ Options:
 
 /// Grouped command listing rendered in the root help, with the everyday verbs
 /// first inside each section. Kept in sync by hand with the `Command` variants.
-const GROUPED_COMMANDS: &str = "\
+const GROUPED_COMMANDS_TEMPLATE: &str = "\
 Getting started:
   demo                  See the tamper-evidence trust story (no database, no Docker)
   init                  Wire your agent harness to use Nahuali (installs the skill)
@@ -84,6 +84,7 @@ Maintenance:
   validate              Validate the SurrealDB memory_record ledger without mutating it
   audit                 Audit what changed in the record ledger between two points
   trust-report          Print a composed memory trust report
+{attest-commands}
   maintenance           Print a non-destructive maintenance report
   snapshot              Write or dry-run an optional projection snapshot
   snapshot-validate     Validate an optional snapshot against record replay
@@ -107,6 +108,18 @@ Shell:
 
 Run 'nahuali <COMMAND> --help' for details and examples on a single command.";
 
+/// Render the grouped command list for `--help`, including the attestation
+/// commands only in builds that actually have them.
+fn grouped_commands() -> String {
+    #[cfg(feature = "attestation")]
+    let attest = "  attest-sign           Sign the current ledger chain tip with an Ed25519 key
+  attest-verify         Verify a signed chain-tip receipt against the live ledger
+";
+    #[cfg(not(feature = "attestation"))]
+    let attest = "";
+    GROUPED_COMMANDS_TEMPLATE.replacen("{attest-commands}\n", attest, 1)
+}
+
 /// Parse and validate a `--confidence` value, rejecting anything outside the
 /// `0.0..=1.0` range instead of silently clamping it.
 fn parse_confidence(raw: &str) -> Result<f32, String> {
@@ -127,7 +140,7 @@ fn parse_confidence(raw: &str) -> Result<f32, String> {
 #[command(about = "Self-inspecting memory for AI agents")]
 #[command(arg_required_else_help = true)]
 #[command(help_template = ROOT_HELP_TEMPLATE)]
-#[command(after_help = GROUPED_COMMANDS)]
+#[command(after_help = grouped_commands())]
 pub(crate) struct Cli {
     #[arg(
         long = "database",
@@ -1303,6 +1316,13 @@ mod tests {
         assert!(help.contains("Maintenance:"));
         assert!(help.contains("Migration & backup:"));
         assert!(help.contains("Shell:"));
+        // The template placeholder must never leak into rendered help; in an
+        // attestation build the attest commands take its place.
+        assert!(!help.contains("{attest-commands}"));
+        #[cfg(feature = "attestation")]
+        assert!(help.contains("  attest-sign"));
+        #[cfg(not(feature = "attestation"))]
+        assert!(!help.contains("attest-sign"));
         // The everyday verbs lead their sections.
         let capture = help.find("Capture:").expect("capture section");
         let remember = help.find("  remember").expect("remember listed");
