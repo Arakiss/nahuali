@@ -39,6 +39,9 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      # The attestation surface is the product's differentiator; keep it linted
+      # even though it is not in the default feature set.
+      - run: cargo clippy -p nahuali-core --features attestation --all-targets -- -D warnings
 
   test:
     name: test (${{ matrix.os }})
@@ -48,7 +51,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            command: bash scripts/ensure-dev-stack.sh && cargo test --workspace
+            command: bash scripts/ensure-dev-stack.sh && cargo test --workspace && cargo test -p nahuali-core --features attestation --lib
           - os: macos-latest
             command: cargo test --workspace --no-run
     steps:
@@ -144,6 +147,11 @@ jobs:
           }
         env:
           NAHUALI_REGRESSION_BIN_DIR: target/release
+      - name: Run governance benchmark gate
+        timeout-minutes: 15
+        # LIVR/ARP/PCR/CDR/TVS — the numbers the README publishes. Recomputed
+        # here so main cannot drift from the published table while CI is green.
+        run: bash scripts/verify-governance-benchmarks.sh
       - name: Run security and supply-chain checks
         timeout-minutes: 5
         run: bash scripts/security-supply-chain-check.sh
