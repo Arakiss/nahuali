@@ -1074,7 +1074,7 @@ fn print_recall_results(results: Vec<nahuali_core::RecallResult>) {
         }
         if let Some(trust) = result.trust {
             println!(
-                "  confianza: {} (score {:.2})",
+                "  trust: {} (score {:.2})",
                 crate::style::trust_badge(&trust.mode),
                 trust.score
             );

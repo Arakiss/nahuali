@@ -463,7 +463,7 @@ fn print_recall_section(results: &[nahuali_core::RecallResult]) {
         );
         if let Some(trust) = &result.trust {
             println!(
-                "  confianza: {} (score {:.2})",
+                "  trust: {} (score {:.2})",
                 crate::style::trust_badge(&trust.mode),
                 trust.score
             );
@@ -613,7 +613,7 @@ pub(crate) fn print_project_report(report: &MemoryProjectReport) {
             );
             if let Some(trust) = &result.trust {
                 println!(
-                    "  confianza: {} (score {:.2})",
+                    "  trust: {} (score {:.2})",
                     crate::style::trust_badge(&trust.mode),
                     trust.score
                 );
