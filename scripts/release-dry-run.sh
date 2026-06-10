@@ -83,7 +83,9 @@ for package in "${package_order[@]}"; do
   exit 1
 done
 
-cargo build --release -p nahuali-cli -p nahuali-mcp -p nahuali-api -p nahuali-regression
+# Mirror the release workflow's feature set so the dry-run proves the same
+# artifacts the tag build will ship.
+cargo build --release -p nahuali-cli -p nahuali-mcp -p nahuali-api -p nahuali-regression --features nahuali-cli/attestation,nahuali-mcp/tamper-evidence,nahuali-api/tamper-evidence
 
 target_dir="${CARGO_TARGET_DIR:-target}"
 release_dir="$target_dir/release"

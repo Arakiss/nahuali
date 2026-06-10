@@ -257,7 +257,10 @@ jobs:
           } > .cargo/config.toml
       - name: Build release binaries
         timeout-minutes: 25
-        run: cargo build --release --target ${{ matrix.target }} -p nahuali-cli -p nahuali-mcp -p nahuali-api
+        # Ship a consistent trust posture: the CLI carries the full attestation
+        # surface (demo, attest-sign/attest-verify), and the MCP/API binaries
+        # chain their writes and expose the chain in their views.
+        run: cargo build --release --target ${{ matrix.target }} -p nahuali-cli -p nahuali-mcp -p nahuali-api --features nahuali-cli/attestation,nahuali-mcp/tamper-evidence,nahuali-api/tamper-evidence
       - name: Package + checksum
         shell: bash
         run: |
