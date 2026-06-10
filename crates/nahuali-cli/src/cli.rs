@@ -1236,143 +1236,174 @@ mod tests {
 
     use super::Cli;
 
+    /// The derived clap tree for ~70 subcommands needs more stack than the
+    /// 2 MiB default test thread in debug builds (it aborts with the
+    /// attestation commands compiled in), so every test that builds
+    /// `Cli::command()` runs on a thread with a main-sized stack.
+    fn on_wide_stack(test: impl FnOnce() + Send + 'static) {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(test)
+            .expect("spawn wide-stack test thread")
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+    }
+
     #[test]
     fn top_level_help_documents_database_and_primary_commands() {
-        let mut command = Cli::command();
-        let help = command.render_long_help().to_string();
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let help = command.render_long_help().to_string();
 
-        assert!(help.contains("Defaults to $NAHUALI_DB_DATABASE"));
-        assert!(help.contains("remember"));
-        assert!(help.contains("briefing"));
-        assert!(help.contains("intention-update"));
-        assert!(help.contains("reconcile-intentions"));
-        assert!(help.contains("goal-progress"));
-        assert!(help.contains("sleep"));
-        assert!(help.contains("consolidation-plan"));
-        assert!(help.contains("hook"));
-        assert!(help.contains("recall"));
-        assert!(help.contains("self-inspect"));
-        assert!(help.contains("reflect"));
-        assert!(help.contains("review"));
-        assert!(help.contains("ingest-text"));
-        assert!(help.contains("ingest-dir"));
-        assert!(help.contains("validate"));
+            assert!(help.contains("Defaults to $NAHUALI_DB_DATABASE"));
+            assert!(help.contains("remember"));
+            assert!(help.contains("briefing"));
+            assert!(help.contains("intention-update"));
+            assert!(help.contains("reconcile-intentions"));
+            assert!(help.contains("goal-progress"));
+            assert!(help.contains("sleep"));
+            assert!(help.contains("consolidation-plan"));
+            assert!(help.contains("hook"));
+            assert!(help.contains("recall"));
+            assert!(help.contains("self-inspect"));
+            assert!(help.contains("reflect"));
+            assert!(help.contains("review"));
+            assert!(help.contains("ingest-text"));
+            assert!(help.contains("ingest-dir"));
+            assert!(help.contains("validate"));
+        });
     }
 
     #[test]
     fn recall_help_documents_authority_json_path() {
-        let mut command = Cli::command();
-        let recall = command
-            .find_subcommand_mut("recall")
-            .expect("recall subcommand exists");
-        let help = recall.render_long_help().to_string();
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let recall = command
+                .find_subcommand_mut("recall")
+                .expect("recall subcommand exists");
+            let help = recall.render_long_help().to_string();
 
-        assert!(help.contains("Recall matching memory"));
-        assert!(help.contains("--authority"));
-        assert!(help.contains("--scope"));
-        assert!(help.contains("--json"));
+            assert!(help.contains("Recall matching memory"));
+            assert!(help.contains("--authority"));
+            assert!(help.contains("--scope"));
+            assert!(help.contains("--json"));
+        });
     }
 
     #[test]
     fn validate_help_documents_non_destructive_path() {
-        let mut command = Cli::command();
-        let validate = command
-            .find_subcommand_mut("validate")
-            .expect("validate subcommand exists");
-        let help = validate.render_long_help().to_string();
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let validate = command
+                .find_subcommand_mut("validate")
+                .expect("validate subcommand exists");
+            let help = validate.render_long_help().to_string();
 
-        assert!(help.contains("without mutating"));
-        assert!(help.contains("memory_record ledger"));
-        assert!(help.contains("--json"));
+            assert!(help.contains("without mutating"));
+            assert!(help.contains("memory_record ledger"));
+            assert!(help.contains("--json"));
+        });
     }
 
     #[test]
     fn maintenance_help_documents_snapshot_paths() {
-        let mut command = Cli::command();
-        let snapshot = command
-            .find_subcommand_mut("snapshot")
-            .expect("snapshot subcommand exists");
-        let help = snapshot.render_long_help().to_string();
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let snapshot = command
+                .find_subcommand_mut("snapshot")
+                .expect("snapshot subcommand exists");
+            let help = snapshot.render_long_help().to_string();
 
-        assert!(help.contains("optional projection snapshot"));
-        assert!(help.contains("--output"));
-        assert!(help.contains("--dry-run"));
+            assert!(help.contains("optional projection snapshot"));
+            assert!(help.contains("--output"));
+            assert!(help.contains("--dry-run"));
+        });
     }
 
     #[test]
     fn clap_command_configuration_is_valid() {
-        // Catches malformed help templates, conflicting args, and bad value parsers.
-        Cli::command().debug_assert();
+        on_wide_stack(|| {
+            // Catches malformed help templates, conflicting args, and bad value parsers.
+            Cli::command().debug_assert();
+        });
     }
 
     #[test]
     fn top_level_help_groups_commands_into_sections() {
-        let mut command = Cli::command();
-        let help = command.render_long_help().to_string();
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let help = command.render_long_help().to_string();
 
-        assert!(help.contains("Capture:"));
-        assert!(help.contains("Recall & inspect:"));
-        assert!(help.contains("Reports:"));
-        assert!(help.contains("Maintenance:"));
-        assert!(help.contains("Migration & backup:"));
-        assert!(help.contains("Shell:"));
-        // The template placeholder must never leak into rendered help; in an
-        // attestation build the attest commands take its place.
-        assert!(!help.contains("{attest-commands}"));
-        #[cfg(feature = "attestation")]
-        assert!(help.contains("  attest-sign"));
-        #[cfg(not(feature = "attestation"))]
-        assert!(!help.contains("attest-sign"));
-        // The everyday verbs lead their sections.
-        let capture = help.find("Capture:").expect("capture section");
-        let remember = help.find("  remember").expect("remember listed");
-        assert!(
-            remember > capture,
-            "remember should follow the Capture heading"
-        );
+            assert!(help.contains("Capture:"));
+            assert!(help.contains("Recall & inspect:"));
+            assert!(help.contains("Reports:"));
+            assert!(help.contains("Maintenance:"));
+            assert!(help.contains("Migration & backup:"));
+            assert!(help.contains("Shell:"));
+            // The template placeholder must never leak into rendered help; in an
+            // attestation build the attest commands take its place.
+            assert!(!help.contains("{attest-commands}"));
+            #[cfg(feature = "attestation")]
+            assert!(help.contains("  attest-sign"));
+            #[cfg(not(feature = "attestation"))]
+            assert!(!help.contains("attest-sign"));
+            // The everyday verbs lead their sections.
+            let capture = help.find("Capture:").expect("capture section");
+            let remember = help.find("  remember").expect("remember listed");
+            assert!(
+                remember > capture,
+                "remember should follow the Capture heading"
+            );
+        });
     }
 
     #[test]
     fn recall_help_documents_arguments_and_examples() {
-        let mut command = Cli::command();
-        let recall = command
-            .find_subcommand_mut("recall")
-            .expect("recall subcommand exists");
-        let help = recall.render_long_help().to_string();
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let recall = command
+                .find_subcommand_mut("recall")
+                .expect("recall subcommand exists");
+            let help = recall.render_long_help().to_string();
 
-        // Previously-blank args now carry descriptions.
-        assert!(help.contains("Search terms"));
-        assert!(help.contains("Rank results by governance authority"));
-        assert!(help.contains("Only return results backed by recorded evidence"));
-        // Runnable examples are present.
-        assert!(help.contains("Examples:"));
-        assert!(help.contains("nahuali recall"));
+            // Previously-blank args now carry descriptions.
+            assert!(help.contains("Search terms"));
+            assert!(help.contains("Rank results by governance authority"));
+            assert!(help.contains("Only return results backed by recorded evidence"));
+            // Runnable examples are present.
+            assert!(help.contains("Examples:"));
+            assert!(help.contains("nahuali recall"));
+        });
     }
 
     #[test]
     fn claim_help_documents_positional_arguments() {
-        let mut command = Cli::command();
-        let claim = command
-            .find_subcommand_mut("claim")
-            .expect("claim subcommand exists");
-        let help = claim.render_long_help().to_string();
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let claim = command
+                .find_subcommand_mut("claim")
+                .expect("claim subcommand exists");
+            let help = claim.render_long_help().to_string();
 
-        assert!(help.contains("Subject entity"));
-        assert!(help.contains("Predicate"));
-        assert!(help.contains("Object value"));
-        assert!(help.contains("Examples:"));
+            assert!(help.contains("Subject entity"));
+            assert!(help.contains("Predicate"));
+            assert!(help.contains("Object value"));
+            assert!(help.contains("Examples:"));
+        });
     }
 
     #[test]
     fn completions_subcommand_exposes_supported_shells() {
-        let mut command = Cli::command();
-        let completions = command
-            .find_subcommand_mut("completions")
-            .expect("completions subcommand exists");
-        let help = completions.render_long_help().to_string();
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let completions = command
+                .find_subcommand_mut("completions")
+                .expect("completions subcommand exists");
+            let help = completions.render_long_help().to_string();
 
-        for shell in ["bash", "zsh", "fish", "powershell", "elvish"] {
-            assert!(help.contains(shell), "shell `{shell}` should be a value");
-        }
+            for shell in ["bash", "zsh", "fish", "powershell", "elvish"] {
+                assert!(help.contains(shell), "shell `{shell}` should be a value");
+            }
+        });
     }
 }
