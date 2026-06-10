@@ -13,7 +13,8 @@ nahuali init          # wire your agent harness to use Nahuali
 
 `demo` runs the trust story with zero dependencies; `init` installs the Claude
 Code skill and prints the MCP config. (`demo`'s full narrative needs the
-`attestation` build feature, which the release binary ships with.)
+`attestation` build feature; a build made without it explains how to get one
+that has it.)
 
 ## Install From Source
 

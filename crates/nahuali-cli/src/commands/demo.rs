@@ -18,9 +18,13 @@ pub(crate) fn demo() -> anyhow::Result<()> {
             "{}nahuali demo{} showcases the tamper-evidence trust layer, which needs the {}attestation{} build feature.",
             s.bold, s.reset, s.accent, s.reset
         );
-        println!("The official release binary ships with it already.");
+        println!("This binary was built without it.");
         println!(
             "From source: {}cargo run -p nahuali-cli --features attestation -- demo{}",
+            s.dim, s.reset
+        );
+        println!(
+            "Or install a release that includes it: {}https://github.com/Arakiss/nahuali/releases{}",
             s.dim, s.reset
         );
     }
