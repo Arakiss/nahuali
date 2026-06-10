@@ -216,6 +216,7 @@ fn public_api_returns_reflection_cycle() {
 fn public_api_rebuilds_qdrant_semantic_index_and_hybrid_recall() {
     let path = temp_store("public-api-semantic-index");
     let config = semantic_test_config("public_api_semantic_index");
+    let _collection_guard = guard_for_collection(&config.collection_name);
 
     let mut memory = MemoryEngine::open(&path).expect("new store opens");
     if memory.semantic_index_status_with_config(&config).is_err() {
@@ -306,6 +307,7 @@ fn public_api_rebuilds_qdrant_semantic_index_and_hybrid_recall() {
 fn public_api_filters_qdrant_semantic_recall_by_scope_and_kind() {
     let path = temp_store("public-api-semantic-scope-filter");
     let config = semantic_test_config("public_api_semantic_scope_filter");
+    let _collection_guard = guard_for_collection(&config.collection_name);
     let nahuali_scope = MemoryScope::new(MemoryScopeKind::Project, "Nahuali").unwrap();
     let other_scope = MemoryScope::new(MemoryScopeKind::Project, "Other").unwrap();
 

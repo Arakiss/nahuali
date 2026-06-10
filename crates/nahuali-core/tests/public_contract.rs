@@ -30,7 +30,7 @@ use nahuali_core::{
     SnapshotIssueKind, SourceKind, TEXT_INGEST_ADAPTER_VERSION, TextChunking, TextIngestIssueKind,
     TextIngestOptions, build_text_ingest_document,
 };
-use public_contract_support::{semantic_test_config, temp_store};
+use public_contract_support::{guard_for_collection, semantic_test_config, temp_store};
 
 include!("public_contract_cases/core.rs");
 include!("public_contract_cases/adapters.rs");

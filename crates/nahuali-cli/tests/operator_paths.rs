@@ -4,8 +4,8 @@ mod operator_path_support;
 use std::fs;
 
 use operator_path_support::{
-    run, run_ok, run_ok_with_semantic_collection, run_with_semantic_collection,
-    semantic_collection_name, temp_store,
+    QdrantCollectionGuard, run, run_ok, run_ok_with_semantic_collection,
+    run_with_semantic_collection, temp_store,
 };
 use serde_json::Value;
 

@@ -1,7 +1,8 @@
 #[test]
 fn semantic_index_operator_path_is_scriptable() {
     let store = temp_store("semantic-index-operator-path");
-    let collection = semantic_collection_name("operator_path");
+    let collection_guard = QdrantCollectionGuard::new("operator_path");
+    let collection = collection_guard.name();
 
     run_ok(
         &store,
@@ -46,14 +47,14 @@ fn semantic_index_operator_path_is_scriptable() {
         ],
     );
 
-    let probe = run_with_semantic_collection(&store, &["semantic-status", "--json"], &collection);
+    let probe = run_with_semantic_collection(&store, &["semantic-status", "--json"], collection);
     if !probe.status.success() {
         let _ = fs::remove_file(store);
         return;
     }
 
     let rebuild_output =
-        run_ok_with_semantic_collection(&store, &["semantic-rebuild", "--json"], &collection);
+        run_ok_with_semantic_collection(&store, &["semantic-rebuild", "--json"], collection);
     let rebuild: Value = serde_json::from_str(&rebuild_output).expect("rebuild output is JSON");
     assert_eq!(rebuild["database"], store.display().to_string());
     let scoped_collection = rebuild["report"]["collection_name"]
@@ -71,7 +72,7 @@ fn semantic_index_operator_path_is_scriptable() {
     );
 
     let status_output =
-        run_ok_with_semantic_collection(&store, &["semantic-status", "--json"], &collection);
+        run_ok_with_semantic_collection(&store, &["semantic-status", "--json"], collection);
     let status: Value = serde_json::from_str(&status_output).expect("status output is JSON");
     assert_eq!(status["status"]["collection_exists"], true);
     assert_eq!(
@@ -82,7 +83,7 @@ fn semantic_index_operator_path_is_scriptable() {
     let recall_output = run_ok_with_semantic_collection(
         &store,
         &["recall", "release notes", "--semantic", "--json"],
-        &collection,
+        collection,
     );
     let recall: Value = serde_json::from_str(&recall_output).expect("hybrid recall output is JSON");
     assert_eq!(recall["collection_name"], scoped_collection);
@@ -109,7 +110,7 @@ fn semantic_index_operator_path_is_scriptable() {
             "--require-evidence",
             "--json",
         ],
-        &collection,
+        collection,
     );
     let scoped_recall: Value =
         serde_json::from_str(&scoped_recall_output).expect("scoped hybrid recall output is JSON");
@@ -131,7 +132,7 @@ fn semantic_index_operator_path_is_scriptable() {
     let human_output = run_ok_with_semantic_collection(
         &store,
         &["recall", "release notes", "--semantic"],
-        &collection,
+        collection,
     );
     assert!(human_output.contains("Semantic collection:"));
     assert!(human_output.contains("semantic:"));

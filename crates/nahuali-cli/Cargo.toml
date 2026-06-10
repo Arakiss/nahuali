@@ -38,6 +38,10 @@ attestation = ["nahuali-core/attestation", "tamper-evidence"]
 # model directory when built with this feature.
 local-embeddings = ["nahuali-core/local-embeddings"]
 
+[dev-dependencies]
+# Used by the operator-path test support to drop per-test Qdrant collections.
+reqwest.workspace = true
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true

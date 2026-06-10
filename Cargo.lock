@@ -2652,6 +2652,7 @@ dependencies = [
  "clap_complete",
  "nahuali-core",
  "nahuali-ui",
+ "reqwest",
  "serde",
  "serde_json",
 ]
