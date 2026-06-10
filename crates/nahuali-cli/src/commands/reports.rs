@@ -81,15 +81,25 @@ pub(crate) fn briefing(
         graph_seed_limit,
     });
     if json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "database": database.display().to_string(),
-                "semantic_index_role": "derived",
-                "source_projection": "rust",
-                "report": report,
-            }))?
-        );
+        let mut envelope = serde_json::json!({
+            "database": database.display().to_string(),
+            "semantic_index_role": "derived",
+            "source_projection": "rust",
+            "report": report,
+        });
+        // Mirror the human-mode archive hint: agents reading the JSON briefing
+        // should also learn that a low-authority historical reference exists.
+        if let Ok(archive_db) = std::env::var("NAHUALI_ARCHIVE_DB")
+            && !archive_db.trim().is_empty()
+        {
+            envelope["archive"] = serde_json::json!({
+                "database": archive_db,
+                "role": "historical_reference",
+                "authority": "reference_only_unverified",
+                "hint": "recall <topic> --archive",
+            });
+        }
+        println!("{}", serde_json::to_string_pretty(&envelope)?);
     } else {
         output::print_briefing_report(&report);
         // When a read-only archive is configured, surface it so an agent whose
@@ -294,7 +304,17 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
     if args.semantic {
         let recall = memory.hybrid_recall_with_options(&query, options.clone())?;
         if args.json {
-            println!("{}", serde_json::to_string_pretty(&recall)?);
+            if archive {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "recall": recall,
+                        "archive": archive_recall_json(&query, options),
+                    }))?
+                );
+            } else {
+                println!("{}", serde_json::to_string_pretty(&recall)?);
+            }
             return Ok(());
         }
         println!(
@@ -314,7 +334,17 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
     if args.authority {
         let recall = memory.recall_with_authority_options(&query, options.clone())?;
         if args.json {
-            println!("{}", serde_json::to_string_pretty(&recall)?);
+            if archive {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "recall": recall,
+                        "archive": archive_recall_json(&query, options),
+                    }))?
+                );
+            } else {
+                println!("{}", serde_json::to_string_pretty(&recall)?);
+            }
             return Ok(());
         }
         println!(
@@ -330,8 +360,18 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
     }
 
     if args.json {
-        let results = memory.recall_with_options(&query, options)?;
-        println!("{}", serde_json::to_string(&results)?);
+        let results = memory.recall_with_options(&query, options.clone())?;
+        if archive {
+            println!(
+                "{}",
+                serde_json::to_string(&serde_json::json!({
+                    "recall": results,
+                    "archive": archive_recall_json(&query, options),
+                }))?
+            );
+        } else {
+            println!("{}", serde_json::to_string(&results)?);
+        }
         return Ok(());
     }
 
@@ -342,6 +382,38 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
     print_recall_results(recall.results);
     print_archive_recall(&query, options, archive);
     Ok(())
+}
+
+/// JSON twin of [`print_archive_recall`]: the archive section for
+/// `recall --archive --json`. Same semantics — read-only second engine, always
+/// lexical, never fatal — expressed as a status object so agents can branch on
+/// it. Only emitted when `--archive` is set, so the non-archive JSON bytes stay
+/// byte-identical to the pre-archive contract.
+fn archive_recall_json(query: &str, options: RecallOptions) -> serde_json::Value {
+    let archive_db =
+        std::env::var("NAHUALI_ARCHIVE_DB").unwrap_or_else(|_| "ts-archive".to_string());
+    let mut section = serde_json::json!({
+        "database": archive_db,
+        "authority": "reference_only_unverified",
+    });
+    let engine = match MemoryEngine::open(std::path::Path::new(&archive_db)) {
+        Ok(engine) => engine,
+        Err(_) => {
+            section["status"] = serde_json::Value::from("unavailable");
+            return section;
+        }
+    };
+    match engine.recall_with_authority_options(query, options) {
+        Ok(recall) => {
+            section["status"] = serde_json::Value::from("ok");
+            section["results"] =
+                serde_json::to_value(recall.results).unwrap_or(serde_json::Value::Null);
+        }
+        Err(_) => {
+            section["status"] = serde_json::Value::from("query_failed");
+        }
+    }
+    section
 }
 
 /// Federated read-only archive recall. When `--archive` is set, also query the
