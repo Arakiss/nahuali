@@ -4,7 +4,7 @@
   <img src="assets/nahuali-cover.webp" alt="Nahuali memory graph: event stream, projection core, and inspected knowledge network" width="100%" />
 </p>
 
-<p align="center"><sub><em>Auditable, tamper-evident memory for AI agents — it shows you the evidence before you trust it.</em></sub></p>
+<p align="center"><sub><em>Memory for AI agents that shows its evidence — and can prove its history was not rewritten.</em></sub></p>
 
 <p align="center">
   <a href="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml"><img src="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -16,21 +16,36 @@
 </p>
 
 Nahuali is a local-first, pre-release Rust memory engine for AI agents and
-operator workflows. An agent that remembers across sessions accumulates a store
-you eventually have to trust — and most memory layers give you no way to tell
-which parts are supported, stale, contradictory, or quietly rewritten. Nahuali
-treats memory as something you audit, not something you assume.
+operator workflows, built around an uncomfortable fact: an agent that remembers
+across sessions accumulates a store you eventually have to trust blindly — and
+agent memory has become an attack surface. OWASP's agentic Top 10 lists memory
+poisoning ([ASI06](https://owasp.org/www-project-agent-memory-guard/)) as a
+first-class risk, the EU AI
+Act's [Article 12](https://artificialintelligenceact.eu/article/12/) demands
+tamper-resistant records from high-risk systems, and most memory layers still
+cannot tell you which parts of what they return are supported, stale,
+contradictory, or quietly rewritten. Nahuali treats memory as something you
+audit, not something you assume.
 
-It does that two ways. **Self-inspecting memory** surfaces the evidence, health
-signals, and authority decision behind a recall, so a caller can see *why* a
-piece of memory should or should not be trusted. An optional **tamper-evident
-ledger** binds the append-only history into an Ed25519-signable hash chain, so
-you can prove the recorded past was not rewritten underneath you.
+Three mechanisms make that concrete:
 
-The current project is intentionally small: a Rust core crate, a CLI, a local
-MCP stdio server, a local HTTP API, fixtures, and release-gate scripts. It is
-not a hosted product, not an accounts system, and not a general-purpose
-database.
+- **A trust verdict on every recall.** Results carry evidence IDs, health
+  signals, and an authority decision — certify, advisory, warn, or block — so a
+  caller sees *why* a memory should or should not be trusted before acting on
+  it.
+- **A tamper-evident history.** The CLI hash-chains every recorded event by
+  default, and an opt-in Ed25519 tip attestation catches even a full
+  re-chain of the past. You can prove the recorded history was not rewritten
+  underneath you.
+- **Governance benchmarks you can re-run.** Tamper detection, provenance
+  coverage, contradiction detection, key lifecycle, and verdict calibration are
+  measured by reproducible fixtures in this repository, not asserted in
+  marketing copy. To our knowledge this suite is the first of its kind.
+
+The current project is intentionally small: a Rust core crate, a CLI with an
+interactive governance cockpit, a local MCP stdio server, a local HTTP API,
+fixtures, and release-gate scripts. It is not a hosted product, not an
+accounts system, and not a general-purpose database.
 
 For where the project is going next, see [ROADMAP.md](ROADMAP.md). The roadmap
 is directional; this README describes the current public surface.
@@ -67,9 +82,10 @@ own.
 - **Provenance.** Derived claims and links cite the episodes they came from, and
   recall can return evidence IDs and require evidence, so an answer is traceable
   back to the observation that produced it.
-- **Tamper-evident ledger** (opt-in). Each recorded event chains the previous
-  event's hash, so rewriting any historical record breaks the chain at the next
-  one and ledger replay detects it.
+- **Tamper-evident ledger** (default-on in the CLI build; feature-gated in
+  the core library). Each recorded event chains the previous event's hash, so
+  rewriting any historical record breaks the chain at the next one and ledger
+  replay detects it.
 - **Tip attestation** (opt-in). The chain tip can be signed with an Ed25519 key,
   so even a full re-chain of the history — which repairs every internal link —
   fails verification against a receipt the attacker cannot forge.
@@ -89,7 +105,10 @@ Trust should be a number you can recompute, not a word in a README. Nahuali
 defines its own governance benchmarks: each injects a fixed, labeled corpus,
 runs the real engine validators over it, and computes a rate. The measurement
 lives in the library and the release gate, so anyone can rerun it — the same
-reproducibility the engine asks of memory, applied to its own numbers.
+reproducibility the engine asks of memory, applied to its own numbers. The
+established agent-memory benchmarks (LOCOMO, LongMemEval, BEAM) measure recall
+accuracy only; we know of no other reproducible governance suite for agent
+memory, which is why Nahuali defines and gates its own.
 
 **Ledger Integrity Verification Rate (LIVR).** Detection rate `TP / (TP + FN)`
 of ledger tampering, reported per detector tier over an eight-class synthetic
@@ -176,10 +195,16 @@ are complementary, and the honest comparison cuts both ways:
 
 To our knowledge, no other open-source agent-memory engine combines all three of
 a hash-chained Merkle-proofed ledger, detached Ed25519 tip attestation, and a
-per-recall confidence-vs-provenance trust verdict over its memory ledger.
-Projects exist that ship subsets — tamper-evident action logs, or trust scoring
-without cryptographic attestation — but not the full combination. If you only
-need maximum recall accuracy, a recall-first engine is the better fit; Nahuali is
+per-recall confidence-vs-provenance trust verdict over its memory ledger. The
+closest prior art ships subsets:
+[SuperLocalMemory](https://arxiv.org/abs/2603.02240) hash-chains compliance
+events and scores writer trust against memory poisoning, but carries no
+evidence-or-freshness verdict on the recall path; MentisDB and
+witness-memory-chain sign hash-chained entries without a governance layer on
+top; OpenFang Merkle-chains agent *actions*, not a memory store; and the "Right
+to History" prototype ([arXiv 2602.20214](https://arxiv.org/abs/2602.20214))
+explores RFC 6962 audit logs for agents in research form. If you only need
+maximum recall accuracy, a recall-first engine is the better fit; Nahuali is
 for when you also have to defend what the memory says and prove it was not
 rewritten.
 
@@ -187,9 +212,13 @@ rewritten.
 
 - `nahuali-core`: the canonical Rust engine.
 - `nahuali`: an agent-first CLI for local memory recording, recall, inspection,
-  review, proactive signals, backup, and migration rehearsals.
+  review, proactive signals, backup, and migration rehearsals — plus an
+  interactive `explore` governance cockpit and read-only federated recall over
+  an archive store (`recall --archive`).
 - `nahuali-mcp`: a local MCP stdio server over the same core.
 - `nahuali-api`: a local HTTP API over the same core.
+- `nahuali-ui`: the shared terminal presentation crate (palette, tables, the
+  cockpit widgets).
 - `nahuali-regression`: a fixture runner used by release gates.
 
 The repository is pre-1.0. The source tree is public, but the project should
@@ -216,23 +245,24 @@ does not silently rewrite memory.
 
 ## Tamper-Evidence And Attestation
 
-The history matters as much as the answer. By default Nahuali validates each
+The history matters as much as the answer. At the base, Nahuali validates each
 record's sequence and a self-contained checksum on open. That catches accidental
 corruption, but a determined editor who rewrites a record and recomputes its
-checksum would pass. Two opt-in build features close that gap and stay off by
-default, so a default build writes byte-for-byte identical records.
-
-Build the CLI with the audit chain, or with the chain plus signing:
+checksum would pass. The `tamper-evidence` feature closes that gap with a hash
+chain, and the CLI ships with it enabled by default. The `attestation` feature
+adds Ed25519 tip signing on top and stays opt-in. The core library keeps both
+behind feature gates so embedders can choose; a build without them writes
+byte-for-byte identical records.
 
 ```bash
-# Hash-chained audit ledger: validate detects an in-place rewrite.
-cargo build -p nahuali-cli --features tamper-evidence
+# The default CLI build already chains records: validate detects an in-place rewrite.
+cargo build -p nahuali-cli
 
-# Chain plus Ed25519 tip signing (implies tamper-evidence).
+# Add Ed25519 tip signing (implies tamper-evidence).
 cargo build -p nahuali-cli --features attestation
 ```
 
-With `tamper-evidence`, every recorded event binds the previous event's chained
+With the chain enabled, every recorded event binds the previous event's chained
 hash. Rewriting a historical record breaks the link at the next record, and
 `validate` reports a broken chain even if the attacker forged a fresh per-record
 checksum.
@@ -445,7 +475,7 @@ nahuali-api --version
 During pre-release work, prefer `cargo run` or an isolated install root if you
 already have another `nahuali` command on your machine.
 
-## Quickstart
+## Hands-On Tour (From Source)
 
 Start with the CLI. It is the fastest way to see the engine, the ledger, recall,
 health inspection, and the review queue working together.
@@ -690,7 +720,10 @@ The release train stays prerelease-only while the project is in beta.
 - No automatic memory repair or automatic consolidation write-back.
 - No guarantee that remembered information is true; Nahuali reports evidence,
   confidence, and health signals so callers can decide whether to trust it.
-- Tamper-evidence and tip attestation are opt-in build features, off by default.
+- Tip attestation is an opt-in build feature. The core library keeps the hash
+  chain feature-gated; the CLI enables it by default, while default MCP/API
+  builds do not — a store written by both holds a mix of chained and unchained
+  records (always readable, but only chained records are tamper-protected).
 - No stable 1.0 API guarantee yet.
 
 See [ROADMAP.md](ROADMAP.md) for the longer-term direction. Roadmap items are
@@ -703,6 +736,7 @@ crates/nahuali-core        Rust memory engine
 crates/nahuali-cli         CLI crate; installs the nahuali command
 crates/nahuali-mcp         MCP stdio server
 crates/nahuali-api         Local HTTP API
+crates/nahuali-ui          Terminal presentation layer (palette, tables, cockpit)
 crates/nahuali-regression  Regression fixture runner
 fixtures                   Synthetic regression fixtures
 examples                   Synthetic example inputs
