@@ -377,6 +377,11 @@ fn finding_from_health_signal(signal: &HealthSignal) -> SelfInspectionFinding {
             "Stale memory",
             "Refresh or retire the stale memory with a new observed episode.",
         ),
+        HealthSignalKind::StaleEpisode => (
+            SelfInspectionFindingKind::StaleMemory,
+            "Dormant memory store",
+            "The store's most recent memory is old; record a current observation to refresh it.",
+        ),
         HealthSignalKind::SupersededFact => (
             SelfInspectionFindingKind::StaleMemory,
             "Superseded memory",

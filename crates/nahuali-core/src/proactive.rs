@@ -575,6 +575,11 @@ fn append_health_alerts(
                 "Stale memory",
                 "Record a fresh observation before relying on this memory.",
             ),
+            HealthSignalKind::StaleEpisode => (
+                AnomalyKind::StaleMemory,
+                "Dormant memory store",
+                "The store has not been updated recently; record a current observation before relying on it.",
+            ),
             HealthSignalKind::SupersededFact => (
                 AnomalyKind::SupersededMemory,
                 "Superseded memory",
