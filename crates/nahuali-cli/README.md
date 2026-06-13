@@ -328,6 +328,13 @@ unchained compatibility surface. Extra features remain opt-in.
   invalid. Supply a 32-byte Ed25519 seed as hex (`openssl rand -hex 32`). It also
   adds `audit --from-attestation tip.json`, which anchors the audit's lower bound
   on a verified checkpoint and diffs only what was appended since it.
+
+`attest-verify` proves the live ledger matches the receipt you provide; it does
+not prove you selected the newest receipt ever issued. To detect rollback to an
+older signed checkpoint, keep the latest receipt or another monotonic sequence
+floor outside the store and make automation verify against that external
+freshness reference.
+
 - `--features local-embeddings`: lets `semantic-rebuild` and `recall --semantic`
   use a static model2vec model instead of the deterministic embedder. Set
   `NAHUALI_EMBEDDING_PROVIDER=model2vec` and point

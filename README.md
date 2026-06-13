@@ -300,6 +300,13 @@ unknown key is rejected even when the signature itself is valid, and the command
 exits non-zero. The keyring is operator-held config kept outside the store, like
 the receipts.
 
+Attestation verifies the receipt you present. It cannot know whether that
+receipt is the newest one an operator has ever issued. A rollback to an older
+still-signed checkpoint is detectable only when automation verifies against the
+latest receipt kept outside the store, or against another operator-controlled
+freshness floor such as a known minimum sequence. Treat old valid receipts as
+historical checkpoints, not as proof that the live store is current.
+
 `audit` is a non-mutating diff of what the ledger recorded between two points,
 with the integrity of that history restated next to it. It works in any build
 (bounded by `--from`/`--to` sequence and `--since`/`--until` timestamp). On an
