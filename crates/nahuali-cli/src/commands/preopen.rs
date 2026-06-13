@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::{Context, bail};
 use clap::CommandFactory;
 use clap_complete::generate;
-use nahuali_core::MemoryEngine;
+use nahuali_core::{BackupValidationOptions, MemoryEngine, RecordLedgerValidationOptions};
 
 use crate::{
     cli::{Cli, Command},
@@ -27,8 +27,29 @@ pub(crate) fn handle(command: &Command, database: &Path) -> anyhow::Result<bool>
             );
             Ok(true)
         }
-        Command::Validate { json } => validate(database, *json),
-        Command::BackupValidate { path, json } => backup_validate(path, *json),
+        Command::Validate {
+            #[cfg(feature = "tamper-evidence")]
+            require_chained,
+            json,
+        } => {
+            #[cfg(feature = "tamper-evidence")]
+            let require_chained = *require_chained;
+            #[cfg(not(feature = "tamper-evidence"))]
+            let require_chained = false;
+            validate(database, require_chained, *json)
+        }
+        Command::BackupValidate {
+            path,
+            #[cfg(feature = "tamper-evidence")]
+            require_chained,
+            json,
+        } => {
+            #[cfg(feature = "tamper-evidence")]
+            let require_chained = *require_chained;
+            #[cfg(not(feature = "tamper-evidence"))]
+            let require_chained = false;
+            backup_validate(path, require_chained, *json)
+        }
         Command::BackupDrill {
             path,
             target_database,
@@ -56,8 +77,9 @@ pub(crate) fn handle(command: &Command, database: &Path) -> anyhow::Result<bool>
     }
 }
 
-fn validate(database: &Path, json: bool) -> anyhow::Result<bool> {
-    let report = MemoryEngine::validate_store(database)
+fn validate(database: &Path, require_chained: bool, json: bool) -> anyhow::Result<bool> {
+    let options = RecordLedgerValidationOptions { require_chained };
+    let report = MemoryEngine::validate_store_with_options(database, &options)
         .with_context(|| format!("failed to validate {}", database.display()))?;
     if json {
         if report.valid {
@@ -87,6 +109,7 @@ fn validate(database: &Path, json: bool) -> anyhow::Result<bool> {
                     "observed_event_versions": report.observed_event_versions,
                     "legacy_event_count": report.legacy_event_count,
                     "migration_required": report.migration_required,
+                    "require_chained": options.require_chained,
                     "issues": report.issues,
                 })
             );
@@ -102,6 +125,10 @@ fn validate(database: &Path, json: bool) -> anyhow::Result<bool> {
                     serde_json::json!("memory_record"),
                 );
                 object.insert("projection".to_string(), serde_json::json!("rust"));
+                object.insert(
+                    "require_chained".to_string(),
+                    serde_json::json!(options.require_chained),
+                );
             }
             println!("{}", serde_json::to_string(&value)?);
         }
@@ -125,6 +152,7 @@ fn validate(database: &Path, json: bool) -> anyhow::Result<bool> {
         println!("Intentions: {}", data.intentions.len());
         println!("Review decisions: {}", data.review_decisions.len());
         println!("Migration required: {}", report.migration_required);
+        println!("Require chained: {}", options.require_chained);
         if let Some(last_event_id) = &data.last_event_id {
             println!("Last event: {last_event_id}");
         }
@@ -152,8 +180,9 @@ fn validate(database: &Path, json: bool) -> anyhow::Result<bool> {
     bail!("memory record validation failed");
 }
 
-fn backup_validate(path: &Path, json: bool) -> anyhow::Result<bool> {
-    let report = MemoryEngine::validate_backup(path)
+fn backup_validate(path: &Path, require_chained: bool, json: bool) -> anyhow::Result<bool> {
+    let options = BackupValidationOptions { require_chained };
+    let report = MemoryEngine::validate_backup_with_options(path, &options)
         .with_context(|| format!("failed to validate backup {}", path.display()))?;
     if json {
         let mut value = serde_json::to_value(&report)?;
@@ -169,6 +198,10 @@ fn backup_validate(path: &Path, json: bool) -> anyhow::Result<bool> {
         println!("Status: {}", if report.valid { "valid" } else { "invalid" });
         println!("Checksum valid: {}", report.checksum_valid);
         println!("Records valid: {}", report.records_valid);
+        #[cfg(feature = "tamper-evidence")]
+        println!("Chain valid: {}", report.chain_valid);
+        #[cfg(feature = "tamper-evidence")]
+        println!("Require chained: {}", report.require_chained);
         if let Some(record_count) = report.backup_record_count {
             println!("Records: {record_count}");
         }

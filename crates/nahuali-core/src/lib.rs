@@ -92,8 +92,9 @@ pub use audit::{
 pub use authority::{AuthorityDecision, AuthorityMode, AuthorityRecall};
 pub use backup::{
     BackupDrillReport, BackupIssue, BackupIssueKind, BackupIssueSeverity, BackupRestoreReport,
-    BackupSummary, BackupValidation, MEMORY_BACKUP_VERSION, MemoryBackup, SemanticTierBackup,
-    SemanticTierProvider, SemanticTierRestorePolicy, SemanticTierSnapshotStatus,
+    BackupSummary, BackupValidation, BackupValidationOptions, MEMORY_BACKUP_VERSION, MemoryBackup,
+    SemanticTierBackup, SemanticTierProvider, SemanticTierRestorePolicy,
+    SemanticTierSnapshotStatus,
 };
 pub use briefing::{
     BriefingEpisode, BriefingGraphSeed, BriefingIntention, BriefingOptions, BriefingSummary,
@@ -221,5 +222,5 @@ pub use trust_report::{
 pub type LocalMemory = MemoryEngine;
 pub use validation::{
     RecordLedgerIssue, RecordLedgerIssueKind, RecordLedgerIssueSeverity, RecordLedgerValidation,
-    validate_record_ledger,
+    RecordLedgerValidationOptions, validate_record_ledger, validate_record_ledger_with_options,
 };

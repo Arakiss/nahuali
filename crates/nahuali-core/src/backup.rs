@@ -134,6 +134,17 @@ pub enum SemanticTierRestorePolicy {
     RebuildFromRecords,
 }
 
+/// Options for validating a local backup document.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BackupValidationOptions {
+    /// Require every included record to carry a tamper-evident hash-chain link.
+    ///
+    /// Default validation stays legacy-compatible. Enable this when a backup
+    /// must fail closed if an attacker stripped chain links and recomputed the
+    /// backup checksum.
+    pub require_chained: bool,
+}
+
 /// Result of validating a local backup file.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BackupValidation {
@@ -151,6 +162,13 @@ pub struct BackupValidation {
     pub checksum_valid: bool,
     /// Whether every included record has valid sequence, version, and checksum metadata.
     pub records_valid: bool,
+    /// Whether hash-chain links are valid for the included records under the
+    /// requested validation mode.
+    #[cfg(feature = "tamper-evidence")]
+    pub chain_valid: bool,
+    /// Whether this validation required every included record to be chained.
+    #[cfg(feature = "tamper-evidence")]
+    pub require_chained: bool,
     /// Semantic-tier metadata, if the document could be parsed.
     pub semantic_tier: Option<SemanticTierBackup>,
     /// Validation issues found while checking the backup.
@@ -230,6 +248,12 @@ pub enum BackupIssueKind {
     RecordSequenceMismatch,
     /// An included record checksum does not match its body.
     RecordChecksumMismatch,
+    /// An included record's hash-chain link does not match the previous
+    /// record's chained hash.
+    RecordHashChainBroken,
+    /// An included record did not carry a hash-chain link while validation
+    /// required every record to be chained.
+    RecordHashChainMissing,
     /// The target database already contains records.
     TargetNotEmpty,
     /// The restored target did not match the backup after writing.
@@ -296,6 +320,13 @@ pub(crate) fn read_backup_file(path: &Path) -> Result<MemoryBackup> {
 }
 
 pub(crate) fn validate_backup_file(path: &Path) -> Result<BackupValidation> {
+    validate_backup_file_with_options(path, &BackupValidationOptions::default())
+}
+
+pub(crate) fn validate_backup_file_with_options(
+    path: &Path,
+    options: &BackupValidationOptions,
+) -> Result<BackupValidation> {
     let raw = fs::read_to_string(path).map_err(|source| NahualiError::ReadBackup {
         path: path.to_path_buf(),
         source,
@@ -312,6 +343,10 @@ pub(crate) fn validate_backup_file(path: &Path) -> Result<BackupValidation> {
                 backup_record_ledger_checksum: None,
                 checksum_valid: false,
                 records_valid: false,
+                #[cfg(feature = "tamper-evidence")]
+                chain_valid: false,
+                #[cfg(feature = "tamper-evidence")]
+                require_chained: options.require_chained,
                 semantic_tier: None,
                 issues: vec![error_issue(
                     None,
@@ -322,13 +357,31 @@ pub(crate) fn validate_backup_file(path: &Path) -> Result<BackupValidation> {
         }
     };
 
-    Ok(validate_backup(&backup))
+    if options.require_chained {
+        Ok(validate_backup_with_options(&backup, options))
+    } else {
+        Ok(validate_backup(&backup))
+    }
 }
 
 pub(crate) fn validate_backup(backup: &MemoryBackup) -> BackupValidation {
+    validate_backup_with_options(backup, &BackupValidationOptions::default())
+}
+
+pub(crate) fn validate_backup_with_options(
+    backup: &MemoryBackup,
+    options: &BackupValidationOptions,
+) -> BackupValidation {
+    #[cfg(not(feature = "tamper-evidence"))]
+    let _ = options;
+
     let mut issues = Vec::new();
     let checksum_valid = backup.checksum_valid();
     let mut records_valid = true;
+    #[cfg(feature = "tamper-evidence")]
+    let mut chain_valid = true;
+    #[cfg(feature = "tamper-evidence")]
+    let mut last_chained: Option<String> = None;
     let actual_record_count = backup.records.len();
     let actual_last_event_id = backup.records.last().map(|event| event.id.clone());
     let actual_record_ledger_checksum = record_ledger_checksum(&backup.records);
@@ -412,6 +465,39 @@ pub(crate) fn validate_backup(backup: &MemoryBackup) -> BackupValidation {
                 BackupIssueKind::RecordChecksumMismatch,
                 "record checksum mismatch".to_string(),
             ));
+            continue;
+        }
+
+        #[cfg(feature = "tamper-evidence")]
+        if event.is_chained() {
+            let expected_prev = last_chained.clone().unwrap_or_default();
+            let recorded_prev = event.prev_hash.clone().unwrap_or_default();
+            if recorded_prev != expected_prev {
+                records_valid = false;
+                chain_valid = false;
+                issues.push(error_issue(
+                    Some(record),
+                    BackupIssueKind::RecordHashChainBroken,
+                    "record hash-chain broken: recorded prev_hash does not match the previous record's chained hash"
+                        .to_string(),
+                ));
+                continue;
+            }
+        } else if options.require_chained {
+            records_valid = false;
+            chain_valid = false;
+            issues.push(error_issue(
+                Some(record),
+                BackupIssueKind::RecordHashChainMissing,
+                "record hash-chain missing: backup validation requires every record to be chained"
+                    .to_string(),
+            ));
+            continue;
+        }
+
+        #[cfg(feature = "tamper-evidence")]
+        {
+            last_chained = Some(event.chain_hash());
         }
     }
 
@@ -423,6 +509,10 @@ pub(crate) fn validate_backup(backup: &MemoryBackup) -> BackupValidation {
         backup_record_ledger_checksum: Some(backup.record_ledger_checksum.clone()),
         checksum_valid,
         records_valid,
+        #[cfg(feature = "tamper-evidence")]
+        chain_valid,
+        #[cfg(feature = "tamper-evidence")]
+        require_chained: options.require_chained,
         semantic_tier: Some(backup.semantic_tier.clone()),
         issues,
     }
@@ -583,4 +673,113 @@ struct BackupChecksumBody<'a> {
     record_ledger_checksum: &'a str,
     semantic_tier: &'a SemanticTierBackup,
     records: &'a [EventEnvelope],
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{EpisodeRecorded, MemoryEvent};
+
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn backup_validation_rejects_chain_stripping_when_strict_mode_requires_links() {
+        let mut backup = create_backup(
+            Path::new("memory.surrealdb"),
+            &chained_events(3),
+            Vec::new(),
+        );
+
+        for record in &mut backup.records {
+            record.prev_hash = None;
+            assert!(
+                record.validate_checksum(),
+                "stripping prev_hash must not invalidate the per-event checksum"
+            );
+        }
+        refresh_backup_checksums(&mut backup);
+
+        let default_report = validate_backup(&backup);
+        assert!(default_report.valid);
+        assert!(default_report.records_valid);
+        assert!(default_report.chain_valid);
+        assert!(!default_report.require_chained);
+
+        let strict_report = validate_backup_with_options(
+            &backup,
+            &BackupValidationOptions {
+                require_chained: true,
+            },
+        );
+
+        assert!(!strict_report.valid);
+        assert!(!strict_report.records_valid);
+        assert!(!strict_report.chain_valid);
+        assert!(strict_report.require_chained);
+        assert!(
+            strict_report
+                .issues
+                .iter()
+                .any(|issue| issue.kind == BackupIssueKind::RecordHashChainMissing),
+            "expected a chain-missing issue, got {:?}",
+            strict_report.issues
+        );
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn backup_validation_rejects_broken_chain_links_even_with_valid_manifest_checksums() {
+        let mut backup = create_backup(
+            Path::new("memory.surrealdb"),
+            &chained_events(3),
+            Vec::new(),
+        );
+        backup.records[1].prev_hash = Some("sha256:not-the-previous-hash".to_string());
+        refresh_backup_checksums(&mut backup);
+
+        let report = validate_backup(&backup);
+
+        assert!(!report.valid);
+        assert!(report.checksum_valid);
+        assert!(!report.records_valid);
+        assert!(!report.chain_valid);
+        assert!(
+            report.issues.iter().any(|issue| {
+                issue.record == Some(2) && issue.kind == BackupIssueKind::RecordHashChainBroken
+            }),
+            "expected a chain-broken issue at record 2, got {:?}",
+            report.issues
+        );
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    fn chained_events(count: u64) -> Vec<EventEnvelope> {
+        let mut events: Vec<EventEnvelope> = Vec::new();
+        for sequence in 1..=count {
+            let prev = events.last().map(EventEnvelope::chain_hash);
+            events.push(EventEnvelope::with_chain(
+                sequence,
+                1_700_000_000_000 + sequence,
+                MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                    id: format!("episode_{sequence}"),
+                    content: format!("Backup validation event {sequence}"),
+                    tags: vec!["backup".to_string()],
+                    mentions: Vec::new(),
+                    source_id: None,
+                    source_position: None,
+                    source_role: None,
+                    scope: None,
+                }),
+                prev.as_deref(),
+            ));
+        }
+        events
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    fn refresh_backup_checksums(backup: &mut MemoryBackup) {
+        backup.record_count = backup.records.len();
+        backup.last_event_id = backup.records.last().map(|event| event.id.clone());
+        backup.record_ledger_checksum = record_ledger_checksum(&backup.records);
+        backup.checksum = backup_checksum(backup);
+    }
 }

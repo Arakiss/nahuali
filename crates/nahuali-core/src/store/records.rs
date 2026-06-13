@@ -55,6 +55,14 @@ impl MemoryEngine {
         validate_record_ledger(path)
     }
 
+    /// Validate a SurrealDB database name with explicit integrity requirements.
+    pub fn validate_store_with_options(
+        path: impl AsRef<Path>,
+        options: &RecordLedgerValidationOptions,
+    ) -> Result<RecordLedgerValidation> {
+        validate_record_ledger_with_options(path, options)
+    }
+
     /// Return the current deterministic projection.
     pub fn data(&self) -> &MemoryData {
         &self.data

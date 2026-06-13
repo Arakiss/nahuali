@@ -464,6 +464,14 @@ impl MemoryEngine {
         backup::validate_backup_file(path.as_ref())
     }
 
+    /// Validate a local backup file with explicit integrity requirements.
+    pub fn validate_backup_with_options(
+        path: impl AsRef<Path>,
+        options: &BackupValidationOptions,
+    ) -> Result<BackupValidation> {
+        backup::validate_backup_file_with_options(path.as_ref(), options)
+    }
+
     /// Restore a backup into an empty target database.
     ///
     /// The target database must contain no records. Restores preserve event

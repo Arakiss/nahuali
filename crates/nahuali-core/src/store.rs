@@ -9,14 +9,14 @@ use std::{
 
 use crate::{
     AnomalyAcknowledgementOptions, AnomalyAcknowledgementReport, AnomalyReport, AuthorityDecision,
-    AuthorityRecall, BackupDrillReport, BackupRestoreReport, BackupValidation, BriefingOptions,
-    ConsolidationPlanOptions, DeadlineReport, EpisodeRecorded, GraphTraversalOptions,
-    IngestionReport, IntentionReconciliationOptions, IntentionReconciliationReport,
-    IntentionUpdateOptions, MemoryBackup, MemoryBriefingReport, MemoryConsolidationPlanReport,
-    MemoryGraphReport, MemoryHookKind, MemoryHookOptions, MemoryHookReport, MemoryIngestDocument,
-    MemoryProactiveReport, MemoryReflectionReport, MemorySleepReport, ProactiveOptions,
-    RecallOptions, ReflectionOptions, ReviewResolutionOptions, ReviewResolutionReport,
-    SleepModeOptions,
+    AuthorityRecall, BackupDrillReport, BackupRestoreReport, BackupValidation,
+    BackupValidationOptions, BriefingOptions, ConsolidationPlanOptions, DeadlineReport,
+    EpisodeRecorded, GraphTraversalOptions, IngestionReport, IntentionReconciliationOptions,
+    IntentionReconciliationReport, IntentionUpdateOptions, MemoryBackup, MemoryBriefingReport,
+    MemoryConsolidationPlanReport, MemoryGraphReport, MemoryHookKind, MemoryHookOptions,
+    MemoryHookReport, MemoryIngestDocument, MemoryProactiveReport, MemoryReflectionReport,
+    MemorySleepReport, ProactiveOptions, RecallOptions, ReflectionOptions, ReviewResolutionOptions,
+    ReviewResolutionReport, SleepModeOptions,
     backup::{self, SemanticTierRestorePolicy},
     briefing, consolidation_plan,
     database::{SURREAL_NAMESPACE, database_name, normalized_endpoint},
@@ -49,7 +49,10 @@ use crate::{
     semantic,
     semantic::{HybridRecallReport, SemanticConfig, SemanticIndexReport, SemanticIndexStatus},
     sleep,
-    validation::{RecordLedgerValidation, validate_record_ledger},
+    validation::{
+        RecordLedgerValidation, RecordLedgerValidationOptions, validate_record_ledger,
+        validate_record_ledger_with_options,
+    },
 };
 use serde::Deserialize;
 use surrealdb::{

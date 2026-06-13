@@ -777,6 +777,10 @@ pub(crate) enum Command {
     },
     #[command(about = "Validate the SurrealDB memory_record ledger without mutating it.")]
     Validate {
+        /// Fail when any record lacks a tamper-evident hash-chain link.
+        #[cfg(feature = "tamper-evidence")]
+        #[arg(long = "require-chained")]
+        require_chained: bool,
         #[arg(long)]
         json: bool,
     },
@@ -880,6 +884,10 @@ pub(crate) enum Command {
     BackupValidate {
         #[arg(value_name = "PATH")]
         path: PathBuf,
+        /// Fail when any backup record lacks a tamper-evident hash-chain link.
+        #[cfg(feature = "tamper-evidence")]
+        #[arg(long = "require-chained")]
+        require_chained: bool,
         #[arg(long)]
         json: bool,
     },

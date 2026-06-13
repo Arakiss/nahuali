@@ -129,6 +129,25 @@ fn backup_validate_and_restore_are_scriptable() {
     assert_eq!(validation["valid"], true);
     assert_eq!(validation["checksum_valid"], true);
     assert_eq!(validation["records_valid"], true);
+    assert_eq!(validation["chain_valid"], true);
+    assert_eq!(validation["require_chained"], false);
+
+    let strict_validate_output = run_ok(
+        &source_store,
+        &["backup-validate", &backup_arg, "--require-chained", "--json"],
+    );
+    let strict_validation: Value =
+        serde_json::from_str(&strict_validate_output).expect("strict backup validation is JSON");
+    assert_eq!(strict_validation["valid"], true);
+    assert_eq!(strict_validation["chain_valid"], true);
+    assert_eq!(strict_validation["require_chained"], true);
+
+    let strict_store_output = run_ok(&source_store, &["validate", "--require-chained", "--json"]);
+    let strict_store: Value =
+        serde_json::from_str(&strict_store_output).expect("strict store validation is JSON");
+    assert_eq!(strict_store["valid"], true);
+    assert_eq!(strict_store["event_count"], 2);
+    assert_eq!(strict_store["require_chained"], true);
 
     let drill_output = run_ok(
         &source_store,

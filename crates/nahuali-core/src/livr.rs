@@ -7,7 +7,7 @@
 //! tiers of increasing strength:
 //!
 //! * checksum-only   -- the self-contained per-event checksum (the naive baseline);
-//! * replay-chain    -- checksum + sequence contiguity + the hash chain;
+//! * replay-chain    -- checksum + sequence contiguity + complete hash-chain links;
 //! * attestation-tip -- replay plus an externally anchored, signed tip receipt.
 //!
 //! The point of exposing this as a library function rather than burying it in a
@@ -46,8 +46,8 @@ const TARGET: usize = 2;
 ///
 /// The corpus is grouped by the weakest tier that catches each class, so the
 /// per-tier detection rates stay honest and stable as classes are added: two
-/// checksum-catchable classes, four that need the replay chain, and two fully
-/// re-chained suffixes that only the anchored tip can see.
+/// checksum-catchable classes, five that need strict replay-chain validation,
+/// and two fully re-chained suffixes that only the anchored tip can see.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LivrAttackClass {
@@ -71,6 +71,10 @@ pub enum LivrAttackClass {
     /// A middle event is replaced by an event grafted from a different ledger:
     /// its own checksum is valid, but its chain link belongs to a foreign chain.
     CrossLedgerGraft,
+    /// Hash-chain links are stripped from an otherwise valid ledger, preserving
+    /// valid per-event checksums while downgrading the ledger to an unchained
+    /// legacy shape.
+    ChainStrip,
     /// A middle event is rewritten and the whole suffix re-chained, so every
     /// link is internally consistent again.
     SuffixRechain,
@@ -129,7 +133,7 @@ pub struct LivrReport {
     pub tiers: Vec<LivrTierResult>,
 }
 
-const CLASSES: [LivrAttackClass; 9] = [
+const CLASSES: [LivrAttackClass; 10] = [
     LivrAttackClass::Clean,
     // checksum-catchable
     LivrAttackClass::ChecksumMutation,
@@ -139,6 +143,7 @@ const CLASSES: [LivrAttackClass; 9] = [
     LivrAttackClass::TimestampSkew,
     LivrAttackClass::SequenceGap,
     LivrAttackClass::CrossLedgerGraft,
+    LivrAttackClass::ChainStrip,
     // only the anchored tip
     LivrAttackClass::SuffixRechain,
     LivrAttackClass::PayloadTruncationRechain,
@@ -230,7 +235,10 @@ fn sequence_contiguous(events: &[EventEnvelope]) -> bool {
 }
 
 fn replay_chain_flags(events: &[EventEnvelope]) -> bool {
-    checksum_flags(events) || !sequence_contiguous(events) || verify_event_chain(events).is_some()
+    checksum_flags(events)
+        || !sequence_contiguous(events)
+        || !events.iter().all(EventEnvelope::is_chained)
+        || verify_event_chain(events).is_some()
 }
 
 fn attestation_tip_flags(events: &[EventEnvelope], receipt: &LedgerAttestation) -> bool {
@@ -356,6 +364,15 @@ fn inject(clean: &[EventEnvelope], class: LivrAttackClass) -> Vec<EventEnvelope>
             assert!(graft.validate_checksum(), "the grafted checksum is valid");
             events[TARGET] = graft;
         }
+        LivrAttackClass::ChainStrip => {
+            for event in &mut events {
+                event.prev_hash = None;
+                assert!(
+                    event.validate_checksum(),
+                    "stripping prev_hash preserves the per-event checksum"
+                );
+            }
+        }
         LivrAttackClass::PayloadTruncationRechain => {
             // Truncate the target's content, then re-chain the whole ledger so
             // every link is internally consistent again -- like SuffixRechain but
@@ -419,15 +436,15 @@ mod tests {
         assert_eq!(report.version, LIVR_REPORT_VERSION);
         assert_eq!(report.ledger_len, LEDGER_LEN);
 
-        // Eight tampered classes plus the clean control.
-        assert_eq!(report.tampered_class_count, 8);
+        // Nine tampered classes plus the clean control.
+        assert_eq!(report.tampered_class_count, 9);
 
         // The naive baseline catches only the two classes that leave a stale or
-        // corrupted per-event checksum (2 of 8): everything else forges a valid one.
+        // corrupted per-event checksum (2 of 9): everything else forges a valid one.
         let checksum = tier(&report, LivrDetectorTier::ChecksumOnly);
-        assert_eq!(checksum.detection_rate, 0.25);
+        assert_eq!(checksum.detection_rate, 0.22);
         assert_eq!(checksum.true_positives, 2);
-        assert_eq!(checksum.false_negatives, 6);
+        assert_eq!(checksum.false_negatives, 7);
         assert_eq!(checksum.false_positives, 0);
         assert_eq!(
             checksum.undetected,
@@ -436,17 +453,19 @@ mod tests {
                 LivrAttackClass::TimestampSkew,
                 LivrAttackClass::SequenceGap,
                 LivrAttackClass::CrossLedgerGraft,
+                LivrAttackClass::ChainStrip,
                 LivrAttackClass::SuffixRechain,
                 LivrAttackClass::PayloadTruncationRechain,
             ]
         );
 
         // Replaying the chain catches every in-place edit, the timestamp skew, the
-        // sequence gap, and the cross-ledger graft that the checksum alone cannot
-        // (6 of 8), but it is blind to a fully re-chained suffix in either form.
+        // sequence gap, the cross-ledger graft, and stripped chain links that the
+        // checksum alone cannot (7 of 9), but it is blind to a fully re-chained
+        // suffix in either form.
         let replay = tier(&report, LivrDetectorTier::ReplayChain);
-        assert_eq!(replay.detection_rate, 0.75);
-        assert_eq!(replay.true_positives, 6);
+        assert_eq!(replay.detection_rate, 0.78);
+        assert_eq!(replay.true_positives, 7);
         assert_eq!(replay.false_negatives, 2);
         assert_eq!(replay.false_positives, 0);
         assert_eq!(
@@ -461,17 +480,17 @@ mod tests {
         // still no false positive on the clean control.
         let attestation = tier(&report, LivrDetectorTier::AttestationTip);
         assert_eq!(attestation.detection_rate, 1.0);
-        assert_eq!(attestation.true_positives, 8);
+        assert_eq!(attestation.true_positives, 9);
         assert_eq!(attestation.false_negatives, 0);
         assert_eq!(attestation.false_positives, 0);
         assert!(attestation.undetected.is_empty());
     }
 
     /// A clean, unchained legacy ledger (records written before the hash chain
-    /// existed) must not be mistaken for tampering: the replay tier skips
-    /// unchained events rather than reporting a broken chain.
+    /// existed) has no broken links in the compatibility verifier, while the
+    /// strict replay detector used for LIVR still flags missing chain coverage.
     #[test]
-    fn legacy_unchained_clean_ledger_is_not_flagged() {
+    fn legacy_unchained_clean_ledger_is_default_compatible_but_not_strict() {
         let legacy: Vec<EventEnvelope> = (1..=4)
             .map(|sequence| {
                 EventEnvelope::new(sequence, 1000 + sequence, episode_event(sequence, "legacy"))
@@ -479,6 +498,7 @@ mod tests {
             .collect();
 
         assert!(legacy.iter().all(|event| !event.is_chained()));
-        assert!(!replay_chain_flags(&legacy));
+        assert_eq!(verify_event_chain(&legacy), None);
+        assert!(replay_chain_flags(&legacy));
     }
 }

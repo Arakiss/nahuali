@@ -34,6 +34,17 @@ pub struct RecordLedgerValidation {
     pub issues: Vec<RecordLedgerIssue>,
 }
 
+/// Options for non-mutating record-ledger validation.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RecordLedgerValidationOptions {
+    /// Require every record to carry a tamper-evident hash-chain link.
+    ///
+    /// The default validator remains legacy-compatible and accepts unchained
+    /// records. Set this when a deployment must fail closed on stripped chain
+    /// links or mixed chained/unchained ledgers.
+    pub require_chained: bool,
+}
+
 impl RecordLedgerValidation {
     /// Return a valid empty report.
     pub fn empty() -> Self {
@@ -80,9 +91,14 @@ pub enum RecordLedgerIssueKind {
     /// `prev_hash` does not match the previous event's chained hash.
     ///
     /// Only produced when the `tamper-evidence` feature is enabled and the
-    /// record carries a chain link; default-build and legacy unchained records
-    /// never raise it.
+    /// record carries a chain link.
     HashChainBroken,
+    /// A record did not carry a hash-chain link while validation required every
+    /// record to be chained.
+    ///
+    /// Only produced when the `tamper-evidence` feature is enabled and strict
+    /// validation requested `require_chained`.
+    HashChainMissing,
 }
 
 /// Record-ledger validation issue severity.
@@ -103,6 +119,17 @@ struct MemoryRecord {
 
 /// Validate the SurrealDB record ledger without mutating or projecting it.
 pub fn validate_record_ledger(path: impl AsRef<Path>) -> Result<RecordLedgerValidation> {
+    validate_record_ledger_with_options(path, &RecordLedgerValidationOptions::default())
+}
+
+/// Validate the SurrealDB record ledger with explicit integrity requirements.
+pub fn validate_record_ledger_with_options(
+    path: impl AsRef<Path>,
+    options: &RecordLedgerValidationOptions,
+) -> Result<RecordLedgerValidation> {
+    #[cfg(not(feature = "tamper-evidence"))]
+    let _ = options;
+
     let path = path.as_ref();
     let read_path = path.to_path_buf();
     let records = block_on_database(async move { read_records(&read_path).await })?;
@@ -189,6 +216,15 @@ pub fn validate_record_ledger(path: impl AsRef<Path>) -> Result<RecordLedgerVali
                 ));
                 continue;
             }
+        } else if options.require_chained {
+            report.valid = false;
+            report.issues.push(error_issue(
+                record_number,
+                RecordLedgerIssueKind::HashChainMissing,
+                "hash-chain missing: record has no prev_hash while strict validation requires every record to be chained"
+                    .to_string(),
+            ));
+            continue;
         }
         #[cfg(feature = "tamper-evidence")]
         {
@@ -305,6 +341,9 @@ mod tests {
         validate_record_ledger,
     };
 
+    #[cfg(feature = "tamper-evidence")]
+    use super::{RecordLedgerValidationOptions, validate_record_ledger_with_options};
+
     #[test]
     fn validates_missing_store_as_empty_records() {
         let path = temp_path("missing-store");
@@ -399,6 +438,40 @@ mod tests {
             report.issues[0].kind,
             RecordLedgerIssueKind::ChecksumMismatch
         );
+
+        let _ = fs::remove_dir_all(path);
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn strict_validation_rejects_unchained_records_without_breaking_legacy_default() {
+        let path = temp_path("strict-require-chained");
+        let _ = fs::remove_dir_all(&path);
+
+        let event = test_envelope(1);
+        assert!(!event.is_chained());
+        write_raw_record(&path, event.sequence, event);
+
+        let default_report = validate_record_ledger(&path).unwrap();
+        assert!(default_report.valid);
+        assert_eq!(default_report.event_count, 1);
+
+        let strict_report = validate_record_ledger_with_options(
+            &path,
+            &RecordLedgerValidationOptions {
+                require_chained: true,
+            },
+        )
+        .unwrap();
+
+        assert!(!strict_report.valid);
+        assert_eq!(strict_report.event_count, 0);
+        assert_eq!(strict_report.issues.len(), 1);
+        assert_eq!(
+            strict_report.issues[0].kind,
+            RecordLedgerIssueKind::HashChainMissing
+        );
+        assert_eq!(strict_report.issues[0].line, Some(1));
 
         let _ = fs::remove_dir_all(path);
     }

@@ -16,6 +16,7 @@ pub(crate) fn issue_kind_name(kind: &RecordLedgerIssueKind) -> &'static str {
         RecordLedgerIssueKind::UnsupportedVersion => "unsupported_version",
         RecordLedgerIssueKind::ChecksumMismatch => "checksum_mismatch",
         RecordLedgerIssueKind::HashChainBroken => "hash_chain_broken",
+        RecordLedgerIssueKind::HashChainMissing => "hash_chain_missing",
     }
 }
 
@@ -37,6 +38,8 @@ pub(crate) fn backup_issue_kind_name(kind: &BackupIssueKind) -> &'static str {
         BackupIssueKind::RecordLedgerMismatch => "record_ledger_mismatch",
         BackupIssueKind::RecordSequenceMismatch => "record_sequence_mismatch",
         BackupIssueKind::RecordChecksumMismatch => "record_checksum_mismatch",
+        BackupIssueKind::RecordHashChainBroken => "record_hash_chain_broken",
+        BackupIssueKind::RecordHashChainMissing => "record_hash_chain_missing",
         BackupIssueKind::TargetNotEmpty => "target_not_empty",
         BackupIssueKind::RestoreVerificationMismatch => "restore_verification_mismatch",
     }

@@ -111,15 +111,15 @@ accuracy only; we know of no other reproducible governance suite for agent
 memory, which is why Nahuali defines and gates its own.
 
 **Ledger Integrity Verification Rate (LIVR).** Detection rate `TP / (TP + FN)`
-of ledger tampering, reported per detector tier over an eight-class synthetic
+of ledger tampering, reported per detector tier over a nine-class synthetic
 attack corpus, with the per-tier blind spot made explicit rather than averaged
 away:
 
 | Detector tier | Detection rate | What it adds |
 |---|---|---|
-| checksum-only | 0.25 | the naive baseline: only a stale or corrupted per-event checksum |
-| replay-chain | 0.75 | + in-place rewrites, timestamp skew, sequence gaps, cross-ledger grafts |
-| attestation-tip | 1.00 | + fully re-chained suffixes — with zero false positives on the clean and legacy-unchained controls |
+| checksum-only | 0.22 | the naive baseline: only a stale or corrupted per-event checksum |
+| replay-chain | 0.78 | + in-place rewrites, timestamp skew, sequence gaps, cross-ledger grafts, stripped chain links |
+| attestation-tip | 1.00 | + fully re-chained suffixes, with zero false positives on the clean chained control |
 
 ```bash
 cargo run -p nahuali-regression --features attestation -- --livr
@@ -265,7 +265,9 @@ cargo build -p nahuali-cli --features attestation
 With the chain enabled, every recorded event binds the previous event's chained
 hash. Rewriting a historical record breaks the link at the next record, and
 `validate` reports a broken chain even if the attacker forged a fresh per-record
-checksum.
+checksum. Default validation remains compatible with pre-chain records; use
+`validate --require-chained` when a deployment must fail closed if records are
+missing chain links.
 
 With `attestation`, sign the current tip and keep the receipt outside the store.
 Nahuali never generates keys or touches the network — supply a 32-byte Ed25519
@@ -662,7 +664,9 @@ cargo run -p nahuali-cli -- --database .nahuali-demo backup \
   --dry-run \
   --json
 
-cargo run -p nahuali-cli -- backup-validate .nahuali-demo.backup.json --json
+cargo run -p nahuali-cli -- backup-validate .nahuali-demo.backup.json \
+  --require-chained \
+  --json
 
 cargo run -p nahuali-cli -- backup-drill \
   .nahuali-demo.backup.json \

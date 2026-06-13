@@ -250,7 +250,9 @@ review work. It appends an audit decision only after an operator supplies a note
 
 `validate --json` is non-destructive. It reports record-ledger compatibility issues
 as structured JSON before exiting non-zero, includes `database`, and lets
-automation inspect invalid logs without projecting them.
+automation inspect invalid logs without projecting them. Default validation stays
+compatible with pre-chain records; add `--require-chained` when automation must
+fail closed if any record lacks a hash-chain link.
 
 `audit` is a non-mutating diff of what the ledger recorded between two points. It
 bounds the range with `--from`/`--to` (exclusive then inclusive sequence) and
@@ -273,7 +275,9 @@ writes an optional projection artifact or previews it with `--dry-run`.
 record ledger.
 
 `backup` writes an authoritative record-ledger manifest or previews it with
-`--dry-run`. `backup-validate` checks the manifest and all included records.
+`--dry-run`. `backup-validate` checks the manifest and all included records;
+with `--require-chained`, it also rejects backups where a valid checksum hides
+stripped hash-chain links.
 `backup-drill` validates the backup and dry-runs restore into a target database
 without writing records. `restore` writes backup records only into an empty
 target database and reports that Qdrant vectors must be rebuilt from the
@@ -313,8 +317,10 @@ unchained compatibility surface. Extra features remain opt-in.
 
 - `--features tamper-evidence` (default in `nahuali-cli`): recorded events are chained by hash, so
   `validate` detects an in-place rewrite of any historical record even when its
-  checksum was recomputed. `audit --inclusion-proof <sequence> --json` emits a
-  Merkle inclusion proof for one event under the audited root.
+  checksum was recomputed. `validate --require-chained` and
+  `backup-validate --require-chained` reject ledgers or backups that are missing
+  chain links. `audit --inclusion-proof <sequence> --json` emits a Merkle
+  inclusion proof for one event under the audited root.
 - `--features attestation` (implies `tamper-evidence`): adds `attest-sign` and
   `attest-verify`. `attest-sign --key-file <seed> -o tip.json` signs the current
   chain tip into a portable receipt; `attest-verify tip.json` checks it against
