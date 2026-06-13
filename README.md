@@ -33,10 +33,10 @@ Three mechanisms make that concrete:
   signals, and an authority decision — certify, advisory, warn, or block — so a
   caller sees *why* a memory should or should not be trusted before acting on
   it.
-- **A tamper-evident history.** The CLI hash-chains every recorded event by
-  default, and an opt-in Ed25519 tip attestation catches even a full
-  re-chain of the past. You can prove the recorded history was not rewritten
-  underneath you.
+- **A tamper-evident history.** The CLI, MCP server, and local API hash-chain
+  every recorded event by default, and an opt-in Ed25519 tip attestation catches
+  even a full re-chain of the past. You can prove the recorded history was not
+  rewritten underneath you.
 - **Governance benchmarks you can re-run.** Tamper detection, provenance
   coverage, contradiction detection, key lifecycle, and verdict calibration are
   measured by reproducible fixtures in this repository, not asserted in
@@ -82,8 +82,9 @@ own.
 - **Provenance.** Derived claims and links cite the episodes they came from, and
   recall can return evidence IDs and require evidence, so an answer is traceable
   back to the observation that produced it.
-- **Tamper-evident ledger** (default-on in the CLI build; feature-gated in
-  the core library). Each recorded event chains the previous event's hash, so
+- **Tamper-evident ledger** (default-on in the CLI, MCP, and API builds;
+  feature-gated in the core library). Each recorded event chains the previous
+  event's hash, so
   rewriting any historical record breaks the chain at the next one and ledger
   replay detects it.
 - **Tip attestation** (opt-in). The chain tip can be signed with an Ed25519 key,
@@ -251,14 +252,16 @@ The history matters as much as the answer. At the base, Nahuali validates each
 record's sequence and a self-contained checksum on open. That catches accidental
 corruption, but a determined editor who rewrites a record and recomputes its
 checksum would pass. The `tamper-evidence` feature closes that gap with a hash
-chain, and the CLI ships with it enabled by default. The `attestation` feature
-adds Ed25519 tip signing on top and stays opt-in. The core library keeps both
-behind feature gates so embedders can choose; a build without them writes
-byte-for-byte identical records.
+chain, and the CLI, MCP server, and local API ship with it enabled by default.
+The `attestation` feature adds Ed25519 tip signing on top and stays opt-in. The
+core library keeps both behind feature gates so embedders can choose; a build
+without them writes byte-for-byte identical records.
 
 ```bash
-# The default CLI build already chains records: validate detects an in-place rewrite.
+# The default CLI/MCP/API builds already chain records: validate detects an in-place rewrite.
 cargo build -p nahuali-cli
+cargo build -p nahuali-mcp
+cargo build -p nahuali-api
 
 # Add Ed25519 tip signing (implies tamper-evidence).
 cargo build -p nahuali-cli --features attestation
@@ -482,7 +485,9 @@ Run the CLI from source:
 cargo run -p nahuali-cli -- --database .nahuali-demo validate
 ```
 
-Install local binaries when you explicitly want them on `PATH`:
+Install local binaries when you explicitly want them on `PATH`. These default
+source installs write hash-chained records; add `--no-default-features` only
+when you intentionally need the legacy unchained format.
 
 ```bash
 cargo install --path crates/nahuali-cli --locked
@@ -749,9 +754,10 @@ distribution channels.
 - No guarantee that remembered information is true; Nahuali reports evidence,
   confidence, and health signals so callers can decide whether to trust it.
 - Tip attestation is an opt-in build feature. The core library keeps the hash
-  chain feature-gated; the CLI enables it by default, while default MCP/API
-  builds do not — a store written by both holds a mix of chained and unchained
-  records (always readable, but only chained records are tamper-protected).
+  chain feature-gated; the CLI, MCP server, and local API enable hash chaining
+  by default so source installs and published binaries share the same ledger
+  protection. Use `--no-default-features` only for an intentional legacy
+  unchained build.
 - No stable 1.0 API guarantee yet.
 
 See [ROADMAP.md](ROADMAP.md) for the longer-term direction. Roadmap items are

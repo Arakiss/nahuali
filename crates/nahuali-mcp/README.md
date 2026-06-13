@@ -11,6 +11,9 @@ From the repository root:
 cargo install --path crates/nahuali-mcp --locked
 ```
 
+The default build writes hash-chained records. Use `--no-default-features` only
+when you intentionally need the legacy unchained record format.
+
 Verify the installed command:
 
 ```bash
@@ -190,8 +193,9 @@ rebuild the Qdrant semantic index from projected memory.
 
 ## Optional Build Features
 
-These are off by default; a default build is unchanged and writes byte-identical
-records.
+`tamper-evidence` is on by default to match the CLI and published binary
+artifacts. Build with `--no-default-features` only when you intentionally need
+the legacy unchained record format.
 
 - `--features tamper-evidence`: recorded events are chained by hash, so the
   `validate` tool detects an in-place rewrite of any historical record even when

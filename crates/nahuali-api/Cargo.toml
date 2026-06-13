@@ -17,9 +17,11 @@ name = "nahuali-api"
 path = "src/main.rs"
 
 [features]
-default = []
+default = ["tamper-evidence"]
 # Forward the nahuali-core optional surfaces that have an observable effect on the
-# API surface. All off by default; a default build is unchanged.
+# API surface. `tamper-evidence` is on by default to match the CLI and published
+# binary artifacts; build with `--no-default-features` for the legacy unchained
+# record format.
 # - tamper-evidence: writes are chained, and ledger replay on open detects an
 #   in-place rewrite of any historical record.
 # - local-embeddings: static model2vec embedder for `/v1/semantic/rebuild` and

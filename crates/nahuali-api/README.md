@@ -12,6 +12,9 @@ Run locally:
 cargo run -p nahuali-api -- --database memory --listen 127.0.0.1:7070
 ```
 
+The default build writes hash-chained records. Use `--no-default-features` only
+when you intentionally need the legacy unchained record format.
+
 The API is a local beta surface. It has no authentication, accounts, tenants,
 hosted operations, sync, or dashboard layer. Scopes in request bodies are memory
 labels, not permission boundaries.
@@ -57,7 +60,9 @@ OpenAPI contract), so a typo such as `"authority":true` returns a `400` with cod
 
 ## Optional build features
 
-Off by default; a default build is unchanged and writes byte-identical records.
+`tamper-evidence` is on by default to match the CLI and published binary
+artifacts. Build with `--no-default-features` only when you intentionally need
+the legacy unchained record format.
 
 - `--features tamper-evidence`: recorded events are chained by hash, so ledger
   replay on open detects an in-place rewrite of any historical record.
