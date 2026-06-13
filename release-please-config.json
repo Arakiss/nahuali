@@ -39,6 +39,11 @@
       "component": "nahuali-api",
       "package-name": "nahuali-api",
       "skip-github-release": true
+    },
+    "crates/nahuali-regression": {
+      "component": "nahuali-regression",
+      "package-name": "nahuali-regression",
+      "skip-github-release": true
     }
   },
   "plugins": [

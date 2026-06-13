@@ -119,6 +119,7 @@ assert_file_contains .github/workflows/release.yml '^    branches: \[main\]' "Re
 assert_file_contains .github/workflows/release.yml 'nahuali-cli-v\*' "release binary builds must stay scoped to nahuali-cli tags"
 assert_file_contains .github/workflows/release.yml 'cancel-in-progress: false' "release workflow must not cancel in-flight tag artifact uploads"
 assert_file_contains release-please-config.json '"prerelease-type": "beta"' "Release Please must emit beta prereleases for the beta release train"
+assert_file_contains release-please-config.json '"component": "nahuali-regression"' "Release Please must track the regression runner as an internal skipped component"
 assert_file_contains .github/workflows/release.yml 'googleapis/release-please-action@v5' "release workflow must use the current Release Please action"
 assert_file_contains .github/workflows/release.yml 'release_please:' "release workflow must expose a manual Release Please rerun"
 assert_file_contains .github/workflows/release.yml "inputs\\.release_please == true" "release workflow must route manual Release Please dispatches to the release-please job"
