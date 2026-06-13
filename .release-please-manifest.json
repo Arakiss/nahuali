@@ -1,8 +1,8 @@
 {
   ".": "0.1.0-beta.0",
-  "crates/nahuali-core": "0.4.0-beta.0",
-  "crates/nahuali-cli": "0.4.0-beta.0",
-  "crates/nahuali-mcp": "0.4.0-beta.0",
-  "crates/nahuali-api": "0.4.0-beta.0",
-  "crates/nahuali-regression": "0.1.3-beta.0"
+  "crates/nahuali-core": "0.5.0-beta.0",
+  "crates/nahuali-cli": "0.4.1-beta.0",
+  "crates/nahuali-mcp": "0.5.0-beta.0",
+  "crates/nahuali-api": "0.5.0-beta.0",
+  "crates/nahuali-regression": "0.1.4-beta.0"
 }
