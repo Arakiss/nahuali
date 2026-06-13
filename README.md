@@ -729,6 +729,11 @@ train.
 
 The release train stays prerelease-only while the project is in beta.
 
+See [DISTRIBUTION_READINESS.md](DISTRIBUTION_READINESS.md) for the
+non-destructive readiness gates, supported beta channels, release verification
+commands, and approval boundary for package registries or other external
+distribution channels.
+
 ## Current Limits
 
 - No hosted service.
