@@ -1,4 +1,11 @@
+#[cfg(feature = "tamper-evidence")]
+use serde::Serialize;
+
 use nahuali_core::{LedgerAudit, LedgerAuditEventKind, LedgerAuditOptions, MemoryEngine};
+#[cfg(feature = "tamper-evidence")]
+use nahuali_core::{
+    MerkleSibling, ledger_inclusion_proof, ledger_merkle_root, verify_merkle_proof,
+};
 
 /// Audit what changed in the record ledger between two points without mutating
 /// it. Exits non-zero when the history through the upper bound fails integrity
@@ -6,13 +13,32 @@ use nahuali_core::{LedgerAudit, LedgerAuditEventKind, LedgerAuditOptions, Memory
 pub(crate) fn audit(
     memory: &MemoryEngine,
     options: LedgerAuditOptions,
+    #[cfg(feature = "tamper-evidence")] inclusion_sequence: Option<u64>,
     json: bool,
 ) -> anyhow::Result<()> {
     let report = memory.audit_ledger(&options);
+    #[cfg(feature = "tamper-evidence")]
+    let inclusion_proof = inclusion_sequence
+        .map(|sequence| build_inclusion_proof(memory, &report, sequence))
+        .transpose()?;
 
     if json {
+        #[cfg(feature = "tamper-evidence")]
+        if let Some(proof) = &inclusion_proof {
+            let mut value = serde_json::to_value(&report)?;
+            if let Some(object) = value.as_object_mut() {
+                object.insert("inclusion_proof".to_string(), serde_json::to_value(proof)?);
+            }
+            println!("{}", serde_json::to_string(&value)?);
+        } else {
+            println!("{}", serde_json::to_string(&report)?);
+        }
+        #[cfg(not(feature = "tamper-evidence"))]
         println!("{}", serde_json::to_string(&report)?);
     } else {
+        #[cfg(feature = "tamper-evidence")]
+        print_human(&report, inclusion_proof.as_ref());
+        #[cfg(not(feature = "tamper-evidence"))]
         print_human(&report);
     }
 
@@ -22,7 +48,99 @@ pub(crate) fn audit(
     Ok(())
 }
 
+#[cfg(feature = "tamper-evidence")]
+#[derive(Debug, Serialize)]
+struct LedgerInclusionProofReport {
+    sequence: u64,
+    index: usize,
+    event_id: String,
+    leaf_chain_hash: String,
+    merkle_root: String,
+    leaf_count: usize,
+    siblings: Vec<MerkleSibling>,
+    verified: bool,
+}
+
+#[cfg(feature = "tamper-evidence")]
+fn build_inclusion_proof(
+    memory: &MemoryEngine,
+    report: &LedgerAudit,
+    sequence: u64,
+) -> anyhow::Result<LedgerInclusionProofReport> {
+    use anyhow::{Context, bail};
+
+    if sequence == 0 {
+        bail!("Merkle inclusion proofs are event proofs; sequence 0 is the genesis anchor");
+    }
+    if sequence > report.to_sequence {
+        bail!(
+            "cannot prove sequence {sequence}: the audit upper bound is sequence {}",
+            report.to_sequence
+        );
+    }
+
+    let prefix_len = memory
+        .events()
+        .iter()
+        .take_while(|event| event.sequence <= report.to_sequence)
+        .count();
+    let prefix = &memory.events()[..prefix_len];
+    if prefix.is_empty() {
+        bail!("cannot emit a Merkle inclusion proof for an empty ledger");
+    }
+    if !prefix.iter().all(|event| event.is_chained()) {
+        bail!(
+            "Merkle inclusion proofs require a fully chained ledger prefix; \
+             this prefix contains legacy unchained records"
+        );
+    }
+
+    let index = prefix
+        .iter()
+        .position(|event| event.sequence == sequence)
+        .with_context(|| format!("sequence {sequence} is not present in the audited prefix"))?;
+    let event = &prefix[index];
+    let proof =
+        ledger_inclusion_proof(prefix, index).context("failed to build Merkle inclusion proof")?;
+    let root = ledger_merkle_root(prefix).context("audited prefix has no Merkle root")?;
+    let leaf = event.chain_hash();
+    let verified = verify_merkle_proof(&leaf, &proof, &root);
+
+    Ok(LedgerInclusionProofReport {
+        sequence,
+        index,
+        event_id: event.id.clone(),
+        leaf_chain_hash: leaf,
+        merkle_root: root,
+        leaf_count: proof.leaf_count,
+        siblings: proof.siblings,
+        verified,
+    })
+}
+
+#[cfg(feature = "tamper-evidence")]
+fn print_human(report: &LedgerAudit, inclusion_proof: Option<&LedgerInclusionProofReport>) {
+    print_human_report(report);
+    if let Some(proof) = inclusion_proof {
+        println!("Merkle inclusion proof: seq {}", proof.sequence);
+        println!("  Event: {}", proof.event_id);
+        println!("  Leaf index: {} of {}", proof.index, proof.leaf_count);
+        println!("  Leaf hash: {}", proof.leaf_chain_hash);
+        println!("  Root: {}", proof.merkle_root);
+        println!("  Siblings: {}", proof.siblings.len());
+        println!(
+            "  Proof verifies: {}",
+            if proof.verified { "yes" } else { "no" }
+        );
+    }
+}
+
+#[cfg(not(feature = "tamper-evidence"))]
 fn print_human(report: &LedgerAudit) {
+    print_human_report(report);
+}
+
+fn print_human_report(report: &LedgerAudit) {
     println!("Record ledger audit");
     println!("Total events: {}", report.total_event_count);
     println!(

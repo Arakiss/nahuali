@@ -25,6 +25,25 @@ pub(crate) fn reconcile(
     let semantic = memory.sync_semantic_index();
 
     if json {
+        #[cfg(feature = "tamper-evidence")]
+        let mut ledger_json = serde_json::json!({
+            "verified": audit.integrity.verified,
+        });
+        #[cfg(feature = "tamper-evidence")]
+        if let Some(object) = ledger_json.as_object_mut() {
+            object.insert(
+                "chain_intact".to_string(),
+                serde_json::json!(audit.integrity.chain_intact),
+            );
+            object.insert(
+                "merkle_root".to_string(),
+                serde_json::json!(audit.integrity.merkle_root),
+            );
+        }
+        #[cfg(not(feature = "tamper-evidence"))]
+        let ledger_json = serde_json::json!({
+            "verified": audit.integrity.verified,
+        });
         let semantic_json = match &semantic {
             Ok(report) => serde_json::json!({
                 "synced": true,
@@ -37,11 +56,7 @@ pub(crate) fn reconcile(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
                 "database": database.display().to_string(),
-                "ledger": {
-                    "verified": audit.integrity.verified,
-                    "chain_intact": audit.integrity.chain_intact,
-                    "merkle_root": audit.integrity.merkle_root,
-                },
+                "ledger": ledger_json,
                 "graph_projection": {
                     "node_rows_written": projection.node_rows_written,
                     "relation_rows_written": projection.relation_rows_written,
@@ -59,6 +74,7 @@ pub(crate) fn reconcile(
 
     // Ledger — the authoritative tier.
     let ledger_value = if audit.integrity.verified {
+        #[cfg(feature = "tamper-evidence")]
         let chain = match &audit.integrity.merkle_root {
             Some(root) => {
                 let short: String = root.chars().take(10).collect();
@@ -66,6 +82,8 @@ pub(crate) fn reconcile(
             }
             None => "append-only · hash chain off".to_string(),
         };
+        #[cfg(not(feature = "tamper-evidence"))]
+        let chain = "append-only · hash chain off".to_string();
         format!(
             "{} · {}",
             style::badge("verified", theme::GREEN),

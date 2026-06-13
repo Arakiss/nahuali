@@ -510,6 +510,8 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             until,
             #[cfg(feature = "attestation")]
             from_attestation,
+            #[cfg(feature = "tamper-evidence")]
+            inclusion_proof,
             json,
         } => {
             #[cfg(feature = "attestation")]
@@ -525,6 +527,8 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
                     since_ms: since,
                     until_ms: until,
                 },
+                #[cfg(feature = "tamper-evidence")]
+                inclusion_proof,
                 json,
             )?
         }

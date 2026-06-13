@@ -114,6 +114,8 @@ nahuali --database ./memory reflect --json
 nahuali --database ./memory review --limit 5 --min-priority high --json
 nahuali --database ./memory review-resolve <review_id> --note "Operator reviewed this item" --json
 nahuali --database ./memory validate
+nahuali --database ./memory audit --json
+nahuali --database ./memory audit --inclusion-proof 2 --json
 nahuali --database ./memory maintenance
 nahuali --database ./memory snapshot --output ./memory.snapshot.json --dry-run
 nahuali --database ./memory snapshot --output ./memory.snapshot.json
@@ -305,12 +307,14 @@ time instead of collapsing migrated memory into the import time.
 
 ## Optional Build Features
 
-These features are off by default; a default build is unchanged and writes
-byte-identical records.
+The CLI default build includes `tui` and `tamper-evidence`; build with
+`--no-default-features` only when you intentionally want the minimal,
+unchained compatibility surface. Extra features remain opt-in.
 
-- `--features tamper-evidence`: recorded events are chained by hash, so
+- `--features tamper-evidence` (default in `nahuali-cli`): recorded events are chained by hash, so
   `validate` detects an in-place rewrite of any historical record even when its
-  checksum was recomputed.
+  checksum was recomputed. `audit --inclusion-proof <sequence> --json` emits a
+  Merkle inclusion proof for one event under the audited root.
 - `--features attestation` (implies `tamper-evidence`): adds `attest-sign` and
   `attest-verify`. `attest-sign --key-file <seed> -o tip.json` signs the current
   chain tip into a portable receipt; `attest-verify tip.json` checks it against

@@ -309,6 +309,16 @@ nahuali --database .nahuali-demo audit --from-attestation tip.json --json
 It refuses to run when the receipt does not anchor a verified checkpoint in this
 ledger, and exits non-zero when the audited history fails integrity
 verification, so the diff can never claim to start from an unverified point.
+When scripts need a portable proof that one specific event is committed under
+the audited Merkle root, ask `audit` for an inclusion proof:
+
+```bash
+nahuali --database .nahuali-demo audit --inclusion-proof 2 --json
+```
+
+The JSON response keeps the normal audit report and adds `inclusion_proof` with
+the event sequence, leaf index, event id, leaf chain hash, Merkle root, sibling
+path, and a local verification verdict.
 
 Run the narrated walkthrough end to end:
 

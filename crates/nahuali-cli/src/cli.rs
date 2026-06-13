@@ -801,6 +801,11 @@ pub(crate) enum Command {
         #[cfg(feature = "attestation")]
         #[arg(long = "from-attestation", value_name = "PATH")]
         from_attestation: Option<PathBuf>,
+        /// Emit a Merkle inclusion proof for the event at this sequence under
+        /// the audited upper-bound root.
+        #[cfg(feature = "tamper-evidence")]
+        #[arg(long = "inclusion-proof", value_name = "SEQUENCE")]
+        inclusion_proof: Option<u64>,
         #[arg(long)]
         json: bool,
     },
