@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use crate::{
     event::{
@@ -15,200 +15,202 @@ use crate::{
 
 pub(crate) fn project(events: &[EventEnvelope]) -> MemoryData {
     let mut data = MemoryData::default();
-    let mut entities = BTreeMap::new();
 
     for event in events {
-        data.event_count += 1;
-        data.last_event_id = Some(event.id.clone());
-
-        match &event.payload {
-            MemoryEvent::SourceRecorded(payload) => {
-                data.sources.push(SourceDocument {
-                    id: payload.id.clone(),
-                    event_id: event.id.clone(),
-                    kind: source_kind(&payload.kind),
-                    title: payload.title.clone(),
-                    uri: payload.uri.clone(),
-                    content_checksum: payload.content_checksum.clone(),
-                    byte_len: payload.byte_len,
-                    metadata: payload.metadata.clone(),
-                    scope: payload.scope.clone(),
-                    created_at_ms: event.timestamp_ms,
-                });
-            }
-            MemoryEvent::EpisodeRecorded(payload) => {
-                data.episodes.push(Episode {
-                    id: payload.id.clone(),
-                    event_id: event.id.clone(),
-                    content: payload.content.clone(),
-                    tags: payload.tags.clone(),
-                    mentions: cleaned_names(&payload.mentions),
-                    source_id: payload.source_id.clone(),
-                    source_position: payload.source_position,
-                    source_role: payload.source_role.clone(),
-                    scope: payload.scope.clone(),
-                    created_at_ms: event.timestamp_ms,
-                });
-                for mention in &payload.mentions {
-                    record_entity(
-                        &mut entities,
-                        mention,
-                        event.timestamp_ms,
-                        &event.id,
-                        payload.scope.as_ref(),
-                    );
-                }
-            }
-            MemoryEvent::FactAsserted(payload) => {
-                let claim = Claim {
-                    id: payload.id.clone(),
-                    event_id: event.id.clone(),
-                    subject: payload.subject.clone(),
-                    predicate: payload.predicate.clone(),
-                    object: payload.object.clone(),
-                    source_episode_id: payload.source_episode_id.clone(),
-                    confidence: payload.confidence,
-                    scope: payload.scope.clone(),
-                    created_at_ms: event.timestamp_ms,
-                };
-                record_entity(
-                    &mut entities,
-                    &claim.subject,
-                    event.timestamp_ms,
-                    &event.id,
-                    claim.scope.as_ref(),
-                );
-                record_entity(
-                    &mut entities,
-                    &claim.object,
-                    event.timestamp_ms,
-                    &event.id,
-                    claim.scope.as_ref(),
-                );
-                data.claims.push(claim.clone());
-                data.facts.push(claim);
-            }
-            MemoryEvent::RelationRecorded(payload) => {
-                let link = Link {
-                    id: payload.id.clone(),
-                    event_id: event.id.clone(),
-                    from: payload.from.clone(),
-                    relation: payload.relation.clone(),
-                    to: payload.to.clone(),
-                    source_episode_id: payload.source_episode_id.clone(),
-                    confidence: payload.confidence,
-                    scope: payload.scope.clone(),
-                    created_at_ms: event.timestamp_ms,
-                };
-                record_entity(
-                    &mut entities,
-                    &link.from,
-                    event.timestamp_ms,
-                    &event.id,
-                    link.scope.as_ref(),
-                );
-                record_entity(
-                    &mut entities,
-                    &link.to,
-                    event.timestamp_ms,
-                    &event.id,
-                    link.scope.as_ref(),
-                );
-                data.links.push(link.clone());
-                data.relations.push(link);
-            }
-            MemoryEvent::ProcedureRecorded(payload) => {
-                data.procedures.push(Procedure {
-                    id: payload.id.clone(),
-                    event_id: event.id.clone(),
-                    kind: procedure_kind(&payload.kind),
-                    name: payload.name.clone(),
-                    body: payload.body.clone(),
-                    source_episode_id: payload.source_episode_id.clone(),
-                    confidence: payload.confidence,
-                    scope: payload.scope.clone(),
-                    created_at_ms: event.timestamp_ms,
-                });
-            }
-            MemoryEvent::IntentionRecorded(payload) => {
-                data.intentions.push(Intention {
-                    id: payload.id.clone(),
-                    event_id: event.id.clone(),
-                    updated_event_id: event.id.clone(),
-                    kind: intention_kind(&payload.kind),
-                    status: IntentionStatus::Active,
-                    priority: intention_priority(&payload.priority),
-                    description: payload.description.clone(),
-                    source_episode_id: payload.source_episode_id.clone(),
-                    status_reason: None,
-                    deadline_at_ms: payload.deadline_at_ms,
-                    depends_on: payload.depends_on.clone(),
-                    goal_id: payload.goal_id.clone(),
-                    progress_percent: payload.progress_percent,
-                    scope: payload.scope.clone(),
-                    created_at_ms: event.timestamp_ms,
-                    updated_at_ms: event.timestamp_ms,
-                });
-            }
-            MemoryEvent::IntentionUpdated(payload) => {
-                if let Some(intention) = data
-                    .intentions
-                    .iter_mut()
-                    .find(|intention| intention.id == payload.id)
-                {
-                    if let Some(description) = &payload.description {
-                        intention.description = description.clone();
-                    }
-                    if let Some(priority) = &payload.priority {
-                        intention.priority = intention_priority(priority);
-                    }
-                    if let Some(deadline_at_ms) = payload.deadline_at_ms {
-                        intention.deadline_at_ms = deadline_at_ms;
-                    }
-                    if let Some(depends_on) = &payload.depends_on {
-                        intention.depends_on = depends_on.clone();
-                    }
-                    if let Some(goal_id) = &payload.goal_id {
-                        intention.goal_id = goal_id.clone();
-                    }
-                    if let Some(progress_percent) = payload.progress_percent {
-                        intention.progress_percent = progress_percent;
-                    }
-                    intention.updated_event_id = event.id.clone();
-                    intention.updated_at_ms = event.timestamp_ms;
-                }
-            }
-            MemoryEvent::IntentionStatusChanged(payload) => {
-                if let Some(intention) = data
-                    .intentions
-                    .iter_mut()
-                    .find(|intention| intention.id == payload.id)
-                {
-                    intention.status = intention_status(&payload.status);
-                    intention.status_reason = payload.reason.clone();
-                    intention.updated_event_id = event.id.clone();
-                    intention.updated_at_ms = event.timestamp_ms;
-                }
-            }
-            MemoryEvent::ReviewRecorded(payload) => {
-                data.review_decisions.push(ReviewDecision {
-                    id: payload.id.clone(),
-                    event_id: event.id.clone(),
-                    review_id: payload.review_id.clone(),
-                    finding_id: payload.finding_id.clone(),
-                    action: review_action(&payload.action),
-                    outcome: review_outcome(&payload.outcome),
-                    note: payload.note.clone(),
-                    evidence_ids: payload.evidence_ids.clone(),
-                    scope: payload.scope.clone(),
-                    created_at_ms: event.timestamp_ms,
-                });
-            }
-        }
+        project_event(&mut data, event);
     }
 
-    data.entities = entities.into_values().map(Entity::from).collect();
     data
+}
+
+pub(crate) fn project_event(data: &mut MemoryData, event: &EventEnvelope) {
+    data.event_count += 1;
+    data.last_event_id = Some(event.id.clone());
+
+    match &event.payload {
+        MemoryEvent::SourceRecorded(payload) => {
+            data.sources.push(SourceDocument {
+                id: payload.id.clone(),
+                event_id: event.id.clone(),
+                kind: source_kind(&payload.kind),
+                title: payload.title.clone(),
+                uri: payload.uri.clone(),
+                content_checksum: payload.content_checksum.clone(),
+                byte_len: payload.byte_len,
+                metadata: payload.metadata.clone(),
+                scope: payload.scope.clone(),
+                created_at_ms: event.timestamp_ms,
+            });
+        }
+        MemoryEvent::EpisodeRecorded(payload) => {
+            data.episodes.push(Episode {
+                id: payload.id.clone(),
+                event_id: event.id.clone(),
+                content: payload.content.clone(),
+                tags: payload.tags.clone(),
+                mentions: cleaned_names(&payload.mentions),
+                source_id: payload.source_id.clone(),
+                source_position: payload.source_position,
+                source_role: payload.source_role.clone(),
+                scope: payload.scope.clone(),
+                created_at_ms: event.timestamp_ms,
+            });
+            for mention in &payload.mentions {
+                record_entity(
+                    &mut data.entities,
+                    mention,
+                    event.timestamp_ms,
+                    &event.id,
+                    payload.scope.as_ref(),
+                );
+            }
+        }
+        MemoryEvent::FactAsserted(payload) => {
+            let claim = Claim {
+                id: payload.id.clone(),
+                event_id: event.id.clone(),
+                subject: payload.subject.clone(),
+                predicate: payload.predicate.clone(),
+                object: payload.object.clone(),
+                source_episode_id: payload.source_episode_id.clone(),
+                confidence: payload.confidence,
+                scope: payload.scope.clone(),
+                created_at_ms: event.timestamp_ms,
+            };
+            record_entity(
+                &mut data.entities,
+                &claim.subject,
+                event.timestamp_ms,
+                &event.id,
+                claim.scope.as_ref(),
+            );
+            record_entity(
+                &mut data.entities,
+                &claim.object,
+                event.timestamp_ms,
+                &event.id,
+                claim.scope.as_ref(),
+            );
+            data.claims.push(claim.clone());
+            data.facts.push(claim);
+        }
+        MemoryEvent::RelationRecorded(payload) => {
+            let link = Link {
+                id: payload.id.clone(),
+                event_id: event.id.clone(),
+                from: payload.from.clone(),
+                relation: payload.relation.clone(),
+                to: payload.to.clone(),
+                source_episode_id: payload.source_episode_id.clone(),
+                confidence: payload.confidence,
+                scope: payload.scope.clone(),
+                created_at_ms: event.timestamp_ms,
+            };
+            record_entity(
+                &mut data.entities,
+                &link.from,
+                event.timestamp_ms,
+                &event.id,
+                link.scope.as_ref(),
+            );
+            record_entity(
+                &mut data.entities,
+                &link.to,
+                event.timestamp_ms,
+                &event.id,
+                link.scope.as_ref(),
+            );
+            data.links.push(link.clone());
+            data.relations.push(link);
+        }
+        MemoryEvent::ProcedureRecorded(payload) => {
+            data.procedures.push(Procedure {
+                id: payload.id.clone(),
+                event_id: event.id.clone(),
+                kind: procedure_kind(&payload.kind),
+                name: payload.name.clone(),
+                body: payload.body.clone(),
+                source_episode_id: payload.source_episode_id.clone(),
+                confidence: payload.confidence,
+                scope: payload.scope.clone(),
+                created_at_ms: event.timestamp_ms,
+            });
+        }
+        MemoryEvent::IntentionRecorded(payload) => {
+            data.intentions.push(Intention {
+                id: payload.id.clone(),
+                event_id: event.id.clone(),
+                updated_event_id: event.id.clone(),
+                kind: intention_kind(&payload.kind),
+                status: IntentionStatus::Active,
+                priority: intention_priority(&payload.priority),
+                description: payload.description.clone(),
+                source_episode_id: payload.source_episode_id.clone(),
+                status_reason: None,
+                deadline_at_ms: payload.deadline_at_ms,
+                depends_on: payload.depends_on.clone(),
+                goal_id: payload.goal_id.clone(),
+                progress_percent: payload.progress_percent,
+                scope: payload.scope.clone(),
+                created_at_ms: event.timestamp_ms,
+                updated_at_ms: event.timestamp_ms,
+            });
+        }
+        MemoryEvent::IntentionUpdated(payload) => {
+            if let Some(intention) = data
+                .intentions
+                .iter_mut()
+                .find(|intention| intention.id == payload.id)
+            {
+                if let Some(description) = &payload.description {
+                    intention.description = description.clone();
+                }
+                if let Some(priority) = &payload.priority {
+                    intention.priority = intention_priority(priority);
+                }
+                if let Some(deadline_at_ms) = payload.deadline_at_ms {
+                    intention.deadline_at_ms = deadline_at_ms;
+                }
+                if let Some(depends_on) = &payload.depends_on {
+                    intention.depends_on = depends_on.clone();
+                }
+                if let Some(goal_id) = &payload.goal_id {
+                    intention.goal_id = goal_id.clone();
+                }
+                if let Some(progress_percent) = payload.progress_percent {
+                    intention.progress_percent = progress_percent;
+                }
+                intention.updated_event_id = event.id.clone();
+                intention.updated_at_ms = event.timestamp_ms;
+            }
+        }
+        MemoryEvent::IntentionStatusChanged(payload) => {
+            if let Some(intention) = data
+                .intentions
+                .iter_mut()
+                .find(|intention| intention.id == payload.id)
+            {
+                intention.status = intention_status(&payload.status);
+                intention.status_reason = payload.reason.clone();
+                intention.updated_event_id = event.id.clone();
+                intention.updated_at_ms = event.timestamp_ms;
+            }
+        }
+        MemoryEvent::ReviewRecorded(payload) => {
+            data.review_decisions.push(ReviewDecision {
+                id: payload.id.clone(),
+                event_id: event.id.clone(),
+                review_id: payload.review_id.clone(),
+                finding_id: payload.finding_id.clone(),
+                action: review_action(&payload.action),
+                outcome: review_outcome(&payload.outcome),
+                note: payload.note.clone(),
+                evidence_ids: payload.evidence_ids.clone(),
+                scope: payload.scope.clone(),
+                created_at_ms: event.timestamp_ms,
+            });
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -259,7 +261,7 @@ impl From<EntityAccumulator> for Entity {
 }
 
 fn record_entity(
-    entities: &mut BTreeMap<String, EntityAccumulator>,
+    entities: &mut Vec<Entity>,
     name: &str,
     timestamp_ms: u64,
     event_id: &str,
@@ -269,10 +271,24 @@ fn record_entity(
         return;
     };
     let key = entity_key(&name, scope);
-    entities
-        .entry(key)
-        .or_insert_with(|| EntityAccumulator::new(name, timestamp_ms, event_id, scope.cloned()))
-        .record(timestamp_ms, event_id);
+    if let Some(entity) = entities
+        .iter_mut()
+        .find(|entity| entity_key(&entity.name, entity.scope.as_ref()) == key)
+    {
+        entity.mention_count += 1;
+        entity.last_seen_at_ms = timestamp_ms;
+        if !entity.source_event_ids.iter().any(|id| id == event_id) {
+            entity.source_event_ids.push(event_id.to_string());
+        }
+    } else {
+        let mut accumulator = EntityAccumulator::new(name, timestamp_ms, event_id, scope.cloned());
+        accumulator.record(timestamp_ms, event_id);
+        entities.push(Entity::from(accumulator));
+    }
+    entities.sort_by(|left, right| {
+        entity_key(&left.name, left.scope.as_ref())
+            .cmp(&entity_key(&right.name, right.scope.as_ref()))
+    });
 }
 
 fn cleaned_names(names: &[String]) -> Vec<String> {
@@ -410,7 +426,7 @@ mod tests {
         MemoryScopeKind, ProcedureKind,
     };
 
-    use super::project;
+    use super::{project, project_event};
 
     #[test]
     fn projection_is_deterministic() {
@@ -436,6 +452,109 @@ mod tests {
         assert_eq!(first.version, MEMORY_DATA_VERSION);
         assert_eq!(first.event_count, 1);
         assert_eq!(first.last_event_id.as_deref(), Some(events[0].id.as_str()));
+    }
+
+    #[test]
+    fn incremental_projection_matches_full_replay_after_each_event() {
+        let events = [
+            EventEnvelope::new(
+                1,
+                1000,
+                MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                    id: "episode_1".to_string(),
+                    content: "Lena owns the release notes.".to_string(),
+                    tags: vec!["product".to_string()],
+                    mentions: vec!["Lena".to_string(), "Release Notes".to_string()],
+                    source_id: None,
+                    source_position: None,
+                    source_role: None,
+                    scope: None,
+                }),
+            ),
+            EventEnvelope::new(
+                2,
+                1001,
+                MemoryEvent::FactAsserted(FactAsserted {
+                    id: "claim_1".to_string(),
+                    subject: "Lena".to_string(),
+                    predicate: "owns".to_string(),
+                    object: "release notes".to_string(),
+                    source_episode_id: Some("episode_1".to_string()),
+                    confidence: 0.9,
+                    scope: None,
+                }),
+            ),
+            EventEnvelope::new(
+                3,
+                1002,
+                MemoryEvent::RelationRecorded(RelationRecorded {
+                    id: "link_1".to_string(),
+                    from: "Lena".to_string(),
+                    relation: "owns".to_string(),
+                    to: "Release Notes".to_string(),
+                    source_episode_id: Some("episode_1".to_string()),
+                    confidence: 0.9,
+                    scope: None,
+                }),
+            ),
+            EventEnvelope::new(
+                4,
+                1003,
+                MemoryEvent::ProcedureRecorded(ProcedureRecorded {
+                    id: "procedure_1".to_string(),
+                    kind: ProcedureRecordedKind::Procedure,
+                    name: "Release notes".to_string(),
+                    body: "Keep release notes concise.".to_string(),
+                    source_episode_id: Some("episode_1".to_string()),
+                    confidence: 0.8,
+                    scope: None,
+                }),
+            ),
+            EventEnvelope::new(
+                5,
+                1004,
+                MemoryEvent::IntentionRecorded(IntentionRecorded {
+                    id: "intention_1".to_string(),
+                    kind: IntentionRecordedKind::Goal,
+                    priority: IntentionRecordedPriority::High,
+                    description: "Ship the public release.".to_string(),
+                    source_episode_id: Some("episode_1".to_string()),
+                    deadline_at_ms: None,
+                    depends_on: Vec::new(),
+                    goal_id: None,
+                    progress_percent: None,
+                    scope: None,
+                }),
+            ),
+            EventEnvelope::new(
+                6,
+                1005,
+                MemoryEvent::IntentionUpdated(IntentionUpdated {
+                    id: "intention_1".to_string(),
+                    description: Some("Ship the public release notes.".to_string()),
+                    priority: Some(IntentionRecordedPriority::Medium),
+                    deadline_at_ms: Some(Some(2000)),
+                    depends_on: Some(vec!["intention_dependency".to_string()]),
+                    goal_id: Some(Some("goal_public_release".to_string())),
+                    progress_percent: Some(Some(40)),
+                }),
+            ),
+            EventEnvelope::new(
+                7,
+                1006,
+                MemoryEvent::IntentionStatusChanged(IntentionStatusChanged {
+                    id: "intention_1".to_string(),
+                    status: IntentionRecordedStatus::Completed,
+                    reason: Some("Released".to_string()),
+                }),
+            ),
+        ];
+
+        let mut incremental = crate::MemoryData::default();
+        for index in 0..events.len() {
+            project_event(&mut incremental, &events[index]);
+            assert_eq!(incremental, project(&events[..=index]));
+        }
     }
 
     #[test]

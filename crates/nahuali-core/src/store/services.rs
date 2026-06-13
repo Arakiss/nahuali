@@ -656,7 +656,7 @@ impl MemoryEngine {
         }
 
         self.events.push(envelope.clone());
-        self.data = projection::project(&self.events);
+        projection::project_event(&mut self.data, &envelope);
         self.next_sequence += 1;
 
         // The graph projection is a full rebuild from the whole ledger, so doing

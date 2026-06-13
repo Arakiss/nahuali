@@ -10,6 +10,7 @@ mod tests {
         AuthorityMode, IntentionKind, IntentionPriority, IntentionStatus, IntentionUpdateOptions,
         NahualiError, SourceKind, SourceRecordOptions,
         model::{MemoryScope, MemoryScopeKind, ProcedureKind},
+        projection,
     };
 
     use super::MemoryEngine;
@@ -227,6 +228,78 @@ mod tests {
             Some("Released")
         );
         assert_eq!(completed.status, IntentionStatus::Completed);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn append_path_keeps_incremental_projection_equivalent_to_full_replay() {
+        let path = temp_path("append_path_keeps_incremental_projection_equivalent_to_full_replay");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+
+        let episode = memory
+            .remember_with_mentions(
+                "Lena wants the release notes kept concise.",
+                vec!["product".to_string()],
+                vec!["Lena".to_string(), "Release Notes".to_string()],
+            )
+            .unwrap();
+        assert_eq!(memory.data(), &projection::project(memory.events()));
+
+        memory
+            .add_claim(
+                "Lena",
+                "owns",
+                "release notes",
+                Some(episode.id.clone()),
+                0.9,
+            )
+            .unwrap();
+        assert_eq!(memory.data(), &projection::project(memory.events()));
+
+        memory
+            .add_link(
+                "Lena",
+                "owns",
+                "Release Notes",
+                Some(episode.id.clone()),
+                0.9,
+            )
+            .unwrap();
+        assert_eq!(memory.data(), &projection::project(memory.events()));
+
+        let intention = memory
+            .add_intention(
+                "Ship the release notes",
+                IntentionKind::Task,
+                IntentionPriority::High,
+                Some(episode.id),
+            )
+            .unwrap();
+        assert_eq!(memory.data(), &projection::project(memory.events()));
+
+        memory
+            .update_intention(
+                intention.id.clone(),
+                IntentionUpdateOptions {
+                    description: Some("Ship the public release notes".to_string()),
+                    progress_percent: Some(Some(50)),
+                    ..IntentionUpdateOptions::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(memory.data(), &projection::project(memory.events()));
+
+        memory
+            .set_intention_status(
+                intention.id,
+                IntentionStatus::Completed,
+                Some("Released".to_string()),
+            )
+            .unwrap();
+        assert_eq!(memory.data(), &projection::project(memory.events()));
 
         let _ = fs::remove_file(path);
     }

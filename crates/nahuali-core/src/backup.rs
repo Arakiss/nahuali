@@ -677,7 +677,9 @@ struct BackupChecksumBody<'a> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "tamper-evidence")]
     use super::*;
+    #[cfg(feature = "tamper-evidence")]
     use crate::{EpisodeRecorded, MemoryEvent};
 
     #[cfg(feature = "tamper-evidence")]
