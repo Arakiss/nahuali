@@ -108,7 +108,9 @@ lives in the library and the release gate, so anyone can rerun it — the same
 reproducibility the engine asks of memory, applied to its own numbers. The
 established agent-memory benchmarks (LOCOMO, LongMemEval, BEAM) measure recall
 accuracy only; we know of no other reproducible governance suite for agent
-memory, which is why Nahuali defines and gates its own.
+memory, which is why Nahuali defines and gates its own. See
+[Governance Benchmark Methodology](GOVERNANCE_BENCHMARKS.md) for the corpus,
+formula, commands, and limits behind these numbers.
 
 **Ledger Integrity Verification Rate (LIVR).** Detection rate `TP / (TP + FN)`
 of ledger tampering, reported per detector tier over a nine-class synthetic
