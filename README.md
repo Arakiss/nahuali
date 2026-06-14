@@ -21,8 +21,8 @@ across sessions accumulates a store you eventually have to trust blindly — and
 agent memory has become an attack surface. OWASP's agentic Top 10 lists memory
 poisoning ([ASI06](https://owasp.org/www-project-agent-memory-guard/)) as a
 first-class risk, the EU AI
-Act's [Article 12](https://artificialintelligenceact.eu/article/12/) demands
-tamper-resistant records from high-risk systems, and most memory layers still
+Act's [Article 12](https://ai-act-service-desk.ec.europa.eu/en/ai-act/article-12)
+requires automatic event logs from high-risk systems, and most memory layers still
 cannot tell you which parts of what they return are supported, stale,
 contradictory, or quietly rewritten. Nahuali treats memory as something you
 audit, not something you assume.
@@ -40,7 +40,8 @@ Three mechanisms make that concrete:
 - **Governance benchmarks you can re-run.** Tamper detection, provenance
   coverage, contradiction detection, key lifecycle, and verdict calibration are
   measured by reproducible fixtures in this repository, not asserted in
-  marketing copy. To our knowledge this suite is the first of its kind.
+  marketing copy. It is the first reproducible agent-memory governance suite we
+  have found.
 
 The current project is intentionally small: a Rust core crate, a CLI with an
 interactive governance cockpit, a local MCP stdio server, a local HTTP API,
@@ -48,7 +49,9 @@ fixtures, and release-gate scripts. It is not a hosted product, not an
 accounts system, and not a general-purpose database.
 
 For where the project is going next, see [ROADMAP.md](ROADMAP.md). The roadmap
-is directional; this README describes the current public surface.
+is directional; this README describes the current public surface. For the
+prior-art, security, regulatory, and benchmark context behind the comparison
+claim, see [Agent-Memory Governance Landscape](MEMORY_GOVERNANCE_LANDSCAPE.md).
 
 ## Quickstart
 
@@ -111,7 +114,9 @@ established agent-memory benchmarks (LOCOMO, LongMemEval, BEAM) measure recall
 accuracy only; we know of no other reproducible governance suite for agent
 memory, which is why Nahuali defines and gates its own. See
 [Governance Benchmark Methodology](GOVERNANCE_BENCHMARKS.md) for the corpus,
-formula, commands, and limits behind these numbers.
+formula, commands, and limits behind these numbers, and
+[Agent-Memory Governance Landscape](MEMORY_GOVERNANCE_LANDSCAPE.md#benchmark-gap)
+for why this is a separate axis from recall benchmarks.
 
 **Ledger Integrity Verification Rate (LIVR).** Detection rate `TP / (TP + FN)`
 of ledger tampering, reported per detector tier over a nine-class synthetic
@@ -185,7 +190,7 @@ Most open-source agent-memory engines (Mem0, Zep/Graphiti, Letta, Cognee)
 optimize for **recall accuracy** — extracting and retrieving the right context —
 and publish their LOCOMO and LongMemEval scores. Nahuali optimizes for a
 different axis: **whether you can trust and verify** what memory returns. The two
-are complementary, and the honest comparison cuts both ways:
+are complementary, and the comparison cuts both ways:
 
 | Axis | Nahuali | Recall-first engines |
 |---|---|---|
@@ -196,20 +201,21 @@ are complementary, and the honest comparison cuts both ways:
 | Raw recall accuracy (LOCOMO/LongMemEval) | not the goal; a credible floor, not the lead | strong published numbers |
 | Ecosystem, integrations, traction | pre-release, narrow surface | large communities and framework integrations |
 
-To our knowledge, no other open-source agent-memory engine combines all three of
-a hash-chained Merkle-proofed ledger, detached Ed25519 tip attestation, and a
-per-recall confidence-vs-provenance trust verdict over its memory ledger. The
-closest prior art ships subsets:
+We have not found another open-source agent-memory engine that combines all
+three of a hash-chained Merkle-proofed ledger, detached Ed25519 tip attestation,
+and a per-recall confidence-vs-provenance trust verdict over its memory ledger.
+The closest prior art ships subsets:
 [SuperLocalMemory](https://arxiv.org/abs/2603.02240) hash-chains compliance
 events and scores writer trust against memory poisoning, but carries no
-evidence-or-freshness verdict on the recall path; MentisDB and
-witness-memory-chain sign hash-chained entries without a governance layer on
-top; OpenFang Merkle-chains agent *actions*, not a memory store; and the "Right
-to History" prototype ([arXiv 2602.20214](https://arxiv.org/abs/2602.20214))
+evidence-or-freshness verdict on the recall path; MentisDB stores hash-chained
+entries without a governance benchmark suite or recall-path trust verdict;
+OpenFang Merkle-chains agent *actions*, not a memory store; and the "Right to
+History" prototype ([arXiv 2602.20214](https://arxiv.org/abs/2602.20214))
 explores RFC 6962 audit logs for agents in research form. If you only need
 maximum recall accuracy, a recall-first engine is the better fit; Nahuali is
 for when you also have to defend what the memory says and prove it was not
-rewritten.
+rewritten. The fuller landscape and source-quality caveats are maintained in
+[Agent-Memory Governance Landscape](MEMORY_GOVERNANCE_LANDSCAPE.md).
 
 ## What Exists Today
 
