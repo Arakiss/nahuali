@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-core-v0.4.0-beta.0...nahuali-core-v0.5.0-beta.0) (2026-06-14)
+
+
+### Features
+
+* require chained records in strict validation ([42dc62b](https://github.com/Arakiss/nahuali/commit/42dc62bf414b6c694763df32cac581a95ea2e99c))
+
+
+### Performance
+
+* apply projection updates incrementally ([a74a25e](https://github.com/Arakiss/nahuali/commit/a74a25ef04aff2414b303aff586f3f112ef67707))
+
 ## [0.4.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-core-v0.3.0-beta.0...nahuali-core-v0.4.0-beta.0) (2026-06-13)
 
 

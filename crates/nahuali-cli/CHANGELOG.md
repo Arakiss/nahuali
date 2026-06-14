@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-cli-v0.4.0-beta.0...nahuali-cli-v0.5.0-beta.0) (2026-06-14)
+
+
+### Features
+
+* expose Merkle inclusion proofs from audit ([e79c390](https://github.com/Arakiss/nahuali/commit/e79c390816f6fa678029130c210bea7114a48450))
+* require chained records in strict validation ([42dc62b](https://github.com/Arakiss/nahuali/commit/42dc62bf414b6c694763df32cac581a95ea2e99c))
+
+
+### Bug fixes
+
+* stabilize CLI JSON output contract ([b9f5c64](https://github.com/Arakiss/nahuali/commit/b9f5c64a12d0791ef6f05d22c38a8ea8cbce47d8))
+
 ## [0.4.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-cli-v0.3.0-beta.0...nahuali-cli-v0.4.0-beta.0) (2026-06-13)
 
 
