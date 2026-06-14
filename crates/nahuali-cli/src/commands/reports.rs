@@ -362,15 +362,12 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
     if args.json {
         let results = memory.recall_with_options(&query, options.clone())?;
         if archive {
-            println!(
-                "{}",
-                serde_json::to_string(&serde_json::json!({
-                    "recall": results,
-                    "archive": archive_recall_json(&query, options),
-                }))?
-            );
+            output::print_json(&serde_json::json!({
+                "recall": results,
+                "archive": archive_recall_json(&query, options),
+            }))?;
         } else {
-            println!("{}", serde_json::to_string(&results)?);
+            output::print_json(&results)?;
         }
         return Ok(());
     }

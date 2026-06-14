@@ -7,6 +7,8 @@ use nahuali_core::{
     MerkleSibling, ledger_inclusion_proof, ledger_merkle_root, verify_merkle_proof,
 };
 
+use crate::output;
+
 /// Audit what changed in the record ledger between two points without mutating
 /// it. Exits non-zero when the history through the upper bound fails integrity
 /// verification, so it can gate scripts and CI.
@@ -29,12 +31,12 @@ pub(crate) fn audit(
             if let Some(object) = value.as_object_mut() {
                 object.insert("inclusion_proof".to_string(), serde_json::to_value(proof)?);
             }
-            println!("{}", serde_json::to_string(&value)?);
+            output::print_json(&value)?;
         } else {
-            println!("{}", serde_json::to_string(&report)?);
+            output::print_json(&report)?;
         }
         #[cfg(not(feature = "tamper-evidence"))]
-        println!("{}", serde_json::to_string(&report)?);
+        output::print_json(&report)?;
     } else {
         #[cfg(feature = "tamper-evidence")]
         print_human(&report, inclusion_proof.as_ref());

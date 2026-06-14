@@ -22,16 +22,13 @@ pub(crate) fn snapshot(
     let summary = snapshot.summary();
 
     if json {
-        println!(
-            "{}",
-            serde_json::json!({
-                "database": database.display().to_string(),
-                "snapshot_path": output.display().to_string(),
-                "dry_run": dry_run,
-                "written": !dry_run,
-                "summary": summary,
-            })
-        );
+        output::print_json(&serde_json::json!({
+            "database": database.display().to_string(),
+            "snapshot_path": output.display().to_string(),
+            "dry_run": dry_run,
+            "written": !dry_run,
+            "summary": summary,
+        }))?;
     } else {
         println!("Database: {}", database.display());
         println!("Snapshot: {}", output.display());
@@ -67,7 +64,7 @@ pub(crate) fn snapshot_validate(
                 serde_json::json!(path.display().to_string()),
             );
         }
-        println!("{}", serde_json::to_string(&value)?);
+        output::print_json(&value)?;
     } else {
         println!("Database: {}", database.display());
         println!("Snapshot: {}", path.display());
@@ -113,16 +110,13 @@ pub(crate) fn backup(
     let summary = backup.summary();
 
     if json {
-        println!(
-            "{}",
-            serde_json::json!({
-                "database": database.display().to_string(),
-                "backup_path": output.display().to_string(),
-                "dry_run": dry_run,
-                "written": !dry_run,
-                "summary": summary,
-            })
-        );
+        output::print_json(&serde_json::json!({
+            "database": database.display().to_string(),
+            "backup_path": output.display().to_string(),
+            "dry_run": dry_run,
+            "written": !dry_run,
+            "summary": summary,
+        }))?;
     } else {
         println!("Database: {}", database.display());
         println!("Backup: {}", output.display());
@@ -170,14 +164,11 @@ pub(crate) fn export(
         fs::write(&output, format!("{encoded}\n"))
             .with_context(|| format!("failed to write {}", output.display()))?;
         if json {
-            println!(
-                "{}",
-                serde_json::json!({
-                    "database": database.display().to_string(),
-                    "interchange_path": output.display().to_string(),
-                    "summary": summary,
-                })
-            );
+            output::print_json(&serde_json::json!({
+                "database": database.display().to_string(),
+                "interchange_path": output.display().to_string(),
+                "summary": summary,
+            }))?;
         } else {
             println!("Database: {}", database.display());
             println!("Interchange: {}", output.display());
@@ -207,14 +198,11 @@ pub(crate) fn import(
         .with_context(|| format!("failed to parse {}", path.display()))?;
     let report = memory.import_interchange(&interchange, dry_run)?;
     if json {
-        println!(
-            "{}",
-            serde_json::json!({
-                "database": database.display().to_string(),
-                "interchange_path": path.display().to_string(),
-                "report": report,
-            })
-        );
+        output::print_json(&serde_json::json!({
+            "database": database.display().to_string(),
+            "interchange_path": path.display().to_string(),
+            "report": report,
+        }))?;
     } else {
         println!("Database: {}", database.display());
         println!("Interchange: {}", path.display());
@@ -261,14 +249,11 @@ pub(crate) fn ingest(
         .with_context(|| format!("failed to parse {}", path.display()))?;
     let report = memory.ingest_document(&document, dry_run)?;
     if json {
-        println!(
-            "{}",
-            serde_json::json!({
-                "database": database.display().to_string(),
-                "ingest_path": path.display().to_string(),
-                "report": report,
-            })
-        );
+        output::print_json(&serde_json::json!({
+            "database": database.display().to_string(),
+            "ingest_path": path.display().to_string(),
+            "report": report,
+        }))?;
     } else {
         output::print_ingestion_report(database, &path, dry_run, &report);
     }

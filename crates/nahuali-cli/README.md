@@ -133,6 +133,30 @@ nahuali --database ./memory data --json
 Use `--json` on primary commands when scripts or agents need structured output
 without human prose.
 
+### JSON Output Contract
+
+`--json` always emits one UTF-8 JSON document to stdout, pretty-printed with a
+trailing newline and no surrounding prose. The top-level shape is defined by the
+command family instead of a universal envelope:
+
+- Record-write commands (`remember`, `claim`, `fact`, `link`, `relate`,
+  `procedure`, `preference`, `intention`, and intention lifecycle updates)
+  return the written record directly.
+- Store-scoped operator reports that compose several signals use an envelope
+  with `database` and `report` keys, plus narrow metadata keys when needed
+  (`briefing`, `session-resume`, `project`, `proactive`, `deadlines`,
+  `anomalies`, `goal-progress`, `reconcile-intentions`, `sleep`,
+  `consolidation-plan`, and `hook`).
+- Status, validation, projection, import/export, backup, snapshot, migration,
+  and attestation commands expose named top-level payload keys for their
+  command-specific metadata.
+- Direct read models whose Rust type is the public payload remain direct JSON
+  values (`recall`, `graph`, `inspect`, `self-inspect`, `reflect`, `review`,
+  `audit`, `trust-report`, `data`, and `export --json` without `--output`).
+
+Consumers should parse by command contract rather than assuming every command
+has a `report` wrapper.
+
 `recall --authority --json` returns scored results, `authority.mode`,
 `authority.score`, `authority.can_trust`, deduplicated
 `authority.signal_kinds`, and the health report used to make the decision.

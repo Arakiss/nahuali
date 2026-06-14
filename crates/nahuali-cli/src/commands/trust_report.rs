@@ -3,6 +3,8 @@ use std::path::Path;
 use anyhow::Context;
 use nahuali_core::{MemoryEngine, MemoryTrustReport, TrustReportOptions};
 
+use crate::output;
+
 /// Print a composed, non-mutating memory trust report. Exits non-zero when the
 /// recorded history fails integrity verification, so it can gate scripts and CI;
 /// the broader `trustworthy` verdict (which folds in conservative authority and
@@ -22,7 +24,7 @@ pub(crate) fn trust_report(
     }
 
     if json {
-        println!("{}", serde_json::to_string(&report)?);
+        output::print_json(&report)?;
     } else if let Some(path) = html {
         println!("Wrote trust report to {}", path.display());
     } else {

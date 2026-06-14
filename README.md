@@ -578,6 +578,9 @@ The CLI is the canonical local interface for agents and operators during the
 beta foundation phase. Agent-facing usage should prefer `--json`, explicit
 flags, scoped databases, and non-mutating inspection commands. Human-readable
 output is kept useful, but the machine contract comes first.
+The detailed command contract in [`crates/nahuali-cli/README.md`](crates/nahuali-cli/README.md#json-output-contract)
+defines which JSON commands return direct payloads and which use metadata
+envelopes.
 
 The expected local loop is:
 

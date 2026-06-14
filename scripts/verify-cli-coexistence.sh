@@ -16,6 +16,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
+json_file_matches() {
+  local path="$1"
+  local pattern="$2"
+  grep -Eq "$pattern" "$path"
+}
+
+json_matches() {
+  local output="$1"
+  local pattern="$2"
+  printf '%s\n' "$output" | grep -Eq "$pattern"
+}
+
 GLOBAL_NAHUALI_BEFORE="$(command -v nahuali || true)"
 CARGO_RUN_OUTPUT="$STORE_DIR/cargo-run-output.json"
 
@@ -33,7 +45,7 @@ if [[ -n "${NAHUALI_VERIFY_CLI_BIN_DIR:-}" ]]; then
 else
   cargo run -p nahuali-cli -- --database "$STORE_DIR/cargo-run" validate --json >"$CARGO_RUN_OUTPUT"
 fi
-if ! grep -q '"valid":true' "$CARGO_RUN_OUTPUT"; then
+if ! json_file_matches "$CARGO_RUN_OUTPUT" '"valid"[[:space:]]*:[[:space:]]*true'; then
   echo "cargo-run Rust CLI validation did not report a valid store" >&2
   cat "$CARGO_RUN_OUTPUT" >&2
   exit 1
@@ -70,7 +82,8 @@ STORE="$STORE_DIR/isolated-install"
 "$RUST_NAHUALI" --database "$STORE" remember "Synthetic coexistence memory" --tag synthetic >/dev/null
 "$RUST_NAHUALI" --database "$STORE" claim "Synthetic CLI" validates coexistence --source-last >/dev/null
 validate_output="$("$RUST_NAHUALI" --database "$STORE" validate --json)"
-if [[ "$validate_output" != *'"valid":true'* || "$validate_output" != *'"event_count":2'* ]]; then
+if ! json_matches "$validate_output" '"valid"[[:space:]]*:[[:space:]]*true' \
+  || ! json_matches "$validate_output" '"event_count"[[:space:]]*:[[:space:]]*2'; then
   echo "isolated Rust nahuali validation did not report the expected store" >&2
   echo "$validate_output" >&2
   exit 1

@@ -3,8 +3,11 @@ use nahuali_core::{
     IntentionKind, IntentionPriority, IntentionStatus, IntentionUpdateOptions, MemoryEngine,
 };
 
-use crate::cli::{CliIntentionKind, CliIntentionPriority, CliIntentionStatus};
 use crate::commands::scope::parse_scope;
+use crate::{
+    cli::{CliIntentionKind, CliIntentionPriority, CliIntentionStatus},
+    output,
+};
 
 pub(crate) fn remember(
     memory: &mut MemoryEngine,
@@ -21,7 +24,7 @@ pub(crate) fn remember(
         memory.remember_with_mentions(content.join(" "), tags, mentions)?
     };
     if json {
-        println!("{}", serde_json::to_string(&episode)?);
+        output::print_json(&episode)?;
     } else {
         let mut summary = format!("\"{}\"", excerpt(&episode.content, 72));
         if !episode.tags.is_empty() {
@@ -65,7 +68,7 @@ pub(crate) fn claim(
         )?
     };
     if json {
-        println!("{}", serde_json::to_string(&claim)?);
+        output::print_json(&claim)?;
     } else {
         println!(
             "{}",
@@ -112,7 +115,7 @@ pub(crate) fn fact(
         )?
     };
     if json {
-        println!("{}", serde_json::to_string(&fact)?);
+        output::print_json(&fact)?;
     } else {
         println!(
             "{}",
@@ -155,7 +158,7 @@ pub(crate) fn link(memory: &mut MemoryEngine, args: LinkArgs, json: bool) -> any
         )?
     };
     if json {
-        println!("{}", serde_json::to_string(&link)?);
+        output::print_json(&link)?;
     } else {
         println!(
             "{}",
@@ -198,7 +201,7 @@ pub(crate) fn relate(memory: &mut MemoryEngine, args: LinkArgs, json: bool) -> a
         )?
     };
     if json {
-        println!("{}", serde_json::to_string(&relation)?);
+        output::print_json(&relation)?;
     } else {
         println!(
             "{}",
@@ -243,7 +246,7 @@ pub(crate) fn procedure(
         )?
     };
     if json {
-        println!("{}", serde_json::to_string(&procedure)?);
+        output::print_json(&procedure)?;
     } else {
         let summary = format!("{} · {}", procedure.name, excerpt(&procedure.body, 56));
         println!(
@@ -279,7 +282,7 @@ pub(crate) fn preference(
         )?
     };
     if json {
-        println!("{}", serde_json::to_string(&preference)?);
+        output::print_json(&preference)?;
     } else {
         let summary = format!("{} · {}", preference.name, excerpt(&preference.body, 56));
         println!(
@@ -315,7 +318,7 @@ pub(crate) fn intention(
         )?
     };
     if json {
-        println!("{}", serde_json::to_string(&intention)?);
+        output::print_json(&intention)?;
     } else {
         let summary = format!(
             "\"{}\" · {:?}/{:?}",
@@ -340,7 +343,7 @@ pub(crate) fn intention_status(
 ) -> anyhow::Result<()> {
     let intention = memory.set_intention_status(id, IntentionStatus::from(status), reason)?;
     if json {
-        println!("{}", serde_json::to_string(&intention)?);
+        output::print_json(&intention)?;
     } else {
         println!(
             "{}",
@@ -393,7 +396,7 @@ pub(crate) fn intention_update(
         },
     )?;
     if json {
-        println!("{}", serde_json::to_string(&intention)?);
+        output::print_json(&intention)?;
     } else {
         println!(
             "{}",
@@ -438,7 +441,7 @@ fn print_intention_status_update(
     json: bool,
 ) -> anyhow::Result<()> {
     if json {
-        println!("{}", serde_json::to_string(&intention)?);
+        output::print_json(&intention)?;
     } else {
         println!(
             "{}",

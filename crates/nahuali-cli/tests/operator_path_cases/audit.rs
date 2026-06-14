@@ -30,6 +30,7 @@ fn audit_reports_changes_and_integrity_for_a_range() {
     );
 
     let audited = run_ok(&store, &["audit", "--json"]);
+    assert_pretty_json(&audited);
     let report: Value = serde_json::from_str(&audited).expect("audit output is JSON");
     assert_eq!(report["from_sequence"], 0);
     assert_eq!(report["to_sequence"], 3);
@@ -47,6 +48,7 @@ fn audit_reports_changes_and_integrity_for_a_range() {
     assert_eq!(entries[2]["kind"], "intention_recorded");
 
     let proof_output = run_ok(&store, &["audit", "--inclusion-proof", "2", "--json"]);
+    assert_pretty_json(&proof_output);
     let proof_report: Value = serde_json::from_str(&proof_output).expect("audit proof is JSON");
     let proof = &proof_report["inclusion_proof"];
     assert_eq!(proof["sequence"], 2);

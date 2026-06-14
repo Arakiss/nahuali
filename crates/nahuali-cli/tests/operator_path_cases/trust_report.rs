@@ -20,6 +20,7 @@ fn trust_report_composes_knowledge_authority_integrity_and_health() {
     );
 
     let json = run_ok(&store, &["trust-report", "--json"]);
+    assert_pretty_json(&json);
     let report: Value = serde_json::from_str(&json).expect("trust-report output is JSON");
     assert_eq!(report["version"], 1);
     assert_eq!(report["knowledge"]["episode_count"], 1);

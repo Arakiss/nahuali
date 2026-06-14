@@ -16,6 +16,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+json_matches() {
+  local output="$1"
+  local pattern="$2"
+  printf '%s\n' "$output" | grep -Eq "$pattern"
+}
+
 if [[ -n "${NAHUALI_VERIFY_INSTALL_BIN_DIR:-}" ]]; then
   SOURCE_BIN_DIR="$NAHUALI_VERIFY_INSTALL_BIN_DIR"
   case "$SOURCE_BIN_DIR" in
@@ -83,7 +89,7 @@ fi
 "$NAHUALI" --database "$STORE" link Lena prefers "release notes" --confidence 0.91 --source-last >/dev/null
 "$NAHUALI" --database "$STORE" preference "Release notes" "Keep release notes concise" --source-last >/dev/null
 intention_output="$("$NAHUALI" --database "$STORE" intention "Ship release notes" --priority high --source-last --json)"
-intention_id="$(printf '%s' "$intention_output" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
+intention_id="$(printf '%s\n' "$intention_output" | sed -n 's/^[[:space:]]*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
 if [[ -z "$intention_id" ]]; then
   echo "installed nahuali intention output did not include an id" >&2
   echo "$intention_output" >&2
@@ -113,12 +119,13 @@ if [[ "$inspect_output" != *'"supported_fact_count": 2'* ]]; then
 fi
 
 validate_output="$("$NAHUALI" --database "$STORE" validate --json)"
-if [[ "$validate_output" != *'"valid":true'* ]]; then
+if ! json_matches "$validate_output" '"valid"[[:space:]]*:[[:space:]]*true'; then
   echo "installed nahuali validate output did not report a valid store" >&2
   echo "$validate_output" >&2
   exit 1
 fi
-if [[ "$validate_output" != *'"procedure_count":1'* || "$validate_output" != *'"intention_count":1'* ]]; then
+if ! json_matches "$validate_output" '"procedure_count"[[:space:]]*:[[:space:]]*1' \
+  || ! json_matches "$validate_output" '"intention_count"[[:space:]]*:[[:space:]]*1'; then
   echo "installed nahuali validate output did not include expanded memory counts" >&2
   echo "$validate_output" >&2
   exit 1
@@ -127,7 +134,9 @@ fi
 INTERCHANGE="$STORE_DIR/memory.interchange.json"
 IMPORTED_STORE="$STORE_DIR/imported-memory"
 export_output="$("$NAHUALI" --database "$STORE" export --output "$INTERCHANGE" --json)"
-if [[ "$export_output" != *'"episode_count":1'* || "$export_output" != *'"claim_count":2'* || "$export_output" != *'"link_count":2'* ]]; then
+if ! json_matches "$export_output" '"episode_count"[[:space:]]*:[[:space:]]*1' \
+  || ! json_matches "$export_output" '"claim_count"[[:space:]]*:[[:space:]]*2' \
+  || ! json_matches "$export_output" '"link_count"[[:space:]]*:[[:space:]]*2'; then
   echo "installed nahuali export output did not report the expected interchange counts" >&2
   echo "$export_output" >&2
   exit 1
@@ -138,28 +147,33 @@ if [[ ! -s "$INTERCHANGE" ]]; then
 fi
 
 import_dry_run="$("$NAHUALI" --database "$IMPORTED_STORE" import "$INTERCHANGE" --dry-run --json)"
-if [[ "$import_dry_run" != *'"valid":true'* || "$import_dry_run" != *'"dry_run":true'* || "$import_dry_run" != *'"imported_event_count":0'* ]]; then
+if ! json_matches "$import_dry_run" '"valid"[[:space:]]*:[[:space:]]*true' \
+  || ! json_matches "$import_dry_run" '"dry_run"[[:space:]]*:[[:space:]]*true' \
+  || ! json_matches "$import_dry_run" '"imported_event_count"[[:space:]]*:[[:space:]]*0'; then
   echo "installed nahuali import dry-run output was not scriptable" >&2
   echo "$import_dry_run" >&2
   exit 1
 fi
 
 import_output="$("$NAHUALI" --database "$IMPORTED_STORE" import "$INTERCHANGE" --json)"
-if [[ "$import_output" != *'"valid":true'* || "$import_output" != *'"imported_event_count":8'* ]]; then
+if ! json_matches "$import_output" '"valid"[[:space:]]*:[[:space:]]*true' \
+  || ! json_matches "$import_output" '"imported_event_count"[[:space:]]*:[[:space:]]*8'; then
   echo "installed nahuali import output did not report the expected event count" >&2
   echo "$import_output" >&2
   exit 1
 fi
 
 imported_validate_output="$("$NAHUALI" --database "$IMPORTED_STORE" validate --json)"
-if [[ "$imported_validate_output" != *'"valid":true'* || "$imported_validate_output" != *'"event_count":8'* ]]; then
+if ! json_matches "$imported_validate_output" '"valid"[[:space:]]*:[[:space:]]*true' \
+  || ! json_matches "$imported_validate_output" '"event_count"[[:space:]]*:[[:space:]]*8'; then
   echo "installed nahuali imported store did not validate" >&2
   echo "$imported_validate_output" >&2
   exit 1
 fi
 
 maintenance_output="$("$NAHUALI" --database "$STORE" maintenance --json)"
-if [[ "$maintenance_output" != *'"snapshot_supported":true'* || "$maintenance_output" != *'"compaction_supported":false'* ]]; then
+if ! json_matches "$maintenance_output" '"snapshot_supported"[[:space:]]*:[[:space:]]*true' \
+  || ! json_matches "$maintenance_output" '"compaction_supported"[[:space:]]*:[[:space:]]*false'; then
   echo "installed nahuali maintenance output did not report the expected policy" >&2
   echo "$maintenance_output" >&2
   exit 1
@@ -167,7 +181,8 @@ fi
 
 SNAPSHOT="$STORE_DIR/memory.snapshot.json"
 snapshot_dry_run="$("$NAHUALI" --database "$STORE" snapshot --output "$SNAPSHOT" --dry-run --json)"
-if [[ "$snapshot_dry_run" != *'"dry_run":true'* || "$snapshot_dry_run" != *'"written":false'* ]]; then
+if ! json_matches "$snapshot_dry_run" '"dry_run"[[:space:]]*:[[:space:]]*true' \
+  || ! json_matches "$snapshot_dry_run" '"written"[[:space:]]*:[[:space:]]*false'; then
   echo "installed nahuali snapshot dry-run output was not scriptable" >&2
   echo "$snapshot_dry_run" >&2
   exit 1
@@ -178,14 +193,15 @@ if [[ -e "$SNAPSHOT" ]]; then
 fi
 
 snapshot_write="$("$NAHUALI" --database "$STORE" snapshot --output "$SNAPSHOT" --json)"
-if [[ "$snapshot_write" != *'"written":true'* ]]; then
+if ! json_matches "$snapshot_write" '"written"[[:space:]]*:[[:space:]]*true'; then
   echo "installed nahuali snapshot output did not report a write" >&2
   echo "$snapshot_write" >&2
   exit 1
 fi
 
 snapshot_validate="$("$NAHUALI" --database "$STORE" snapshot-validate "$SNAPSHOT" --json)"
-if [[ "$snapshot_validate" != *'"valid":true'* || "$snapshot_validate" != *'"replay_equivalent":true'* ]]; then
+if ! json_matches "$snapshot_validate" '"valid"[[:space:]]*:[[:space:]]*true' \
+  || ! json_matches "$snapshot_validate" '"replay_equivalent"[[:space:]]*:[[:space:]]*true'; then
   echo "installed nahuali snapshot validation did not report replay equivalence" >&2
   echo "$snapshot_validate" >&2
   exit 1

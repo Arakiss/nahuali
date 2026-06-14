@@ -23,6 +23,7 @@ use crate::commands::{
     },
     scope::parse_scope,
 };
+use crate::output;
 
 pub(crate) fn convert_projection_export(
     path: &Path,
@@ -96,7 +97,7 @@ pub(crate) fn emit_conversion_result(
                 Value::String(detected_format.to_string()),
             );
         }
-        println!("{}", Value::Object(payload));
+        output::print_json(&Value::Object(payload))?;
     } else {
         println!("{input_label}: {}", input_path.display());
         println!("Interchange: {}", output.display());

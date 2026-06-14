@@ -7,6 +7,12 @@ use nahuali_core::{
     MemoryProactiveReport, MemoryProjectReport, MemoryReflectionReport, MemorySleepReport,
     OperatorReviewReport, RecordLedgerIssueKind, ReviewResolutionReport, SnapshotIssueKind,
 };
+use serde::Serialize;
+
+pub(crate) fn print_json<T: Serialize + ?Sized>(value: &T) -> anyhow::Result<()> {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
+}
 
 pub(crate) fn issue_kind_name(kind: &RecordLedgerIssueKind) -> &'static str {
     match kind {

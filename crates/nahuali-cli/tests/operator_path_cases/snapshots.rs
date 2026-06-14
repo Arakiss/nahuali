@@ -335,6 +335,7 @@ fn json_output_is_scriptable_for_primary_commands() {
             "--json",
         ],
     );
+    assert_pretty_json(&episode_output);
     let episode: Value = serde_json::from_str(&episode_output).expect("episode output is JSON");
     let episode_id = episode["id"]
         .as_str()
@@ -357,6 +358,7 @@ fn json_output_is_scriptable_for_primary_commands() {
             "--json",
         ],
     );
+    assert_pretty_json(&fact_output);
     let fact: Value = serde_json::from_str(&fact_output).expect("fact output is JSON");
     assert!(fact["id"].as_str().unwrap_or_default().starts_with("fact_"));
     assert_eq!(fact["source_episode_id"], episode_id);
@@ -375,6 +377,7 @@ fn json_output_is_scriptable_for_primary_commands() {
             "--json",
         ],
     );
+    assert_pretty_json(&relation_output);
     let relation: Value = serde_json::from_str(&relation_output).expect("relation output is JSON");
     assert!(
         relation["id"]
@@ -386,6 +389,7 @@ fn json_output_is_scriptable_for_primary_commands() {
     assert_eq!(relation["confidence"], 0.9);
 
     let recall_output = run_ok(&store, &["recall", "Lena release", "--json"]);
+    assert_pretty_json(&recall_output);
     let recall_results: Value =
         serde_json::from_str(&recall_output).expect("recall output is JSON");
     let first = recall_results

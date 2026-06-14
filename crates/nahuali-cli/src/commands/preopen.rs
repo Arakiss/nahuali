@@ -86,33 +86,30 @@ fn validate(database: &Path, require_chained: bool, json: bool) -> anyhow::Resul
             let memory = MemoryEngine::open(database)
                 .with_context(|| format!("failed to open {}", database.display()))?;
             let data = memory.data();
-            println!(
-                "{}",
-                serde_json::json!({
-                    "database": database.display().to_string(),
-                    "record_ledger_table": "memory_record",
-                    "projection": "rust",
-                    "valid": true,
-                    "event_count": report.event_count,
-                    "source_count": data.sources.len(),
-                    "entity_count": data.entities.len(),
-                    "episode_count": data.episodes.len(),
-                    "claim_count": data.claims.len(),
-                    "link_count": data.links.len(),
-                    "fact_count": data.facts.len(),
-                    "relation_count": data.relations.len(),
-                    "procedure_count": data.procedures.len(),
-                    "intention_count": data.intentions.len(),
-                    "review_decision_count": data.review_decisions.len(),
-                    "last_event_id": data.last_event_id,
-                    "supported_event_version": report.supported_event_version,
-                    "observed_event_versions": report.observed_event_versions,
-                    "legacy_event_count": report.legacy_event_count,
-                    "migration_required": report.migration_required,
-                    "require_chained": options.require_chained,
-                    "issues": report.issues,
-                })
-            );
+            output::print_json(&serde_json::json!({
+                "database": database.display().to_string(),
+                "record_ledger_table": "memory_record",
+                "projection": "rust",
+                "valid": true,
+                "event_count": report.event_count,
+                "source_count": data.sources.len(),
+                "entity_count": data.entities.len(),
+                "episode_count": data.episodes.len(),
+                "claim_count": data.claims.len(),
+                "link_count": data.links.len(),
+                "fact_count": data.facts.len(),
+                "relation_count": data.relations.len(),
+                "procedure_count": data.procedures.len(),
+                "intention_count": data.intentions.len(),
+                "review_decision_count": data.review_decisions.len(),
+                "last_event_id": data.last_event_id,
+                "supported_event_version": report.supported_event_version,
+                "observed_event_versions": report.observed_event_versions,
+                "legacy_event_count": report.legacy_event_count,
+                "migration_required": report.migration_required,
+                "require_chained": options.require_chained,
+                "issues": report.issues,
+            }))?;
         } else {
             let mut value = serde_json::to_value(&report)?;
             if let Some(object) = value.as_object_mut() {
@@ -130,7 +127,7 @@ fn validate(database: &Path, require_chained: bool, json: bool) -> anyhow::Resul
                     serde_json::json!(options.require_chained),
                 );
             }
-            println!("{}", serde_json::to_string(&value)?);
+            output::print_json(&value)?;
         }
     } else if report.valid {
         let memory = MemoryEngine::open(database)
@@ -192,7 +189,7 @@ fn backup_validate(path: &Path, require_chained: bool, json: bool) -> anyhow::Re
                 serde_json::json!(path.display().to_string()),
             );
         }
-        println!("{}", serde_json::to_string(&value)?);
+        output::print_json(&value)?;
     } else {
         println!("Backup: {}", path.display());
         println!("Status: {}", if report.valid { "valid" } else { "invalid" });
@@ -239,7 +236,7 @@ fn backup_drill(path: &Path, target_database: &Path, json: bool) -> anyhow::Resu
         )
     })?;
     if json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        output::print_json(&report)?;
     } else {
         println!("Backup: {}", path.display());
         println!("Target database: {}", target_database.display());
@@ -278,7 +275,7 @@ fn restore(path: &Path, target_database: &Path, dry_run: bool, json: bool) -> an
             )
         })?;
     if json {
-        println!("{}", serde_json::to_string(&report)?);
+        output::print_json(&report)?;
     } else {
         println!("Backup: {}", path.display());
         println!("Target database: {}", target_database.display());
