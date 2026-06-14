@@ -13,6 +13,25 @@ The benchmarks answer a narrower question:
 They deliberately publish the corpus shape, formula, command, and limits so the
 numbers can be recomputed from a checkout instead of trusted as prose.
 
+## Why This Is A Separate Axis
+
+Established agent-memory benchmarks such as LOCOMO, LongMemEval, and BEAM are
+valuable recall and answer-quality tests: they ask whether a memory system can
+find or reason over past context. Nahuali's governance suite asks whether the
+memory substrate exposes enough evidence to trust that context before a caller
+acts on it.
+
+That second axis matters because persistent memory is now both a product feature
+and a security boundary. OWASP ASI06 treats memory poisoning as an agentic
+application risk, while EU AI Act Article 12 points high-risk systems toward
+automatic lifecycle logging. Nahuali's benchmarks do not claim compliance or
+complete poisoning defense; they check the deterministic controls this repository
+can prove: ledger integrity, provenance coverage, contradiction and staleness
+signals, attestation lifecycle behavior, and trust-verdict calibration.
+
+For the prior-art and market context behind this benchmark gap, see
+[Agent-Memory Governance Landscape](MEMORY_GOVERNANCE_LANDSCAPE.md).
+
 ## Running The Suite
 
 Run the full governance benchmark gate:
