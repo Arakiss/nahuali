@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-mcp-v0.4.0-beta.0...nahuali-mcp-v0.4.1-beta.0) (2026-06-14)
+
+
+### Bug fixes
+
+* align transport tamper-evidence defaults ([50a0872](https://github.com/Arakiss/nahuali/commit/50a087250d2d970bfaf2a31639200d65ff9b3121))
+
 ## [0.4.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-mcp-v0.3.0-beta.0...nahuali-mcp-v0.4.0-beta.0) (2026-06-13)
 
 
