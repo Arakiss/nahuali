@@ -9,10 +9,10 @@ use std::{
 use anyhow::{Context, bail};
 use clap::Parser;
 use nahuali_core::{
-    AuthorityDecision, AuthorityMode, EpisodeRecorded, EventEnvelope, FactAsserted,
+    AuthorityDecision, AuthorityMode, AutonomyLevel, EpisodeRecorded, EventEnvelope, FactAsserted,
     HealthDimension, HealthSeverity, HealthSignalKind, IntentionKind, IntentionPriority,
     IntentionStatus, KnowledgeHealth, MEMORY_RECORD_SCHEMA, MemoryEngine, MemoryEvent, MemoryKind,
-    RecallResult, RelationRecorded,
+    RecallResult, RelationRecorded, RepairClaim, RepairLink, RepairPayload, RepairProposal,
 };
 use serde::{Deserialize, Serialize};
 use surrealdb::{

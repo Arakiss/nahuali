@@ -240,6 +240,74 @@ fn run_fixture(fixture: Fixture) -> anyhow::Result<FixtureResult> {
                 let mut memory = MemoryEngine::open(&database)?;
                 memory.set_intention_status(id, status, reason)?;
             }
+            Step::Repair {
+                payload,
+                evidence_refs,
+                approve,
+                proposed_by,
+                expect_autonomy,
+                expect_applied,
+            } => {
+                let evidence_episode_ids = evidence_refs
+                    .iter()
+                    .map(|name| {
+                        bindings
+                            .get(name)
+                            .cloned()
+                            .with_context(|| format!("unknown evidence episode binding: {name}"))
+                    })
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                let proposal = RepairProposal {
+                    payload: match payload {
+                        RepairFixturePayload::ConsolidateClaim {
+                            subject,
+                            predicate,
+                            object,
+                            confidence,
+                        } => RepairPayload::ConsolidateClaim(RepairClaim {
+                            subject,
+                            predicate,
+                            object,
+                            confidence: confidence.unwrap_or(0.9),
+                            scope: None,
+                        }),
+                        RepairFixturePayload::LinkEntities {
+                            from,
+                            relation,
+                            to,
+                            confidence,
+                        } => RepairPayload::LinkEntities(RepairLink {
+                            from,
+                            relation,
+                            to,
+                            confidence: confidence.unwrap_or(0.9),
+                            scope: None,
+                        }),
+                    },
+                    evidence_episode_ids,
+                    proposed_by: proposed_by.unwrap_or_else(|| "regression".to_string()),
+                    rationale: "regression fixture".to_string(),
+                };
+                let mut memory = MemoryEngine::open(&database)?;
+                let report = memory.apply_repair(proposal, approve.unwrap_or(false), false)?;
+                if let Some(expected) = expect_autonomy {
+                    checks.push(CheckResult {
+                        name: "repair_autonomy".to_string(),
+                        passed: report.autonomy_level == expected,
+                        detail: format!(
+                            "expected={expected:?} actual={:?}",
+                            report.autonomy_level
+                        ),
+                    });
+                }
+                if let Some(expected) = expect_applied {
+                    checks.push(CheckResult {
+                        name: "repair_applied".to_string(),
+                        passed: report.applied == expected,
+                        detail: format!("expected={expected} actual={}", report.applied),
+                    });
+                }
+            }
             Step::Recall {
                 query,
                 limit,

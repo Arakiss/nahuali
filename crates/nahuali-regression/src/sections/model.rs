@@ -172,6 +172,14 @@ enum Step {
         status: IntentionStatus,
         reason: Option<String>,
     },
+    Repair {
+        payload: RepairFixturePayload,
+        evidence_refs: Vec<String>,
+        approve: Option<bool>,
+        proposed_by: Option<String>,
+        expect_autonomy: Option<AutonomyLevel>,
+        expect_applied: Option<bool>,
+    },
     Recall {
         query: String,
         limit: Option<usize>,
@@ -194,6 +202,23 @@ enum Step {
     WriteRawRecords,
     ExpectOpenError {
         contains: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum RepairFixturePayload {
+    ConsolidateClaim {
+        subject: String,
+        predicate: String,
+        object: String,
+        confidence: Option<f32>,
+    },
+    LinkEntities {
+        from: String,
+        relation: String,
+        to: String,
+        confidence: Option<f32>,
     },
 }
 
@@ -230,6 +255,7 @@ struct Expected {
     episode_count: Option<usize>,
     fact_count: Option<usize>,
     relation_count: Option<usize>,
+    repair_count: Option<usize>,
     supported_fact_count: Option<usize>,
     unsupported_fact_count: Option<usize>,
     low_confidence_fact_count: Option<usize>,

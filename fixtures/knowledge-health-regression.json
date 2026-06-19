@@ -458,6 +458,96 @@
         "authority_score": 1.0,
         "authority_can_trust": true
       }
+    },
+    {
+      "id": "self_repair_auto_consolidation",
+      "goal": "A homogeneous, evidence-anchored consolidation an LLM proposes is classified Auto and applied as an audited repair claim.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "first",
+          "content": "Lena shipped the release",
+          "tags": ["release"]
+        },
+        {
+          "type": "remember",
+          "bind": "second",
+          "content": "Lena owns the release notes",
+          "tags": ["release"]
+        },
+        {
+          "type": "repair",
+          "payload": {
+            "kind": "consolidate_claim",
+            "subject": "Lena",
+            "predicate": "owns",
+            "object": "release notes",
+            "confidence": 0.9
+          },
+          "evidence_refs": ["first", "second"],
+          "proposed_by": "claude-opus-4-8",
+          "expect_autonomy": "auto",
+          "expect_applied": true
+        }
+      ],
+      "expected": {
+        "event_count": 3,
+        "episode_count": 2,
+        "fact_count": 1,
+        "repair_count": 1,
+        "supported_fact_count": 1
+      }
+    },
+    {
+      "id": "self_repair_refuses_contradiction",
+      "goal": "A consolidation that contradicts an existing claim is classified NeverAuto and is not written, even though its evidence is real.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "origin",
+          "content": "Lena leads the roadmap",
+          "tags": ["roadmap"]
+        },
+        {
+          "type": "fact",
+          "subject": "Lena",
+          "predicate": "owns",
+          "object": "the roadmap",
+          "source_episode_ref": "origin",
+          "confidence": 0.9
+        },
+        {
+          "type": "remember",
+          "bind": "first",
+          "content": "Lena shipped the release",
+          "tags": ["release"]
+        },
+        {
+          "type": "remember",
+          "bind": "second",
+          "content": "Lena owns the release notes",
+          "tags": ["release"]
+        },
+        {
+          "type": "repair",
+          "payload": {
+            "kind": "consolidate_claim",
+            "subject": "Lena",
+            "predicate": "owns",
+            "object": "release notes",
+            "confidence": 0.9
+          },
+          "evidence_refs": ["first", "second"],
+          "expect_autonomy": "never_auto",
+          "expect_applied": false
+        }
+      ],
+      "expected": {
+        "event_count": 4,
+        "episode_count": 3,
+        "fact_count": 1,
+        "repair_count": 0
+      }
     }
   ]
 }

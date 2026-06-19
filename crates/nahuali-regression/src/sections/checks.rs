@@ -62,6 +62,12 @@ fn append_projection_checks(
     );
     check_eq(
         checks,
+        "repair_count",
+        memory.data().repairs.len(),
+        expected.repair_count,
+    );
+    check_eq(
+        checks,
         "supported_fact_count",
         health.supported_fact_count,
         expected.supported_fact_count,
