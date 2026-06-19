@@ -48,6 +48,12 @@ interactive governance cockpit, a local MCP stdio server, a local HTTP API,
 fixtures, and release-gate scripts. It is not a hosted product, not an
 accounts system, and not a general-purpose database.
 
+An LLM can also propose repairs to that governed memory — consolidating repeated
+observations into a claim, or linking entities — while the deterministic engine
+validates, classifies, gates, and records each one as an audited, reversible
+event. The core never calls an LLM. See the
+[Self-Repair Contract](SELF_REPAIR.md).
+
 For where the project is going next, see [ROADMAP.md](ROADMAP.md). The roadmap
 is directional; this README describes the current public surface. For the
 prior-art, security, regulatory, and benchmark context behind the dated

@@ -64,6 +64,10 @@ The current public foundation includes:
 - local backup, restore, and backup-drill flows
 - non-mutating self-inspection, reflection, sleep, consolidation, review, and
   proactive reports
+- governed self-repair: an LLM proposes a consolidation or link, the
+  deterministic engine validates, classifies, gates, and records it as an
+  audited, reversible event (`nahuali repair`); see the
+  [Self-Repair Contract](SELF_REPAIR.md)
 - non-mutating ledger audit/diff between two points, with integrity restated and
   optional anchoring on a signed checkpoint
 - composed memory trust report that answers what we know, why to trust it, what
@@ -110,7 +114,10 @@ Not part of the current OSS engine:
 - managed uptime promises
 - secret storage
 - browser dashboard as a beta requirement
-- automatic memory repair without explicit review
+- automatic resolution of contradictions, or any unattended repair that runs
+  without an explicit `nahuali repair` invocation (self-repair step 2: an
+  automatic consolidation pass inside a sleep/consolidate cycle is specified for
+  later and intentionally not built)
 - a claim that memory contents are true
 - stable 1.0 API guarantees before the contract has matured
 
