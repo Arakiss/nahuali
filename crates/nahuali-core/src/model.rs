@@ -3,9 +3,10 @@ use std::{collections::BTreeMap, fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{NahualiError, Result};
+use crate::self_repair::{AutonomyLevel, RepairKind};
 
 /// Current deterministic projection schema version.
-pub const MEMORY_DATA_VERSION: u32 = 6;
+pub const MEMORY_DATA_VERSION: u32 = 7;
 
 /// Fully projected memory state derived from an record ledger.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -32,6 +33,9 @@ pub struct MemoryData {
     pub intentions: Vec<Intention>,
     /// Operator-approved review decisions over self-inspection findings.
     pub review_decisions: Vec<ReviewDecision>,
+    /// Audit trail of applied self-repairs.
+    #[serde(default)]
+    pub repairs: Vec<MemoryRepair>,
     /// Compatibility mirror for `claims`.
     pub facts: Vec<Fact>,
     /// Compatibility mirror for `links`.
@@ -52,6 +56,7 @@ impl Default for MemoryData {
             procedures: Vec::new(),
             intentions: Vec::new(),
             review_decisions: Vec::new(),
+            repairs: Vec::new(),
             facts: Vec::new(),
             relations: Vec::new(),
         }
@@ -500,6 +505,40 @@ pub enum ReviewDecisionAction {
 pub enum ReviewDecisionOutcome {
     /// The operator resolved the finding and recorded the resolution.
     Resolved,
+}
+
+/// Audit record of an applied self-repair.
+///
+/// Each entry is the projection of one [`crate::MemoryEvent::RepairApplied`]
+/// event. It records the materialized claim or link, the model that proposed
+/// the repair, the deterministic autonomy verdict it was applied under, and
+/// whether an operator approved it. Append-only: a bad repair is reversed by a
+/// superseding observation, never by mutation.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct MemoryRepair {
+    /// Stable repair-decision identifier.
+    pub id: String,
+    /// Event identifier that recorded this repair.
+    pub event_id: String,
+    /// Repair category.
+    pub kind: RepairKind,
+    /// Identifier of the claim or link this repair materialized.
+    pub materialized_id: String,
+    /// Source episodes that anchored the repair.
+    pub evidence_ids: Vec<String>,
+    /// Model identifier that proposed the repair.
+    pub proposed_by: String,
+    /// Natural-language justification recorded with the repair.
+    pub rationale: String,
+    /// Autonomy level the deterministic classifier assigned.
+    pub autonomy_level: AutonomyLevel,
+    /// Whether an operator explicitly approved a queued repair.
+    pub operator_override: bool,
+    /// Explicit memory context boundary, when provided.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<MemoryScope>,
+    /// Event timestamp in milliseconds since the Unix epoch.
+    pub created_at_ms: u64,
 }
 
 /// Kind of memory item returned by recall.

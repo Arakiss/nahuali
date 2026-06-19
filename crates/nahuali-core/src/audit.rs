@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::event::{EventEnvelope, MemoryEvent};
+use crate::event::{EventEnvelope, MemoryEvent, RepairMaterialization};
 use crate::model::MemoryScope;
 use crate::store::MemoryEngine;
 
@@ -51,6 +51,8 @@ pub enum LedgerAuditEventKind {
     IntentionStatusChanged,
     /// An operator review item was resolved.
     ReviewRecorded,
+    /// An LLM-proposed repair was applied.
+    RepairApplied,
 }
 
 /// A single change appended within the audited range.
@@ -92,6 +94,8 @@ pub struct LedgerAuditCounts {
     pub intention_status_changes: usize,
     /// Operator review items resolved.
     pub reviews_recorded: usize,
+    /// LLM-proposed repairs applied.
+    pub repairs_applied: usize,
 }
 
 /// Restated integrity of the history through the upper bound of the audit.
@@ -268,6 +272,7 @@ fn count_event(counts: &mut LedgerAuditCounts, payload: &MemoryEvent) {
         MemoryEvent::IntentionUpdated(_) => counts.intentions_updated += 1,
         MemoryEvent::IntentionStatusChanged(_) => counts.intention_status_changes += 1,
         MemoryEvent::ReviewRecorded(_) => counts.reviews_recorded += 1,
+        MemoryEvent::RepairApplied(_) => counts.repairs_applied += 1,
     }
 }
 
@@ -282,6 +287,7 @@ fn event_kind(payload: &MemoryEvent) -> LedgerAuditEventKind {
         MemoryEvent::IntentionUpdated(_) => LedgerAuditEventKind::IntentionUpdated,
         MemoryEvent::IntentionStatusChanged(_) => LedgerAuditEventKind::IntentionStatusChanged,
         MemoryEvent::ReviewRecorded(_) => LedgerAuditEventKind::ReviewRecorded,
+        MemoryEvent::RepairApplied(_) => LedgerAuditEventKind::RepairApplied,
     }
 }
 
@@ -294,6 +300,10 @@ fn event_scope(payload: &MemoryEvent) -> Option<MemoryScope> {
         MemoryEvent::ProcedureRecorded(event) => event.scope.clone(),
         MemoryEvent::IntentionRecorded(event) => event.scope.clone(),
         MemoryEvent::ReviewRecorded(event) => event.scope.clone(),
+        MemoryEvent::RepairApplied(event) => match &event.materialized {
+            RepairMaterialization::Claim(claim) => claim.scope.clone(),
+            RepairMaterialization::Link(link) => link.scope.clone(),
+        },
         MemoryEvent::IntentionUpdated(_) | MemoryEvent::IntentionStatusChanged(_) => None,
     }
 }
@@ -320,6 +330,15 @@ fn summarize(payload: &MemoryEvent) -> String {
         MemoryEvent::ReviewRecorded(event) => {
             truncate(format!("{} {}", event.review_id, token(&event.action)))
         }
+        MemoryEvent::RepairApplied(event) => match &event.materialized {
+            RepairMaterialization::Claim(claim) => truncate(format!(
+                "repair {} {} {}",
+                claim.subject, claim.predicate, claim.object
+            )),
+            RepairMaterialization::Link(link) => {
+                truncate(format!("repair {} {} {}", link.from, link.relation, link.to))
+            }
+        },
     }
 }
 

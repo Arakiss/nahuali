@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::model::MemoryScope;
+use crate::self_repair::{AutonomyLevel, RepairKind};
 
 /// Current event-envelope format written by `nahuali-core`.
 pub const EVENT_ENVELOPE_VERSION: u32 = 1;
@@ -187,6 +188,8 @@ pub enum MemoryEvent {
     IntentionStatusChanged(IntentionStatusChanged),
     /// Operator reviewed and resolved a self-inspection item.
     ReviewRecorded(ReviewRecorded),
+    /// An LLM-proposed repair was validated, classified, and applied.
+    RepairApplied(RepairApplied),
 }
 
 /// Payload for a source-recorded event.
@@ -487,6 +490,86 @@ pub enum ReviewRecordedAction {
 pub enum ReviewRecordedOutcome {
     /// The operator resolved the finding and recorded the resolution.
     Resolved,
+}
+
+/// Payload for an applied self-repair.
+///
+/// A single repair event carries the materializable operation, the provenance of
+/// the proposal, and the deterministic verdict, so one append both writes the
+/// claim or link *and* records its audit atomically (contract rule 4: the repair
+/// is itself the event). The LLM proposed it; the deterministic engine validated,
+/// classified, and recorded it.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RepairApplied {
+    /// Stable repair-decision identifier.
+    pub id: String,
+    /// Repair category.
+    pub kind: RepairKind,
+    /// Source episodes that anchor the repair.
+    pub evidence_ids: Vec<String>,
+    /// Model identifier that proposed the repair, recorded as provenance.
+    pub proposed_by: String,
+    /// Natural-language justification.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub rationale: String,
+    /// Autonomy level the deterministic classifier assigned.
+    pub autonomy_level: AutonomyLevel,
+    /// Whether an operator explicitly approved a queued repair.
+    pub operator_override: bool,
+    /// The claim or link this repair materialized.
+    pub materialized: RepairMaterialization,
+}
+
+/// The claim or link a repair event materializes.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "materialization", rename_all = "snake_case")]
+pub enum RepairMaterialization {
+    /// Materialize a derived claim, mirroring [`FactAsserted`].
+    Claim(RepairClaimMaterialization),
+    /// Materialize a derived link, mirroring [`RelationRecorded`].
+    Link(RepairLinkMaterialization),
+}
+
+/// Claim a repair event materializes (mirrors [`FactAsserted`]).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RepairClaimMaterialization {
+    /// Stable claim identifier.
+    pub id: String,
+    /// Entity or concept the assertion is about.
+    pub subject: String,
+    /// Relationship or attribute being asserted.
+    pub predicate: String,
+    /// Assertion value.
+    pub object: String,
+    /// Source episode that anchors this assertion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_episode_id: Option<String>,
+    /// Caller-provided confidence after clamping to the `0.0..=1.0` range.
+    pub confidence: f32,
+    /// Explicit memory context boundary, when provided.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<MemoryScope>,
+}
+
+/// Link a repair event materializes (mirrors [`RelationRecorded`]).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RepairLinkMaterialization {
+    /// Stable link identifier.
+    pub id: String,
+    /// Source endpoint of the relation.
+    pub from: String,
+    /// Relation label.
+    pub relation: String,
+    /// Target endpoint of the relation.
+    pub to: String,
+    /// Source episode that anchors this relation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_episode_id: Option<String>,
+    /// Caller-provided confidence after clamping to the `0.0..=1.0` range.
+    pub confidence: f32,
+    /// Explicit memory context boundary, when provided.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<MemoryScope>,
 }
 
 #[derive(Serialize)]

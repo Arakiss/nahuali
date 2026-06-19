@@ -3,13 +3,13 @@ use std::collections::BTreeSet;
 use crate::{
     event::{
         EventEnvelope, IntentionRecordedKind, IntentionRecordedPriority, IntentionRecordedStatus,
-        MemoryEvent, ProcedureRecordedKind, ReviewRecordedAction, ReviewRecordedOutcome,
-        SourceRecordedKind,
+        MemoryEvent, ProcedureRecordedKind, RepairMaterialization, ReviewRecordedAction,
+        ReviewRecordedOutcome, SourceRecordedKind,
     },
     model::{
         Claim, Entity, Episode, Intention, IntentionKind, IntentionPriority, IntentionStatus, Link,
-        MemoryData, MemoryScope, Procedure, ProcedureKind, ReviewDecision, ReviewDecisionAction,
-        ReviewDecisionOutcome, SourceDocument, SourceKind,
+        MemoryData, MemoryRepair, MemoryScope, Procedure, ProcedureKind, ReviewDecision,
+        ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
     },
 };
 
@@ -207,6 +207,87 @@ pub(crate) fn project_event(data: &mut MemoryData, event: &EventEnvelope) {
                 note: payload.note.clone(),
                 evidence_ids: payload.evidence_ids.clone(),
                 scope: payload.scope.clone(),
+                created_at_ms: event.timestamp_ms,
+            });
+        }
+        MemoryEvent::RepairApplied(payload) => {
+            // Materialize the claim or link on exactly the same path as
+            // `FactAsserted` / `RelationRecorded`, so a repaired claim flows into
+            // the derived tiers (and the semantic index) identically to any other
+            // claim — there is no shortcut around the projection.
+            let (materialized_id, repair_scope) = match &payload.materialized {
+                RepairMaterialization::Claim(claim) => {
+                    let projected = Claim {
+                        id: claim.id.clone(),
+                        event_id: event.id.clone(),
+                        subject: claim.subject.clone(),
+                        predicate: claim.predicate.clone(),
+                        object: claim.object.clone(),
+                        source_episode_id: claim.source_episode_id.clone(),
+                        confidence: claim.confidence,
+                        scope: claim.scope.clone(),
+                        created_at_ms: event.timestamp_ms,
+                    };
+                    record_entity(
+                        &mut data.entities,
+                        &projected.subject,
+                        event.timestamp_ms,
+                        &event.id,
+                        projected.scope.as_ref(),
+                    );
+                    record_entity(
+                        &mut data.entities,
+                        &projected.object,
+                        event.timestamp_ms,
+                        &event.id,
+                        projected.scope.as_ref(),
+                    );
+                    data.claims.push(projected.clone());
+                    data.facts.push(projected);
+                    (claim.id.clone(), claim.scope.clone())
+                }
+                RepairMaterialization::Link(link) => {
+                    let projected = Link {
+                        id: link.id.clone(),
+                        event_id: event.id.clone(),
+                        from: link.from.clone(),
+                        relation: link.relation.clone(),
+                        to: link.to.clone(),
+                        source_episode_id: link.source_episode_id.clone(),
+                        confidence: link.confidence,
+                        scope: link.scope.clone(),
+                        created_at_ms: event.timestamp_ms,
+                    };
+                    record_entity(
+                        &mut data.entities,
+                        &projected.from,
+                        event.timestamp_ms,
+                        &event.id,
+                        projected.scope.as_ref(),
+                    );
+                    record_entity(
+                        &mut data.entities,
+                        &projected.to,
+                        event.timestamp_ms,
+                        &event.id,
+                        projected.scope.as_ref(),
+                    );
+                    data.links.push(projected.clone());
+                    data.relations.push(projected);
+                    (link.id.clone(), link.scope.clone())
+                }
+            };
+            data.repairs.push(MemoryRepair {
+                id: payload.id.clone(),
+                event_id: event.id.clone(),
+                kind: payload.kind,
+                materialized_id,
+                evidence_ids: payload.evidence_ids.clone(),
+                proposed_by: payload.proposed_by.clone(),
+                rationale: payload.rationale.clone(),
+                autonomy_level: payload.autonomy_level,
+                operator_override: payload.operator_override,
+                scope: repair_scope,
                 created_at_ms: event.timestamp_ms,
             });
         }
@@ -419,12 +500,14 @@ mod tests {
     use crate::event::{
         EpisodeRecorded, EventEnvelope, FactAsserted, IntentionRecorded, IntentionRecordedKind,
         IntentionRecordedPriority, IntentionRecordedStatus, IntentionStatusChanged,
-        IntentionUpdated, MemoryEvent, ProcedureRecorded, ProcedureRecordedKind, RelationRecorded,
+        IntentionUpdated, MemoryEvent, ProcedureRecorded, ProcedureRecordedKind,
+        RepairApplied, RepairClaimMaterialization, RepairMaterialization, RelationRecorded,
     };
     use crate::model::{
         IntentionKind, IntentionPriority, IntentionStatus, MEMORY_DATA_VERSION, MemoryScope,
         MemoryScopeKind, ProcedureKind,
     };
+    use crate::self_repair::{AutonomyLevel, RepairKind};
 
     use super::{project, project_event};
 
@@ -548,6 +631,28 @@ mod tests {
                     reason: Some("Released".to_string()),
                 }),
             ),
+            EventEnvelope::new(
+                8,
+                1007,
+                MemoryEvent::RepairApplied(RepairApplied {
+                    id: "repair_1".to_string(),
+                    kind: RepairKind::ConsolidateClaim,
+                    evidence_ids: vec!["episode_1".to_string()],
+                    proposed_by: "claude-opus-4-8".to_string(),
+                    rationale: "repeated observations".to_string(),
+                    autonomy_level: AutonomyLevel::Auto,
+                    operator_override: false,
+                    materialized: RepairMaterialization::Claim(RepairClaimMaterialization {
+                        id: "claim_repair_1".to_string(),
+                        subject: "Lena".to_string(),
+                        predicate: "leads".to_string(),
+                        object: "release".to_string(),
+                        source_episode_id: Some("episode_1".to_string()),
+                        confidence: 0.9,
+                        scope: None,
+                    }),
+                }),
+            ),
         ];
 
         let mut incremental = crate::MemoryData::default();
@@ -555,6 +660,69 @@ mod tests {
             project_event(&mut incremental, &events[index]);
             assert_eq!(incremental, project(&events[..=index]));
         }
+    }
+
+    #[test]
+    fn projects_repair_applied_into_claim_and_audit() {
+        let events = vec![
+            EventEnvelope::new(
+                1,
+                1000,
+                MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                    id: "episode_1".to_string(),
+                    content: "Lena shipped the release.".to_string(),
+                    tags: vec!["release".to_string()],
+                    mentions: Vec::new(),
+                    source_id: None,
+                    source_position: None,
+                    source_role: None,
+                    scope: None,
+                }),
+            ),
+            EventEnvelope::new(
+                2,
+                1001,
+                MemoryEvent::RepairApplied(RepairApplied {
+                    id: "repair_1".to_string(),
+                    kind: RepairKind::ConsolidateClaim,
+                    evidence_ids: vec!["episode_1".to_string()],
+                    proposed_by: "claude-opus-4-8".to_string(),
+                    rationale: "repeated observations".to_string(),
+                    autonomy_level: AutonomyLevel::Auto,
+                    operator_override: false,
+                    materialized: RepairMaterialization::Claim(RepairClaimMaterialization {
+                        id: "claim_repair_1".to_string(),
+                        subject: "Lena".to_string(),
+                        predicate: "owns".to_string(),
+                        object: "release notes".to_string(),
+                        source_episode_id: Some("episode_1".to_string()),
+                        confidence: 0.9,
+                        scope: None,
+                    }),
+                }),
+            ),
+        ];
+
+        let data = project(&events);
+
+        // The repaired claim materializes on the same path as any other claim:
+        // it is present in both the canonical list and its compatibility mirror,
+        // and its subject/object entities are recorded.
+        assert_eq!(data.claims.len(), 1);
+        assert_eq!(data.claims, data.facts);
+        assert_eq!(data.claims[0].id, "claim_repair_1");
+        assert_eq!(data.claims[0].source_episode_id.as_deref(), Some("episode_1"));
+        assert!(data.entities.iter().any(|entity| entity.name == "Lena"));
+
+        // The repair is itself audited.
+        assert_eq!(data.repairs.len(), 1);
+        let repair = &data.repairs[0];
+        assert_eq!(repair.id, "repair_1");
+        assert_eq!(repair.kind, RepairKind::ConsolidateClaim);
+        assert_eq!(repair.materialized_id, "claim_repair_1");
+        assert_eq!(repair.autonomy_level, AutonomyLevel::Auto);
+        assert!(!repair.operator_override);
+        assert_eq!(repair.event_id, events[1].id);
     }
 
     #[test]

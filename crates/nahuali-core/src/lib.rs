@@ -114,7 +114,8 @@ pub use event::{
     EVENT_ENVELOPE_VERSION, EpisodeRecorded, EventEnvelope, FactAsserted, IntentionRecorded,
     IntentionRecordedKind, IntentionRecordedPriority, IntentionRecordedStatus,
     IntentionStatusChanged, IntentionUpdated, MemoryEvent, ProcedureRecorded,
-    ProcedureRecordedKind, RelationRecorded, ReviewRecorded, ReviewRecordedAction,
+    ProcedureRecordedKind, RelationRecorded, RepairApplied, RepairClaimMaterialization,
+    RepairLinkMaterialization, RepairMaterialization, ReviewRecorded, ReviewRecordedAction,
     ReviewRecordedOutcome, SourceRecorded, SourceRecordedKind,
 };
 pub use graph::{
@@ -160,8 +161,8 @@ pub use merkle::{
 };
 pub use model::{
     Claim, Entity, Episode, Fact, Intention, IntentionKind, IntentionPriority, IntentionStatus,
-    Link, MEMORY_DATA_VERSION, MemoryData, MemoryKind, MemoryScope, MemoryScopeKind, Procedure,
-    ProcedureKind, RecallResult, RecallResultTrust, RecallResultTrustMode, Relation,
+    Link, MEMORY_DATA_VERSION, MemoryData, MemoryKind, MemoryRepair, MemoryScope, MemoryScopeKind,
+    Procedure, ProcedureKind, RecallResult, RecallResultTrust, RecallResultTrustMode, Relation,
     ReviewDecision, ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
 };
 pub use operator_review::{
