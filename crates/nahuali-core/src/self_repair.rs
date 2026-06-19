@@ -28,12 +28,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     authority::{AuthorityDecision, AuthorityMode},
+    error::{NahualiError, Result},
+    event::{
+        RepairApplied, RepairClaimMaterialization, RepairLinkMaterialization, RepairMaterialization,
+    },
     inspection::KnowledgeHealth,
     model::{Claim, Episode, MemoryData, MemoryScope},
 };
 
 /// Current self-repair report format version.
 pub const SELF_REPAIR_REPORT_VERSION: u32 = 1;
+
+/// Non-mutating policy statement included with every repair report.
+pub(crate) const SELF_REPAIR_POLICY: &str = "self-repair is opt-in: an LLM proposes, the deterministic engine validates, classifies, and records. The trust kernel uses no LLM; every repair is evidence-anchored and appended as an audited, reversible event.";
 
 /// Category of repair an LLM proposed.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -326,6 +333,211 @@ pub(crate) fn evidence_shares_homogeneous_tag(data: &MemoryData, evidence_ids: &
         });
     }
     common.map(|tags| !tags.is_empty()).unwrap_or(false)
+}
+
+/// Options that gate how a prepared repair would be written.
+pub(crate) struct RepairOptions {
+    /// Preview the verdict without writing a record.
+    pub dry_run: bool,
+    /// Whether an operator explicitly approved a queued repair.
+    pub approve: bool,
+}
+
+/// A validated, classified repair ready to write (or report on a dry run).
+pub(crate) struct PreparedRepair {
+    /// Report describing the verdict and what would be (or was) written.
+    pub report: RepairReport,
+    /// The append-only event that materializes the repair and its audit.
+    pub event: RepairApplied,
+}
+
+/// Validate and classify a repair proposal, returning the report and the event
+/// that would materialize it — without writing anything.
+///
+/// Validation is deterministic and rejects structurally invalid proposals:
+/// a missing model id, no evidence, a fabricated evidence episode (contract
+/// rule 2), empty fields, or a link whose endpoints are not present in memory.
+/// The `repair_id` and `materialized_id` are minted by the caller (the engine),
+/// mirroring how review write-back receives its decision id.
+pub(crate) fn prepare_repair(
+    data: &MemoryData,
+    proposal: RepairProposal,
+    options: RepairOptions,
+    repair_id: String,
+    materialized_id: String,
+) -> Result<PreparedRepair> {
+    let proposed_by = proposal.proposed_by.trim().to_string();
+    if proposed_by.is_empty() {
+        return Err(NahualiError::InvalidRepairProposal {
+            message: "a repair must name the model that proposed it".to_string(),
+        });
+    }
+    let rationale = proposal.rationale.trim().to_string();
+
+    // Evidence must be real. A fabricated citation is never minted into
+    // evidence-backed memory (contract rule 2).
+    let evidence_ids = clean_ids(&proposal.evidence_episode_ids);
+    if evidence_ids.is_empty() {
+        return Err(NahualiError::InvalidRepairProposal {
+            message: "a repair must cite at least one evidence episode".to_string(),
+        });
+    }
+    for id in &evidence_ids {
+        if !data.episodes.iter().any(|episode| &episode.id == id) {
+            return Err(NahualiError::UnknownSourceEpisode { id: id.clone() });
+        }
+    }
+    let anchor_episode_id = evidence_ids[0].clone();
+
+    let cleaned_payload = match &proposal.payload {
+        RepairPayload::ConsolidateClaim(claim) => {
+            let subject = claim.subject.trim().to_string();
+            let predicate = claim.predicate.trim().to_string();
+            let object = claim.object.trim().to_string();
+            if subject.is_empty() || predicate.is_empty() || object.is_empty() {
+                return Err(NahualiError::InvalidRepairProposal {
+                    message: "a consolidated claim needs a subject, predicate, and object"
+                        .to_string(),
+                });
+            }
+            RepairPayload::ConsolidateClaim(RepairClaim {
+                subject,
+                predicate,
+                object,
+                confidence: claim.confidence.clamp(0.0, 1.0),
+                scope: claim.scope.clone(),
+            })
+        }
+        RepairPayload::LinkEntities(link) => {
+            let from = link.from.trim().to_string();
+            let relation = link.relation.trim().to_string();
+            let to = link.to.trim().to_string();
+            if from.is_empty() || relation.is_empty() || to.is_empty() {
+                return Err(NahualiError::InvalidRepairProposal {
+                    message: "a link needs a source, relation, and target".to_string(),
+                });
+            }
+            // A link may only connect entities already present in the projection;
+            // self-repair never invents a new entity.
+            if !entity_present(data, &from, link.scope.as_ref()) {
+                return Err(NahualiError::InvalidRepairProposal {
+                    message: format!("link endpoint '{from}' is not present in memory"),
+                });
+            }
+            if !entity_present(data, &to, link.scope.as_ref()) {
+                return Err(NahualiError::InvalidRepairProposal {
+                    message: format!("link endpoint '{to}' is not present in memory"),
+                });
+            }
+            RepairPayload::LinkEntities(RepairLink {
+                from,
+                relation,
+                to,
+                confidence: link.confidence.clamp(0.0, 1.0),
+                scope: link.scope.clone(),
+            })
+        }
+    };
+
+    let cleaned = RepairProposal {
+        payload: cleaned_payload,
+        evidence_episode_ids: evidence_ids.clone(),
+        proposed_by: proposed_by.clone(),
+        rationale: rationale.clone(),
+    };
+
+    let verdict = classify_autonomy(data, &cleaned);
+    let operator_override = verdict.autonomy_level == AutonomyLevel::Queue && options.approve;
+    let kind = cleaned.kind();
+
+    // Anchor the materialized claim or link to the first cited episode so it
+    // passes the same recall-trust evidence bar as any directly written memory.
+    let materialized = match &cleaned.payload {
+        RepairPayload::ConsolidateClaim(claim) => {
+            RepairMaterialization::Claim(RepairClaimMaterialization {
+                id: materialized_id,
+                subject: claim.subject.clone(),
+                predicate: claim.predicate.clone(),
+                object: claim.object.clone(),
+                source_episode_id: Some(anchor_episode_id),
+                confidence: claim.confidence,
+                scope: claim.scope.clone(),
+            })
+        }
+        RepairPayload::LinkEntities(link) => RepairMaterialization::Link(RepairLinkMaterialization {
+            id: materialized_id,
+            from: link.from.clone(),
+            relation: link.relation.clone(),
+            to: link.to.clone(),
+            source_episode_id: Some(anchor_episode_id),
+            confidence: link.confidence,
+            scope: link.scope.clone(),
+        }),
+    };
+
+    let event = RepairApplied {
+        id: repair_id.clone(),
+        kind,
+        evidence_ids: evidence_ids.clone(),
+        proposed_by: proposed_by.clone(),
+        rationale: rationale.clone(),
+        autonomy_level: verdict.autonomy_level,
+        operator_override,
+        materialized,
+    };
+
+    let report = RepairReport {
+        version: SELF_REPAIR_REPORT_VERSION,
+        dry_run: options.dry_run,
+        applied: false,
+        kind,
+        autonomy_level: verdict.autonomy_level,
+        verdict,
+        evidence_ids,
+        proposed_by,
+        rationale,
+        operator_override,
+        repair_id: Some(repair_id),
+        resulting_event_id: None,
+        materialized_id: None,
+        policy: SELF_REPAIR_POLICY.to_string(),
+    };
+
+    Ok(PreparedRepair { report, event })
+}
+
+/// Whether an entity with this name (and scope) is present in the projection.
+fn entity_present(data: &MemoryData, name: &str, scope: Option<&MemoryScope>) -> bool {
+    let target = normalized_name(name);
+    if target.is_empty() {
+        return false;
+    }
+    let scope_key = scope.map(|scope| scope.key.as_str());
+    data.entities.iter().any(|entity| {
+        normalized_name(&entity.name) == target
+            && entity.scope.as_ref().map(|scope| scope.key.as_str()) == scope_key
+    })
+}
+
+/// Normalize an entity name exactly like the projection: collapse internal
+/// whitespace and lowercase, so presence checks match the stored entity key.
+fn normalized_name(name: &str) -> String {
+    name.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
+/// Trim, drop empty, and de-duplicate identifiers while preserving order.
+fn clean_ids(ids: &[String]) -> Vec<String> {
+    let mut cleaned = Vec::new();
+    for id in ids {
+        let id = id.trim().to_string();
+        if !id.is_empty() && !cleaned.contains(&id) {
+            cleaned.push(id);
+        }
+    }
+    cleaned
 }
 
 #[cfg(test)]

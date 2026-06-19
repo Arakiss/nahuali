@@ -520,6 +520,16 @@ pub struct RepairApplied {
     pub materialized: RepairMaterialization,
 }
 
+impl RepairApplied {
+    /// Identifier of the claim or link this repair materializes.
+    pub fn materialized_id(&self) -> &str {
+        match &self.materialized {
+            RepairMaterialization::Claim(claim) => &claim.id,
+            RepairMaterialization::Link(link) => &link.id,
+        }
+    }
+}
+
 /// The claim or link a repair event materializes.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "materialization", rename_all = "snake_case")]

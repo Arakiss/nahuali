@@ -395,6 +395,89 @@ impl MemoryEngine {
         Ok(report)
     }
 
+    /// Preview an LLM-proposed repair without writing records.
+    ///
+    /// The proposal is validated and classified deterministically. The returned
+    /// report names the autonomy verdict (`Auto`, `Queue`, or `NeverAuto`) so a
+    /// caller can see what [`Self::apply_repair`] would do before committing.
+    pub fn repair_plan(&self, proposal: RepairProposal) -> Result<RepairReport> {
+        let (repair_id, materialized_id) = self.repair_ids(&proposal);
+        let prepared = self_repair::prepare_repair(
+            &self.data,
+            proposal,
+            self_repair::RepairOptions {
+                dry_run: true,
+                approve: false,
+            },
+            repair_id,
+            materialized_id,
+        )?;
+        Ok(prepared.report)
+    }
+
+    /// Validate, classify, and apply an LLM-proposed repair.
+    ///
+    /// The LLM proposes; this deterministic engine decides. A fabricated
+    /// evidence citation, an empty field, or a link to an absent entity is
+    /// rejected before anything is written. Otherwise the classifier assigns an
+    /// autonomy level and the write is gated on it:
+    ///
+    /// - `Auto` — applied with no approval.
+    /// - `Queue` — applied only when `approve` is set, recorded with
+    ///   `operator_override`; otherwise the report is returned unapplied.
+    /// - `NeverAuto` — refused even with `approve`; the report surfaces the
+    ///   contradiction and points to the manual resolution path.
+    ///
+    /// A dry run returns the same report shape without appending a record. The
+    /// repair is materialized and audited by a single append-only event, so the
+    /// claim or link and its provenance land atomically.
+    pub fn apply_repair(
+        &mut self,
+        proposal: RepairProposal,
+        approve: bool,
+        dry_run: bool,
+    ) -> Result<RepairReport> {
+        let (repair_id, materialized_id) = self.repair_ids(&proposal);
+        let prepared = self_repair::prepare_repair(
+            &self.data,
+            proposal,
+            self_repair::RepairOptions { dry_run, approve },
+            repair_id,
+            materialized_id,
+        )?;
+
+        if dry_run {
+            return Ok(prepared.report);
+        }
+
+        let mut report = prepared.report;
+        match report.autonomy_level {
+            AutonomyLevel::Auto => {}
+            AutonomyLevel::Queue if report.operator_override => {}
+            // A queued repair needs an explicit operator approval; a contradicting
+            // one is never applied. Both return the verdict without writing.
+            AutonomyLevel::Queue | AutonomyLevel::NeverAuto => return Ok(report),
+        }
+
+        let materialized_id = prepared.event.materialized_id().to_string();
+        let envelope = self.append(MemoryEvent::RepairApplied(prepared.event))?;
+        report.applied = true;
+        report.resulting_event_id = Some(envelope.id);
+        report.materialized_id = Some(materialized_id);
+
+        Ok(report)
+    }
+
+    /// Mint the repair-decision id and the materialized claim/link id, choosing
+    /// the materialized id prefix from the proposed repair kind.
+    fn repair_ids(&self, proposal: &RepairProposal) -> (String, String) {
+        let materialized_prefix = match proposal.kind() {
+            RepairKind::ConsolidateClaim => "claim",
+            RepairKind::LinkEntities => "link",
+        };
+        (make_id("repair"), make_id(materialized_prefix))
+    }
+
     /// Return a deterministic graph neighborhood around a seed entity or memory item.
     pub fn graph_neighborhood(
         &self,

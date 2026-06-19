@@ -45,6 +45,12 @@ pub enum NahualiError {
         /// Cited episode identifier.
         id: String,
     },
+    /// An LLM repair proposal is malformed or cites memory that is not present.
+    #[error("invalid repair proposal: {message}")]
+    InvalidRepairProposal {
+        /// Human-readable validation failure.
+        message: String,
+    },
     /// The SurrealDB memory store could not be opened or queried.
     #[error("failed to use SurrealDB memory store at {path}: {source}")]
     Database {

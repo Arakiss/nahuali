@@ -7,13 +7,34 @@ mod tests {
     };
 
     use crate::{
-        AuthorityMode, IntentionKind, IntentionPriority, IntentionStatus, IntentionUpdateOptions,
-        NahualiError, SourceKind, SourceRecordOptions,
+        AuthorityMode, AutonomyLevel, IntentionKind, IntentionPriority, IntentionStatus,
+        IntentionUpdateOptions, NahualiError, RepairClaim, RepairKind, RepairLink, RepairPayload,
+        RepairProposal, SourceKind, SourceRecordOptions,
         model::{MemoryScope, MemoryScopeKind, ProcedureKind},
         projection,
     };
 
     use super::MemoryEngine;
+
+    fn consolidate(
+        subject: &str,
+        predicate: &str,
+        object: &str,
+        evidence: &[&str],
+    ) -> RepairProposal {
+        RepairProposal {
+            payload: RepairPayload::ConsolidateClaim(RepairClaim {
+                subject: subject.to_string(),
+                predicate: predicate.to_string(),
+                object: object.to_string(),
+                confidence: 0.9,
+                scope: None,
+            }),
+            evidence_episode_ids: evidence.iter().map(|id| id.to_string()).collect(),
+            proposed_by: "claude-opus-4-8".to_string(),
+            rationale: "repeated observations".to_string(),
+        }
+    }
 
     #[test]
     fn stores_and_recalls_episode_from_record_ledger() {
@@ -691,6 +712,251 @@ mod tests {
         assert_eq!(reopened.chain_tip(), target.chain_tip());
 
         let _ = fs::remove_file(target_path);
+    }
+
+    #[test]
+    fn repair_rejects_fabricated_and_empty_evidence() {
+        let path = temp_path("repair_rejects_fabricated_and_empty_evidence");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        memory
+            .remember("Lena shipped the release.", vec!["release".to_string()])
+            .unwrap();
+
+        // A fabricated citation is never minted into evidence-backed memory.
+        let fabricated = consolidate("Lena", "owns", "release notes", &["episode_ghost"]);
+        let error = memory.apply_repair(fabricated, false, false).unwrap_err();
+        assert_eq!(error.to_string(), "unknown source episode: episode_ghost");
+
+        // No evidence at all is rejected too.
+        let empty = consolidate("Lena", "owns", "release notes", &[]);
+        assert!(matches!(
+            memory.apply_repair(empty, false, false).unwrap_err(),
+            NahualiError::InvalidRepairProposal { .. }
+        ));
+
+        assert!(memory.data().claims.is_empty());
+        assert!(memory.data().repairs.is_empty());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn repair_auto_applies_homogeneous_consolidation() {
+        let path = temp_path("repair_auto_applies_homogeneous_consolidation");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let first = memory
+            .remember("Lena shipped the release.", vec!["release".to_string()])
+            .unwrap();
+        let second = memory
+            .remember("Lena owns the release notes.", vec!["release".to_string()])
+            .unwrap();
+
+        let proposal = consolidate("Lena", "owns", "release notes", &[&first.id, &second.id]);
+
+        // A dry-run plan previews Auto without writing.
+        let plan = memory.repair_plan(proposal.clone()).unwrap();
+        assert_eq!(plan.autonomy_level, AutonomyLevel::Auto);
+        assert!(plan.dry_run);
+        assert!(!plan.applied);
+        assert!(memory.data().claims.is_empty());
+
+        // Applying it writes one claim anchored to the first cited episode.
+        let report = memory.apply_repair(proposal, false, false).unwrap();
+        assert_eq!(report.autonomy_level, AutonomyLevel::Auto);
+        assert!(report.applied);
+        assert!(!report.operator_override);
+        assert_eq!(report.kind, RepairKind::ConsolidateClaim);
+
+        assert_eq!(memory.data().claims.len(), 1);
+        let claim = &memory.data().claims[0];
+        assert_eq!(claim.subject, "Lena");
+        assert_eq!(claim.source_episode_id.as_deref(), Some(first.id.as_str()));
+        assert_eq!(memory.data().repairs.len(), 1);
+        assert_eq!(
+            memory.data().repairs[0].materialized_id,
+            report.materialized_id.unwrap()
+        );
+
+        // The repaired claim survives a reopen and is recallable.
+        let reopened = MemoryEngine::open(&path).unwrap();
+        assert_eq!(reopened.data().claims.len(), 1);
+        assert_eq!(reopened.data().repairs.len(), 1);
+        assert!(!reopened.recall("release notes", 10).unwrap().is_empty());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn repair_queues_ambiguous_consolidation_until_approved() {
+        let path = temp_path("repair_queues_ambiguous_consolidation_until_approved");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        // Distinct tags: not homogeneous, so the pattern needs operator judgment.
+        let first = memory
+            .remember("Lena shipped the release.", vec!["release".to_string()])
+            .unwrap();
+        let second = memory
+            .remember("Lena reviewed the billing run.", vec!["billing".to_string()])
+            .unwrap();
+
+        let proposal = consolidate("Lena", "owns", "release notes", &[&first.id, &second.id]);
+
+        // Without approval, a queued repair is reported but not written.
+        let report = memory.apply_repair(proposal.clone(), false, false).unwrap();
+        assert_eq!(report.autonomy_level, AutonomyLevel::Queue);
+        assert!(!report.applied);
+        assert!(memory.data().claims.is_empty());
+
+        // With explicit operator approval it is written, recorded as an override.
+        let approved = memory.apply_repair(proposal, true, false).unwrap();
+        assert_eq!(approved.autonomy_level, AutonomyLevel::Queue);
+        assert!(approved.applied);
+        assert!(approved.operator_override);
+        assert_eq!(memory.data().claims.len(), 1);
+        assert!(memory.data().repairs[0].operator_override);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn repair_refuses_contradicting_claim_even_with_approval() {
+        let path = temp_path("repair_refuses_contradicting_claim_even_with_approval");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let origin = memory
+            .remember("Lena leads the roadmap.", vec!["roadmap".to_string()])
+            .unwrap();
+        memory
+            .add_claim("Lena", "owns", "the roadmap", Some(origin.id), 0.9)
+            .unwrap();
+        let first = memory
+            .remember("Lena shipped the release.", vec!["release".to_string()])
+            .unwrap();
+        let second = memory
+            .remember("Lena owns the release notes.", vec!["release".to_string()])
+            .unwrap();
+
+        // Same subject+predicate, different value: a contradiction.
+        let proposal = consolidate("Lena", "owns", "release notes", &[&first.id, &second.id]);
+
+        let report = memory.apply_repair(proposal, true, false).unwrap();
+        assert_eq!(report.autonomy_level, AutonomyLevel::NeverAuto);
+        assert!(!report.applied);
+        assert!(report.verdict.blocked_by.is_some());
+
+        // The contradiction was surfaced, not masked: only the original claim
+        // exists and no repair was recorded.
+        assert_eq!(memory.data().claims.len(), 1);
+        assert_eq!(memory.data().claims[0].object, "the roadmap");
+        assert!(memory.data().repairs.is_empty());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn repair_links_two_present_entities() {
+        let path = temp_path("repair_links_two_present_entities");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let episode = memory
+            .remember_with_mentions(
+                "Lena owns the release notes.",
+                vec!["release".to_string()],
+                vec!["Lena".to_string(), "Release Notes".to_string()],
+            )
+            .unwrap();
+
+        let proposal = RepairProposal {
+            payload: RepairPayload::LinkEntities(RepairLink {
+                from: "Lena".to_string(),
+                relation: "owns".to_string(),
+                to: "Release Notes".to_string(),
+                confidence: 0.9,
+                scope: None,
+            }),
+            evidence_episode_ids: vec![episode.id.clone()],
+            proposed_by: "claude-opus-4-8".to_string(),
+            rationale: "the entities co-occur".to_string(),
+        };
+
+        let report = memory.apply_repair(proposal, false, false).unwrap();
+        assert_eq!(report.autonomy_level, AutonomyLevel::Auto);
+        assert!(report.applied);
+        assert_eq!(report.kind, RepairKind::LinkEntities);
+        assert_eq!(memory.data().links.len(), 1);
+        assert_eq!(
+            memory.data().links[0].source_episode_id.as_deref(),
+            Some(episode.id.as_str())
+        );
+
+        // A link to an entity that is not present is rejected.
+        let absent = RepairProposal {
+            payload: RepairPayload::LinkEntities(RepairLink {
+                from: "Lena".to_string(),
+                relation: "mentors".to_string(),
+                to: "Nobody".to_string(),
+                confidence: 0.9,
+                scope: None,
+            }),
+            evidence_episode_ids: vec![episode.id],
+            proposed_by: "claude-opus-4-8".to_string(),
+            rationale: "invented".to_string(),
+        };
+        assert!(matches!(
+            memory.apply_repair(absent, false, false).unwrap_err(),
+            NahualiError::InvalidRepairProposal { .. }
+        ));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn repair_is_additive_and_a_newer_observation_supersedes_it() {
+        let path = temp_path("repair_is_additive_and_a_newer_observation_supersedes_it");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let first = memory
+            .remember("Bruno opened the migration.", vec!["status".to_string()])
+            .unwrap();
+        let second = memory
+            .remember("Bruno is mid-migration.", vec!["status".to_string()])
+            .unwrap();
+
+        // An Auto repair consolidates the current status.
+        let report = memory
+            .apply_repair(
+                consolidate("Bruno", "status", "active", &[&first.id, &second.id]),
+                false,
+                false,
+            )
+            .unwrap();
+        assert!(report.applied);
+
+        // A newer real observation disagrees. The repair is not mutated or
+        // deleted; a superseding claim is appended (rule 3: additive, reversible).
+        let third = memory
+            .remember("Bruno finished the migration.", vec!["status".to_string()])
+            .unwrap();
+        memory
+            .add_claim("Bruno", "status", "done", Some(third.id), 0.95)
+            .unwrap();
+
+        // Both claims remain in the append-only ledger; the engine surfaces the
+        // disagreement rather than silently overwriting the repair.
+        assert_eq!(memory.data().claims.len(), 2);
+        let health = memory.inspect();
+        assert!(health.superseded_fact_count + health.conflicting_fact_count >= 1);
+        assert_eq!(memory.data().repairs.len(), 1);
+
+        let _ = fs::remove_file(path);
     }
 
     fn temp_path(name: &str) -> PathBuf {
