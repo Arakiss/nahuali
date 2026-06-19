@@ -66,6 +66,7 @@ mod reflection;
 mod review_writeback;
 mod schema;
 mod self_inspection;
+mod self_repair;
 mod semantic;
 mod sleep;
 mod store;
@@ -192,6 +193,10 @@ pub use self_inspection::{
     SelfInspectionFinding, SelfInspectionFindingKind, SelfInspectionReport,
     SelfInspectionReviewAction, SelfInspectionReviewItem, SelfInspectionReviewPriority,
     SelfInspectionReviewStatus, SelfInspectionSummary, SelfInspectionWriteBackPolicy,
+};
+pub use self_repair::{
+    AutonomyLevel, RepairClaim, RepairKind, RepairLink, RepairPayload, RepairProposal,
+    RepairReport, RepairVerdict, SELF_REPAIR_REPORT_VERSION, classify_autonomy,
 };
 pub use semantic::{
     DEFAULT_EMBEDDING_DIMENSIONS, DEFAULT_QDRANT_URL, DEFAULT_SEMANTIC_COLLECTION,
