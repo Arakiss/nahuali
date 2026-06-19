@@ -13,6 +13,7 @@ mod migration_values;
 mod preopen;
 mod reconcile;
 mod record;
+mod repair;
 mod reports;
 mod scope;
 mod text;
@@ -491,6 +492,12 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             dry_run,
             json,
         } => reports::review_resolve(&mut memory, review_id, note, dry_run, json)?,
+        Command::Repair {
+            proposal,
+            approve,
+            dry_run,
+            json,
+        } => repair::repair(&mut memory, proposal.as_deref(), approve, dry_run, json)?,
         #[cfg(feature = "attestation")]
         Command::AttestSign {
             key_file,

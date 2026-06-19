@@ -5,7 +5,8 @@ use nahuali_core::{
     GoalProgressReport, IngestionReport, IntentionReconciliationReport, InterchangeImportReport,
     MemoryBriefingReport, MemoryConsolidationPlanReport, MemoryGraphReport, MemoryHookReport,
     MemoryProactiveReport, MemoryProjectReport, MemoryReflectionReport, MemorySleepReport,
-    OperatorReviewReport, RecordLedgerIssueKind, ReviewResolutionReport, SnapshotIssueKind,
+    OperatorReviewReport, RecordLedgerIssueKind, RepairReport, ReviewResolutionReport,
+    SnapshotIssueKind,
 };
 use serde::Serialize;
 
@@ -539,6 +540,45 @@ pub(crate) fn print_review_resolution(report: &ReviewResolutionReport) {
     if !report.evidence_ids.is_empty() {
         println!("Evidence: {}", report.evidence_ids.join(", "));
     }
+}
+
+pub(crate) fn print_repair_report(report: &RepairReport) {
+    println!("Self-repair");
+    println!("Kind: {:?}", report.kind);
+    println!("Autonomy: {:?}", report.autonomy_level);
+    println!(
+        "Status: {}",
+        if report.applied {
+            "applied"
+        } else if report.dry_run {
+            "dry-run"
+        } else {
+            "not applied"
+        }
+    );
+    println!("Proposed by: {}", report.proposed_by);
+    if report.operator_override {
+        println!("Operator override: yes");
+    }
+    if !report.evidence_ids.is_empty() {
+        println!("Evidence: {}", report.evidence_ids.join(", "));
+    }
+    if !report.verdict.reasons.is_empty() {
+        println!("Reasons:");
+        for reason in &report.verdict.reasons {
+            println!("- {reason}");
+        }
+    }
+    if let Some(blocked_by) = &report.verdict.blocked_by {
+        println!("Blocked by: {blocked_by}");
+    }
+    if let Some(materialized_id) = &report.materialized_id {
+        println!("Materialized: {materialized_id}");
+    }
+    if let Some(event_id) = &report.resulting_event_id {
+        println!("Event: {event_id}");
+    }
+    println!("Policy: {}", report.policy);
 }
 
 pub(crate) fn print_graph_report(report: &MemoryGraphReport) {

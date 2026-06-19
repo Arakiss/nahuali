@@ -775,6 +775,22 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
+    #[command(
+        about = "Validate and apply an LLM-proposed memory repair (the LLM proposes; the engine validates, classifies, and records)."
+    )]
+    Repair {
+        /// Path to a JSON repair proposal. Reads stdin when omitted or "-".
+        #[arg(long, value_name = "PATH")]
+        proposal: Option<PathBuf>,
+        /// Approve a queued repair that requires operator judgment.
+        #[arg(long)]
+        approve: bool,
+        /// Preview the verdict without writing a record.
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
     #[command(about = "Validate the SurrealDB memory_record ledger without mutating it.")]
     Validate {
         /// Fail when any record lacks a tamper-evident hash-chain link.
