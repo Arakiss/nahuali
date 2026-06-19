@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-cli-v0.5.0-beta.0...nahuali-cli-v0.6.0-beta.0) (2026-06-19)
+
+
+### Features
+
+* **cli:** add nahuali repair command ([2226e35](https://github.com/Arakiss/nahuali/commit/2226e35d676fff8fc7bcc47be19cf4e5319d131e))
+* **core:** add RepairApplied event and projection ([837798b](https://github.com/Arakiss/nahuali/commit/837798bccfe15573829b0245979e8e081c27bd54))
+* **core:** surface deterministic repair-need nudge ([5f2f24d](https://github.com/Arakiss/nahuali/commit/5f2f24df953712c2bc8747f2fb9260f5ff835d44))
+
 ## [0.5.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-cli-v0.4.0-beta.0...nahuali-cli-v0.5.0-beta.0) (2026-06-14)
 
 
