@@ -464,15 +464,17 @@ pub(crate) fn prepare_repair(
                 scope: claim.scope.clone(),
             })
         }
-        RepairPayload::LinkEntities(link) => RepairMaterialization::Link(RepairLinkMaterialization {
-            id: materialized_id,
-            from: link.from.clone(),
-            relation: link.relation.clone(),
-            to: link.to.clone(),
-            source_episode_id: Some(anchor_episode_id),
-            confidence: link.confidence,
-            scope: link.scope.clone(),
-        }),
+        RepairPayload::LinkEntities(link) => {
+            RepairMaterialization::Link(RepairLinkMaterialization {
+                id: materialized_id,
+                from: link.from.clone(),
+                relation: link.relation.clone(),
+                to: link.to.clone(),
+                source_episode_id: Some(anchor_episode_id),
+                confidence: link.confidence,
+                scope: link.scope.clone(),
+            })
+        }
     };
 
     let event = RepairApplied {
@@ -574,7 +576,12 @@ mod tests {
         }
     }
 
-    fn consolidate(subject: &str, predicate: &str, object: &str, evidence: &[&str]) -> RepairProposal {
+    fn consolidate(
+        subject: &str,
+        predicate: &str,
+        object: &str,
+        evidence: &[&str],
+    ) -> RepairProposal {
         RepairProposal {
             payload: RepairPayload::ConsolidateClaim(RepairClaim {
                 subject: subject.to_string(),

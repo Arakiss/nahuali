@@ -335,9 +335,10 @@ fn summarize(payload: &MemoryEvent) -> String {
                 "repair {} {} {}",
                 claim.subject, claim.predicate, claim.object
             )),
-            RepairMaterialization::Link(link) => {
-                truncate(format!("repair {} {} {}", link.from, link.relation, link.to))
-            }
+            RepairMaterialization::Link(link) => truncate(format!(
+                "repair {} {} {}",
+                link.from, link.relation, link.to
+            )),
         },
     }
 }
