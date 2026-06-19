@@ -1,6 +1,10 @@
 # Agent-Memory Governance Landscape
 
-Last checked: 2026-06-14.
+Last external claim review: 2026-06-14.
+
+Next scheduled review: 2026-09-14, or earlier before quoting the comparison
+claim in a new public release, launch post, benchmark report, investor note, or
+customer-facing document.
 
 Nahuali's public claim is intentionally narrow:
 
@@ -12,6 +16,30 @@ That is a composition claim, not a claim that Nahuali has the highest raw recall
 the largest ecosystem, or legal compliance certification. This document records
 the adjacent prior art and external pressure behind that boundary so the README
 can stay short without hiding the evidence.
+
+## Claim Review Discipline
+
+External comparison claims are time-bounded. Treat the README comparison as
+stale if this document has not been reviewed within the last 90 days, or if a
+credible new competitor appears to combine the same primitives before that date.
+
+A claim review must update this document before the README is quoted
+externally. The review should:
+
+1. Re-check direct memory engines and adjacent prior art from primary sources:
+   official repositories, documentation, release notes, papers, and standards or
+   regulatory sources.
+2. Inspect representative public code for the specific primitives Nahuali
+   claims together: recall-path evidence/freshness verdicts, tamper-evident
+   memory ledger, Merkle proofs, detached tip attestation, and reproducible
+   governance benchmarks.
+3. Separate open-source implementation evidence from vendor positioning,
+   research prototypes, blog posts, and commercial claims without public code.
+4. Weaken or remove the README claim if the evidence is ambiguous. A dated,
+   narrow claim is better than an overconfident evergreen one.
+
+This file is the canonical freshness marker for public comparison claims. The
+README should summarize it, not duplicate the full competitor audit.
 
 ## Why This Matters
 
@@ -119,6 +147,12 @@ Boundary relative to Nahuali: it is useful as market signal, not as independent
 technical proof. Its public positioning validates demand for governance-first
 memory, while Nahuali's current differentiator is cryptographic history plus
 recall trust verdicts in a local OSS engine.
+
+Other commercial pages now use overlapping language around signed or
+tamper-evident agent-memory retrieval logs, for example
+[CyborgDB's agent-memory audit-trail positioning](https://www.cyborg.co/solutions-use-cases/).
+Treat those as market signals unless they provide public implementation
+evidence for the full open-source memory-engine composition being claimed here.
 
 The conclusion is that the building blocks are not unique. Hash chains, Merkle
 proofs, signatures, provenance, and trust scoring are established ideas.

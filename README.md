@@ -41,7 +41,7 @@ Three mechanisms make that concrete:
   coverage, contradiction detection, key lifecycle, and verdict calibration are
   measured by reproducible fixtures in this repository, not asserted in
   marketing copy. It is the first reproducible agent-memory governance suite we
-  have found.
+  have found in the current external claim review.
 
 The current project is intentionally small: a Rust core crate, a CLI with an
 interactive governance cockpit, a local MCP stdio server, a local HTTP API,
@@ -50,8 +50,16 @@ accounts system, and not a general-purpose database.
 
 For where the project is going next, see [ROADMAP.md](ROADMAP.md). The roadmap
 is directional; this README describes the current public surface. For the
-prior-art, security, regulatory, and benchmark context behind the comparison
-claim, see [Agent-Memory Governance Landscape](MEMORY_GOVERNANCE_LANDSCAPE.md).
+prior-art, security, regulatory, and benchmark context behind the dated
+comparison claim, see [Agent-Memory Governance
+Landscape](MEMORY_GOVERNANCE_LANDSCAPE.md).
+
+External comparison claims are not evergreen. The current review date is
+2026-06-14; treat the competitive claim as stale after 2026-09-14, or before
+quoting it in a new public release, launch post, benchmark report, investor
+note, or customer-facing document, unless
+[`MEMORY_GOVERNANCE_LANDSCAPE.md`](MEMORY_GOVERNANCE_LANDSCAPE.md) has been
+refreshed.
 
 ## Quickstart
 
@@ -111,8 +119,9 @@ runs the real engine validators over it, and computes a rate. The measurement
 lives in the library and the release gate, so anyone can rerun it — the same
 reproducibility the engine asks of memory, applied to its own numbers. The
 established agent-memory benchmarks (LOCOMO, LongMemEval, BEAM) measure recall
-accuracy only; we know of no other reproducible governance suite for agent
-memory, which is why Nahuali defines and gates its own. See
+accuracy only; as of the 2026-06-14 external claim review, we know of no other
+reproducible governance suite for agent memory, which is why Nahuali defines
+and gates its own. See
 [Governance Benchmark Methodology](GOVERNANCE_BENCHMARKS.md) for the corpus,
 formula, commands, and limits behind these numbers, and
 [Agent-Memory Governance Landscape](MEMORY_GOVERNANCE_LANDSCAPE.md#benchmark-gap)
@@ -186,6 +195,12 @@ underlying facts.
 
 ## How Nahuali Compares
 
+This comparison is dated. It reflects the external claim review recorded on
+2026-06-14 in
+[`MEMORY_GOVERNANCE_LANDSCAPE.md`](MEMORY_GOVERNANCE_LANDSCAPE.md). Refresh
+that document before treating the comparison as current after 2026-09-14 or
+before quoting it externally.
+
 Most open-source agent-memory engines (Mem0, Zep/Graphiti, Letta, Cognee)
 optimize for **recall accuracy** — extracting and retrieving the right context —
 and publish their LOCOMO and LongMemEval scores. Nahuali optimizes for a
@@ -201,9 +216,10 @@ are complementary, and the comparison cuts both ways:
 | Raw recall accuracy (LOCOMO/LongMemEval) | not the goal; a credible floor, not the lead | strong published numbers |
 | Ecosystem, integrations, traction | pre-release, narrow surface | large communities and framework integrations |
 
-We have not found another open-source agent-memory engine that combines all
-three of a hash-chained Merkle-proofed ledger, detached Ed25519 tip attestation,
-and a per-recall confidence-vs-provenance trust verdict over its memory ledger.
+As of the 2026-06-14 external claim review, we have not found another
+open-source agent-memory engine that combines all three of a hash-chained
+Merkle-proofed ledger, detached Ed25519 tip attestation, and a per-recall
+confidence-vs-provenance trust verdict over its memory ledger.
 The closest prior art ships subsets:
 [SuperLocalMemory](https://arxiv.org/abs/2603.02240) hash-chains compliance
 events and scores writer trust against memory poisoning, but carries no
