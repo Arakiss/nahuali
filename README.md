@@ -338,6 +338,20 @@ latest receipt kept outside the store, or against another operator-controlled
 freshness floor such as a known minimum sequence. Treat old valid receipts as
 historical checkpoints, not as proof that the live store is current.
 
+A second freshness gap sits at the head of the ledger: events appended after
+your last signature are not yet under a signed tip. The hash chain still covers
+them, so an in-place rewrite of any event, attested or not, breaks the link at
+the next record and `validate` catches it with no receipt involved. What the
+unsigned tail lacks is full-re-chain protection, which rests on a signed tip the
+attacker cannot reproduce. Signing every append would not close this window: it
+would put the signing key next to the store writer, the exact party a full
+re-chain assumes control of, which is why the key stays off the write path. The
+practical answer is to sign checkpoints often (signing is offline, key-free in
+the core, and cheap) and to keep the unsigned tail auditable rather than
+trusted. `audit --from-attestation` diffs exactly what was appended since the
+last verified checkpoint, so the tail is reviewed against a signed anchor instead
+of assumed current.
+
 `audit` is a non-mutating diff of what the ledger recorded between two points,
 with the integrity of that history restated next to it. It works in any build
 (bounded by `--from`/`--to` sequence and `--since`/`--until` timestamp). On an
