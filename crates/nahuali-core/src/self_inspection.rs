@@ -12,7 +12,7 @@ use crate::{
 mod source;
 
 /// Current non-mutating self-inspection report format version.
-pub const SELF_INSPECTION_REPORT_VERSION: u32 = 1;
+pub const SELF_INSPECTION_REPORT_VERSION: u32 = 2;
 
 const DAY_MS: u64 = 24 * 60 * 60 * 1000;
 const STALE_INTENTION_AFTER_DAYS: u64 = 30;
@@ -38,6 +38,10 @@ pub struct SelfInspectionReport {
     pub authority: AuthorityDecision,
     /// Aggregate finding counts.
     pub summary: SelfInspectionSummary,
+    /// Deterministic, informational signal of how much repair work is available.
+    /// This is self-repair step 0: it detects and surfaces repair candidates but
+    /// never writes. Acting on it requires an explicit `nahuali repair` proposal.
+    pub repair_signal: RepairNeedSignal,
     /// Non-mutating audit of how well supplied confidence tracks evidence presence.
     pub confidence_alignment: ConfidenceProvenanceAlignment,
     /// Findings that should be reviewed before memory is trusted or improved.
@@ -73,6 +77,25 @@ pub struct SelfInspectionSummary {
     pub latent_intention_count: usize,
     /// Number of high or critical review items.
     pub high_priority_review_count: usize,
+}
+
+/// Deterministic, informational signal of how much self-repair work the engine
+/// can already detect.
+///
+/// This is self-repair step 0: it surfaces repair candidates from the same
+/// deterministic findings that drive the review queue, but it never writes.
+/// Acting on a candidate requires an explicit `nahuali repair` proposal, which
+/// an LLM authors and the engine then validates, classifies, and gates.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RepairNeedSignal {
+    /// Repeated-pattern findings an LLM could consolidate into a claim.
+    pub consolidation_candidate_count: usize,
+    /// Isolated entities an LLM could link to related memory.
+    pub link_candidate_count: usize,
+    /// Total deterministic repair candidates surfaced.
+    pub candidate_count: usize,
+    /// Human-readable guidance. Self-repair never runs automatically.
+    pub guidance: String,
 }
 
 /// A single self-inspection finding.
@@ -329,6 +352,7 @@ pub(crate) fn self_inspect_at(data: &MemoryData, now_ms: u64) -> SelfInspectionR
         .map(review_item_from_finding)
         .collect::<Vec<_>>();
     let summary = summarize(&findings, &review_queue);
+    let repair_signal = repair_need_signal(&summary, &health);
 
     SelfInspectionReport {
         version: SELF_INSPECTION_REPORT_VERSION,
@@ -337,6 +361,7 @@ pub(crate) fn self_inspect_at(data: &MemoryData, now_ms: u64) -> SelfInspectionR
         health,
         authority,
         summary,
+        repair_signal,
         confidence_alignment,
         findings,
         review_queue,
@@ -640,6 +665,31 @@ fn review_action(kind: &SelfInspectionFindingKind) -> SelfInspectionReviewAction
     }
 }
 
+/// Derive the informational self-repair step-0 signal from the deterministic
+/// findings: repeated-pattern findings are consolidation candidates, isolated
+/// entities are link candidates. This detects and surfaces; it never writes.
+fn repair_need_signal(
+    summary: &SelfInspectionSummary,
+    health: &KnowledgeHealth,
+) -> RepairNeedSignal {
+    let consolidation_candidate_count = summary.consolidation_opportunity_count;
+    let link_candidate_count = health.isolated_entity_count;
+    let candidate_count = consolidation_candidate_count + link_candidate_count;
+    let guidance = if candidate_count == 0 {
+        "No deterministic repair candidates detected.".to_string()
+    } else {
+        format!(
+            "{candidate_count} deterministic repair candidate(s): {consolidation_candidate_count} consolidation, {link_candidate_count} isolated entity. Propose repairs with `nahuali repair`; the engine validates and gates each one. Self-repair never runs automatically."
+        )
+    };
+    RepairNeedSignal {
+        consolidation_candidate_count,
+        link_candidate_count,
+        candidate_count,
+        guidance,
+    }
+}
+
 fn summarize(
     findings: &[SelfInspectionFinding],
     review_queue: &[SelfInspectionReviewItem],
@@ -857,6 +907,48 @@ mod tests {
                 .review_queue
                 .iter()
                 .any(|item| item.action == crate::SelfInspectionReviewAction::ConsolidatePattern)
+        );
+    }
+
+    #[test]
+    fn repair_signal_surfaces_consolidation_candidates_without_writing() {
+        let data = MemoryData {
+            event_count: 3,
+            episodes: vec![
+                episode("episode_1", "event_1", "Lena reviewed release notes", "product"),
+                episode("episode_2", "event_2", "Lena edited release notes", "product"),
+                episode("episode_3", "event_3", "Lena shipped release notes", "product"),
+            ],
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+
+        // The repeated tag is a consolidation candidate, surfaced (not written).
+        assert_eq!(report.repair_signal.consolidation_candidate_count, 1);
+        assert_eq!(
+            report.repair_signal.link_candidate_count,
+            report.health.isolated_entity_count
+        );
+        assert_eq!(
+            report.repair_signal.candidate_count,
+            report.repair_signal.consolidation_candidate_count
+                + report.repair_signal.link_candidate_count
+        );
+        assert!(report.repair_signal.candidate_count >= 1);
+        assert!(report.repair_signal.guidance.contains("nahuali repair"));
+        // Step 0 only informs: it never enables automatic write-back.
+        assert!(!report.write_back_policy.automatic_write_back);
+    }
+
+    #[test]
+    fn repair_signal_is_quiet_when_no_candidates_exist() {
+        let report = self_inspect_at(&MemoryData::default(), DAY_MS);
+
+        assert_eq!(report.repair_signal.candidate_count, 0);
+        assert_eq!(
+            report.repair_signal.guidance,
+            "No deterministic repair candidates detected."
         );
     }
 

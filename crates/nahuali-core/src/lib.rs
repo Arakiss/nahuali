@@ -190,10 +190,11 @@ pub use review_writeback::{
 };
 pub use schema::{GRAPH_PROJECTION_SCHEMA, MEMORY_RECORD_SCHEMA};
 pub use self_inspection::{
-    ConfidenceProvenanceAlignment, ConfidenceProvenanceKindReport, SELF_INSPECTION_REPORT_VERSION,
-    SelfInspectionFinding, SelfInspectionFindingKind, SelfInspectionReport,
-    SelfInspectionReviewAction, SelfInspectionReviewItem, SelfInspectionReviewPriority,
-    SelfInspectionReviewStatus, SelfInspectionSummary, SelfInspectionWriteBackPolicy,
+    ConfidenceProvenanceAlignment, ConfidenceProvenanceKindReport, RepairNeedSignal,
+    SELF_INSPECTION_REPORT_VERSION, SelfInspectionFinding, SelfInspectionFindingKind,
+    SelfInspectionReport, SelfInspectionReviewAction, SelfInspectionReviewItem,
+    SelfInspectionReviewPriority, SelfInspectionReviewStatus, SelfInspectionSummary,
+    SelfInspectionWriteBackPolicy,
 };
 pub use self_repair::{
     AutonomyLevel, RepairClaim, RepairKind, RepairLink, RepairPayload, RepairProposal,

@@ -1004,6 +1004,10 @@ pub(crate) fn self_inspect(memory: &mut MemoryEngine, json: bool) -> anyhow::Res
             "Automatic write-back: {}",
             report.write_back_policy.automatic_write_back
         );
+        println!(
+            "Repair candidates: {} ({})",
+            report.repair_signal.candidate_count, report.repair_signal.guidance
+        );
         if report.findings.is_empty() {
             println!("No self-inspection findings.");
         } else {
