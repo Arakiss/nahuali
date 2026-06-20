@@ -915,9 +915,24 @@ mod tests {
         let data = MemoryData {
             event_count: 3,
             episodes: vec![
-                episode("episode_1", "event_1", "Lena reviewed release notes", "product"),
-                episode("episode_2", "event_2", "Lena edited release notes", "product"),
-                episode("episode_3", "event_3", "Lena shipped release notes", "product"),
+                episode(
+                    "episode_1",
+                    "event_1",
+                    "Lena reviewed release notes",
+                    "product",
+                ),
+                episode(
+                    "episode_2",
+                    "event_2",
+                    "Lena edited release notes",
+                    "product",
+                ),
+                episode(
+                    "episode_3",
+                    "event_3",
+                    "Lena shipped release notes",
+                    "product",
+                ),
             ],
             ..MemoryData::default()
         };

@@ -500,8 +500,8 @@ mod tests {
     use crate::event::{
         EpisodeRecorded, EventEnvelope, FactAsserted, IntentionRecorded, IntentionRecordedKind,
         IntentionRecordedPriority, IntentionRecordedStatus, IntentionStatusChanged,
-        IntentionUpdated, MemoryEvent, ProcedureRecorded, ProcedureRecordedKind,
-        RepairApplied, RepairClaimMaterialization, RepairMaterialization, RelationRecorded,
+        IntentionUpdated, MemoryEvent, ProcedureRecorded, ProcedureRecordedKind, RelationRecorded,
+        RepairApplied, RepairClaimMaterialization, RepairMaterialization,
     };
     use crate::model::{
         IntentionKind, IntentionPriority, IntentionStatus, MEMORY_DATA_VERSION, MemoryScope,
@@ -711,7 +711,10 @@ mod tests {
         assert_eq!(data.claims.len(), 1);
         assert_eq!(data.claims, data.facts);
         assert_eq!(data.claims[0].id, "claim_repair_1");
-        assert_eq!(data.claims[0].source_episode_id.as_deref(), Some("episode_1"));
+        assert_eq!(
+            data.claims[0].source_episode_id.as_deref(),
+            Some("episode_1")
+        );
         assert!(data.entities.iter().any(|entity| entity.name == "Lena"));
 
         // The repair is itself audited.

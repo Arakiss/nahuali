@@ -33,8 +33,9 @@ pub(crate) fn repair(
 /// given as "-".
 fn read_proposal(proposal_path: Option<&Path>) -> anyhow::Result<String> {
     match proposal_path {
-        Some(path) if path.as_os_str() != "-" => fs::read_to_string(path)
-            .with_context(|| format!("failed to read {}", path.display())),
+        Some(path) if path.as_os_str() != "-" => {
+            fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))
+        }
         _ => {
             let mut buffer = String::new();
             std::io::stdin()
