@@ -243,9 +243,9 @@ rewritten. The fuller landscape and source-quality caveats are maintained in
 
 - `nahuali-core`: the canonical Rust engine.
 - `nahuali`: an agent-first CLI for local memory recording, recall, inspection,
-  review, proactive signals, backup, and migration rehearsals — plus an
-  interactive `explore` governance cockpit and read-only federated recall over
-  an archive store (`recall --archive`).
+  review, governed repair, proactive signals, backup, and migration rehearsals —
+  plus an interactive `explore` governance cockpit and read-only federated recall
+  over an archive store (`recall --archive`).
 - `nahuali-mcp`: a local MCP stdio server over the same core.
 - `nahuali-api`: a local HTTP API over the same core.
 - `nahuali-ui`: the shared terminal presentation crate (palette, tables, the
@@ -271,8 +271,10 @@ current memory projection:
 
 A supported answer can still come with a warning when the same store contains
 unrelated unsupported claims, isolated entities, stale facts, contradictions, or
-source coverage gaps. Review and repair stay explicit operator work; Nahuali
-does not silently rewrite memory.
+source coverage gaps. Repair is governed and append-only: an LLM can propose a
+consolidation or link, the engine validates and gates each one, resolving a
+contradiction stays explicit operator work, and memory is never rewritten or
+deleted in place.
 
 ## Tamper-Evidence And Attestation
 
@@ -385,6 +387,33 @@ cargo run -p nahuali-core --example tamper_evidence --features attestation
 It shows a recomputed-checksum in-place rewrite being caught by the chain, and a
 full suffix re-chain — which the chain alone cannot see — being caught by the
 signed tip.
+
+## Governed Self-Repair
+
+Detecting what memory needs fixing is not the same as fixing it. Self-repair
+closes that loop without giving up the trust model: an LLM proposes a repair as
+JSON, and the deterministic engine validates, classifies, gates, and records it.
+The binary never calls an LLM.
+
+```bash
+nahuali repair --proposal proposal.json --dry-run   # preview the verdict
+nahuali repair --proposal proposal.json             # apply (or pipe JSON on stdin)
+nahuali repair --proposal proposal.json --approve   # approve a queued repair
+```
+
+A proposal is evidence-anchored, so a fabricated citation is rejected rather than
+minted into evidence-backed memory, and it is append-only, so a bad repair is
+reversed by a later observation instead of a mutation. The engine assigns one of
+three autonomy levels deterministically: a homogeneous, evidence-backed
+consolidation or a link between two entities already present is applied
+automatically; an ambiguous one is queued for operator approval; and a repair
+that contradicts an existing claim is refused even with `--approve` and raised to
+the operator. Each applied repair is a single audited event in the tamper-evident
+ledger, and `self-inspect` surfaces how many repair candidates the engine already
+detects without writing anything.
+
+See the [Self-Repair Contract](SELF_REPAIR.md) for the six rules, the autonomy
+gradient, and the proposal format.
 
 ## Storage Contract
 
@@ -795,7 +824,10 @@ distribution channels.
 
 - No hosted service.
 - No accounts, teams, tenants, API keys, billing, sync, or dashboards.
-- No automatic memory repair or automatic consolidation write-back.
+- No unattended repair. Self-repair is opt-in and explicitly invoked
+  (`nahuali repair`); it never resolves contradictions on its own, and there is
+  no automatic consolidation pass inside a sleep cycle. See the
+  [Self-Repair Contract](SELF_REPAIR.md).
 - No guarantee that remembered information is true; Nahuali reports evidence,
   confidence, and health signals so callers can decide whether to trust it.
 - Tip attestation is an opt-in build feature. The core library keeps the hash
