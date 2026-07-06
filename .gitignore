@@ -21,3 +21,6 @@ target/
 benchmark-results/
 docs/
 html-artifacts/
+
+# Private commercial/strategy docs — never published
+docs/private/
