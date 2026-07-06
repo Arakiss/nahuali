@@ -18,7 +18,7 @@ homepage = "https://github.com/Arakiss/nahuali"
 authors = ["Nahuali contributors"]
 
 [workspace.dependencies]
-nahuali-core = { version = "=0.6.0-beta.0", path = "crates/nahuali-core" }
+nahuali-core = { version = "=0.7.0-beta.0", path = "crates/nahuali-core" }
 nahuali-ui = { version = "=0.3.0-beta.0", path = "crates/nahuali-ui" }
 anyhow = "1.0"
 comfy-table = "7"
