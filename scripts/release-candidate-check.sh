@@ -107,7 +107,7 @@ if [[ -n "$remote_tags" ]]; then
   unexpected_tags="$(
     printf '%s\n' "$remote_tags" \
       | awk '{print $2}' \
-      | grep -Ev '^refs/tags/nahuali-(cli|core|mcp|api)-v.*(\^\{\})?$' || true
+      | grep -Ev '^refs/tags/nahuali-(cli|core|mcp|api|regression)-v.*(\^\{\})?$' || true
   )"
   if [[ -n "$unexpected_tags" ]]; then
     echo "remote tags outside the Nahuali beta release stream are not allowed" >&2
@@ -160,6 +160,7 @@ fi
 cli_version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/nahuali-cli/Cargo.toml | head -n 1)"
 cli_tag="nahuali-cli-v${cli_version}"
 if gh release view "$cli_tag" --repo "$REMOTE_REPO" >/dev/null 2>&1; then
+  sh scripts/check-release-page.sh --repo "$REMOTE_REPO" --tag "$cli_tag"
   sh scripts/check-release-assets.sh --repo "$REMOTE_REPO" --tag "$cli_tag"
   bash scripts/verify-release.sh --repo "$REMOTE_REPO" --tag "$cli_tag"
 

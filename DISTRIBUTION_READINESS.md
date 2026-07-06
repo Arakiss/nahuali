@@ -76,9 +76,19 @@ When Release Please creates a `nahuali-cli-vX.Y.Z-beta.N` tag and the release
 workflow uploads binaries, verify the release shape:
 
 ```bash
+sh scripts/check-release-page.sh --tag nahuali-cli-vX.Y.Z-beta.N
 sh scripts/check-release-assets.sh --tag nahuali-cli-vX.Y.Z-beta.N --require-sbom
 bash scripts/verify-release.sh --tag nahuali-cli-vX.Y.Z-beta.N --require-sbom
 ```
+
+The GitHub release page is a public product surface. The generated Release
+Please changelog is only source material; it is not acceptable final copy. Each
+beta release page must be curated before closeout with a product summary,
+highlights, install instructions, verification commands, component versions,
+explicit beta limits, and a changelog pointer. `check-release-page.sh` fails if
+the page is empty, still looks generated, lacks the required sections, omits the
+verification path, overpromises hosted service behavior, or has not yet received
+the binary-channel assets.
 
 The expected beta release shape is:
 

@@ -807,6 +807,11 @@ train.
 - Binary artifacts are built only for `nahuali-cli-vX.Y.Z-beta.N` tags.
 - Manual workflow dispatch remains available for release-pr and artifact
   reruns.
+- Release Please output is not final public copy. Before closeout, the GitHub
+  release page must be edited into product-facing notes with highlights,
+  install instructions, verification commands, component versions, beta limits,
+  and a changelog pointer. Validate it with:
+  `sh scripts/check-release-page.sh --tag nahuali-cli-vX.Y.Z-beta.N`.
 - Repository workflow permissions stay read-only by default; Release Please
   requires the repository setting that allows GitHub Actions to create pull
   requests, while write scopes remain limited to the release job. Verify that
