@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.6.2-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-cli-v0.6.1-beta.0...nahuali-cli-v0.6.2-beta.0) (2026-07-06)
+
 ## [0.6.1-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-cli-v0.6.0-beta.0...nahuali-cli-v0.6.1-beta.0) (2026-07-06)
 
 ## [0.6.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-cli-v0.5.0-beta.0...nahuali-cli-v0.6.0-beta.0) (2026-06-19)
