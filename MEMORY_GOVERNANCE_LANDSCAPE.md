@@ -33,7 +33,7 @@ externally. The review should:
    claims together: recall-path evidence/freshness verdicts, tamper-evident
    memory ledger, Merkle proofs, detached tip attestation, and reproducible
    governance benchmarks.
-3. Separate open-source implementation evidence from vendor positioning,
+3. Separate public implementation evidence from vendor positioning,
    research prototypes, blog posts, and commercial claims without public code.
 4. Weaken or remove the README claim if the evidence is ambiguous. A dated,
    narrow claim is better than an overconfident evergreen one.
@@ -146,13 +146,13 @@ and tenant isolation for regulated memory use cases.
 Boundary relative to Nahuali: it is useful as market signal, not as independent
 technical proof. Its public positioning validates demand for governance-first
 memory, while Nahuali's current differentiator is cryptographic history plus
-recall trust verdicts in a local OSS engine.
+recall trust verdicts in a local source-available engine.
 
 Other commercial pages now use overlapping language around signed or
 tamper-evident agent-memory retrieval logs, for example
 [CyborgDB's agent-memory audit-trail positioning](https://www.cyborg.co/solutions-use-cases/).
 Treat those as market signals unless they provide public implementation
-evidence for the full open-source memory-engine composition being claimed here.
+evidence for the full publicly inspectable memory-engine composition being claimed here.
 
 The conclusion is that the building blocks are not unique. Hash chains, Merkle
 proofs, signatures, provenance, and trust scoring are established ideas.
@@ -201,7 +201,7 @@ Use a recall-first engine when the evaluation question is:
 > on LOCOMO, LongMemEval, BEAM, or application-specific retrieval tasks?
 
 The two axes are complementary. A production system can pair high-recall memory
-retrieval with governance checks. Nahuali's current OSS repository focuses on
+retrieval with governance checks. Nahuali's current source-available repository focuses on
 the local deterministic governance foundation, not on replacing every
 recall-first product surface.
 

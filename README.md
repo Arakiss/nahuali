@@ -4,7 +4,7 @@
   <img src="assets/nahuali-cover.webp" alt="Nahuali memory graph: event stream, projection core, and inspected knowledge network" width="100%" />
 </p>
 
-<p align="center"><sub><em>Memory for AI agents that shows its evidence — and can prove its history was not rewritten.</em></sub></p>
+<p align="center"><sub><em>Memory for AI agents that shows its evidence and can prove its history was not rewritten.</em></sub></p>
 
 <p align="center">
   <a href="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml"><img src="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -17,7 +17,7 @@
 
 Nahuali is a local-first, pre-release Rust memory engine for AI agents and
 operator workflows, built around an uncomfortable fact: an agent that remembers
-across sessions accumulates a store you eventually have to trust blindly — and
+across sessions accumulates a store you eventually have to trust blindly, and
 agent memory has become an attack surface. OWASP's agentic Top 10 lists memory
 poisoning ([ASI06](https://owasp.org/www-project-agent-memory-guard/)) as a
 first-class risk, the EU AI
@@ -30,7 +30,7 @@ audit, not something you assume.
 Three mechanisms make that concrete:
 
 - **A trust verdict on every recall.** Results carry evidence IDs, health
-  signals, and an authority decision — certify, advisory, warn, or block — so a
+  signals, and an authority decision: certify, advisory, warn, or block, so a
   caller sees *why* a memory should or should not be trusted before acting on
   it.
 - **A tamper-evident history.** The CLI, MCP server, and local API hash-chain
@@ -48,8 +48,8 @@ interactive governance cockpit, a local MCP stdio server, a local HTTP API,
 fixtures, and release-gate scripts. It is not a hosted product, not an
 accounts system, and not a general-purpose database.
 
-An LLM can also propose repairs to that governed memory — consolidating repeated
-observations into a claim, or linking entities — while the deterministic engine
+An LLM can also propose repairs to that governed memory, consolidating repeated
+observations into a claim, or linking entities, while the deterministic engine
 validates, classifies, gates, and records each one as an audited, reversible
 event. The core never calls an LLM. See the
 [Self-Repair Contract](SELF_REPAIR.md).
@@ -69,8 +69,8 @@ refreshed.
 
 ## Quickstart
 
-Install the CLI, then see the trust story in about 30 seconds — no Docker, no
-setup:
+Install the CLI, then see the trust story in about 30 seconds with no Docker and
+no setup:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
@@ -81,7 +81,7 @@ nahuali init          # wire your agent harness to use Nahuali
 `nahuali demo` runs the tamper-evidence story entirely in memory, with zero
 dependencies. `nahuali init` installs the [Claude Code skill](skills/nahuali/)
 and prints the MCP server config, so your agent uses governed memory as a
-protocol — recall before assuming, assert only with evidence, read the per-result
+protocol: recall before assuming, assert only with evidence, read the per-result
 trust decision. To make it binding for any harness, see the cross-harness
 [protocol](skills/nahuali/protocol.md). Building from source instead:
 `cargo install --path crates/nahuali-cli` (add `--features attestation` for the
@@ -105,7 +105,7 @@ own.
   rewriting any historical record breaks the chain at the next one and ledger
   replay detects it.
 - **Tip attestation** (opt-in). The chain tip can be signed with an Ed25519 key,
-  so even a full re-chain of the history — which repairs every internal link —
+  so even a full re-chain of the history, which repairs every internal link,
   fails verification against a receipt the attacker cannot forge.
 
 The `trust-report` command (and the `trust_report` tool / `GET /v1/trust-report`)
@@ -122,7 +122,7 @@ decision to act with the operator.
 Trust should be a number you can recompute, not a word in a README. Nahuali
 defines its own governance benchmarks: each injects a fixed, labeled corpus,
 runs the real engine validators over it, and computes a rate. The measurement
-lives in the library and the release gate, so anyone can rerun it — the same
+lives in the library and the release gate, so anyone can rerun it; the same
 reproducibility the engine asks of memory, applied to its own numbers. The
 established agent-memory benchmarks (LOCOMO, LongMemEval, BEAM) measure recall
 accuracy only; as of the 2026-06-14 external claim review, we know of no other
@@ -151,8 +151,8 @@ cargo run -p nahuali-regression --features attestation -- --livr
 **Provenance Coverage Rate (PCR).** The fraction of assertional memory that is
 traceable to a source episode (`evidence_backed / total`), with its inverse, the
 overconfidence rate (high-confidence-but-unsourced). The labeled fixture seeds a
-known mix and the engine recovers it exactly — 0.75 coverage and 0.25
-overconfidence over eight claims — with an `insufficient_samples` guard so a
+known mix and the engine recovers it exactly: 0.75 coverage and 0.25
+overconfidence over eight claims, with an `insufficient_samples` guard so a
 small store cannot report a misleading rate:
 
 ```bash
@@ -160,8 +160,8 @@ cargo run -p nahuali-regression -- --fixtures fixtures/provenance-coverage-regre
 ```
 
 **Contradiction & Staleness Detection Rate (CDR).** Detection of seeded
-knowledge-health defects — same-observation contradictions, recency-resolved
-supersessions, and time-stale facts — over a labeled corpus, paired with a clean
+knowledge-health defects: same-observation contradictions, recency-resolved
+supersessions, and time-stale facts, over a labeled corpus, paired with a clean
 control that must produce zero false positives. The engine detects all six
 seeded defects and stays silent on the consistent store:
 
@@ -180,7 +180,7 @@ cargo run -p nahuali-regression --features attestation -- --arp
 ```
 
 **Trust Verdict Soundness (TVS).** The recall-side calibration check: one labeled
-store per authority mode, asserting the gate spans the full range correctly — a
+store per authority mode, asserting the gate spans the full range correctly: a
 clean connected store certifies, an isolated-entity store degrades to advisory,
 an unsupported assertion warns, and a same-observation contradiction blocks. It
 shows the trust gate is calibrated, not merely present:
@@ -192,7 +192,7 @@ cargo run -p nahuali-regression -- --fixtures fixtures/trust-verdict-soundness-r
 Honest limits: LIVR measures detection against a fixed synthetic injection
 method, so a passing rate proves self-consistency detection, not the absence of
 all tampering. PCR is an evidence-*presence* audit, not a calibration or
-accuracy metric — it says a claim cites an observation, not that the claim is
+accuracy metric. It says a claim cites an observation, not that the claim is
 true. CDR measures detection of the defect classes the health pipeline models,
 not every possible inconsistency. ARP measures the keyring's behavior across a
 fixed lifecycle matrix, not the strength of the underlying signature scheme. TVS
@@ -207,23 +207,23 @@ This comparison is dated. It reflects the external claim review recorded on
 that document before treating the comparison as current after 2026-09-14 or
 before quoting it externally.
 
-Most open-source agent-memory engines (Mem0, Zep/Graphiti, Letta, Cognee)
-optimize for **recall accuracy** — extracting and retrieving the right context —
+Most public-code agent-memory engines (Mem0, Zep/Graphiti, Letta, Cognee)
+optimize for **recall accuracy**, extracting and retrieving the right context,
 and publish their LOCOMO and LongMemEval scores. Nahuali optimizes for a
 different axis: **whether you can trust and verify** what memory returns. The two
 are complementary, and the comparison cuts both ways:
 
 | Axis | Nahuali | Recall-first engines |
 |---|---|---|
-| Tamper-evidence over the memory log | hash chain + Merkle proofs + Ed25519 tip attestation | none in the OSS layer |
+| Tamper-evidence over the memory log | hash chain + Merkle proofs + Ed25519 tip attestation | none in the public layer |
 | Confidence-vs-provenance recall trust | flags overconfident unsourced memory, gates recall | stores asserted facts without a provenance audit |
-| Deterministic core (no LLM in recall/ingest) | yes — reviewable, reproducible | LLM-driven extraction (non-deterministic) |
+| Deterministic core (no LLM in recall/ingest) | yes, reviewable, reproducible | LLM-driven extraction (non-deterministic) |
 | Point-in-time / bi-temporal recall | created-time filtering (`--as-of-ms`, `--max-age-days`); not yet a full valid/invalid interval model | Zep's bi-temporal model still leads |
 | Raw recall accuracy (LOCOMO/LongMemEval) | not the goal; a credible floor, not the lead | strong published numbers |
 | Ecosystem, integrations, traction | pre-release, narrow surface | large communities and framework integrations |
 
 As of the 2026-06-14 external claim review, we have not found another
-open-source agent-memory engine that combines all three of a hash-chained
+publicly inspectable agent-memory engine that combines all three of a hash-chained
 Merkle-proofed ledger, detached Ed25519 tip attestation, and a per-recall
 confidence-vs-provenance trust verdict over its memory ledger.
 The closest prior art ships subsets:
@@ -243,7 +243,7 @@ rewritten. The fuller landscape and source-quality caveats are maintained in
 
 - `nahuali-core`: the canonical Rust engine.
 - `nahuali`: an agent-first CLI for local memory recording, recall, inspection,
-  review, governed repair, proactive signals, backup, and migration rehearsals —
+  review, governed repair, proactive signals, backup, and migration rehearsals,
   plus an interactive `explore` governance cockpit and read-only federated recall
   over an archive store (`recall --archive`).
 - `nahuali-mcp`: a local MCP stdio server over the same core.
@@ -305,7 +305,7 @@ checksum. Default validation remains compatible with pre-chain records; use
 missing chain links.
 
 With `attestation`, sign the current tip and keep the receipt outside the store.
-Nahuali never generates keys or touches the network — supply a 32-byte Ed25519
+Nahuali never generates keys or touches the network. Supply a 32-byte Ed25519
 seed you control (for example `openssl rand -hex 32 > ledger.key`):
 
 ```bash
@@ -328,7 +328,7 @@ nahuali --database .nahuali-demo attest-verify tip.json --keyring keyring.json
 ```
 
 With `--keyring`, a receipt is honored only when it matches the live tip, its
-signature verifies, and its signing key is active in the ring — a revoked or
+signature verifies, and its signing key is active in the ring; a revoked or
 unknown key is rejected even when the signature itself is valid, and the command
 exits non-zero. The keyring is operator-held config kept outside the store, like
 the receipts.
@@ -385,7 +385,7 @@ cargo run -p nahuali-core --example tamper_evidence --features attestation
 ```
 
 It shows a recomputed-checksum in-place rewrite being caught by the chain, and a
-full suffix re-chain — which the chain alone cannot see — being caught by the
+full suffix re-chain, which the chain alone cannot see, being caught by the
 signed tip.
 
 ## Governed Self-Repair
@@ -435,7 +435,7 @@ from the ledger.
 Keep the semantic index current with `semantic-sync`: a non-destructive,
 idempotent upsert that never drops the collection, safe to run after each batch
 of writes so recall does not gap. `semantic-rebuild` is the destructive
-counterpart — drop and recreate — needed when the embedder (and so the vector
+counterpart, drop and recreate, needed when the embedder (and so the vector
 space) changes.
 
 Semantic vectors come from a deterministic local embedder by default. An
@@ -447,11 +447,11 @@ space, so rebuild the index with `semantic-rebuild` afterwards.
 ### Optional: stronger semantic recall with a local model
 
 The default deterministic embedder hashes character n-grams, so phrasings that
-share word shapes — morphology, common roots, substrings, typos — land near each
+share word shapes: morphology, common roots, substrings, typos, land near each
 other (`release`/`releasing`, `product`/`products`). What it cannot do is bridge
 true synonyms with no shared characters: `car` and `automobile` still look
 unrelated to it. A static [model2vec](https://github.com/MinishLab/model2vec)
-model places those synonyms close instead. Nahuali never downloads models — you
+model places those synonyms close instead. Nahuali never downloads models. You
 point it at a directory you control, so the core stays offline by construction.
 
 Fetch a model once (any model2vec export works; the directory must hold
@@ -479,7 +479,7 @@ cargo run -p nahuali-cli --features local-embeddings -- \
 ```
 
 A query like `driving a car to work` then surfaces an episode such as "Lena
-commutes by automobile each morning" — no shared words, ranked by meaning. The
+commutes by automobile each morning", no shared words, ranked by meaning. The
 deterministic embedder scores that episode the same as an unrelated one; the
 model separates them (see `local_model_separates_meaning_where_deterministic_cannot`
 in `nahuali-core`).
@@ -497,7 +497,7 @@ lost?
 
 **Your data is not lost when a service is down.** The authoritative
 `memory_record` ledger lives in SurrealDB's own durable volume. A stopped or
-unreachable service means the CLI cannot *connect* — never that records were
+unreachable service means the CLI cannot *connect*, never that records were
 deleted. When the service returns, the history is intact and re-verifies.
 
 **While a service is unreachable, writes fail rather than queue.** A
@@ -509,7 +509,7 @@ prints the exact command to bring it up:
 
 ```text
 ✗ Cannot reach the Nahuali store at ws://localhost:18000.
-  Your data is safe — nothing was lost or deleted; the database service
+  Your data is safe: nothing was lost or deleted; the database service
   is just unreachable (the append-only ledger lives in its own volume).
   Start the local stack and retry:
       docker compose up -d
@@ -523,7 +523,7 @@ and trust verdicts all work without Qdrant; only `recall --semantic` and the
 needs no reconciliation; the derived tiers (the SurrealDB graph projection and
 the Qdrant semantic index) can drift if a service was down while writes landed.
 `nahuali reconcile` re-verifies the ledger and rebuilds both derived tiers from
-it, reporting each — and skipping the semantic rebuild gracefully if Qdrant is
+it, reporting each, and skipping the semantic rebuild gracefully if Qdrant is
 still unreachable:
 
 ```text

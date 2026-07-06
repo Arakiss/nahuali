@@ -22,9 +22,10 @@ The first three are answered by inspectable trust: evidence, health signals, and
 authority context. The fourth is answered by a verifiable ledger: an opt-in hash
 chain and a signed tip let a caller prove the recorded past was not rewritten.
 
-The public OSS engine should stay focused on that foundation: local persistence,
-ledger replay, evidence-backed recall, knowledge-health inspection, explicit
-review paths, and agent-friendly interfaces over the same core.
+The public source-available (FSL-1.1-MIT) engine should stay focused on that
+foundation: local persistence, ledger replay, evidence-backed recall,
+knowledge-health inspection, explicit review paths, and agent-friendly
+interfaces over the same core.
 
 ## Product Principles
 
@@ -36,8 +37,8 @@ review paths, and agent-friendly interfaces over the same core.
   authority context instead of returning opaque text.
 - **Inspection is non-mutating by default.** Reports can recommend review work,
   but memory writes should remain explicit.
-- **Local-first engine.** The OSS repository should be useful as a self-hosted
-  engine before any higher-level product layer exists.
+- **Local-first engine.** The source-available (FSL-1.1-MIT) repository should
+  be useful as a self-hosted engine before any higher-level product layer exists.
 - **Small public contract.** Public claims should map to code, tests, fixtures,
   or release gates.
 
@@ -107,7 +108,7 @@ Exit criteria:
 
 This repository is not trying to ship everything at once.
 
-Not part of the current OSS engine:
+Not part of the current source-available (FSL-1.1-MIT) engine:
 
 - hosted accounts or team administration
 - payment or subscription management
