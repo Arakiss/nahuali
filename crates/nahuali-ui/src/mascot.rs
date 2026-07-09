@@ -16,6 +16,15 @@
 //! carries a one-line caption. On non-truecolor terminals (or `NO_COLOR`) the
 //! sprite renders as a single-color silhouette so the shape still reads.
 //!
+//! The nahual has no column of its own — a dedicated panel read as too loud. It
+//! lives in two subtle places instead, both size-guarded so nothing is crowded:
+//! full-size in the detail pane's empty state (with its caption and a dim hint)
+//! when there is no item to show, and always-on as a two-cell "mini face" cue in
+//! the header beside the store verdict. The cockpit host ([`crate::tui`]) owns
+//! that placement; this module owns the art, the palette, and the [`Verdict`]
+//! binding, and exposes just enough ([`body_rgb`], [`gill_rgb`],
+//! [`Verdict::accent`], [`Mascot::block_height`]) for the host to compose them.
+//!
 //! No animation: the cockpit's event loop blocks on `event::read`, so there is
 //! no tick to drive one — the mascot is deliberately still.
 
@@ -26,15 +35,14 @@ use ratatui::widgets::Widget;
 
 use crate::theme::{self, Rgb};
 
-/// A dedicated mascot panel is only shown when the terminal is at least this
-/// wide; below it the cockpit reverts to its two-pane layout and the nahual
-/// hides so nothing is cramped.
-pub const MIN_COLS: u16 = 100;
-/// …and at least this tall.
-pub const MIN_ROWS: u16 = 30;
-/// The fixed outer width of the mascot panel (sprite + borders + breathing
-/// room). The sprite is centered within the inner area.
-pub const PANEL_WIDTH: u16 = 30;
+/// The full nahual takes over the detail pane's empty state only when that pane
+/// is at least this wide; narrower, the host draws the plain placeholder line so
+/// the sprite (28 columns) is never clipped or centered awkwardly.
+pub const EMPTY_STATE_MIN_COLS: u16 = 34;
+/// …and at least this tall. Sized for the tallest pose: the 16-cell WARN sprite
+/// is an 18-row block ([`Mascot::block_height`]), plus one hint line, needs 19
+/// inner rows, i.e. a 21-row pane once the detail border is subtracted.
+pub const EMPTY_STATE_MIN_ROWS: u16 = 21;
 
 /// The store trust verdict the mascot binds to. Derived from the cockpit's
 /// trust label so this module stays decoupled from `nahuali-core`.
@@ -62,8 +70,9 @@ impl Verdict {
         }
     }
 
-    /// The verdict accent color, matching the cockpit's severity coding.
-    fn accent(self) -> Rgb {
+    /// The verdict accent color, matching the cockpit's severity coding. Public
+    /// so the header cue can tint its pose caption without duplicating the map.
+    pub fn accent(self) -> Rgb {
         match self {
             Self::Certify => theme::GREEN,
             Self::Advisory => theme::BLUE,
@@ -259,6 +268,19 @@ const GILL: Rgb = Rgb(232, 128, 118); // coral frond
 const GILL_LIGHT: Rgb = Rgb(246, 172, 160); // frond towards the tip
 const GILL_DARK: Rgb = Rgb(196, 96, 92); // frond root
 
+/// The pale-rose body color — the top pixel of the header cue's two-cell "mini
+/// face". Exposed so the host reuses the sprite's palette instead of redefining
+/// it. See [`gill_rgb`] for the coral it sits over.
+pub fn body_rgb() -> Rgb {
+    BODY
+}
+
+/// The coral gill color — the bottom pixel of the header cue's "mini face",
+/// read as the gill fan under the rose head. Companion to [`body_rgb`].
+pub fn gill_rgb() -> Rgb {
+    GILL
+}
+
 fn lerp(a: u8, b: u8, t: f32) -> u8 {
     let a = f32::from(a);
     let b = f32::from(b);
@@ -337,6 +359,16 @@ impl Mascot {
     #[cfg(test)]
     fn with_mono(verdict: Verdict, mono: bool) -> Self {
         Self { verdict, mono }
+    }
+
+    /// The height in terminal rows this mascot draws: the half-block sprite plus
+    /// a blank line and the caption (this is the `block_h` [`render`](Mascot::render)
+    /// centers). The empty-state host uses it to place a hint line directly under
+    /// the caption and to size the render area so the caption is never clipped.
+    pub fn block_height(self) -> u16 {
+        let sprite = self.verdict.sprite();
+        let sprite_h = sprite.len().div_ceil(2) as u16; // 2 pixel rows per cell
+        sprite_h + 2 // sprite + blank line + caption
     }
 }
 

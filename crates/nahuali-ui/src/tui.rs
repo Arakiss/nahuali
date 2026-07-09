@@ -6,6 +6,11 @@
 //! trust dot, and the selected item's detail (content, trust verdict, evidence)
 //! on the right. The CLI builds a plain `Snapshot` and hands it here, so this
 //! module stays decoupled from nahuali-core.
+//!
+//! The nahual mascot ([`crate::mascot`]) rides along quietly: a two-cell "mini
+//! face" cue beside the header verdict, and — when nothing is selected — the
+//! full sprite taking over the otherwise-empty detail pane. Neither costs the
+//! working operator any space.
 
 use std::io;
 
@@ -201,61 +206,88 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_header(frame, app, rows[0]);
 
-    // The nahual mascot gets a dedicated third column, but only when the
-    // terminal is wide and tall enough to give it room; otherwise the cockpit
-    // keeps its two-pane layout and the mascot hides so nothing is cramped.
-    let full = frame.area();
-    let show_mascot = full.width >= mascot::MIN_COLS && full.height >= mascot::MIN_ROWS;
-    let body = if show_mascot {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(34),
-                Constraint::Min(0),
-                Constraint::Length(mascot::PANEL_WIDTH),
-            ])
-            .split(rows[1])
-    } else {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(42), Constraint::Percentage(58)])
-            .split(rows[1])
-    };
+    // The cockpit keeps a stable two-pane body; the nahual no longer claims a
+    // column of its own. It surfaces subtly instead — full-size in the detail
+    // pane's empty state (`draw_detail`) and as a one-line cue in the header
+    // (`draw_header`) — so a working operator never loses room to it.
+    let body = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(42), Constraint::Percentage(58)])
+        .split(rows[1]);
 
     // Build owned widgets from immutable data first, then take the &mut borrow
     // of the list state to render the stateful list. Titles are clipped to the
     // list column's real width (minus borders, the ▸ symbol, the dot, and the
     // kind column) so they end in an ellipsis instead of a raw terminal cut.
     let title_width = (body[0].width as usize).saturating_sub(16);
-    let detail = detail_paragraph(app.selected_item());
     let visible = app.visible_items();
     let list = item_list(&visible, title_width, &app.filter_label());
 
     frame.render_stateful_widget(list, body[0], &mut app.list);
-    frame.render_widget(detail, body[1]);
-    if show_mascot {
-        draw_mascot(frame, &app.snapshot.store_trust_label, body[2]);
-    }
+    draw_detail(frame, app, body[1]);
 
     draw_signals(frame, &app.snapshot.signals, rows[2]);
     draw_footer(frame, rows[3]);
 }
 
-/// Draw the nahual mascot in its own bordered panel, its pose bound to the
-/// store's trust verdict (parsed from the same label the header shows).
-fn draw_mascot(frame: &mut Frame, trust_label: &str, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(color(theme::INK_FAINT)))
-        .title(Span::styled(
-            " nahual ",
-            Style::default()
-                .fg(color(theme::CLAY))
-                .add_modifier(Modifier::BOLD),
-        ));
+/// Draw the right-hand detail pane. With an item selected it shows that item's
+/// content, trust, and evidence; with nothing selected (an empty store or an
+/// empty filtered set) the pane becomes the nahual's home — see
+/// [`draw_empty_detail`].
+fn draw_detail(frame: &mut Frame, app: &App, area: Rect) {
+    match app.selected_item() {
+        Some(item) => frame.render_widget(detail_paragraph(item), area),
+        None => {
+            let verdict = Verdict::from_label(&app.snapshot.store_trust_label);
+            draw_empty_detail(frame, verdict, area);
+        }
+    }
+}
+
+/// The empty-state detail pane. On a pane with room ([`mascot::EMPTY_STATE_MIN_COLS`]
+/// × [`mascot::EMPTY_STATE_MIN_ROWS`]) the full nahual takes it over — sprite,
+/// caption, and a dim hint — which is where the art lives now that it has no
+/// panel; it costs no space while the operator is actually browsing. Below that
+/// size the pane falls back to the plain placeholder line.
+fn draw_empty_detail(frame: &mut Frame, verdict: Verdict, area: Rect) {
+    let block = detail_block();
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    frame.render_widget(Mascot::new(Verdict::from_label(trust_label)), inner);
+
+    let roomy =
+        area.width >= mascot::EMPTY_STATE_MIN_COLS && area.height >= mascot::EMPTY_STATE_MIN_ROWS;
+    if !roomy {
+        frame.render_widget(
+            Paragraph::new(Line::styled(
+                "No memory to show yet.",
+                Style::default().fg(color(theme::INK_FAINT)),
+            )),
+            inner,
+        );
+        return;
+    }
+
+    // Give the mascot an area of exactly its own height so it centers cleanly
+    // and its caption is never clipped, then hang the hint one row beneath it.
+    let mascot = Mascot::new(verdict);
+    let block_h = mascot.block_height();
+    let total_h = block_h.saturating_add(1); // sprite block + one hint line
+    let top = inner.y + inner.height.saturating_sub(total_h) / 2;
+    frame.render_widget(mascot, Rect::new(inner.x, top, inner.width, block_h));
+
+    let hint = "the nahual mirrors store trust";
+    let hint_y = top + block_h;
+    if hint_y < inner.bottom() {
+        let hint_w = (hint.chars().count() as u16).min(inner.width);
+        let hint_x = inner.x + inner.width.saturating_sub(hint_w) / 2;
+        frame.render_widget(
+            Paragraph::new(Line::styled(
+                hint,
+                Style::default().fg(color(theme::INK_FAINT)),
+            )),
+            Rect::new(hint_x, hint_y, hint_w, 1),
+        );
+    }
 }
 
 fn draw_signals(frame: &mut Frame, signals: &[Signal], area: Rect) {
@@ -302,18 +334,57 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(color(theme::INK_FAINT)),
         ),
     ]);
-    let header = Paragraph::new(vec![trust, integrity_line(&app.snapshot.integrity)]).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(color(theme::INK_FAINT)))
-            .title(Span::styled(
-                format!(" nahuali explore · {} ", app.snapshot.database),
-                Style::default()
-                    .fg(color(theme::CLAY))
-                    .add_modifier(Modifier::BOLD),
-            )),
-    );
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(color(theme::INK_FAINT)))
+        .title(Span::styled(
+            format!(" nahuali explore · {} ", app.snapshot.database),
+            Style::default()
+                .fg(color(theme::CLAY))
+                .add_modifier(Modifier::BOLD),
+        ));
+    let inner = block.inner(area);
+    let header = Paragraph::new(vec![trust, integrity_line(&app.snapshot.integrity)]).block(block);
     frame.render_widget(header, area);
+    draw_header_chip(frame, &app.snapshot, inner);
+}
+
+/// The always-on subtle cue: a two-cell "mini face" (rose head over coral gills,
+/// reusing the sprite palette) plus the pose caption in the verdict's accent,
+/// right-aligned on the trust row. It is drawn only when it clears the trust
+/// label with room to spare, so it never truncates or collides on a narrow
+/// terminal — below that width the header simply carries no chip.
+fn draw_header_chip(frame: &mut Frame, snapshot: &Snapshot, inner: Rect) {
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+    let verdict = Verdict::from_label(&snapshot.store_trust_label);
+    let caption = verdict.caption();
+    // Display columns of the trust row's text (mirrors `draw_header`'s spans)
+    // and of the chip; both are single-column glyphs, so char counts are exact.
+    let trust_w = format!(
+        " {} · score {:.2}",
+        snapshot.store_trust_label, snapshot.store_trust_score
+    )
+    .chars()
+    .count() as u16;
+    let chip_w = 3 + caption.chars().count() as u16; // "▀▀" + a space + caption
+    // Keep at least two columns of air between the trust label and the chip.
+    if inner.width < trust_w + 2 + chip_w {
+        return;
+    }
+    let chip = Line::from(vec![
+        Span::styled(
+            "\u{2580}\u{2580}",
+            Style::default()
+                .fg(color(mascot::body_rgb()))
+                .bg(color(mascot::gill_rgb())),
+        ),
+        Span::raw(" "),
+        Span::styled(caption, Style::default().fg(color(verdict.accent()))),
+    ]);
+    let x = inner.x + inner.width - chip_w;
+    frame.render_widget(Paragraph::new(chip), Rect::new(x, inner.y, chip_w, 1));
 }
 
 /// The integrity line — Nahuali's differentiator, stated honestly: a green
@@ -421,72 +492,70 @@ fn clip(text: &str, max: usize) -> String {
     format!("{}\u{2026}", head.trim_end())
 }
 
-fn detail_paragraph(item: Option<&Item>) -> Paragraph<'static> {
+/// The bordered `detail` pane block, shared by the item view and the empty
+/// state so both frame the pane identically.
+fn detail_block() -> Block<'static> {
+    Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(color(theme::INK_FAINT)))
+        .title(Span::styled(
+            " detail ",
+            Style::default()
+                .fg(color(theme::CLAY))
+                .add_modifier(Modifier::BOLD),
+        ))
+}
+
+fn detail_paragraph(item: &Item) -> Paragraph<'static> {
     let mut lines: Vec<Line> = Vec::new();
-    match item {
-        None => lines.push(Line::styled(
-            "No memory to show yet.",
-            Style::default().fg(color(theme::INK_FAINT)),
-        )),
-        Some(item) => {
-            lines.push(Line::from(Span::styled(
-                item.kind.clone(),
+    lines.push(Line::from(Span::styled(
+        item.kind.clone(),
+        Style::default()
+            .fg(color(theme::CLAY))
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::raw(item.title.clone()));
+    lines.push(Line::raw(""));
+    for chunk in item.detail.lines() {
+        lines.push(Line::styled(
+            chunk.to_string(),
+            Style::default().fg(color(theme::INK_DIM)),
+        ));
+    }
+    if let Some((label, trust_color)) = &item.trust {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(vec![
+            Span::styled("trust  ", Style::default().fg(color(theme::INK_FAINT))),
+            Span::styled(
+                label.clone(),
                 Style::default()
-                    .fg(color(theme::CLAY))
+                    .fg(color(*trust_color))
                     .add_modifier(Modifier::BOLD),
-            )));
-            lines.push(Line::raw(item.title.clone()));
-            lines.push(Line::raw(""));
-            for chunk in item.detail.lines() {
-                lines.push(Line::styled(
-                    chunk.to_string(),
-                    Style::default().fg(color(theme::INK_DIM)),
-                ));
-            }
-            if let Some((label, trust_color)) = &item.trust {
-                lines.push(Line::raw(""));
-                lines.push(Line::from(vec![
-                    Span::styled("trust  ", Style::default().fg(color(theme::INK_FAINT))),
-                    Span::styled(
-                        label.clone(),
-                        Style::default()
-                            .fg(color(*trust_color))
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                ]));
-            }
-            if let Some(evidence) = &item.evidence {
-                lines.push(Line::from(vec![
-                    Span::styled("source ", Style::default().fg(color(theme::INK_FAINT))),
-                    Span::styled(
-                        evidence.clone(),
-                        Style::default().fg(color(theme::INK_FAINT)),
-                    ),
-                ]));
-            }
-            for (key, value) in &item.meta {
-                lines.push(Line::from(vec![
-                    Span::styled(
-                        format!("{key:<7}"),
-                        Style::default().fg(color(theme::INK_FAINT)),
-                    ),
-                    Span::styled(value.clone(), Style::default().fg(color(theme::INK_DIM))),
-                ]));
-            }
-        }
+            ),
+        ]));
+    }
+    if let Some(evidence) = &item.evidence {
+        lines.push(Line::from(vec![
+            Span::styled("source ", Style::default().fg(color(theme::INK_FAINT))),
+            Span::styled(
+                evidence.clone(),
+                Style::default().fg(color(theme::INK_FAINT)),
+            ),
+        ]));
+    }
+    for (key, value) in &item.meta {
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("{key:<7}"),
+                Style::default().fg(color(theme::INK_FAINT)),
+            ),
+            Span::styled(value.clone(), Style::default().fg(color(theme::INK_DIM))),
+        ]));
     }
 
-    Paragraph::new(lines).wrap(Wrap { trim: true }).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(color(theme::INK_FAINT)))
-            .title(Span::styled(
-                " detail ",
-                Style::default()
-                    .fg(color(theme::CLAY))
-                    .add_modifier(Modifier::BOLD),
-            )),
-    )
+    Paragraph::new(lines)
+        .wrap(Wrap { trim: true })
+        .block(detail_block())
 }
 
 fn draw_footer(frame: &mut Frame, area: Rect) {
@@ -504,21 +573,32 @@ fn draw_footer(frame: &mut Frame, area: Rect) {
 #[cfg(test)]
 mod tests {
     use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
 
     use super::*;
 
-    /// Render the whole cockpit into a `TestBackend` of the given size and
-    /// return every cell symbol concatenated — enough to assert what is drawn.
-    fn cockpit_text(app: &mut App, width: u16, height: u16) -> String {
+    /// Render the whole cockpit into a `TestBackend` of the given size and hand
+    /// back its buffer, so a test can inspect both the drawn text ([`text_of`])
+    /// and the half-block art it contains ([`block_glyphs`]).
+    fn render_cockpit(app: &mut App, width: u16, height: u16) -> Buffer {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal.draw(|frame| draw(frame, app)).unwrap();
-        terminal
-            .backend()
-            .buffer()
-            .content()
+        terminal.backend().buffer().clone()
+    }
+
+    /// Every cell symbol concatenated — enough to assert what text is drawn.
+    fn text_of(buf: &Buffer) -> String {
+        buf.content().iter().map(|cell| cell.symbol()).collect()
+    }
+
+    /// The count of half-block glyphs on screen. The full mascot sprite paints
+    /// dozens; the header's mini-face cue paints exactly two; nothing else in
+    /// the cockpit uses them — so this cleanly separates the two placements.
+    fn block_glyphs(buf: &Buffer) -> usize {
+        buf.content()
             .iter()
-            .map(|cell| cell.symbol())
-            .collect()
+            .filter(|cell| matches!(cell.symbol(), "\u{2580}" | "\u{2584}" | "\u{2588}"))
+            .count()
     }
 
     fn item(kind: &str) -> Item {
@@ -626,54 +706,113 @@ mod tests {
     }
 
     #[test]
-    fn mascot_shows_on_a_roomy_terminal() {
-        // A wide, tall terminal gets the dedicated nahual panel; its CERTIFY
-        // caption ("calm") appears nowhere else in the cockpit.
-        let mut app = App::new(snapshot(3));
-        let text = cockpit_text(&mut app, 120, 40);
+    fn empty_store_shows_the_full_mascot_in_a_roomy_detail_pane() {
+        // With nothing selected and room to spare, the nahual takes over the
+        // detail pane: its CERTIFY caption ("calm") and a dense sprite appear.
+        let mut app = App::new(snapshot(0));
+        let buf = render_cockpit(&mut app, 120, 40);
         assert!(
-            text.contains("calm"),
-            "mascot caption missing on a roomy terminal"
+            text_of(&buf).contains("calm"),
+            "CERTIFY caption missing from the empty detail pane"
+        );
+        assert!(
+            block_glyphs(&buf) > 40,
+            "the full nahual sprite should fill the empty detail pane"
         );
     }
 
     #[test]
-    fn mascot_hides_on_a_narrow_terminal() {
-        // Below the width threshold the cockpit keeps its two-pane layout and
-        // draws no mascot — and must not panic building the smaller layout.
-        let mut app = App::new(snapshot(3));
-        let text = cockpit_text(&mut app, 90, 40);
-        assert!(
-            !text.contains("calm"),
-            "mascot must hide when the terminal is too narrow"
-        );
-    }
-
-    #[test]
-    fn mascot_hides_on_a_short_terminal() {
-        let mut app = App::new(snapshot(3));
-        let text = cockpit_text(&mut app, 120, 24);
+    fn empty_store_on_a_tiny_terminal_draws_no_mascot_and_does_not_panic() {
+        // Below the empty-state threshold the pane falls back to the plain
+        // placeholder, the header chip cannot fit either, and nothing panics.
+        let mut app = App::new(snapshot(0));
+        let buf = render_cockpit(&mut app, 40, 24);
+        let text = text_of(&buf);
         assert!(
             !text.contains("calm"),
-            "mascot must hide when the terminal is too short"
+            "no mascot caption should appear on a tiny terminal"
+        );
+        assert_eq!(
+            block_glyphs(&buf),
+            0,
+            "no half-block art should be drawn on a tiny terminal"
+        );
+        assert!(
+            text.contains("No memory"),
+            "the plain placeholder should show instead"
         );
     }
 
     #[test]
-    fn mascot_pose_tracks_the_verdict() {
-        // A BLOCK store renders the guarded pose (caption "guarded"), not the
-        // CERTIFY one — the pose is bound to the live verdict.
-        let mut block = snapshot(3);
-        block.store_trust_label = "BLOCK · not yet trustworthy".to_string();
-        let mut app = App::new(block);
-        let text = cockpit_text(&mut app, 120, 40);
+    fn non_empty_store_shows_only_the_header_chip_not_the_full_mascot() {
+        // Browsing an actual item, the full sprite is gone; only the header's
+        // two-cell mini face remains, and it carries the pose caption.
+        let mut app = App::new(snapshot(3));
+        let buf = render_cockpit(&mut app, 120, 40);
+        assert!(
+            text_of(&buf).contains("calm"),
+            "the header chip should carry the pose caption"
+        );
+        assert_eq!(
+            block_glyphs(&buf),
+            2,
+            "a non-empty store draws only the chip's mini face, not the sprite"
+        );
+    }
+
+    #[test]
+    fn narrow_terminal_hides_the_chip_but_keeps_the_layout() {
+        // When the chip cannot clear the trust label it hides entirely rather
+        // than truncate or collide — and the two-pane cockpit renders around it.
+        let mut app = App::new(snapshot(3));
+        let buf = render_cockpit(&mut app, 42, 30);
+        let text = text_of(&buf);
+        assert!(
+            !text.contains("calm"),
+            "the chip must hide when it would crowd the trust label"
+        );
+        assert_eq!(
+            block_glyphs(&buf),
+            0,
+            "no half-block art once the chip is hidden and no item is empty-state"
+        );
+        assert!(text.contains("nahuali explore"), "header still renders");
+        assert!(text.contains("memory"), "list pane still renders");
+    }
+
+    #[test]
+    fn pose_tracks_the_verdict_in_both_the_chip_and_the_empty_state() {
+        // Empty BLOCK store: the full mascot wears the guarded pose, never the
+        // CERTIFY one — the empty-state art is bound to the live verdict.
+        let mut empty = snapshot(0);
+        empty.store_trust_label = "BLOCK · not yet trustworthy".to_string();
+        empty.store_trust_color = theme::RED;
+        let mut app = App::new(empty);
+        let text = text_of(&render_cockpit(&mut app, 120, 40));
         assert!(
             text.contains("guarded"),
-            "expected the guarded (BLOCK) pose"
+            "empty BLOCK store shows the guarded pose"
         );
         assert!(
             !text.contains("calm"),
             "must not show the CERTIFY caption for a BLOCK store"
+        );
+
+        // Non-empty BLOCK store: the header chip carries the same guarded
+        // caption, and still nothing but the mini face draws half-blocks.
+        let mut full = snapshot(3);
+        full.store_trust_label = "BLOCK · not yet trustworthy".to_string();
+        full.store_trust_color = theme::RED;
+        let mut app = App::new(full);
+        let buf = render_cockpit(&mut app, 120, 40);
+        assert!(
+            text_of(&buf).contains("guarded"),
+            "the header chip tracks the BLOCK verdict"
+        );
+        assert_eq!(
+            block_glyphs(&buf),
+            2,
+            "a non-empty store draws only the chip's mini face"
         );
     }
 }
