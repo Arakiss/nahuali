@@ -11,6 +11,37 @@ crate and published with each tag:
 
 This file keeps a short, human summary of the release train.
 
+## Unreleased
+
+Signal-quality fixes to `self-inspect` and knowledge-health inspection. The
+engine stays deterministic and non-mutating; these change what it reports, not
+what it stores.
+
+- **Same-episode multi-values are no longer contradictions.** Two values for the
+  same `(scope, subject, predicate)` that share one source episode are a
+  deliberate multi-valued observation (an entity typed several ways in a single
+  extraction), not a cross-observation conflict, and no longer raise a
+  `ConflictingFact` signal or block trust. Cross-episode disagreement (any
+  differing or missing episode) keeps today's supersession/conflict behavior.
+  The CDR and TVS benchmark fixtures now seed cross-observation contradictions.
+- **`KnowledgeHealth.blind_spot_count` narrowed.** It now counts only the
+  coverage-gap family (isolated entities plus the no-episodes signal) instead of
+  every signal. A new `signal_count` reports the full signal total. CLI and MCP
+  consumers updated; the MCP `status` resource and health view gain
+  `signal_count`.
+- **Deduplicated finding total.** The self-inspection summary gains
+  `distinct_flagged_record_count`, the number of unique records flagged across
+  all finding families (the same record is legitimately counted by several
+  families). The `self-inspect` summary line now leads with it; `finding_count`
+  and per-family counts are unchanged.
+- **Consolidation cohesion gate.** A repeated-tag consolidation opportunity is
+  now suppressed for bare-number/year tags and for tag groups whose episodes do
+  not share mentioned entities, so a `2026` time bucket no longer proposes
+  consolidating unrelated work.
+- **Label-extraction artifacts.** An isolated "entity" whose name is a git hash
+  or an overlong label is reported as a distinct `label_artifact` finding with a
+  review-or-remove action instead of a connect suggestion.
+
 ## 0.3.0-beta.0 (2026-06-02)
 
 - Opt-in tamper-evident hash-chained ledger in `nahuali-core`.

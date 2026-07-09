@@ -153,7 +153,9 @@ cargo run -p nahuali-regression -- --fixtures fixtures/contradiction-staleness-r
 
 The fixture covers:
 
-- same-observation contradictions;
+- cross-observation contradictions (values disagreeing across distinct episodes
+  that cannot be cleanly ordered — two values from one episode are a deliberate
+  multi-valued observation, not a defect);
 - recency-resolved supersessions;
 - deterministic stale facts;
 - a clean control with zero expected false positives.
@@ -197,7 +199,8 @@ TVS verifies that labeled stores land in the expected recall authority mode:
 - clean connected memory certifies;
 - isolated or weakly connected context degrades to advisory;
 - unsupported assertions warn;
-- same-observation contradictions block.
+- cross-observation contradictions block (two values recorded against one
+  episode are a deliberate multi-valued observation and do not block).
 
 TVS checks the gate calibration over known stores. It does not prove that every
 future store will be classified perfectly.
