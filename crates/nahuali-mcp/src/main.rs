@@ -16,14 +16,13 @@ struct Args {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let database = args.database.unwrap_or_else(default_database_name);
-    let service = NahualiMcpServer::open(database)?.serve(stdio()).await?;
+    // Same single resolver the CLI uses: --database beats NAHUALI_DB_DATABASE
+    // beats the default, and a path-like name is refused, not silently mangled.
+    let flag = args.database.as_deref().and_then(std::path::Path::to_str);
+    let resolved = nahuali_core::resolve_database_name(flag)?;
+    let service = NahualiMcpServer::open(PathBuf::from(resolved.value))?
+        .serve(stdio())
+        .await?;
     service.waiting().await?;
     Ok(())
-}
-
-fn default_database_name() -> PathBuf {
-    std::env::var("NAHUALI_DB_DATABASE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("memory"))
 }

@@ -1,6 +1,6 @@
 #[test]
 fn semantic_index_operator_path_is_scriptable() {
-    let store = temp_store("semantic-index-operator-path");
+    let store = temp_database("semantic-index-operator-path");
     let collection_guard = QdrantCollectionGuard::new("operator_path");
     let collection = collection_guard.name();
 
@@ -142,7 +142,7 @@ fn semantic_index_operator_path_is_scriptable() {
 
 #[test]
 fn operator_review_queue_is_scriptable() {
-    let store = temp_store("operator-review-store");
+    let store = temp_database("operator-review-store");
 
     run_ok(&store, &["claim", "Lena", "role", "CTO"]);
     run_ok(&store, &["claim", "Lena", "role", "VP Engineering"]);
@@ -199,7 +199,7 @@ fn operator_review_queue_is_scriptable() {
 
 #[test]
 fn review_resolution_is_scriptable() {
-    let store = temp_store("review-resolution-store");
+    let store = temp_database("review-resolution-store");
 
     run_ok(
         &store,
@@ -292,7 +292,7 @@ fn review_resolution_is_scriptable() {
 
 #[test]
 fn graph_neighborhood_is_scriptable() {
-    let store = temp_store("graph-neighborhood-store");
+    let store = temp_database("graph-neighborhood-store");
 
     run_ok(
         &store,
@@ -349,7 +349,7 @@ fn graph_neighborhood_is_scriptable() {
 
 #[test]
 fn import_reports_invalid_interchange_as_json_without_mutating_store() {
-    let store = temp_store("invalid-interchange-store");
+    let store = temp_database("invalid-interchange-store");
     let interchange_path = temp_store("invalid-interchange-document");
     let interchange_arg = interchange_path.display().to_string();
     fs::write(
@@ -379,7 +379,7 @@ fn import_reports_invalid_interchange_as_json_without_mutating_store() {
 
 #[test]
 fn source_last_requires_an_existing_episode() {
-    let store = temp_store("source-last-empty-store");
+    let store = temp_database("source-last-empty-store");
     let output = run(
         &store,
         &["fact", "Lena", "owns", "release notes", "--source-last"],
@@ -397,7 +397,7 @@ fn source_last_requires_an_existing_episode() {
 
 #[test]
 fn source_last_conflicts_with_manual_source_episode() {
-    let store = temp_store("source-last-conflict");
+    let store = temp_database("source-last-conflict");
     run_ok(&store, &["remember", "Lena owns the release notes"]);
 
     let output = run(
@@ -425,7 +425,7 @@ fn source_last_conflicts_with_manual_source_episode() {
 
 #[test]
 fn validate_human_output_reports_database_and_status() {
-    let store = temp_store("validate-human-store-path");
+    let store = temp_database("validate-human-store-path");
     run_ok(&store, &["remember", "Lena owns the release notes"]);
 
     let output = run_ok(&store, &["validate"]);

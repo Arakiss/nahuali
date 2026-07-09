@@ -1,6 +1,6 @@
 #[test]
 fn scoped_operator_paths_filter_recall() {
-    let store = temp_store("scoped-operator-path");
+    let store = temp_database("scoped-operator-path");
 
     run_ok(
         &store,

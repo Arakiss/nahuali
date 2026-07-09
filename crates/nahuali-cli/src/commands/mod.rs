@@ -2,6 +2,7 @@ mod artifacts;
 #[cfg(feature = "attestation")]
 mod attestation;
 mod audit;
+mod config;
 mod demo;
 #[cfg(feature = "tui")]
 mod explore;
@@ -22,20 +23,31 @@ mod trust_report;
 use std::path::PathBuf;
 
 use anyhow::Context;
-use nahuali_core::{LedgerAuditOptions, MemoryEngine, TrustReportOptions};
+use nahuali_core::{LedgerAuditOptions, MemoryEngine, ResolvedValue, TrustReportOptions};
 
 use crate::cli::{Cli, Command};
 
 pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
     let verbose = cli.verbose;
-    let database = cli.database.unwrap_or_else(default_database_name);
+    let database_flag = cli.database.as_deref().and_then(std::path::Path::to_str);
+
+    // `config` reports the resolved configuration without opening a store, so it
+    // runs before resolution can fail-open into a connection attempt.
+    if let Command::Config { json } = &cli.command {
+        return config::config(database_flag, *json);
+    }
+
+    // One resolution point: flag > env > default, refusing a path-like name
+    // rather than silently mangling it into a different database.
+    let resolved = nahuali_core::resolve_database_name(database_flag)?;
+    let database = PathBuf::from(&resolved.value);
     if preopen::handle(&cli.command, &database)? {
         return Ok(());
     }
 
     let started = std::time::Instant::now();
     if verbose {
-        verbose_open_line(&database);
+        verbose_open_line(&resolved);
     }
     let mut memory = open_store(&database, verbose)?;
 
@@ -649,7 +661,8 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             json,
         )?,
         Command::Data { json } => reports::data(&mut memory, json)?,
-        Command::Demo { .. }
+        Command::Config { .. }
+        | Command::Demo { .. }
         | Command::Init { .. }
         | Command::Completions { .. }
         | Command::Validate { .. }
@@ -668,17 +681,19 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Print the effective connection target to stderr for `--verbose`. The defaults
-/// mirror nahuali-core's resolution (localhost:18000, namespace "nahuali").
-fn verbose_open_line(database: &std::path::Path) {
-    let endpoint =
-        std::env::var("NAHUALI_DB_URL").unwrap_or_else(|_| "localhost:18000".to_string());
-    let namespace = std::env::var("NAHUALI_DB_NAMESPACE").unwrap_or_else(|_| "nahuali".to_string());
+/// Echo the effective connection target to stderr for `--verbose`, including the
+/// resolved database and where it came from (flag/env/default). Endpoint and
+/// namespace come from the same core resolver, so stdout stays clean and the
+/// reported values match what the store actually uses.
+fn verbose_open_line(database: &ResolvedValue) {
+    let endpoint = nahuali_core::resolve_endpoint();
+    let namespace = nahuali_core::resolve_namespace();
     eprintln!(
-        "nahuali: opening \"{}\" @ {} (ns {})",
-        database.display(),
-        endpoint,
-        namespace
+        "nahuali: opening \"{}\" (source: {}) @ {} (ns {})",
+        database.value,
+        database.source.as_str(),
+        endpoint.value,
+        namespace.value
     );
 }
 
@@ -691,8 +706,7 @@ fn open_store(database: &std::path::Path, verbose: bool) -> anyhow::Result<Memor
     match MemoryEngine::open(database) {
         Ok(engine) => Ok(engine),
         Err(error) => {
-            let endpoint =
-                std::env::var("NAHUALI_DB_URL").unwrap_or_else(|_| "localhost:18000".to_string());
+            let endpoint = nahuali_core::resolve_endpoint().value;
             eprintln!();
             eprintln!("\u{2717} Cannot reach the Nahuali store at ws://{endpoint}.");
             eprintln!(
@@ -734,10 +748,4 @@ fn try_start_local_stack(verbose: bool) -> bool {
         }
         _ => false,
     }
-}
-
-fn default_database_name() -> PathBuf {
-    std::env::var("NAHUALI_DB_DATABASE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("memory"))
 }

@@ -1,7 +1,7 @@
 #[test]
 fn import_export_interchange_is_non_destructive_and_scriptable() {
-    let source_store = temp_store("interchange-source-store");
-    let target_store = temp_store("interchange-target-store");
+    let source_store = temp_database("interchange-source-store");
+    let target_store = temp_database("interchange-target-store");
     let interchange_path = temp_store("interchange-document");
     let interchange_arg = interchange_path.display().to_string();
 
@@ -77,7 +77,7 @@ fn import_export_interchange_is_non_destructive_and_scriptable() {
 
 #[test]
 fn ingestion_document_is_scriptable() {
-    let store = temp_store("ingestion-document-store");
+    let store = temp_database("ingestion-document-store");
     let document_path = temp_store("ingestion-document");
     let document_arg = document_path.display().to_string();
     fs::write(
@@ -226,7 +226,7 @@ fn ingestion_document_is_scriptable() {
 
 #[test]
 fn text_file_ingestion_is_scriptable() {
-    let store = temp_store("text-file-ingestion-store");
+    let store = temp_database("text-file-ingestion-store");
     let text_path = temp_store("text-file-source").with_extension("md");
     let text_arg = text_path.display().to_string();
     fs::write(
@@ -359,7 +359,7 @@ fn text_file_ingestion_is_scriptable() {
 
 #[test]
 fn directory_text_ingestion_is_atomic() {
-    let store = temp_store("directory-text-ingestion-store");
+    let store = temp_database("directory-text-ingestion-store");
     let source_dir = temp_store("directory-text-source");
     let nested_dir = source_dir.join("nested");
     fs::create_dir_all(&nested_dir).expect("source directory creates");

@@ -237,7 +237,7 @@ fn run() {
     println!();
     println!("{}Next{}", s.bold, s.reset);
     println!(
-        "    Run the full engine on real memory:  {}nahuali --database ./memory trust-report{}",
+        "    Run the full engine on real memory:  {}nahuali --database memory trust-report{}",
         s.accent, s.reset
     );
     println!(

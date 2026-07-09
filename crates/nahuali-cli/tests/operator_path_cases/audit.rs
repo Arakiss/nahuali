@@ -1,6 +1,6 @@
 #[test]
 fn audit_reports_changes_and_integrity_for_a_range() {
-    let store = temp_store("audit-operator-path");
+    let store = temp_database("audit-operator-path");
 
     run_ok(
         &store,

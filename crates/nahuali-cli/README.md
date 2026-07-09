@@ -22,7 +22,7 @@ During pre-release development, avoid overwriting an existing global `nahuali`
 command. Use `cargo run` for transition-safe checks:
 
 ```bash
-cargo run -p nahuali-cli -- --database ./memory validate
+cargo run -p nahuali-cli -- --database memory validate
 ```
 
 After the Rust CLI is the intentional cutover, install from the repository root:
@@ -63,7 +63,7 @@ memory
 Override the database name with `--database` or `NAHUALI_DB_DATABASE`:
 
 ```bash
-nahuali --database ./memory remember "Lena owns the release notes"
+nahuali --database memory remember "Lena owns the release notes"
 ```
 
 The value selects a SurrealDB database name. Path-like values such as
@@ -77,57 +77,57 @@ pre-release development.
 ## Primary Workflow
 
 ```bash
-nahuali --database ./memory remember "Lena owns the release notes" --tag product --mention Lena
-nahuali --database ./memory ingest-text examples/source-note.md --kind note --title "Release notes source" --chunking paragraphs --tag product --mention Lena --dry-run --json
-nahuali --database ./memory ingest-text examples/source-note.md --kind note --title "Release notes source" --chunking paragraphs --tag product --mention Lena --json
-nahuali --database ./memory ingest-dir examples --recursive --extension md --extension txt --chunking paragraphs --dry-run --json
-nahuali --database ./memory ingest examples/ingest-conversation.json --dry-run --json
-nahuali --database ./memory ingest examples/ingest-conversation.json --json
-nahuali --database ./memory claim Lena owns "release notes" --confidence 0.92 --source-last
-nahuali --database ./memory link Lena owns "release notes" --confidence 0.9 --source-last
-nahuali --database ./memory remember "Release notes belong to the Nahuali project" --scope project:Nahuali
-nahuali --database ./memory recall "release notes" --scope project:Nahuali --authority --json
-nahuali --database ./memory preference "Release notes" "Keep release notes concise" --source-last
-nahuali --database ./memory intention "Ship release notes" --priority high --source-last
-nahuali --database ./memory intention-update <intention_id> --deadline-at-ms 1777939200000 --progress 25
-nahuali --database ./memory intention-complete <intention_id> --reason "Release notes shipped"
-nahuali --database ./memory reconcile-intentions --json
-nahuali --database ./memory goal-progress --json
-nahuali --database ./memory proactive --json
-nahuali --database ./memory deadlines --json
-nahuali --database ./memory anomalies --json
-nahuali --database ./memory anomaly-acknowledge <anomaly_id> --note "Operator reviewed this alert" --dry-run --json
-nahuali --database ./memory briefing --json
-nahuali --database ./memory hook pre-prompt --input "Who owns release notes?" --json
-nahuali --database ./memory sleep --json
-nahuali --database ./memory consolidation-plan --json
-nahuali --database ./memory recall "Lena release"
-nahuali --database ./memory recall "Lena release" --authority --json
-nahuali --database ./memory graph "Lena" --depth 2 --limit 20 --json
-nahuali --database ./memory project "Lena" --json
-nahuali --database ./memory semantic-rebuild
-nahuali --database ./memory semantic-status --json
-nahuali --database ./memory recall "Lena release" --semantic --json
-nahuali --database ./memory inspect
-nahuali --database ./memory self-inspect --json
-nahuali --database ./memory reflect --json
-nahuali --database ./memory review --limit 5 --min-priority high --json
-nahuali --database ./memory review-resolve <review_id> --note "Operator reviewed this item" --json
-nahuali --database ./memory validate
-nahuali --database ./memory audit --json
-nahuali --database ./memory audit --inclusion-proof 2 --json
-nahuali --database ./memory maintenance
-nahuali --database ./memory snapshot --output ./memory.snapshot.json --dry-run
-nahuali --database ./memory snapshot --output ./memory.snapshot.json
-nahuali --database ./memory snapshot-validate ./memory.snapshot.json --json
-nahuali --database ./memory backup --output ./memory.backup.json --dry-run --json
-nahuali --database ./memory backup --output ./memory.backup.json
+nahuali --database memory remember "Lena owns the release notes" --tag product --mention Lena
+nahuali --database memory ingest-text examples/source-note.md --kind note --title "Release notes source" --chunking paragraphs --tag product --mention Lena --dry-run --json
+nahuali --database memory ingest-text examples/source-note.md --kind note --title "Release notes source" --chunking paragraphs --tag product --mention Lena --json
+nahuali --database memory ingest-dir examples --recursive --extension md --extension txt --chunking paragraphs --dry-run --json
+nahuali --database memory ingest examples/ingest-conversation.json --dry-run --json
+nahuali --database memory ingest examples/ingest-conversation.json --json
+nahuali --database memory claim Lena owns "release notes" --confidence 0.92 --source-last
+nahuali --database memory link Lena owns "release notes" --confidence 0.9 --source-last
+nahuali --database memory remember "Release notes belong to the Nahuali project" --scope project:Nahuali
+nahuali --database memory recall "release notes" --scope project:Nahuali --authority --json
+nahuali --database memory preference "Release notes" "Keep release notes concise" --source-last
+nahuali --database memory intention "Ship release notes" --priority high --source-last
+nahuali --database memory intention-update <intention_id> --deadline-at-ms 1777939200000 --progress 25
+nahuali --database memory intention-complete <intention_id> --reason "Release notes shipped"
+nahuali --database memory reconcile-intentions --json
+nahuali --database memory goal-progress --json
+nahuali --database memory proactive --json
+nahuali --database memory deadlines --json
+nahuali --database memory anomalies --json
+nahuali --database memory anomaly-acknowledge <anomaly_id> --note "Operator reviewed this alert" --dry-run --json
+nahuali --database memory briefing --json
+nahuali --database memory hook pre-prompt --input "Who owns release notes?" --json
+nahuali --database memory sleep --json
+nahuali --database memory consolidation-plan --json
+nahuali --database memory recall "Lena release"
+nahuali --database memory recall "Lena release" --authority --json
+nahuali --database memory graph "Lena" --depth 2 --limit 20 --json
+nahuali --database memory project "Lena" --json
+nahuali --database memory semantic-rebuild
+nahuali --database memory semantic-status --json
+nahuali --database memory recall "Lena release" --semantic --json
+nahuali --database memory inspect
+nahuali --database memory self-inspect --json
+nahuali --database memory reflect --json
+nahuali --database memory review --limit 5 --min-priority high --json
+nahuali --database memory review-resolve <review_id> --note "Operator reviewed this item" --json
+nahuali --database memory validate
+nahuali --database memory audit --json
+nahuali --database memory audit --inclusion-proof 2 --json
+nahuali --database memory maintenance
+nahuali --database memory snapshot --output ./memory.snapshot.json --dry-run
+nahuali --database memory snapshot --output ./memory.snapshot.json
+nahuali --database memory snapshot-validate ./memory.snapshot.json --json
+nahuali --database memory backup --output ./memory.backup.json --dry-run --json
+nahuali --database memory backup --output ./memory.backup.json
 nahuali backup-validate ./memory.backup.json --json
 nahuali backup-drill ./memory.backup.json --target-database ./restored-memory --json
 nahuali restore ./memory.backup.json --target-database ./restored-memory --dry-run --json
-nahuali --database ./memory export --output ./memory.interchange.json
-nahuali --database ./imported-memory import ./memory.interchange.json --dry-run --json
-nahuali --database ./memory data --json
+nahuali --database memory export --output ./memory.interchange.json
+nahuali --database imported_memory import ./memory.interchange.json --dry-run --json
+nahuali --database memory data --json
 ```
 
 Use `--json` on primary commands when scripts or agents need structured output
@@ -366,9 +366,9 @@ freshness reference.
 
 ```bash
 cargo run -p nahuali-cli --features attestation -- \
-  --database ./memory attest-sign --key-file ledger.key -o tip.json
+  --database memory attest-sign --key-file ledger.key -o tip.json
 cargo run -p nahuali-cli --features attestation -- \
-  --database ./memory attest-verify tip.json
+  --database memory attest-verify tip.json
 ```
 
 `fact` and `relate` remain compatibility commands while the canonical public

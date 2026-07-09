@@ -5,7 +5,7 @@ use std::fs;
 
 use operator_path_support::{
     QdrantCollectionGuard, run, run_ok, run_ok_with_semantic_collection,
-    run_with_semantic_collection, temp_store,
+    run_with_semantic_collection, temp_database, temp_store,
 };
 use serde_json::Value;
 

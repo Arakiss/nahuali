@@ -57,6 +57,31 @@ pub fn temp_store(name: &str) -> PathBuf {
     path
 }
 
+/// A unique, clean SurrealDB database identifier for a test store. The CLI
+/// refuses a path-like `--database` name, so database stores use this instead of
+/// a temp-dir path (which `temp_store` still provides for artifact FILES like
+/// snapshots, backups, and interchange documents).
+pub fn temp_database(name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is after epoch")
+        .as_nanos();
+    let sanitized: String = name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    PathBuf::from(format!(
+        "nahuali_cli_{sanitized}_{}_{nanos}",
+        std::process::id()
+    ))
+}
+
 pub fn semantic_collection_name(name: &str) -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
