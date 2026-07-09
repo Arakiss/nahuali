@@ -35,8 +35,16 @@ pub struct KnowledgeHealth {
     pub superseded_fact_count: usize,
     /// Number of entities with no relation edges.
     pub isolated_entity_count: usize,
-    /// Number of health signals requiring caller attention.
+    /// Number of blind-spot-family signals: isolated entities plus the
+    /// no-episodes signal. This is deliberately a strict subset of
+    /// [`Self::signal_count`] — contradictions, staleness, weak evidence, and
+    /// low confidence are their own dimensions and are not blind spots. Read
+    /// [`Self::signal_count`] for the total signal volume.
     pub blind_spot_count: usize,
+    /// Total number of health signals across every dimension. This is the full
+    /// signal volume; [`Self::blind_spot_count`] is only the coverage-gap
+    /// subset of it.
+    pub signal_count: usize,
     /// Mean confidence for projected facts, rounded to two decimals.
     pub average_fact_confidence: f32,
     /// Structured signals behind the aggregate counts.
@@ -111,9 +119,11 @@ pub enum HealthSignalKind {
     /// limits: it cannot collapse an orderly value chain
     /// (`draft` -> `reviewed` -> `published`) into a single signal, it is keyed
     /// on ledger ingestion order rather than wall-clock causality, and an
-    /// unprovenanced newer value or two differing values from the same episode
-    /// are deliberately left as a [`HealthSignalKind::ConflictingFact`] instead
-    /// of a clean supersession.
+    /// unprovenanced newer value is deliberately left as a
+    /// [`HealthSignalKind::ConflictingFact`] instead of a clean supersession.
+    /// Two differing values that share the same source episode are treated as a
+    /// deliberate multi-valued observation and raise no signal at all (see
+    /// `classify_fact_groups`).
     SupersededFact,
     /// An entity appears in facts but has no relation edges.
     IsolatedEntity,
@@ -356,7 +366,11 @@ impl KnowledgeHealth {
                 dimensions: vec![HealthDimension::Connectivity, HealthDimension::BlindSpot],
                 severity: HealthSeverity::Low,
                 message: format!("Entity '{entity}' is not connected by any relation."),
-                evidence_ids: Vec::new(),
+                // The normalized entity name is the signal's memory identifier.
+                // Carrying it lets the self-inspection layer classify isolated
+                // entities whose names are extraction artifacts (a git hash or an
+                // overlong label) without re-deriving the graph.
+                evidence_ids: vec![entity.clone()],
             });
         }
 
@@ -364,6 +378,21 @@ impl KnowledgeHealth {
             .iter()
             .map(|signal| signal.message.clone())
             .collect::<Vec<_>>();
+
+        // `blind_spot_count` is the coverage-gap subset — isolated entities plus
+        // the no-episodes signal — not the total signal count. The total lives in
+        // `signal_count`. The two once collapsed into one field, which read as
+        // "everything is a blind spot" and buried the operator in noise.
+        let signal_count = signals.len();
+        let blind_spot_count = signals
+            .iter()
+            .filter(|signal| {
+                matches!(
+                    signal.kind,
+                    HealthSignalKind::NoEpisodes | HealthSignalKind::IsolatedEntity
+                )
+            })
+            .count();
 
         Self {
             event_count: data.event_count,
@@ -378,7 +407,8 @@ impl KnowledgeHealth {
             stale_fact_count: stale_facts.len(),
             superseded_fact_count,
             isolated_entity_count: isolated_entities.len(),
-            blind_spot_count: signals.len(),
+            blind_spot_count,
+            signal_count,
             average_fact_confidence,
             signals,
             warnings,
@@ -412,18 +442,26 @@ struct RetiredFact {
 /// Partition `(scope, subject, predicate)` groups that disagree on the object
 /// into clean supersessions and genuine conflicts.
 ///
-/// A group with at least two distinct object values is a **clean
-/// supersession** when a single fact holds the maximum `created_at_ms` (no tie
-/// at the newest timestamp) and that newest fact carries a source episode. Only
-/// the older facts whose value differs from the surviving one *and* whose
-/// source episode differs from the winner's are retired. Every other
-/// disagreeing group stays a **conflict**: a tie at the newest timestamp, a
-/// newest value with no provenance, or two differing values recorded against
-/// the same episode keep the High-severity `ConflictingFact` instead of
-/// silently reclassifying a contradiction as a benign refresh. Grouping
-/// includes the scope key so a `project:alpha` fact never supersedes or
-/// conflicts with a `project:beta` fact that shares the same subject and
-/// predicate.
+/// A disagreeing group is first tested for the **same-observation exemption**:
+/// when every fact in the group carries a source episode and they are all the
+/// *same* episode, the differing objects were recorded together in one
+/// deliberate observation (an entity typed several ways in a single
+/// extraction — for example `type organization` and `type government agency`
+/// asserted from the same episode). That is a multi-valued record, not a
+/// contradiction across observations, so it is neither a conflict nor a
+/// supersession and raises no signal.
+///
+/// Groups that survive the exemption keep the existing split. A group is a
+/// **clean supersession** when a single fact holds the maximum `created_at_ms`
+/// (no tie at the newest timestamp) and that newest fact carries a source
+/// episode. Only the older facts whose value differs from the surviving one
+/// *and* whose source episode differs from the winner's are retired. Every
+/// other disagreeing group stays a **conflict**: a tie at the newest timestamp
+/// or a newest value with no provenance keeps the High-severity
+/// `ConflictingFact` instead of silently reclassifying a contradiction as a
+/// benign refresh. Grouping includes the scope key so a `project:alpha` fact
+/// never supersedes or conflicts with a `project:beta` fact that shares the
+/// same subject and predicate.
 fn classify_fact_groups(facts: &[Fact]) -> (Vec<FactConflict>, Vec<Supersession>) {
     let mut groups: BTreeMap<(Option<&str>, &str, &str), Vec<&Fact>> = BTreeMap::new();
     for fact in facts {
@@ -446,6 +484,23 @@ fn classify_fact_groups(facts: &[Fact]) -> (Vec<FactConflict>, Vec<Supersession>
             continue;
         }
 
+        // Same-observation exemption: if every disagreeing fact carries a source
+        // episode and they are all the same episode, the differing values were
+        // recorded together in one deliberate observation, not contradicted
+        // across observations. Skip the group — it is neither a conflict nor a
+        // supersession. Any missing provenance or any differing episode falls
+        // through to the conflict/supersession split below.
+        let source_episodes = group
+            .iter()
+            .map(|fact| fact.source_episode_id.as_deref())
+            .collect::<Option<Vec<_>>>();
+        if let Some(episodes) = source_episodes
+            && let Some((first, rest)) = episodes.split_first()
+            && rest.iter().all(|episode| episode == first)
+        {
+            continue;
+        }
+
         let max_ts = group
             .iter()
             .map(|fact| fact.created_at_ms)
@@ -461,9 +516,9 @@ fn classify_fact_groups(facts: &[Fact]) -> (Vec<FactConflict>, Vec<Supersession>
             if let Some(winner_episode) = winner.source_episode_id.as_deref() {
                 // A supersession is a *new observation* replacing an old claim,
                 // so the retired value must come from a different source episode
-                // than the winner. Two differing values recorded against the
-                // same episode are a contradiction within one observation, not a
-                // refresh, and stay a conflict below.
+                // than the winner. (Groups whose facts all share one episode are
+                // already handled by the same-observation exemption above and
+                // never reach here.)
                 let retired = group
                     .iter()
                     .filter(|fact| {
@@ -526,11 +581,32 @@ fn entity_graph(data: &MemoryData) -> BTreeMap<String, usize> {
     entities
 }
 
-fn entity_key(name: &str) -> String {
+pub(crate) fn entity_key(name: &str) -> String {
     name.split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
         .to_ascii_lowercase()
+}
+
+/// Deterministic heuristic for an entity name that reads as an extraction
+/// artifact rather than a real entity worth linking. Two rules, no NLP:
+///
+/// 1. a bare git-object hash — 7 to 40 characters, every one `[0-9a-f]`;
+/// 2. an overlong label — more than 40 characters, which in practice is a
+///    sentence or status phrase a naive extractor promoted to an entity.
+///
+/// A name matching neither rule is treated as a genuine entity. Names reaching
+/// this function are already normalized to lowercase by [`entity_key`], so the
+/// hex test needs no case folding.
+pub(crate) fn is_label_extraction_artifact(name: &str) -> bool {
+    let char_count = name.chars().count();
+    if char_count > 40 {
+        return true;
+    }
+    (7..=40).contains(&char_count)
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_digit() || matches!(ch, 'a'..='f'))
 }
 
 fn projected_facts(data: &MemoryData) -> &[Fact] {
@@ -948,6 +1024,152 @@ mod tests {
             signal.kind == HealthSignalKind::ConflictingFact
                 && signal.severity == HealthSeverity::High
         }));
+    }
+
+    #[test]
+    fn same_episode_multi_value_is_not_a_conflict() {
+        // Two objects for the same subject/predicate recorded against ONE shared
+        // episode are a deliberate multi-valued observation (an entity typed
+        // several ways in a single extraction), not a contradiction.
+        let data = MemoryData {
+            event_count: 2,
+            last_event_id: Some("event_2".to_string()),
+            facts: vec![
+                sourced(
+                    "fact_1",
+                    "event_1",
+                    "episode_1",
+                    "Agencia Tributaria",
+                    "type",
+                    "organization",
+                    1000,
+                    0.9,
+                ),
+                sourced(
+                    "fact_2",
+                    "event_2",
+                    "episode_1",
+                    "Agencia Tributaria",
+                    "type",
+                    "government agency",
+                    1001,
+                    0.9,
+                ),
+            ],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, 1001);
+
+        assert_eq!(health.conflicting_fact_count, 0);
+        assert_eq!(health.superseded_fact_count, 0);
+        assert!(
+            !health
+                .signals
+                .iter()
+                .any(|signal| signal.kind == HealthSignalKind::ConflictingFact)
+        );
+    }
+
+    #[test]
+    fn cross_episode_disagreement_stays_a_conflict() {
+        // Different objects from DIFFERENT episodes tied at the newest timestamp
+        // cannot be cleanly ordered, so they remain a High-severity conflict.
+        let data = MemoryData {
+            event_count: 2,
+            last_event_id: Some("event_2".to_string()),
+            facts: vec![
+                sourced(
+                    "fact_1",
+                    "event_1",
+                    "episode_1",
+                    "Atlas",
+                    "status",
+                    "draft",
+                    1000,
+                    0.9,
+                ),
+                sourced(
+                    "fact_2",
+                    "event_2",
+                    "episode_2",
+                    "Atlas",
+                    "status",
+                    "published",
+                    1000,
+                    0.9,
+                ),
+            ],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, 1000);
+
+        assert_eq!(health.conflicting_fact_count, 1);
+        assert_eq!(health.superseded_fact_count, 0);
+        assert!(health.signals.iter().any(|signal| {
+            signal.kind == HealthSignalKind::ConflictingFact
+                && signal.severity == HealthSeverity::High
+        }));
+    }
+
+    #[test]
+    fn blind_spot_count_is_the_coverage_subset_of_signal_count() {
+        // Two unsourced conflicting facts: the store raises a no-episodes signal,
+        // two unsupported-fact signals, one conflict, and isolated-entity signals
+        // for the three entities. blind_spot_count counts only the coverage
+        // family (no-episodes + isolated); signal_count counts them all.
+        let data = MemoryData {
+            event_count: 2,
+            last_event_id: Some("event_2".to_string()),
+            facts: vec![
+                fact("fact_1", "event_1", "Atlas", "status", "draft", 1000, 0.9),
+                fact(
+                    "fact_2",
+                    "event_2",
+                    "Atlas",
+                    "status",
+                    "published",
+                    1001,
+                    0.9,
+                ),
+            ],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, 1001);
+
+        // Entities Atlas, draft, published are all isolated (3), plus no-episodes.
+        assert_eq!(health.isolated_entity_count, 3);
+        assert_eq!(health.blind_spot_count, 4);
+        assert_eq!(health.conflicting_fact_count, 1);
+        // The total is strictly larger: it also carries the conflict and the two
+        // unsupported-fact signals.
+        assert!(health.signal_count > health.blind_spot_count);
+        assert_eq!(health.signal_count, health.signals.len());
+    }
+
+    #[test]
+    fn label_extraction_artifact_heuristic_matches_git_hashes_and_overlong_names() {
+        use super::is_label_extraction_artifact;
+
+        // Full and short git-object hashes.
+        assert!(is_label_extraction_artifact(
+            "cf39fb55467c45ed7c5e6b7cef74810a38e3612b"
+        ));
+        assert!(is_label_extraction_artifact("a1b2c3d"));
+        // Six hex characters is below the git-hash floor.
+        assert!(!is_label_extraction_artifact("a1b2c3"));
+        // Overlong labels (more than 40 characters) are artifacts regardless of
+        // content.
+        assert!(is_label_extraction_artifact(
+            &"a real long label ".repeat(3)
+        ));
+        // Genuine entities are not artifacts.
+        assert!(!is_label_extraction_artifact("agencia tributaria"));
+        assert!(!is_label_extraction_artifact("m0 ready for validation"));
+        // A 40-character non-hex label is not a git hash and not overlong.
+        assert!(!is_label_extraction_artifact(&"z".repeat(40)));
     }
 
     fn fact(

@@ -352,6 +352,9 @@ fn action_for_kind(kind: &SelfInspectionFindingKind) -> SelfInspectionReviewActi
             SelfInspectionReviewAction::ConsolidatePattern
         }
         SelfInspectionFindingKind::LatentIntention => SelfInspectionReviewAction::ReviewIntention,
+        // Label artifacts reuse the connectivity-family review action; the
+        // finding text carries the review-or-remove guidance.
+        SelfInspectionFindingKind::LabelArtifact => SelfInspectionReviewAction::LinkMemory,
     }
 }
 

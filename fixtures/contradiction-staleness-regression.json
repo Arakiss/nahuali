@@ -3,7 +3,7 @@
   "fixtures": [
     {
       "id": "cdr-seeded-defects",
-      "goal": "Contradiction & Staleness Detection Rate: over a labeled corpus of six seeded health defects (2 same-observation contradictions, 2 recency-resolved supersessions, 2 time-stale facts) the engine detects every one — full per-signal detection. Deterministic event timestamps make the rate reproducible.",
+      "goal": "Contradiction & Staleness Detection Rate: over a labeled corpus of six seeded health defects (2 cross-observation contradictions, 2 recency-resolved supersessions, 2 time-stale facts) the engine detects every one — full per-signal detection. Each contradiction disagrees across two distinct source episodes whose facts are tied at the same timestamp, so it cannot be cleanly ordered; two values recorded against ONE episode would be a deliberate multi-valued observation, not a defect. Deterministic event timestamps make the rate reproducible.",
       "inspect_at_ms": 17280000000,
       "steps": [
         { "type": "raw_event", "sequence": 1, "timestamp_ms": 17107200000, "payload": { "type": "episode_recorded", "id": "ep_obs", "content": "Current platform review", "tags": ["platform"] } },
@@ -12,9 +12,9 @@
         { "type": "raw_event", "sequence": 4, "timestamp_ms": 0, "payload": { "type": "episode_recorded", "id": "ep_stale", "content": "Legacy import", "tags": ["platform"] } },
 
         { "type": "raw_event", "sequence": 5, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_atlas_draft", "subject": "Atlas", "predicate": "status", "object": "draft", "source_episode_id": "ep_obs", "confidence": 0.9 } },
-        { "type": "raw_event", "sequence": 6, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_atlas_published", "subject": "Atlas", "predicate": "status", "object": "published", "source_episode_id": "ep_obs", "confidence": 0.9 } },
+        { "type": "raw_event", "sequence": 6, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_atlas_published", "subject": "Atlas", "predicate": "status", "object": "published", "source_episode_id": "ep_old_tier", "confidence": 0.9 } },
         { "type": "raw_event", "sequence": 7, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_borealis_useast", "subject": "Borealis", "predicate": "region", "object": "us-east", "source_episode_id": "ep_obs", "confidence": 0.9 } },
-        { "type": "raw_event", "sequence": 8, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_borealis_euwest", "subject": "Borealis", "predicate": "region", "object": "eu-west", "source_episode_id": "ep_obs", "confidence": 0.9 } },
+        { "type": "raw_event", "sequence": 8, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_borealis_euwest", "subject": "Borealis", "predicate": "region", "object": "eu-west", "source_episode_id": "ep_old_owner", "confidence": 0.9 } },
 
         { "type": "raw_event", "sequence": 9, "timestamp_ms": 16934400000, "payload": { "type": "fact_asserted", "id": "f_cygnus_silver", "subject": "Cygnus", "predicate": "tier", "object": "silver", "source_episode_id": "ep_old_tier", "confidence": 0.9 } },
         { "type": "raw_event", "sequence": 10, "timestamp_ms": 17107200000, "payload": { "type": "fact_asserted", "id": "f_cygnus_gold", "subject": "Cygnus", "predicate": "tier", "object": "gold", "source_episode_id": "ep_obs", "confidence": 0.9 } },

@@ -172,7 +172,6 @@ fn briefing_is_scriptable() {
             "changelog",
             "--confidence",
             "0.91",
-            "--source-last",
         ],
     );
     run_ok(
@@ -966,7 +965,6 @@ fn reflection_cycle_is_scriptable() {
             "changelog",
             "--confidence",
             "0.91",
-            "--source-last",
         ],
     );
 

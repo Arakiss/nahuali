@@ -160,7 +160,7 @@ cargo run -p nahuali-regression -- --fixtures fixtures/provenance-coverage-regre
 ```
 
 **Contradiction & Staleness Detection Rate (CDR).** Detection of seeded
-knowledge-health defects: same-observation contradictions, recency-resolved
+knowledge-health defects: cross-observation contradictions, recency-resolved
 supersessions, and time-stale facts, over a labeled corpus, paired with a clean
 control that must produce zero false positives. The engine detects all six
 seeded defects and stays silent on the consistent store:
@@ -182,8 +182,9 @@ cargo run -p nahuali-regression --features attestation -- --arp
 **Trust Verdict Soundness (TVS).** The recall-side calibration check: one labeled
 store per authority mode, asserting the gate spans the full range correctly: a
 clean connected store certifies, an isolated-entity store degrades to advisory,
-an unsupported assertion warns, and a same-observation contradiction blocks. It
-shows the trust gate is calibrated, not merely present:
+an unsupported assertion warns, and a cross-observation contradiction blocks
+(two values from one observation are a deliberate multi-valued record and do not
+block). It shows the trust gate is calibrated, not merely present:
 
 ```bash
 cargo run -p nahuali-regression -- --fixtures fixtures/trust-verdict-soundness-regression.json

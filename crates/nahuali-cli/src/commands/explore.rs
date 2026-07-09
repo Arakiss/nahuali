@@ -183,7 +183,7 @@ fn signals(memory: &MemoryEngine, briefing: &nahuali_core::MemoryBriefingReport)
         theme::RED
     };
 
-    let health = briefing.health.blind_spot_count;
+    let health = briefing.health.signal_count;
     let review = briefing.summary.high_priority_review_count;
 
     vec![

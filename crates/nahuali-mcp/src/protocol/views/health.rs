@@ -43,6 +43,7 @@ pub(crate) struct HealthView {
     stale_fact_count: usize,
     isolated_entity_count: usize,
     blind_spot_count: usize,
+    signal_count: usize,
     average_fact_confidence: f32,
     signals: Vec<HealthSignalView>,
     warnings: Vec<String>,
@@ -63,6 +64,7 @@ impl From<KnowledgeHealth> for HealthView {
             stale_fact_count: health.stale_fact_count,
             isolated_entity_count: health.isolated_entity_count,
             blind_spot_count: health.blind_spot_count,
+            signal_count: health.signal_count,
             average_fact_confidence: health.average_fact_confidence,
             signals: health
                 .signals

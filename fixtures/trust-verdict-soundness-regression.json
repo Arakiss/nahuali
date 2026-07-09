@@ -56,11 +56,14 @@
     },
     {
       "id": "tvs-block",
-      "goal": "Trust Verdict Soundness: two values for the same subject and predicate from one observation is a High-severity contradiction, so the gate must Block (score 0.0, not can_trust). The bottom-right cell of the matrix.",
+      "goal": "Trust Verdict Soundness: two values for the same subject and predicate that disagree across two distinct observations, tied at the same timestamp so neither supersedes, are a High-severity contradiction, so the gate must Block (score 0.0, not can_trust). The bottom-right cell of the matrix. Two values recorded against ONE observation are a deliberate multi-valued record and do not block.",
+      "inspect_at_ms": 1000,
       "steps": [
-        { "type": "remember", "bind": "src", "content": "Atlas status is disputed.", "tags": ["release"] },
-        { "type": "fact", "subject": "Atlas", "predicate": "status", "object": "draft", "source_episode_ref": "src", "confidence": 0.9 },
-        { "type": "fact", "subject": "Atlas", "predicate": "status", "object": "published", "source_episode_ref": "src", "confidence": 0.9 }
+        { "type": "raw_event", "sequence": 1, "timestamp_ms": 1000, "payload": { "type": "episode_recorded", "id": "ep_draft", "content": "Atlas status reported as draft", "tags": ["release"] } },
+        { "type": "raw_event", "sequence": 2, "timestamp_ms": 1000, "payload": { "type": "episode_recorded", "id": "ep_published", "content": "Atlas status reported as published", "tags": ["release"] } },
+        { "type": "raw_event", "sequence": 3, "timestamp_ms": 1000, "payload": { "type": "fact_asserted", "id": "f_draft", "subject": "Atlas", "predicate": "status", "object": "draft", "source_episode_id": "ep_draft", "confidence": 0.9 } },
+        { "type": "raw_event", "sequence": 4, "timestamp_ms": 1000, "payload": { "type": "fact_asserted", "id": "f_published", "subject": "Atlas", "predicate": "status", "object": "published", "source_episode_id": "ep_published", "confidence": 0.9 } },
+        { "type": "write_raw_records" }
       ],
       "expected": {
         "fact_count": 2,

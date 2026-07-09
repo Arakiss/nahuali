@@ -998,7 +998,10 @@ pub(crate) fn self_inspect(memory: &mut MemoryEngine, json: bool) -> anyhow::Res
             "{}",
             crate::style::store_trust_line(&report.authority.mode, report.authority.score)
         );
-        println!("Findings: {}", report.summary.finding_count);
+        println!(
+            "Flagged records: {} distinct across {} findings",
+            report.summary.distinct_flagged_record_count, report.summary.finding_count
+        );
         println!("Review items: {}", report.review_queue.len());
         println!(
             "Automatic write-back: {}",

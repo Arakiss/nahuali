@@ -146,7 +146,7 @@
         "low_confidence_fact_count": 1,
         "conflicting_fact_count": 0,
         "stale_fact_count": 0,
-        "blind_spot_count_min": 4,
+        "blind_spot_count_min": 3,
         "required_signal_kinds": [
           "no_episodes",
           "unsupported_fact",
@@ -172,34 +172,18 @@
     },
     {
       "id": "conflicting_fact_memory",
-      "goal": "Two values for the same subject and predicate recorded against a single observation are a contradiction, not a refresh, and must block trust.",
+      "goal": "Two values for the same subject and predicate that disagree across two distinct source episodes, tied at the same timestamp so neither supersedes, are a contradiction and must block trust.",
+      "inspect_at_ms": 1000,
       "steps": [
-        {
-          "type": "remember",
-          "bind": "source",
-          "content": "Atlas is recorded as both draft and published",
-          "tags": ["release"]
-        },
-        {
-          "type": "fact",
-          "subject": "Atlas",
-          "predicate": "status",
-          "object": "draft",
-          "source_episode_ref": "source",
-          "confidence": 0.9
-        },
-        {
-          "type": "fact",
-          "subject": "Atlas",
-          "predicate": "status",
-          "object": "published",
-          "source_episode_ref": "source",
-          "confidence": 0.9
-        }
+        { "type": "raw_event", "sequence": 1, "timestamp_ms": 1000, "payload": { "type": "episode_recorded", "id": "ep_draft", "content": "Atlas recorded as draft", "tags": ["release"] } },
+        { "type": "raw_event", "sequence": 2, "timestamp_ms": 1000, "payload": { "type": "episode_recorded", "id": "ep_published", "content": "Atlas recorded as published", "tags": ["release"] } },
+        { "type": "raw_event", "sequence": 3, "timestamp_ms": 1000, "payload": { "type": "fact_asserted", "id": "f_draft", "subject": "Atlas", "predicate": "status", "object": "draft", "source_episode_id": "ep_draft", "confidence": 0.9 } },
+        { "type": "raw_event", "sequence": 4, "timestamp_ms": 1000, "payload": { "type": "fact_asserted", "id": "f_published", "subject": "Atlas", "predicate": "status", "object": "published", "source_episode_id": "ep_published", "confidence": 0.9 } },
+        { "type": "write_raw_records" }
       ],
       "expected": {
-        "event_count": 3,
-        "episode_count": 1,
+        "event_count": 4,
+        "episode_count": 2,
         "fact_count": 2,
         "relation_count": 0,
         "supported_fact_count": 2,
@@ -219,6 +203,50 @@
         ],
         "authority_mode": "block",
         "authority_score": 0.0,
+        "authority_can_trust": false
+      }
+    },
+    {
+      "id": "same_episode_multivalue_memory",
+      "goal": "Two values for the same subject and predicate recorded against ONE shared episode are a deliberate multi-valued observation (an entity typed several ways in a single extraction), not a contradiction: no conflict signal and no supersession, so contradiction does not block trust.",
+      "steps": [
+        {
+          "type": "remember",
+          "bind": "source",
+          "content": "Agencia Tributaria is a government organization",
+          "tags": ["fiscal"]
+        },
+        {
+          "type": "fact",
+          "subject": "Agencia Tributaria",
+          "predicate": "type",
+          "object": "organization",
+          "source_episode_ref": "source",
+          "confidence": 0.9
+        },
+        {
+          "type": "fact",
+          "subject": "Agencia Tributaria",
+          "predicate": "type",
+          "object": "government agency",
+          "source_episode_ref": "source",
+          "confidence": 0.9
+        }
+      ],
+      "expected": {
+        "event_count": 3,
+        "episode_count": 1,
+        "fact_count": 2,
+        "relation_count": 0,
+        "supported_fact_count": 2,
+        "unsupported_fact_count": 0,
+        "low_confidence_fact_count": 0,
+        "conflicting_fact_count": 0,
+        "stale_fact_count": 0,
+        "superseded_fact_count": 0,
+        "required_signal_kinds": ["isolated_entity"],
+        "authority_mode": "advisory",
+        "authority_score": 0.75,
         "authority_can_trust": false
       }
     },

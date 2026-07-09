@@ -385,7 +385,9 @@ fn public_api_self_inspection_is_non_mutating_and_reviewable() {
         .add_claim("Lena", "role", "CTO", Some(episode.id.clone()), 0.95)
         .expect("claim records");
     memory
-        .add_claim("Lena", "role", "VP Engineering", Some(episode.id), 0.9)
+        // Unprovenanced so it genuinely contradicts the sourced role claim; two
+        // values sharing one episode would be a deliberate multi-valued record.
+        .add_claim("Lena", "role", "VP Engineering", None, 0.9)
         .expect("conflicting claim records");
     memory
         .add_intention(

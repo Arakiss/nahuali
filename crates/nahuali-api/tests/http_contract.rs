@@ -259,6 +259,10 @@ async fn api_records_links_procedures_and_review_resolutions() {
     .await;
     assert_eq!(ready_claim["source_episode_id"], episode_id);
 
+    // A later, unprovenanced claim disagrees with the sourced one. Because the
+    // two values do NOT share a source episode (this one has none), they are a
+    // genuine contradiction rather than a same-episode multi-valued observation,
+    // so the store must raise a contradiction review item.
     let blocked_claim = json_request(
         app.clone(),
         "/v1/claim",
@@ -266,12 +270,11 @@ async fn api_records_links_procedures_and_review_resolutions() {
             "subject": "Beta API",
             "predicate": "status",
             "object": "blocked",
-            "source_episode_id": episode_id,
             "confidence": 0.92
         }),
     )
     .await;
-    assert_eq!(blocked_claim["source_episode_id"], episode_id);
+    assert!(blocked_claim["source_episode_id"].is_null());
 
     let proactive = json_request(
         app.clone(),

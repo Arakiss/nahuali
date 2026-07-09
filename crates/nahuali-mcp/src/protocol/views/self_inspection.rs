@@ -9,6 +9,7 @@ use super::{AuthorityDecisionView, HealthView, WriteBackPolicyView, json_string}
 /// Aggregate counts for a self-inspection report.
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct SelfInspectionSummaryView {
+    distinct_flagged_record_count: usize,
     finding_count: usize,
     contradiction_count: usize,
     stale_memory_count: usize,
@@ -24,6 +25,7 @@ pub(crate) struct SelfInspectionSummaryView {
 impl From<SelfInspectionSummary> for SelfInspectionSummaryView {
     fn from(summary: SelfInspectionSummary) -> Self {
         Self {
+            distinct_flagged_record_count: summary.distinct_flagged_record_count,
             finding_count: summary.finding_count,
             contradiction_count: summary.contradiction_count,
             stale_memory_count: summary.stale_memory_count,
