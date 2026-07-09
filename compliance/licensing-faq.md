@@ -49,7 +49,7 @@ two-year clocks.
 Yes, self-hosted internal use is a Permitted Purpose when it does not become a
 Competing Use. The README states the same practical posture: you may use, copy,
 modify, and self-host Nahuali for any purpose other than offering a competing
-commercial product or service (`README.md:863-867`).
+commercial product or service (`README.md:868-872`).
 
 ## Can I sell consulting or integration work around it?
 
