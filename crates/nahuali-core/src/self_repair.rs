@@ -722,7 +722,10 @@ mod tests {
     fn auto_is_degraded_to_queue_when_store_trust_is_block() {
         // An unrelated High-severity contradiction (Lena owns X vs Y) drives the
         // store authority to Block. A homogeneous consolidation about a different
-        // subject is then queued rather than applied unattended (rule 5).
+        // subject is then queued rather than applied unattended (rule 5). The
+        // conflicting claims come from two distinct episodes (tied on timestamp,
+        // so neither supersedes) — two values from one episode would be a
+        // deliberate multi-valued observation, not a contradiction.
         let data = MemoryData {
             episodes: vec![
                 episode("episode_1", &["status"], None),
@@ -730,7 +733,10 @@ mod tests {
             ],
             claims: vec![
                 claim("claim_a", "Lena", "owns", "the roadmap"),
-                claim("claim_b", "Lena", "owns", "the backlog"),
+                Claim {
+                    source_episode_id: Some("episode_2".to_string()),
+                    ..claim("claim_b", "Lena", "owns", "the backlog")
+                },
             ],
             ..MemoryData::default()
         };

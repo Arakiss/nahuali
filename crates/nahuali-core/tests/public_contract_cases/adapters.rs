@@ -78,7 +78,9 @@ fn public_api_returns_session_briefing() {
         )
         .expect("claim records");
     memory
-        .add_claim("Lena", "owns", "changelog", Some(episode.id.clone()), 0.91)
+        // Unprovenanced so it genuinely contradicts the sourced claim: two values
+        // sharing one episode would be a deliberate multi-valued observation.
+        .add_claim("Lena", "owns", "changelog", None, 0.91)
         .expect("conflicting claim records");
     memory
         .add_link(
@@ -169,7 +171,9 @@ fn public_api_returns_reflection_cycle() {
         )
         .expect("claim records");
     memory
-        .add_claim("Lena", "owns", "changelog", Some(episode.id.clone()), 0.91)
+        // Unprovenanced so it genuinely contradicts the sourced claim: two values
+        // sharing one episode would be a deliberate multi-valued observation.
+        .add_claim("Lena", "owns", "changelog", None, 0.91)
         .expect("conflicting claim records");
     memory
         .add_intention(
@@ -196,8 +200,11 @@ fn public_api_returns_reflection_cycle() {
     assert!(reflection.write_back_policy.requires_operator_review);
     assert_eq!(reflection.source_coverage.source_count, 1);
     assert_eq!(reflection.source_coverage.sourced_episode_count, 1);
-    assert_eq!(reflection.source_coverage.unsupported_memory_count, 1);
-    assert_eq!(reflection.source_coverage.evidence_coverage_ratio, 0.67);
+    // The contradicting claim is now unprovenanced (see setup), so two of the
+    // three derived items (that claim and the unsupported intention) lack a
+    // source episode.
+    assert_eq!(reflection.source_coverage.unsupported_memory_count, 2);
+    assert_eq!(reflection.source_coverage.evidence_coverage_ratio, 0.33);
     assert_eq!(
         reflection.cycles[0].action,
         SelfInspectionReviewAction::ResolveContradiction
