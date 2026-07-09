@@ -107,6 +107,11 @@ pub use consolidation_plan::{
     ConsolidationPlanSummary, ConsolidationStage, ConsolidationStageStatus,
     MEMORY_CONSOLIDATION_PLAN_VERSION, MemoryConsolidationPlanReport,
 };
+pub use database::{
+    ConfigSource, DatabaseNameError, ResolvedConfig, ResolvedValue, resolve_archive_database,
+    resolve_config, resolve_database_name, resolve_endpoint, resolve_namespace,
+    validate_database_name,
+};
 pub use error::{NahualiError, Result};
 #[cfg(feature = "tamper-evidence")]
 pub use event::{ChainBreak, verify_event_chain};

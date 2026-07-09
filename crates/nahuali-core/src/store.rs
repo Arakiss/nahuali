@@ -20,7 +20,7 @@ use crate::{
     SleepModeOptions,
     backup::{self, SemanticTierRestorePolicy},
     briefing, consolidation_plan,
-    database::{SURREAL_NAMESPACE, database_name, normalized_endpoint},
+    database::{database_name, normalized_endpoint, resolved_namespace},
     error::{NahualiError, Result},
     event::{
         EVENT_ENVELOPE_VERSION, EventEnvelope, FactAsserted, IntentionRecorded,

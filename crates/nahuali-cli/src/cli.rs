@@ -44,6 +44,7 @@ Capture:
 Recall & inspect:
   recall                Recall matching memory with optional authority context
   status                Print operational memory status
+  config                Print the resolved effective configuration (no secrets)
   explore               Open the interactive governance cockpit (TUI: memory + trust)
   inspect               Inspect knowledge health before trusting memory
   self-inspect          Produce a non-mutating self-inspection consolidation report
@@ -179,6 +180,16 @@ pub(crate) enum Command {
     #[command(about = "Print operational memory status.")]
     Status {
         #[arg(long)]
+        json: bool,
+    },
+    #[command(
+        about = "Print the resolved effective configuration and where each value came from.",
+        after_help = "Shows the endpoint, namespace, database, and archive database actually in use, \
+and whether each came from a flag, an environment variable, or the built-in default. \
+Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --database project_nahuali config\n  nahuali config --json"
+    )]
+    Config {
+        #[arg(long, help = "Emit machine-readable JSON instead of text")]
         json: bool,
     },
     #[cfg(feature = "tui")]
@@ -1418,6 +1429,30 @@ mod tests {
             assert!(help.contains("Predicate"));
             assert!(help.contains("Object value"));
             assert!(help.contains("Examples:"));
+        });
+    }
+
+    #[test]
+    fn config_subcommand_documents_resolved_configuration() {
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let config = command
+                .find_subcommand_mut("config")
+                .expect("config subcommand exists");
+            let help = config.render_long_help().to_string();
+
+            assert!(help.contains("resolved effective configuration"));
+            assert!(help.contains("--json"));
+            assert!(help.contains("Credentials are never printed"));
+        });
+    }
+
+    #[test]
+    fn top_level_help_lists_the_config_command() {
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let help = command.render_long_help().to_string();
+            assert!(help.contains("config"));
         });
     }
 

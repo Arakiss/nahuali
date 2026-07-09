@@ -10,7 +10,7 @@ use tokio::runtime::Builder;
 
 use crate::{
     EVENT_ENVELOPE_VERSION, EventEnvelope,
-    database::{SURREAL_NAMESPACE, database_name, normalized_endpoint},
+    database::{database_name, normalized_endpoint, resolved_namespace},
     error::{NahualiError, Result},
     schema::MEMORY_RECORD_SCHEMA,
 };
@@ -264,8 +264,7 @@ fn decode_record(path: &Path, record: usize, row: serde_json::Value) -> Result<M
 
 async fn open_database(path: &Path) -> Result<Surreal<Client>> {
     let endpoint = normalized_endpoint();
-    let namespace =
-        std::env::var("NAHUALI_DB_NAMESPACE").unwrap_or_else(|_| SURREAL_NAMESPACE.to_string());
+    let namespace = resolved_namespace();
     let database = database_name(path);
     let username = std::env::var("NAHUALI_DB_USERNAME").unwrap_or_else(|_| "root".to_string());
     let db_pass = std::env::var("NAHUALI_DB_PASSWORD").unwrap_or_else(|_| "root".to_string());
