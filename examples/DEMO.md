@@ -88,7 +88,7 @@ The walkthrough below calls the built binary directly. Set it once:
 
 ```bash
 BIN="target/debug/nahuali"
-DB=".local/demo-sample"
+DB="demo_sample"
 ```
 
 ### 1. Record a small, connected memory
@@ -219,9 +219,9 @@ checkpoint no longer matched the ledger, this command would refuse to anchor.
 
 ### Clean up
 
-The `.local/` database and key files are gitignored, but you can drop them when
-you are done. Database names are normalized for SurrealDB (`.local/demo-sample`
-becomes `_local_demo_sample` in namespace `nahuali`).
+The key files under `.local/` are gitignored, but you can drop them when you are
+done, along with the demo database. A database name must be a valid SurrealDB
+identifier (`[A-Za-z0-9_]`); this demo uses `demo_sample` in namespace `nahuali`.
 
 ```bash
 rm -f .local/demo.key .local/checkpoint.json
@@ -229,7 +229,7 @@ rm -f .local/demo.key .local/checkpoint.json
 # Drop the demo database (default endpoint localhost:18000, root:root)
 curl -s -X POST "http://localhost:18000/sql" -u root:root \
   -H "Accept: application/json" \
-  --data-binary "USE NS nahuali; REMOVE DATABASE IF EXISTS _local_demo_sample;"
+  --data-binary "USE NS nahuali; REMOVE DATABASE IF EXISTS demo_sample;"
 ```
 
 ---
@@ -241,7 +241,7 @@ instant-view aha. To regenerate it on the clean Certify state used above:
 
 ```bash
 BIN="target/debug/nahuali"
-DB=".local/demo-sample-clean"
+DB="demo_sample_clean"
 
 "$BIN" --database "$DB" remember "Lena owns the release notes for the 0.3 beta." \
   --tag product --mention Lena --mention "release notes"

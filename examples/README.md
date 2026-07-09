@@ -5,23 +5,23 @@ Examples must use synthetic data.
 Current validated workflow:
 
 ```bash
-cargo run -p nahuali-cli -- --database .nahuali-demo remember "Lena owns the release notes" --tag product --mention Lena
-cargo run -p nahuali-cli -- --database .nahuali-demo ingest-text examples/source-note.md --kind note --title "Release notes source" --chunking paragraphs --tag product --mention Lena --dry-run --json
-cargo run -p nahuali-cli -- --database .nahuali-demo ingest-text examples/source-note.md --kind note --title "Release notes source" --chunking paragraphs --tag product --mention Lena --json
-cargo run -p nahuali-cli -- --database .nahuali-demo ingest-dir examples --recursive --extension md --extension txt --chunking paragraphs --dry-run --json
-cargo run -p nahuali-cli -- --database .nahuali-demo ingest examples/ingest-conversation.json --dry-run --json
-cargo run -p nahuali-cli -- --database .nahuali-demo ingest examples/ingest-conversation.json --json
-cargo run -p nahuali-cli -- --database .nahuali-demo claim Lena owns "release notes" --confidence 0.92 --source-last
-cargo run -p nahuali-cli -- --database .nahuali-demo link Lena owns "release notes" --confidence 0.9 --source-last
-cargo run -p nahuali-cli -- --database .nahuali-demo preference "Release notes" "Keep release notes concise" --source-last
-cargo run -p nahuali-cli -- --database .nahuali-demo intention "Ship release notes" --priority high --source-last
-cargo run -p nahuali-cli -- --database .nahuali-demo briefing --json
-cargo run -p nahuali-cli -- --database .nahuali-demo recall "Lena release"
-cargo run -p nahuali-cli -- --database .nahuali-demo recall "Lena release" --authority --json
-cargo run -p nahuali-cli -- --database .nahuali-demo inspect --json
-cargo run -p nahuali-cli -- --database .nahuali-demo reflect --json
-cargo run -p nahuali-cli -- --database .nahuali-demo validate --json
-cargo run -p nahuali-cli -- --database .nahuali-demo audit --json
+cargo run -p nahuali-cli -- --database nahuali_demo remember "Lena owns the release notes" --tag product --mention Lena
+cargo run -p nahuali-cli -- --database nahuali_demo ingest-text examples/source-note.md --kind note --title "Release notes source" --chunking paragraphs --tag product --mention Lena --dry-run --json
+cargo run -p nahuali-cli -- --database nahuali_demo ingest-text examples/source-note.md --kind note --title "Release notes source" --chunking paragraphs --tag product --mention Lena --json
+cargo run -p nahuali-cli -- --database nahuali_demo ingest-dir examples --recursive --extension md --extension txt --chunking paragraphs --dry-run --json
+cargo run -p nahuali-cli -- --database nahuali_demo ingest examples/ingest-conversation.json --dry-run --json
+cargo run -p nahuali-cli -- --database nahuali_demo ingest examples/ingest-conversation.json --json
+cargo run -p nahuali-cli -- --database nahuali_demo claim Lena owns "release notes" --confidence 0.92 --source-last
+cargo run -p nahuali-cli -- --database nahuali_demo link Lena owns "release notes" --confidence 0.9 --source-last
+cargo run -p nahuali-cli -- --database nahuali_demo preference "Release notes" "Keep release notes concise" --source-last
+cargo run -p nahuali-cli -- --database nahuali_demo intention "Ship release notes" --priority high --source-last
+cargo run -p nahuali-cli -- --database nahuali_demo briefing --json
+cargo run -p nahuali-cli -- --database nahuali_demo recall "Lena release"
+cargo run -p nahuali-cli -- --database nahuali_demo recall "Lena release" --authority --json
+cargo run -p nahuali-cli -- --database nahuali_demo inspect --json
+cargo run -p nahuali-cli -- --database nahuali_demo reflect --json
+cargo run -p nahuali-cli -- --database nahuali_demo validate --json
+cargo run -p nahuali-cli -- --database nahuali_demo audit --json
 ```
 
 This path is covered by CLI integration tests. It should produce an episode,
@@ -43,15 +43,15 @@ without partial mutation.
 Scripted workflows can request JSON from the same commands:
 
 ```bash
-cargo run -p nahuali-cli -- --database .nahuali-demo recall "Lena release" --json
-cargo run -p nahuali-cli -- --database .nahuali-demo briefing --json
-cargo run -p nahuali-cli -- --database .nahuali-demo reflect --json
+cargo run -p nahuali-cli -- --database nahuali_demo recall "Lena release" --json
+cargo run -p nahuali-cli -- --database nahuali_demo briefing --json
+cargo run -p nahuali-cli -- --database nahuali_demo reflect --json
 ```
 
 MCP clients can run the local stdio server against the same record ledger:
 
 ```bash
-cargo run -p nahuali-mcp -- --database .nahuali-demo
+cargo run -p nahuali-mcp -- --database nahuali_demo
 ```
 
 The MCP stdio workflow is covered by integration tests that perform

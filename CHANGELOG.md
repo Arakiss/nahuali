@@ -11,6 +11,27 @@ crate and published with each tag:
 
 This file keeps a short, human summary of the release train.
 
+## Unreleased
+
+- Config integrity: one resolution point for the database name, with strict
+  precedence — the `--database` flag beats `$NAHUALI_DB_DATABASE`, which beats
+  the built-in default. A flag can no longer be silently overridden by the
+  environment.
+- A database name that normalization would change (contains `/`, `.`, `-`,
+  spaces, and so on) is now refused with a typed error that names the offending
+  input and the valid candidate, instead of being silently rewritten into a
+  different database. The documented `ts-archive` archive default still resolves.
+- New `nahuali config` command prints the resolved effective configuration
+  (endpoint, namespace, database, archive database) and where each value came
+  from, in human and `--json` form, with no credentials. `--verbose` now echoes
+  the resolved database and its source.
+- Installer hardening (`scripts/install.sh`): SHA-256 verification is now
+  mandatory — a missing checksum asset aborts the install instead of warning and
+  skipping. When `cosign` is on PATH (or `NAHUALI_REQUIRE_SIGSTORE=1` forces it),
+  the release's Sigstore signature is verified with `cosign verify-blob` pinned
+  to the GitHub Actions release identity, failing closed on a bad signature. The
+  README documents both verification layers.
+
 ## 0.3.0-beta.0 (2026-06-02)
 
 - Opt-in tamper-evident hash-chained ledger in `nahuali-core`.

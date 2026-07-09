@@ -23,7 +23,7 @@ nahuali-mcp --version
 ## Run
 
 ```bash
-nahuali-mcp --database ./memory
+nahuali-mcp --database memory
 ```
 
 MCP clients launch this process and communicate over stdin/stdout. stdout is

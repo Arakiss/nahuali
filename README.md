@@ -78,6 +78,14 @@ nahuali demo          # builds a tiny ledger, tampers with it, shows Nahuali cat
 nahuali init          # wire your agent harness to use Nahuali
 ```
 
+The installer verifies before it installs: the SHA-256 checksum is mandatory (a
+missing checksum aborts the install), and when [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/)
+is on your PATH it also verifies the release's Sigstore signature against the
+GitHub Actions release identity. To require the signature check, run the install
+with `NAHUALI_REQUIRE_SIGSTORE=1`. Piping to `sh` is convenient, not a leap of
+faith — you can read `scripts/install.sh` first, and every release can be
+verified by hand (see [Verify your download](#verify-your-download)).
+
 `nahuali demo` runs the tamper-evidence story entirely in memory, with zero
 dependencies. `nahuali init` installs the [Claude Code skill](skills/nahuali/)
 and prints the MCP server config, so your agent uses governed memory as a
@@ -86,6 +94,43 @@ trust decision. To make it binding for any harness, see the cross-harness
 [protocol](skills/nahuali/protocol.md). Building from source instead:
 `cargo install --path crates/nahuali-cli` (add `--features attestation` for the
 signed-checkpoint and `demo` paths).
+
+## Verify your download
+
+Every release publishes three assets per platform: the archive, its SHA-256
+checksum, and a keyless [Sigstore](https://www.sigstore.dev/) bundle. The
+one-line installer checks both automatically — the checksum is mandatory and the
+signature is verified whenever `cosign` is on your PATH. To verify a download by
+hand (a manual install, an offline mirror, or an audit), do the same two checks:
+
+```bash
+# Pick a release and platform.
+REPO="Arakiss/nahuali"
+TAG="nahuali-cli-vX.Y.Z-beta.N"   # from https://github.com/Arakiss/nahuali/releases
+TARGET="aarch64-apple-darwin"     # or x86_64-apple-darwin, x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu
+VERSION="${TAG#nahuali-cli-v}"
+ARCHIVE="nahuali-v${VERSION}-${TARGET}.tar.gz"
+BASE="https://github.com/${REPO}/releases/download/${TAG}"
+
+# Download the archive, its checksum, and its Sigstore bundle.
+curl -fsSLO "${BASE}/${ARCHIVE}"
+curl -fsSLO "${BASE}/${ARCHIVE}.sha256"
+curl -fsSLO "${BASE}/${ARCHIVE}.sigstore.json"
+
+# 1) Checksum (mandatory): fails loudly on any mismatch.
+sha256sum -c "${ARCHIVE}.sha256"   # macOS: shasum -a 256 -c "${ARCHIVE}.sha256"
+
+# 2) Signature: proves the archive was built and signed by this repo's release
+#    workflow, from the tag, with no long-lived key that could leak.
+cosign verify-blob "${ARCHIVE}" \
+  --bundle "${ARCHIVE}.sigstore.json" \
+  --certificate-identity "https://github.com/${REPO}/.github/workflows/release.yml@refs/tags/${TAG}" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+```
+
+The checksum catches a corrupted or swapped archive; the signature catches one
+rebuilt or re-signed by anyone other than this repo's release workflow. If either
+check fails, do not install the binary.
 
 ## How Memory Earns Trust
 
@@ -309,8 +354,8 @@ Nahuali never generates keys or touches the network. Supply a 32-byte Ed25519
 seed you control (for example `openssl rand -hex 32 > ledger.key`):
 
 ```bash
-nahuali --database .nahuali-demo attest-sign --key-file ledger.key -o tip.json
-nahuali --database .nahuali-demo attest-verify tip.json
+nahuali --database nahuali_demo attest-sign --key-file ledger.key -o tip.json
+nahuali --database nahuali_demo attest-verify tip.json
 ```
 
 `attest-verify` exits non-zero when the receipt no longer vouches for the live
@@ -324,7 +369,7 @@ listing the keys you authorize, each `active` or `revoked`. Rotation is adding a
 new active key and re-attesting; revocation is flipping the old key to `revoked`.
 
 ```bash
-nahuali --database .nahuali-demo attest-verify tip.json --keyring keyring.json
+nahuali --database nahuali_demo attest-verify tip.json --keyring keyring.json
 ```
 
 With `--keyring`, a receipt is honored only when it matches the live tip, its
@@ -361,7 +406,7 @@ with the integrity of that history restated next to it. It works in any build
 what was appended since a verified checkpoint:
 
 ```bash
-nahuali --database .nahuali-demo audit --from-attestation tip.json --json
+nahuali --database nahuali_demo audit --from-attestation tip.json --json
 ```
 
 It refuses to run when the receipt does not anchor a verified checkpoint in this
@@ -371,7 +416,7 @@ When scripts need a portable proof that one specific event is committed under
 the audited Merkle root, ask `audit` for an inclusion proof:
 
 ```bash
-nahuali --database .nahuali-demo audit --inclusion-proof 2 --json
+nahuali --database nahuali_demo audit --inclusion-proof 2 --json
 ```
 
 The JSON response keeps the normal audit report and adds `inclusion_proof` with
@@ -473,9 +518,9 @@ export NAHUALI_EMBEDDING_PROVIDER=model2vec
 export NAHUALI_LOCAL_EMBEDDING_MODEL_PATH="$PWD/models/potion-retrieval-32M"
 
 cargo run -p nahuali-cli --features local-embeddings -- \
-  --database .nahuali-demo semantic-rebuild
+  --database nahuali_demo semantic-rebuild
 cargo run -p nahuali-cli --features local-embeddings -- \
-  --database .nahuali-demo recall --semantic "driving a car to work"
+  --database nahuali_demo recall --semantic "driving a car to work"
 ```
 
 A query like `driving a car to work` then surfaces an episode such as "Lena
@@ -553,7 +598,7 @@ other Nahuali experiments on the same machine:
 Run the CLI from source:
 
 ```bash
-cargo run -p nahuali-cli -- --database .nahuali-demo validate
+cargo run -p nahuali-cli -- --database nahuali_demo validate
 ```
 
 Install local binaries when you explicitly want them on `PATH`. These default
@@ -602,17 +647,17 @@ rules, passing criteria, and blockers.
 Record a source episode and cite it as evidence:
 
 ```bash
-cargo run -p nahuali-cli -- --database .nahuali-demo remember \
+cargo run -p nahuali-cli -- --database nahuali_demo remember \
   "Lena owns the release notes." \
   --tag product \
   --mention Lena
 
-cargo run -p nahuali-cli -- --database .nahuali-demo claim \
+cargo run -p nahuali-cli -- --database nahuali_demo claim \
   Lena owns "release notes" \
   --confidence 0.92 \
   --source-last
 
-cargo run -p nahuali-cli -- --database .nahuali-demo recall \
+cargo run -p nahuali-cli -- --database nahuali_demo recall \
   "Lena release" \
   --authority \
   --json
@@ -621,20 +666,20 @@ cargo run -p nahuali-cli -- --database .nahuali-demo recall \
 Inspect memory before relying on it:
 
 ```bash
-cargo run -p nahuali-cli -- --database .nahuali-demo inspect --json
-cargo run -p nahuali-cli -- --database .nahuali-demo self-inspect --json
-cargo run -p nahuali-cli -- --database .nahuali-demo review --json
+cargo run -p nahuali-cli -- --database nahuali_demo inspect --json
+cargo run -p nahuali-cli -- --database nahuali_demo self-inspect --json
+cargo run -p nahuali-cli -- --database nahuali_demo review --json
 ```
 
 Use explicit scopes when a memory belongs to a project, organization, personal
 context, or custom boundary:
 
 ```bash
-cargo run -p nahuali-cli -- --database .nahuali-demo remember \
+cargo run -p nahuali-cli -- --database nahuali_demo remember \
   "Release notes belong to the Nahuali project." \
   --scope project:Nahuali
 
-cargo run -p nahuali-cli -- --database .nahuali-demo recall \
+cargo run -p nahuali-cli -- --database nahuali_demo recall \
   "release notes" \
   --scope project:Nahuali \
   --json
@@ -676,7 +721,7 @@ to the CLI.
 Run the local HTTP API:
 
 ```bash
-cargo run -p nahuali-api -- --database .nahuali-demo --listen 127.0.0.1:7070
+cargo run -p nahuali-api -- --database nahuali_demo --listen 127.0.0.1:7070
 ```
 
 Query status and recall:
@@ -699,7 +744,7 @@ session), see [the MCP onboarding guide](crates/nahuali-mcp/ONBOARDING.md), or
 run `nahuali init`. Run the local MCP server directly:
 
 ```bash
-cargo run -p nahuali-mcp -- --database .nahuali-demo
+cargo run -p nahuali-mcp -- --database nahuali_demo
 ```
 
 The MCP server exposes structured tools and read-only resources for local
@@ -747,18 +792,18 @@ Local backups preserve the record ledger and restore only into an empty target
 database:
 
 ```bash
-cargo run -p nahuali-cli -- --database .nahuali-demo backup \
-  --output .nahuali-demo.backup.json \
+cargo run -p nahuali-cli -- --database nahuali_demo backup \
+  --output nahuali_demo.backup.json \
   --dry-run \
   --json
 
-cargo run -p nahuali-cli -- backup-validate .nahuali-demo.backup.json \
+cargo run -p nahuali-cli -- backup-validate nahuali_demo.backup.json \
   --require-chained \
   --json
 
 cargo run -p nahuali-cli -- backup-drill \
-  .nahuali-demo.backup.json \
-  --target-database .nahuali-demo-restored \
+  nahuali_demo.backup.json \
+  --target-database nahuali_demo_restored \
   --json
 ```
 
