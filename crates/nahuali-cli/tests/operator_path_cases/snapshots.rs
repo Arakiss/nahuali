@@ -1,6 +1,6 @@
 #[test]
 fn snapshot_dry_run_write_and_validate_are_scriptable() {
-    let store = temp_store("snapshot-scriptable-store");
+    let store = temp_database("snapshot-scriptable-store");
     let snapshot = temp_store("snapshot-scriptable-artifact");
     let snapshot_arg = snapshot.display().to_string();
 
@@ -47,7 +47,7 @@ fn snapshot_dry_run_write_and_validate_are_scriptable() {
 
 #[test]
 fn snapshot_validate_reports_corrupt_snapshot_as_json() {
-    let store = temp_store("snapshot-corrupt-store");
+    let store = temp_database("snapshot-corrupt-store");
     let snapshot = temp_store("snapshot-corrupt-artifact");
     let snapshot_arg = snapshot.display().to_string();
 
@@ -76,8 +76,8 @@ fn snapshot_validate_reports_corrupt_snapshot_as_json() {
 
 #[test]
 fn backup_validate_and_restore_are_scriptable() {
-    let source_store = temp_store("backup-source-store");
-    let target_store = temp_store("backup-target-store");
+    let source_store = temp_database("backup-source-store");
+    let target_store = temp_database("backup-target-store");
     let backup_path = temp_store("backup-artifact");
     let backup_arg = backup_path.display().to_string();
     let target_arg = target_store.display().to_string();
@@ -246,7 +246,7 @@ fn backup_validate_and_restore_are_scriptable() {
 
 #[test]
 fn authority_json_reports_blocking_health_contract() {
-    let store = temp_store("authority-json-contract");
+    let store = temp_database("authority-json-contract");
 
     run_ok(
         &store,
@@ -323,7 +323,7 @@ fn authority_json_reports_blocking_health_contract() {
 
 #[test]
 fn json_output_is_scriptable_for_primary_commands() {
-    let store = temp_store("json-output-contract");
+    let store = temp_database("json-output-contract");
 
     let episode_output = run_ok(
         &store,

@@ -1,6 +1,6 @@
 #[test]
 fn source_last_operator_path_produces_supported_memory() {
-    let store = temp_store("source-last-operator-path");
+    let store = temp_database("source-last-operator-path");
 
     let remembered = run_ok(
         &store,
@@ -136,7 +136,7 @@ fn source_last_operator_path_produces_supported_memory() {
 
 #[test]
 fn briefing_is_scriptable() {
-    let store = temp_store("briefing-scriptable");
+    let store = temp_database("briefing-scriptable");
 
     run_ok(
         &store,
@@ -258,7 +258,7 @@ fn briefing_is_scriptable() {
 
 #[test]
 fn intention_lifecycle_is_scriptable() {
-    let store = temp_store("intention-lifecycle-scriptable");
+    let store = temp_database("intention-lifecycle-scriptable");
 
     let goal_output = run_ok(
         &store,
@@ -558,7 +558,7 @@ fn intention_lifecycle_is_scriptable() {
 
 #[test]
 fn project_view_is_scriptable() {
-    let store = temp_store("project-view-scriptable");
+    let store = temp_database("project-view-scriptable");
 
     run_ok(
         &store,
@@ -662,7 +662,7 @@ fn project_view_is_scriptable() {
 
 #[test]
 fn sleep_mode_is_scriptable() {
-    let store = temp_store("sleep-mode-scriptable");
+    let store = temp_database("sleep-mode-scriptable");
 
     run_ok(
         &store,
@@ -751,7 +751,7 @@ fn sleep_mode_is_scriptable() {
 
 #[test]
 fn consolidation_plan_is_scriptable() {
-    let store = temp_store("consolidation-plan-scriptable");
+    let store = temp_database("consolidation-plan-scriptable");
 
     run_ok(
         &store,
@@ -851,7 +851,7 @@ fn consolidation_plan_is_scriptable() {
 
 #[test]
 fn hook_runtime_is_scriptable() {
-    let store = temp_store("hook-runtime-scriptable");
+    let store = temp_database("hook-runtime-scriptable");
 
     run_ok(
         &store,
@@ -930,7 +930,7 @@ fn hook_runtime_is_scriptable() {
 
 #[test]
 fn reflection_cycle_is_scriptable() {
-    let store = temp_store("reflection-cycle-scriptable");
+    let store = temp_database("reflection-cycle-scriptable");
 
     run_ok(
         &store,
@@ -1003,7 +1003,7 @@ fn reflection_cycle_is_scriptable() {
 
 #[test]
 fn json_output_covers_expanded_memory_families() {
-    let store = temp_store("json-output-expanded-families");
+    let store = temp_database("json-output-expanded-families");
 
     let episode_output = run_ok(
         &store,

@@ -1,6 +1,6 @@
 #[test]
 fn trust_report_composes_knowledge_authority_integrity_and_health() {
-    let store = temp_store("trust-report-operator-path");
+    let store = temp_database("trust-report-operator-path");
 
     run_ok(
         &store,

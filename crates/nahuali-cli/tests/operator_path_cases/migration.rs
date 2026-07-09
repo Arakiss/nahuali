@@ -1,8 +1,8 @@
 #[test]
 fn legacy_export_conversion_supports_dogfood_migration_dry_run() {
-    let store = temp_store("projection-export-conversion");
-    let export_path = store.with_extension("projection.json");
-    let interchange_path = store.with_extension("interchange.json");
+    let store = temp_database("projection-export-conversion");
+    let export_path = temp_store("migration-artifact").with_extension("projection.json");
+    let interchange_path = temp_store("migration-artifact").with_extension("interchange.json");
 
     fs::write(
         &export_path,
@@ -257,9 +257,9 @@ fn legacy_export_conversion_supports_dogfood_migration_dry_run() {
 
 #[test]
 fn legacy_export_conversion_accepts_surql_exports() {
-    let store = temp_store("legacy-export-surql");
-    let export_path = store.with_extension("backup.surql");
-    let interchange_path = store.with_extension("interchange.json");
+    let store = temp_database("legacy-export-surql");
+    let export_path = temp_store("migration-artifact").with_extension("backup.surql");
+    let interchange_path = temp_store("migration-artifact").with_extension("interchange.json");
 
     fs::write(
         &export_path,
@@ -345,9 +345,9 @@ INSERT INTO intention {"id":"intention:ship_release","description":"Ship release
 
 #[test]
 fn projection_export_conversion_accepts_legacy_projection_aliases() {
-    let store = temp_store("projection-export-legacy-aliases");
-    let export_path = store.with_extension("projection.json");
-    let interchange_path = store.with_extension("interchange.json");
+    let store = temp_database("projection-export-legacy-aliases");
+    let export_path = temp_store("migration-artifact").with_extension("projection.json");
+    let interchange_path = temp_store("migration-artifact").with_extension("interchange.json");
 
     fs::write(
         &export_path,
@@ -493,9 +493,9 @@ fn projection_export_conversion_accepts_legacy_projection_aliases() {
 
 #[test]
 fn projection_export_conversion_reports_bad_timestamps_without_blocking_records() {
-    let store = temp_store("projection-export-bad-timestamp");
-    let export_path = store.with_extension("projection.json");
-    let interchange_path = store.with_extension("interchange.json");
+    let store = temp_database("projection-export-bad-timestamp");
+    let export_path = temp_store("migration-artifact").with_extension("projection.json");
+    let interchange_path = temp_store("migration-artifact").with_extension("interchange.json");
 
     fs::write(
         &export_path,
@@ -542,9 +542,9 @@ fn projection_export_conversion_reports_bad_timestamps_without_blocking_records(
 
 #[test]
 fn projection_export_conversion_rejects_empty_payloads() {
-    let store = temp_store("projection-export-empty");
-    let export_path = store.with_extension("projection.json");
-    let interchange_path = store.with_extension("interchange.json");
+    let store = temp_database("projection-export-empty");
+    let export_path = temp_store("migration-artifact").with_extension("projection.json");
+    let interchange_path = temp_store("migration-artifact").with_extension("interchange.json");
 
     fs::write(&export_path, r#"{"entities":[],"episodes":[]}"#)
         .expect("empty projection export fixture writes");

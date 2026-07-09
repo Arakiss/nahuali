@@ -1,5 +1,4 @@
 use std::{
-    fs,
     io::{BufRead, BufReader, Write},
     path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
@@ -110,8 +109,20 @@ pub fn temp_store(name: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system clock is after epoch")
         .as_nanos();
-    let path =
-        std::env::temp_dir().join(format!("nahuali-mcp-{name}-{}-{nanos}", std::process::id()));
-    let _ = fs::remove_file(&path);
-    path
+    // The MCP server refuses a path-like --database name, so build a clean,
+    // unique SurrealDB identifier (this store is only ever a database name).
+    let sanitized: String = name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    PathBuf::from(format!(
+        "nahuali_mcp_{sanitized}_{}_{nanos}",
+        std::process::id()
+    ))
 }
