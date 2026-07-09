@@ -11,11 +11,17 @@
 # The installer is idempotent and safe to re-run. It never edits your shell rc
 # files; instead it prints the exact PATH line for you to add.
 #
+# The download is verified before anything is installed. The SHA-256 checksum is
+# mandatory: a missing checksum asset aborts the install. When `cosign` is on
+# PATH, the release's Sigstore signature is also verified against the GitHub
+# Actions release identity; set NAHUALI_REQUIRE_SIGSTORE=1 to make that mandatory.
+#
 # Tunable via environment variables (all optional):
-#   NAHUALI_GITHUB_REPO   GitHub repo to install from   (default: Arakiss/nahuali)
-#   NAHUALI_VERSION       Release tag to install         (default: latest binary release)
-#   NAHUALI_INSTALL_DIR   Install root                   (default: $HOME/.nahuali)
-#   NAHUALI_NO_COLOR      Set to disable colored output  (default: color when TTY)
+#   NAHUALI_GITHUB_REPO       GitHub repo to install from   (default: Arakiss/nahuali)
+#   NAHUALI_VERSION           Release tag to install         (default: latest binary release)
+#   NAHUALI_INSTALL_DIR       Install root                   (default: $HOME/.nahuali)
+#   NAHUALI_NO_COLOR          Set to disable colored output  (default: color when TTY)
+#   NAHUALI_REQUIRE_SIGSTORE  Set to 1 to require cosign signature verification
 #
 # This script targets POSIX sh and works under dash, ash (BusyBox), and bash.
 set -eu
@@ -235,10 +241,16 @@ ok "${TAG}  (v${VERSION})"
 ARCHIVE="nahuali-v${VERSION}-${TARGET}.tar.gz"
 ARCHIVE_URL="${DOWNLOAD_BASE}/${TAG}/${ARCHIVE}"
 CHECKSUM_URL="${ARCHIVE_URL}.sha256"
+BUNDLE_URL="${ARCHIVE_URL}.sigstore.json"
+# The release workflow signs each artifact from this exact GitHub Actions
+# identity (see .github/workflows/release.yml: SIGNER_IDENTITY), so we pin to it.
+SIGNER_IDENTITY="https://github.com/${REPO}/.github/workflows/release.yml@refs/tags/${TAG}"
+OIDC_ISSUER="https://token.actions.githubusercontent.com"
 
 TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t nahuali-install)"
 ARCHIVE_PATH="${TMP_DIR}/${ARCHIVE}"
 CHECKSUM_PATH="${ARCHIVE_PATH}.sha256"
+BUNDLE_PATH="${ARCHIVE_PATH}.sigstore.json"
 
 step "Downloading"
 info "${ARCHIVE_URL}"
@@ -250,26 +262,68 @@ fi
 ok "${ARCHIVE}"
 
 step "Verifying checksum"
-if fetch_to "$CHECKSUM_URL" "$CHECKSUM_PATH" 2>/dev/null && [ -s "$CHECKSUM_PATH" ]; then
-  if [ -z "$SHA_CMD" ]; then
-    warn "neither sha256sum nor shasum is available; skipping checksum verification."
-    warn "install coreutils (Linux) for verified installs, or re-run after installing it."
-  else
-    EXPECTED_SHA="$(awk '{print $1; exit}' "$CHECKSUM_PATH")"
-    ACTUAL_SHA="$($SHA_CMD "$ARCHIVE_PATH" | awk '{print $1; exit}')"
-    if [ -z "$EXPECTED_SHA" ] || [ -z "$ACTUAL_SHA" ]; then
-      fail "could not compute or read the SHA-256 checksum for verification."
-    fi
-    if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
-      fail "checksum mismatch — refusing to install a corrupted or tampered archive." \
-        "expected: ${EXPECTED_SHA}" \
-        "actual:   ${ACTUAL_SHA}" \
-        "Delete any partial download and re-run; if it persists, report it upstream."
-    fi
-    ok "sha256 matches"
+# Checksum verification is mandatory. Without a SHA tool we cannot verify, and
+# without a published checksum asset the release is unverifiable — both abort
+# rather than install unverified binaries.
+if [ -z "$SHA_CMD" ]; then
+  fail "cannot verify the download: neither sha256sum nor shasum is available." \
+    "Checksum verification is mandatory. Install coreutils (Linux: 'apt-get install coreutils';" \
+    "macOS ships shasum) and re-run."
+fi
+if ! fetch_to "$CHECKSUM_URL" "$CHECKSUM_PATH" 2>/dev/null || [ ! -s "$CHECKSUM_PATH" ]; then
+  fail "no SHA-256 checksum was published for this release — refusing to install unverified binaries." \
+    "URL: ${CHECKSUM_URL}" \
+    "This release cannot be verified; do not install it. Report it upstream or pin a" \
+    "verified release with NAHUALI_VERSION."
+fi
+EXPECTED_SHA="$(awk '{print $1; exit}' "$CHECKSUM_PATH")"
+ACTUAL_SHA="$($SHA_CMD "$ARCHIVE_PATH" | awk '{print $1; exit}')"
+if [ -z "$EXPECTED_SHA" ] || [ -z "$ACTUAL_SHA" ]; then
+  fail "could not compute or read the SHA-256 checksum for verification."
+fi
+if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
+  fail "checksum mismatch — refusing to install a corrupted or tampered archive." \
+    "expected: ${EXPECTED_SHA}" \
+    "actual:   ${ACTUAL_SHA}" \
+    "Delete any partial download and re-run; if it persists, report it upstream."
+fi
+ok "sha256 matches"
+
+# ---------------------------------------------------------------------------
+# Sigstore signature verification.
+#
+# The release pipeline signs each artifact with cosign (keyless, Sigstore) and
+# publishes a .sigstore.json bundle next to the archive. When cosign is present
+# (or NAHUALI_REQUIRE_SIGSTORE=1 forces it), verify the bundle against the exact
+# GitHub Actions release identity that signed it. A verification failure is a
+# hard abort; when cosign is absent and not required, we say so plainly and
+# continue on the checksum alone.
+# ---------------------------------------------------------------------------
+step "Verifying signature"
+REQUIRE_SIGSTORE="${NAHUALI_REQUIRE_SIGSTORE:-0}"
+if ! have cosign; then
+  if [ "$REQUIRE_SIGSTORE" = "1" ]; then
+    fail "NAHUALI_REQUIRE_SIGSTORE=1 but 'cosign' was not found on PATH." \
+      "Install cosign (https://docs.sigstore.dev/cosign/system_config/installation/) and re-run," \
+      "or unset NAHUALI_REQUIRE_SIGSTORE to install with checksum-only verification."
   fi
+  warn "cosign not found — SIGNATURE NOT VERIFIED (checksum verified). Install cosign and set NAHUALI_REQUIRE_SIGSTORE=1 to require it."
+elif ! fetch_to "$BUNDLE_URL" "$BUNDLE_PATH" 2>/dev/null || [ ! -s "$BUNDLE_PATH" ]; then
+  if [ "$REQUIRE_SIGSTORE" = "1" ]; then
+    fail "NAHUALI_REQUIRE_SIGSTORE=1 but no Sigstore bundle was published for this release." \
+      "URL: ${BUNDLE_URL}"
+  fi
+  warn "no Sigstore bundle published for this release — SIGNATURE NOT VERIFIED (checksum verified)."
+elif cosign verify-blob "$ARCHIVE_PATH" \
+  --bundle "$BUNDLE_PATH" \
+  --certificate-identity "$SIGNER_IDENTITY" \
+  --certificate-oidc-issuer "$OIDC_ISSUER" >/dev/null 2>&1; then
+  ok "signature verified (${TAG})"
 else
-  warn "no checksum asset published for this release; skipping verification."
+  fail "Sigstore signature verification FAILED — refusing to install." \
+    "The archive was not signed by the expected release identity, or it was altered in transit." \
+    "Expected signer: ${SIGNER_IDENTITY}" \
+    "Do not install this artifact; report it upstream."
 fi
 
 step "Unpacking"
