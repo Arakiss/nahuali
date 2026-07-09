@@ -18,7 +18,8 @@ require_command jq
 RUN_ID="${NAHUALI_DEMO_RUN_ID:-$(date +%s)}"
 NOW_MS="${NAHUALI_DEMO_NOW_MS:-1779928800000}"
 DEADLINE_MS="${NAHUALI_DEMO_DEADLINE_MS:-$((NOW_MS + 86400000))}"
-DEMO_DB="${NAHUALI_DEMO_DB:-.local/demo-daily-driver-${RUN_ID}}"
+# A clean SurrealDB identifier: the CLI refuses a path-like --database name.
+DEMO_DB="${NAHUALI_DEMO_DB:-demo_daily_driver_${RUN_ID}}"
 
 if [[ -n "${NAHUALI_BIN:-}" ]]; then
   NAHUALI="$NAHUALI_BIN"

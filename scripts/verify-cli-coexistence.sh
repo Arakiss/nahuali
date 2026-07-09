@@ -30,6 +30,10 @@ json_matches() {
 
 GLOBAL_NAHUALI_BEFORE="$(command -v nahuali || true)"
 CARGO_RUN_OUTPUT="$STORE_DIR/cargo-run-output.json"
+# The CLI refuses a path-like --database name, so derive clean, unique SurrealDB
+# identifiers from the temp dir instead of passing the paths themselves.
+RUN_ID="$(basename "$STORE_DIR" | tr -cd '[:alnum:]')"
+CARGO_RUN_DB="cli_coexistence_cargo_run_${RUN_ID}"
 
 if [[ -n "${NAHUALI_VERIFY_CLI_BIN_DIR:-}" ]]; then
   SOURCE_BIN_DIR="$NAHUALI_VERIFY_CLI_BIN_DIR"
@@ -41,9 +45,9 @@ if [[ -n "${NAHUALI_VERIFY_CLI_BIN_DIR:-}" ]]; then
     echo "source release nahuali binary is missing or not executable: $SOURCE_BIN_DIR/nahuali" >&2
     exit 1
   fi
-  "$SOURCE_BIN_DIR/nahuali" --database "$STORE_DIR/cargo-run" validate --json >"$CARGO_RUN_OUTPUT"
+  "$SOURCE_BIN_DIR/nahuali" --database "$CARGO_RUN_DB" validate --json >"$CARGO_RUN_OUTPUT"
 else
-  cargo run -p nahuali-cli -- --database "$STORE_DIR/cargo-run" validate --json >"$CARGO_RUN_OUTPUT"
+  cargo run -p nahuali-cli -- --database "$CARGO_RUN_DB" validate --json >"$CARGO_RUN_OUTPUT"
 fi
 if ! json_file_matches "$CARGO_RUN_OUTPUT" '"valid"[[:space:]]*:[[:space:]]*true'; then
   echo "cargo-run Rust CLI validation did not report a valid store" >&2
@@ -78,7 +82,7 @@ if [[ -n "$GLOBAL_NAHUALI_BEFORE" && "$GLOBAL_NAHUALI_BEFORE" == "$RUST_NAHUALI"
   exit 1
 fi
 
-STORE="$STORE_DIR/isolated-install"
+STORE="cli_coexistence_isolated_${RUN_ID}"
 "$RUST_NAHUALI" --database "$STORE" remember "Synthetic coexistence memory" --tag synthetic >/dev/null
 "$RUST_NAHUALI" --database "$STORE" claim "Synthetic CLI" validates coexistence --source-last >/dev/null
 validate_output="$("$RUST_NAHUALI" --database "$STORE" validate --json)"

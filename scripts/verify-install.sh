@@ -47,7 +47,10 @@ fi
 NAHUALI="$INSTALL_ROOT/bin/nahuali"
 NAHUALI_MCP="$INSTALL_ROOT/bin/nahuali-mcp"
 NAHUALI_API="$INSTALL_ROOT/bin/nahuali-api"
-STORE="$STORE_DIR/memory"
+# The CLI refuses a path-like --database name, so derive a clean, unique
+# SurrealDB identifier from the temp dir instead of passing the path itself.
+RUN_ID="$(basename "$STORE_DIR" | tr -cd '[:alnum:]')"
+STORE="verify_install_${RUN_ID}"
 
 if [[ ! -x "$NAHUALI" ]]; then
   echo "installed nahuali binary is missing or not executable" >&2
@@ -132,7 +135,7 @@ if ! json_matches "$validate_output" '"procedure_count"[[:space:]]*:[[:space:]]*
 fi
 
 INTERCHANGE="$STORE_DIR/memory.interchange.json"
-IMPORTED_STORE="$STORE_DIR/imported-memory"
+IMPORTED_STORE="verify_install_imported_${RUN_ID}"
 export_output="$("$NAHUALI" --database "$STORE" export --output "$INTERCHANGE" --json)"
 if ! json_matches "$export_output" '"episode_count"[[:space:]]*:[[:space:]]*1' \
   || ! json_matches "$export_output" '"claim_count"[[:space:]]*:[[:space:]]*2' \

@@ -15,7 +15,8 @@ cd "$ROOT"
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
-DEMO_DB=".local/try-nahuali-demo"
+# A clean SurrealDB identifier: the CLI refuses a path-like --database name.
+DEMO_DB="try_nahuali_demo"
 export NAHUALI_DEMO_DB="$DEMO_DB"
 
 step "1/4 · Bringing up the local stack (SurrealDB + Qdrant)"
