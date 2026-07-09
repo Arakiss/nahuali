@@ -207,7 +207,16 @@ mod tests {
             stale_fact_count: 0,
             superseded_fact_count: 0,
             isolated_entity_count: 0,
-            blind_spot_count: signals.len(),
+            blind_spot_count: signals
+                .iter()
+                .filter(|signal| {
+                    matches!(
+                        signal.kind,
+                        HealthSignalKind::NoEpisodes | HealthSignalKind::IsolatedEntity
+                    )
+                })
+                .count(),
+            signal_count: signals.len(),
             average_fact_confidence: 0.0,
             warnings: signals
                 .iter()

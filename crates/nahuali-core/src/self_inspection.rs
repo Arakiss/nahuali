@@ -1,8 +1,11 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::inspection::{evidence_reviewed, resolved_review_evidence};
+use crate::inspection::{
+    entity_key, evidence_reviewed, is_label_extraction_artifact, resolved_review_evidence,
+};
+use crate::model::Episode;
 use crate::{
     AuthorityDecision, Claim, HealthDimension, HealthSeverity, HealthSignal, HealthSignalKind,
     IntentionPriority, IntentionStatus, KnowledgeHealth, Link, MemoryData,
@@ -55,7 +58,18 @@ pub struct SelfInspectionReport {
 /// Aggregate counts for a self-inspection report.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SelfInspectionSummary {
-    /// Total number of findings.
+    /// Number of distinct memory records flagged by at least one finding.
+    ///
+    /// The same record is legitimately counted by several finding families —
+    /// an unsourced high-confidence claim shows up under weak evidence, under
+    /// source coverage, and under the confidence-provenance mismatch — so
+    /// [`Self::finding_count`] over-counts the underlying problem set. This is
+    /// the deduplicated count: the number of unique evidence identifiers across
+    /// every finding. Lead operator-facing summaries with it.
+    pub distinct_flagged_record_count: usize,
+    /// Total number of findings across all families. Kept for compatibility;
+    /// it double-counts records flagged by more than one family, so prefer
+    /// [`Self::distinct_flagged_record_count`] as the headline number.
     pub finding_count: usize,
     /// Number of contradiction findings.
     pub contradiction_count: usize,
@@ -141,6 +155,11 @@ pub enum SelfInspectionFindingKind {
     ConsolidationOpportunity,
     /// An active intention needs review or evidence before it should guide work.
     LatentIntention,
+    /// An isolated "entity" whose name reads as an extraction artifact — a git
+    /// hash or an overlong label — rather than a real entity. Kept distinct from
+    /// [`Self::BlindSpot`] because the fix is to review or remove the record, not
+    /// to connect it.
+    LabelArtifact,
 }
 
 /// Proposed operator review item.
@@ -412,11 +431,29 @@ fn finding_from_health_signal(signal: &HealthSignal) -> SelfInspectionFinding {
             "Superseded memory",
             "Retire or archive the older value now that a newer evidence-backed fact replaced it.",
         ),
-        HealthSignalKind::IsolatedEntity => (
-            SelfInspectionFindingKind::BlindSpot,
-            "Isolated entity",
-            "Connect the entity with evidence-backed links or record more context.",
-        ),
+        HealthSignalKind::IsolatedEntity => {
+            // The isolated-entity signal carries the affected entity name as its
+            // single evidence id (see `inspection.rs`). When that name reads as
+            // an extraction artifact — a git hash or an overlong label —
+            // "connect it" is the wrong advice; route it to review-or-remove.
+            let looks_like_artifact = signal
+                .evidence_ids
+                .first()
+                .is_some_and(|name| is_label_extraction_artifact(name));
+            if looks_like_artifact {
+                (
+                    SelfInspectionFindingKind::LabelArtifact,
+                    "Likely extraction artifact",
+                    "This name looks like an extraction artifact (a git hash or an overlong label); review or remove it rather than linking it.",
+                )
+            } else {
+                (
+                    SelfInspectionFindingKind::BlindSpot,
+                    "Isolated entity",
+                    "Connect the entity with evidence-backed links or record more context.",
+                )
+            }
+        }
     };
     let id = finding_id(&kind, &signal.evidence_ids, &signal.message);
 
@@ -436,19 +473,40 @@ fn append_consolidation_opportunities(
     data: &MemoryData,
     findings: &mut Vec<SelfInspectionFinding>,
 ) {
-    let mut tags = BTreeMap::<String, Vec<String>>::new();
+    let mut tags: BTreeMap<String, Vec<&Episode>> = BTreeMap::new();
     for episode in &data.episodes {
         for tag in &episode.tags {
             tags.entry(tag.trim().to_ascii_lowercase())
                 .or_default()
-                .push(episode.id.clone());
+                .push(episode);
         }
     }
 
-    for (tag, episode_ids) in tags {
-        if tag.is_empty() || episode_ids.len() < 3 {
+    for (tag, episodes) in tags {
+        if tag.is_empty() || episodes.len() < 3 {
             continue;
         }
+
+        // Cohesion contract — a tag is only a consolidation opportunity when the
+        // episodes it groups plausibly describe one durable pattern rather than
+        // an incidental co-tag. Two deterministic gates, no NLP:
+        //
+        // (a) Reject a bare number or year (`^\d+$`). A tag like `2026` is a time
+        //     bucket that collects unrelated work — a lab test, an invoice, a
+        //     calendar appointment, a dependency upgrade — not a reusable pattern.
+        //
+        // (b) Require cohesion by shared entities: at least half of the tagged
+        //     episodes must share a mentioned entity with another episode in the
+        //     group. Episodes that mention disjoint entities are a coincidental
+        //     co-tag, not something worth consolidating.
+        if is_pure_number(&tag) || !tag_group_is_cohesive(&episodes) {
+            continue;
+        }
+
+        let episode_ids = episodes
+            .iter()
+            .map(|episode| episode.id.clone())
+            .collect::<Vec<_>>();
         let detail = format!(
             "Tag '{tag}' appears in {} episodes and may deserve a consolidated claim, link, or procedure.",
             episode_ids.len()
@@ -470,6 +528,43 @@ fn append_consolidation_opportunities(
                     .to_string(),
         });
     }
+}
+
+/// Cohesion gate (a): a tag that is a bare run of digits (`^\d+$`), such as a
+/// year, groups episodes by time rather than by a durable pattern.
+fn is_pure_number(tag: &str) -> bool {
+    !tag.is_empty() && tag.chars().all(|ch| ch.is_ascii_digit())
+}
+
+/// Cohesion gate (b): at least half the tagged episodes share a mentioned entity
+/// with another episode in the group. Entities are compared on their normalized
+/// name so casing and spacing do not split a match.
+fn tag_group_is_cohesive(episodes: &[&Episode]) -> bool {
+    // Count, per normalized entity, how many episodes in the group mention it.
+    let mut mentions_by_entity: BTreeMap<String, usize> = BTreeMap::new();
+    for episode in episodes {
+        let unique = episode
+            .mentions
+            .iter()
+            .map(|mention| entity_key(mention))
+            .collect::<BTreeSet<_>>();
+        for entity in unique {
+            *mentions_by_entity.entry(entity).or_default() += 1;
+        }
+    }
+    // An episode shares an entity when one of its mentions is also mentioned by
+    // at least one OTHER episode in the group (group count >= 2).
+    let sharing_episodes = episodes
+        .iter()
+        .filter(|episode| {
+            episode.mentions.iter().any(|mention| {
+                mentions_by_entity
+                    .get(&entity_key(mention))
+                    .is_some_and(|count| *count >= 2)
+            })
+        })
+        .count();
+    sharing_episodes * 2 >= episodes.len()
 }
 
 fn append_latent_intentions(
@@ -662,6 +757,12 @@ fn review_action(kind: &SelfInspectionFindingKind) -> SelfInspectionReviewAction
             SelfInspectionReviewAction::ConsolidatePattern
         }
         SelfInspectionFindingKind::LatentIntention => SelfInspectionReviewAction::ReviewIntention,
+        // A label artifact belongs to the connectivity family, so it reuses the
+        // existing LinkMemory review action; the finding's suggested action
+        // ("review or remove") carries the correct operator guidance without
+        // widening the review-action enum (which flows into review write-back,
+        // operator-review summaries, and the MCP surface).
+        SelfInspectionFindingKind::LabelArtifact => SelfInspectionReviewAction::LinkMemory,
     }
 }
 
@@ -694,7 +795,16 @@ fn summarize(
     findings: &[SelfInspectionFinding],
     review_queue: &[SelfInspectionReviewItem],
 ) -> SelfInspectionSummary {
+    // The same record can be flagged by several families; deduplicate on the
+    // evidence identifiers so the headline count reflects the real problem set,
+    // not the sum of overlapping family counts.
+    let distinct_flagged_record_count = findings
+        .iter()
+        .flat_map(|finding| finding.evidence_ids.iter())
+        .collect::<BTreeSet<_>>()
+        .len();
     SelfInspectionSummary {
+        distinct_flagged_record_count,
         finding_count: findings.len(),
         contradiction_count: count_kind(findings, SelfInspectionFindingKind::Contradiction),
         stale_memory_count: count_kind(findings, SelfInspectionFindingKind::StaleMemory),
@@ -761,6 +871,7 @@ fn kind_slug(kind: &SelfInspectionFindingKind) -> &'static str {
         SelfInspectionFindingKind::ConfidenceProvenanceMismatch => "confidence_provenance_mismatch",
         SelfInspectionFindingKind::ConsolidationOpportunity => "consolidation_opportunity",
         SelfInspectionFindingKind::LatentIntention => "latent_intention",
+        SelfInspectionFindingKind::LabelArtifact => "label_artifact",
     }
 }
 
@@ -870,27 +981,14 @@ mod tests {
 
     #[test]
     fn reports_consolidation_opportunities_from_repeated_episode_tags() {
+        // The three episodes share the tag AND a mentioned entity ("Release
+        // Notes"), so the cohesion gate lets the pattern through.
         let data = MemoryData {
             event_count: 3,
             episodes: vec![
-                episode(
-                    "episode_1",
-                    "event_1",
-                    "Lena reviewed release notes",
-                    "product",
-                ),
-                episode(
-                    "episode_2",
-                    "event_2",
-                    "Lena edited release notes",
-                    "product",
-                ),
-                episode(
-                    "episode_3",
-                    "event_3",
-                    "Lena shipped release notes",
-                    "product",
-                ),
+                cohesive_episode("episode_1", "event_1", "Lena reviewed release notes"),
+                cohesive_episode("episode_2", "event_2", "Lena edited release notes"),
+                cohesive_episode("episode_3", "event_3", "Lena shipped release notes"),
             ],
             ..MemoryData::default()
         };
@@ -915,24 +1013,9 @@ mod tests {
         let data = MemoryData {
             event_count: 3,
             episodes: vec![
-                episode(
-                    "episode_1",
-                    "event_1",
-                    "Lena reviewed release notes",
-                    "product",
-                ),
-                episode(
-                    "episode_2",
-                    "event_2",
-                    "Lena edited release notes",
-                    "product",
-                ),
-                episode(
-                    "episode_3",
-                    "event_3",
-                    "Lena shipped release notes",
-                    "product",
-                ),
+                cohesive_episode("episode_1", "event_1", "Lena reviewed release notes"),
+                cohesive_episode("episode_2", "event_2", "Lena edited release notes"),
+                cohesive_episode("episode_3", "event_3", "Lena shipped release notes"),
             ],
             ..MemoryData::default()
         };
@@ -1222,6 +1305,148 @@ mod tests {
         );
     }
 
+    #[test]
+    fn distinct_flagged_record_count_deduplicates_overlapping_families() {
+        use std::collections::BTreeSet;
+
+        // Five unsourced, high-confidence claims are each flagged for weak
+        // evidence AND collectively for the confidence-provenance mismatch, so
+        // finding_count double-counts the same records. distinct_flagged_record
+        // _count is the deduplicated union of every finding's evidence ids.
+        let claims = (0..5)
+            .map(|index| conf_claim(&format!("c{index}"), 0.9, None))
+            .collect::<Vec<_>>();
+        let data = MemoryData {
+            event_count: 5,
+            claims,
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+
+        let expected_distinct = report
+            .findings
+            .iter()
+            .flat_map(|finding| finding.evidence_ids.iter())
+            .collect::<BTreeSet<_>>()
+            .len();
+        assert_eq!(
+            report.summary.distinct_flagged_record_count,
+            expected_distinct
+        );
+        // Overlapping families make the deduplicated count strictly smaller than
+        // the raw finding total.
+        assert!(report.summary.distinct_flagged_record_count < report.summary.finding_count);
+    }
+
+    #[test]
+    fn year_tag_is_not_a_consolidation_opportunity() {
+        // The '2026' shape: even when the episodes happen to share an entity, a
+        // bare-year tag is a time bucket and cohesion gate (a) rejects it.
+        let tagged = |id: &str, event_id: &str, content: &str| Episode {
+            mentions: vec!["Petru".to_string()],
+            ..episode(id, event_id, content, "2026")
+        };
+        let data = MemoryData {
+            event_count: 3,
+            episodes: vec![
+                tagged("episode_1", "event_1", "Lab test booked"),
+                tagged("episode_2", "event_2", "Zooplus invoice paid"),
+                tagged("episode_3", "event_3", "AEAT appointment"),
+            ],
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+
+        assert!(!has_kind(
+            &report,
+            SelfInspectionFindingKind::ConsolidationOpportunity
+        ));
+        assert_eq!(report.summary.consolidation_opportunity_count, 0);
+    }
+
+    #[test]
+    fn incoherent_tag_with_disjoint_entities_is_not_a_consolidation_opportunity() {
+        // A non-numeric tag whose episodes mention disjoint entities is a
+        // coincidental co-tag; cohesion gate (b) rejects it.
+        let tagged = |id: &str, event_id: &str, content: &str, mention: &str| Episode {
+            mentions: vec![mention.to_string()],
+            ..episode(id, event_id, content, "misc")
+        };
+        let data = MemoryData {
+            event_count: 3,
+            episodes: vec![
+                tagged("episode_1", "event_1", "One", "Alpha"),
+                tagged("episode_2", "event_2", "Two", "Beta"),
+                tagged("episode_3", "event_3", "Three", "Gamma"),
+            ],
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+
+        assert!(!has_kind(
+            &report,
+            SelfInspectionFindingKind::ConsolidationOpportunity
+        ));
+    }
+
+    #[test]
+    fn isolated_git_hash_entity_is_flagged_as_extraction_artifact() {
+        // An isolated entity named like a git hash gets the label-artifact
+        // finding with review-or-remove guidance, never the connect suggestion.
+        let hash = "cf39fb55467c45ed7c5e6b7cef74810a38e3612b";
+        let data = MemoryData {
+            event_count: 1,
+            claims: vec![claim(
+                "claim_1",
+                "event_1",
+                hash,
+                "relates_to",
+                "Roadmap",
+                0.9,
+                0,
+            )],
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.kind == SelfInspectionFindingKind::LabelArtifact)
+            .expect("label artifact finding present");
+        assert!(finding.suggested_action.contains("review or remove"));
+        assert!(!finding.suggested_action.contains("Connect"));
+    }
+
+    #[test]
+    fn isolated_normal_entity_keeps_the_connect_suggestion() {
+        let data = MemoryData {
+            event_count: 1,
+            claims: vec![claim(
+                "claim_1",
+                "event_1",
+                "Atlas",
+                "relates_to",
+                "Roadmap",
+                0.9,
+                0,
+            )],
+            ..MemoryData::default()
+        };
+
+        let report = self_inspect_at(&data, DAY_MS);
+
+        assert!(report.findings.iter().any(|finding| {
+            finding.kind == SelfInspectionFindingKind::BlindSpot
+                && finding.suggested_action.contains("Connect")
+        }));
+        assert!(!has_kind(&report, SelfInspectionFindingKind::LabelArtifact));
+    }
+
     fn has_kind(report: &crate::SelfInspectionReport, kind: SelfInspectionFindingKind) -> bool {
         report.findings.iter().any(|finding| finding.kind == kind)
     }
@@ -1293,6 +1518,15 @@ mod tests {
             source_role: None,
             scope: None,
             created_at_ms: 0,
+        }
+    }
+
+    /// An episode tagged `product` that mentions a shared entity, so a group of
+    /// them clears the consolidation cohesion gate.
+    fn cohesive_episode(id: &str, event_id: &str, content: &str) -> Episode {
+        Episode {
+            mentions: vec!["Release Notes".to_string()],
+            ..episode(id, event_id, content, "product")
         }
     }
 
