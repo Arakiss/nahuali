@@ -18,6 +18,7 @@ use ratatui::crossterm::terminal::{
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 
+use crate::mascot::{self, Mascot, Verdict};
 use crate::theme::{self, Rgb};
 
 /// One memory item to browse, already reduced to display strings by the caller.
@@ -200,10 +201,26 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_header(frame, app, rows[0]);
 
-    let body = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(42), Constraint::Percentage(58)])
-        .split(rows[1]);
+    // The nahual mascot gets a dedicated third column, but only when the
+    // terminal is wide and tall enough to give it room; otherwise the cockpit
+    // keeps its two-pane layout and the mascot hides so nothing is cramped.
+    let full = frame.area();
+    let show_mascot = full.width >= mascot::MIN_COLS && full.height >= mascot::MIN_ROWS;
+    let body = if show_mascot {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(34),
+                Constraint::Min(0),
+                Constraint::Length(mascot::PANEL_WIDTH),
+            ])
+            .split(rows[1])
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(42), Constraint::Percentage(58)])
+            .split(rows[1])
+    };
 
     // Build owned widgets from immutable data first, then take the &mut borrow
     // of the list state to render the stateful list. Titles are clipped to the
@@ -216,9 +233,29 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     frame.render_stateful_widget(list, body[0], &mut app.list);
     frame.render_widget(detail, body[1]);
+    if show_mascot {
+        draw_mascot(frame, &app.snapshot.store_trust_label, body[2]);
+    }
 
     draw_signals(frame, &app.snapshot.signals, rows[2]);
     draw_footer(frame, rows[3]);
+}
+
+/// Draw the nahual mascot in its own bordered panel, its pose bound to the
+/// store's trust verdict (parsed from the same label the header shows).
+fn draw_mascot(frame: &mut Frame, trust_label: &str, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(color(theme::INK_FAINT)))
+        .title(Span::styled(
+            " nahual ",
+            Style::default()
+                .fg(color(theme::CLAY))
+                .add_modifier(Modifier::BOLD),
+        ));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    frame.render_widget(Mascot::new(Verdict::from_label(trust_label)), inner);
 }
 
 fn draw_signals(frame: &mut Frame, signals: &[Signal], area: Rect) {
@@ -466,7 +503,23 @@ fn draw_footer(frame: &mut Frame, area: Rect) {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::backend::TestBackend;
+
     use super::*;
+
+    /// Render the whole cockpit into a `TestBackend` of the given size and
+    /// return every cell symbol concatenated — enough to assert what is drawn.
+    fn cockpit_text(app: &mut App, width: u16, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| draw(frame, app)).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect()
+    }
 
     fn item(kind: &str) -> Item {
         Item {
@@ -569,6 +622,58 @@ mod tests {
         assert_eq!(
             app.selected_item().map(|item| item.kind.as_str()),
             Some("claim")
+        );
+    }
+
+    #[test]
+    fn mascot_shows_on_a_roomy_terminal() {
+        // A wide, tall terminal gets the dedicated nahual panel; its CERTIFY
+        // caption ("calm") appears nowhere else in the cockpit.
+        let mut app = App::new(snapshot(3));
+        let text = cockpit_text(&mut app, 120, 40);
+        assert!(
+            text.contains("calm"),
+            "mascot caption missing on a roomy terminal"
+        );
+    }
+
+    #[test]
+    fn mascot_hides_on_a_narrow_terminal() {
+        // Below the width threshold the cockpit keeps its two-pane layout and
+        // draws no mascot — and must not panic building the smaller layout.
+        let mut app = App::new(snapshot(3));
+        let text = cockpit_text(&mut app, 90, 40);
+        assert!(
+            !text.contains("calm"),
+            "mascot must hide when the terminal is too narrow"
+        );
+    }
+
+    #[test]
+    fn mascot_hides_on_a_short_terminal() {
+        let mut app = App::new(snapshot(3));
+        let text = cockpit_text(&mut app, 120, 24);
+        assert!(
+            !text.contains("calm"),
+            "mascot must hide when the terminal is too short"
+        );
+    }
+
+    #[test]
+    fn mascot_pose_tracks_the_verdict() {
+        // A BLOCK store renders the guarded pose (caption "guarded"), not the
+        // CERTIFY one — the pose is bound to the live verdict.
+        let mut block = snapshot(3);
+        block.store_trust_label = "BLOCK · not yet trustworthy".to_string();
+        let mut app = App::new(block);
+        let text = cockpit_text(&mut app, 120, 40);
+        assert!(
+            text.contains("guarded"),
+            "expected the guarded (BLOCK) pose"
+        );
+        assert!(
+            !text.contains("calm"),
+            "must not show the CERTIFY caption for a BLOCK store"
         );
     }
 }

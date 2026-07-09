@@ -34,3 +34,13 @@ pub const SURFACE: Rgb = Rgb(42, 36, 32);
 pub fn colors_enabled() -> bool {
     std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
 }
+
+/// Whether the terminal advertises 24-bit (truecolor) support.
+///
+/// True only when `COLORTERM` names `truecolor`/`24bit`. The mascot stacks two
+/// distinct pastel colors in one half-block cell, which quantizes badly on
+/// 256-color terminals — so when this is false the mascot falls back to a
+/// single-color monochrome silhouette rather than muddy approximations.
+pub fn truecolor_enabled() -> bool {
+    std::env::var("COLORTERM").is_ok_and(|v| v.contains("truecolor") || v.contains("24bit"))
+}

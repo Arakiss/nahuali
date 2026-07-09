@@ -146,8 +146,9 @@ Do not invent tools. These are the real ones.
 - **Maintain (derived tiers):** `projection_status` / `projection_rebuild` /
   `projection_validate`, `semantic_status` / `semantic_rebuild`.
 
-`fact`, `relate`, and `preference`-as-alias are deprecated compatibility names
-for `claim`, `link`, and `procedure`. Prefer the canonical tools.
+`fact` and `relate` are compatibility aliases for `claim` and `link` — prefer
+the canonical tools. `preference` is **not** an alias: it is its own memory type
+(a stated rule or convention), distinct from `procedure` (a repeatable how-to).
 
 ## Semantic recall (by meaning, not keywords)
 

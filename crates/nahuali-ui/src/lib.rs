@@ -12,6 +12,8 @@
 //! output stays clean — Nahuali is agent-first, and this layer is the human
 //! supervisor's window onto what the agent stored and how much to trust it.
 
+#[cfg(feature = "tui")]
+pub mod mascot;
 pub mod render;
 pub mod style;
 pub mod theme;
