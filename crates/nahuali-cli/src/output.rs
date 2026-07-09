@@ -93,7 +93,7 @@ pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
             report.summary.episode_count,
             report.summary.entity_count,
             report.summary.source_count,
-            report.health.blind_spot_count,
+            report.health.signal_count,
             report.summary.active_intention_count,
             report.summary.high_priority_review_count,
         ))

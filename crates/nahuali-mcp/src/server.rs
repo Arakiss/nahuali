@@ -157,6 +157,7 @@ impl NahualiMcpServer {
                         "unsupported_fact_count": health.unsupported_fact_count,
                         "conflicting_fact_count": health.conflicting_fact_count,
                         "blind_spot_count": health.blind_spot_count,
+                        "signal_count": health.signal_count,
                         "authority_mode": json_string(&authority.mode),
                         "authority_score": authority.score,
                         "authority_can_trust": authority.can_trust,
