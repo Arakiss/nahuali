@@ -111,9 +111,11 @@ Current expected report:
 | attestation-tip | 9 | 0 | 0 | 1.00 |
 
 **Important interpretation:** replay-chain in LIVR is the strict detector. The
-default validator remains compatible with pre-chain legacy records; operators
-use `validate --require-chained` or `backup-validate --require-chained` when a
-deployment must fail closed on stripped links.
+validator is **fail-closed by default** — a chain-stripped or partially chained
+ledger is rejected. Legacy pre-chain ledgers (written before the chain existed)
+validate with the loud `validate --allow-unchained` /
+`backup-validate --allow-unchained` legacy-permissive escape hatch, which accepts
+unchained records while reporting the relaxed posture.
 
 ## PCR: Provenance Coverage Rate
 
