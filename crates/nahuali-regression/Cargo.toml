@@ -14,7 +14,10 @@ name = "nahuali-regression"
 path = "src/main.rs"
 
 [features]
-default = []
+# On by default to match the flagship posture: a plain `cargo build` of the
+# regression runner enables the `--livr` integrity report. Drop with
+# `--no-default-features` for the minimal runner.
+default = ["attestation"]
 # Enable the `--livr` integrity report. The Ledger Integrity Verification Rate
 # needs the attestation-tip detector tier, so it forwards to the core feature.
 attestation = ["nahuali-core/attestation"]

@@ -17,18 +17,19 @@ name = "nahuali-api"
 path = "src/main.rs"
 
 [features]
-default = ["tamper-evidence"]
-# Forward the nahuali-core optional surfaces that have an observable effect on the
-# API surface. `tamper-evidence` is on by default to match the CLI and published
-# binary artifacts; build with `--no-default-features` for the legacy unchained
-# record format.
+default = ["tamper-evidence", "attestation"]
+# Forward the nahuali-core surfaces to match the flagship default posture and the
+# published binary artifacts. Build with `--no-default-features` for a legacy
+# unchained record format.
 # - tamper-evidence: writes are chained, and ledger replay on open detects an
 #   in-place rewrite of any historical record.
+# - attestation: builds the core with the signable chain-tip surface so a default
+#   `cargo build` of the whole workspace is chained and attestation-ready. The API
+#   exposes no signing endpoint; the feature only aligns the core build posture.
 # - local-embeddings: static model2vec embedder for `/v1/semantic/rebuild` and
 #   semantic recall.
-# Tip attestation is intentionally not forwarded: it is a CLI/operator action and
-# the API exposes no signing endpoint.
 tamper-evidence = ["nahuali-core/tamper-evidence"]
+attestation = ["nahuali-core/attestation", "tamper-evidence"]
 local-embeddings = ["nahuali-core/local-embeddings"]
 
 [dependencies]

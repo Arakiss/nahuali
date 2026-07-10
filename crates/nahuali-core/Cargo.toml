@@ -13,28 +13,31 @@ keywords = ["agents", "memory", "recall", "provenance", "governance"]
 categories = ["data-structures", "development-tools"]
 
 [features]
-default = []
+# The flagship posture is on by default: `attestation` (which implies
+# `tamper-evidence`) makes a plain `cargo build` / `cargo install` produce
+# SHA-256 chaining plus a signable chain tip. Both stay named opt-OUTs:
+# `--no-default-features` drops them for a minimal / legacy-unchained build, and
+# the test suite still covers that path.
+default = ["attestation"]
 # Optional local static-embedding adapter (model2vec-rs). Off by default: the
 # deterministic embedder ships in every build, and this only adds real semantic
 # vectors when explicitly enabled. Pure-Rust regex backend (no C toolchain),
 # network download (`hf-hub`) deliberately excluded — models load from disk.
 local-embeddings = ["dep:model2vec-rs"]
-# Optional tamper-evident hash chain over the append-only record ledger. Off by
-# default: default builds keep the self-contained per-event checksum and write
-# byte-for-byte identical records. When enabled, each appended event binds the
-# previous event's chained SHA-256 hash, so rewriting any historical event
-# breaks the chain at the next event and ledger replay detects it. `sha2` is
-# already present transitively (via surrealdb), so enabling this pulls no new
-# crate versions.
-tamper-evidence = ["dep:sha2"]
-# Optional Ed25519 detached signatures over the tamper-evident chain tip. Implies
-# `tamper-evidence` (signing a tip only makes sense once events are chained). Off
-# by default; default builds pull neither `sha2` nor `ed25519-dalek` and stay
-# byte-for-byte identical. The hash chain detects in-place rewrites; signing the
-# tip closes the remaining gap — a full suffix re-chain changes the tip, and a
-# detached signature over the old tip no longer verifies without the private key.
-# `ed25519-dalek` and its dependencies are already present transitively (via
-# surrealdb), so enabling this pulls no new crate versions.
+# Tamper-evident hash chain over the append-only record ledger. On by default via
+# `attestation`. When enabled, each appended event binds the previous event's
+# chained SHA-256 hash, so rewriting any historical event breaks the chain at the
+# next event and ledger replay detects it. Build with `--no-default-features` for
+# a legacy-unchained ledger (records carry no `prev_hash`). The per-event SHA-256
+# integrity checksum ships in every build — it does not depend on this feature.
+tamper-evidence = []
+# Ed25519 detached signatures over the tamper-evident chain tip. Implies
+# `tamper-evidence` (signing a tip only makes sense once events are chained) and
+# is part of the default feature set. The hash chain detects in-place rewrites;
+# signing the tip closes the remaining gap — a full suffix re-chain changes the
+# tip, and a detached signature over the old tip no longer verifies without the
+# private key. `ed25519-dalek` and its dependencies are already present
+# transitively (via surrealdb), so enabling this pulls no new crate versions.
 attestation = ["tamper-evidence", "dep:ed25519-dalek"]
 
 [dependencies]
@@ -45,7 +48,11 @@ surrealdb.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 model2vec-rs = { version = "0.2", default-features = false, features = ["fancy-regex"], optional = true }
-sha2 = { version = "0.10", default-features = false, optional = true }
+# SHA-256 backs the per-event integrity checksum in every build (not just the
+# tamper-evidence chain), so it is a non-optional dependency. It is already
+# present transitively (via surrealdb), so making it direct pulls no new crate
+# versions.
+sha2 = { version = "0.10", default-features = false }
 ed25519-dalek = { version = "2.2", default-features = false, features = ["std", "zeroize"], optional = true }
 
 # Narrated walkthrough of the tamper-evidence wedge: hash chain catches in-place

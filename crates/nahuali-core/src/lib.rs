@@ -113,10 +113,10 @@ pub use event::{ChainBreak, verify_event_chain};
 pub use event::{
     EVENT_ENVELOPE_VERSION, EpisodeRecorded, EventEnvelope, FactAsserted, IntentionRecorded,
     IntentionRecordedKind, IntentionRecordedPriority, IntentionRecordedStatus,
-    IntentionStatusChanged, IntentionUpdated, MemoryEvent, ProcedureRecorded,
-    ProcedureRecordedKind, RelationRecorded, RepairApplied, RepairClaimMaterialization,
-    RepairLinkMaterialization, RepairMaterialization, ReviewRecorded, ReviewRecordedAction,
-    ReviewRecordedOutcome, SourceRecorded, SourceRecordedKind,
+    IntentionStatusChanged, IntentionUpdated, LEGACY_FNV_CHECKSUM_MAX_VERSION, MemoryEvent,
+    ProcedureRecorded, ProcedureRecordedKind, RelationRecorded, RepairApplied,
+    RepairClaimMaterialization, RepairLinkMaterialization, RepairMaterialization, ReviewRecorded,
+    ReviewRecordedAction, ReviewRecordedOutcome, SourceRecorded, SourceRecordedKind,
 };
 pub use graph::{
     GraphTraversalOptions, MEMORY_GRAPH_VERSION, MemoryGraphEdge, MemoryGraphEdgeKind,

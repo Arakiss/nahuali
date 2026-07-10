@@ -131,7 +131,11 @@ fn validate_event(
         });
     }
 
-    if event.version != EVENT_ENVELOPE_VERSION {
+    // Accept legacy envelope versions (below the current one) as the append-only
+    // ledger requires; only a future/unknown version we cannot open is rejected.
+    // `validate_checksum` selects the algorithm per version (SHA-256 for the
+    // current version, FNV-1a for legacy records).
+    if event.version > EVENT_ENVELOPE_VERSION {
         return Err(NahualiError::InvalidRecordLedger {
             path: path.to_path_buf(),
             record,

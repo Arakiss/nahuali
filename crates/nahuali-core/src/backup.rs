@@ -135,14 +135,39 @@ pub enum SemanticTierRestorePolicy {
 }
 
 /// Options for validating a local backup document.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BackupValidationOptions {
     /// Require every included record to carry a tamper-evident hash-chain link.
     ///
-    /// Default validation stays legacy-compatible. Enable this when a backup
-    /// must fail closed if an attacker stripped chain links and recomputed the
-    /// backup checksum.
+    /// Fail-closed by default: a backup with stripped chain links (even with a
+    /// recomputed backup checksum) is rejected. Use
+    /// [`BackupValidationOptions::legacy_permissive`] to accept unchained legacy
+    /// records.
     pub require_chained: bool,
+}
+
+impl Default for BackupValidationOptions {
+    fn default() -> Self {
+        Self {
+            require_chained: true,
+        }
+    }
+}
+
+impl BackupValidationOptions {
+    /// Fail-closed validation: every included record must be chained. Default.
+    pub fn fail_closed() -> Self {
+        Self::default()
+    }
+
+    /// Legacy-permissive validation: accept unchained records instead of failing
+    /// closed. Use only for backups of legacy ledgers written before the
+    /// tamper-evident chain existed.
+    pub fn legacy_permissive() -> Self {
+        Self {
+            require_chained: false,
+        }
+    }
 }
 
 /// Result of validating a local backup file.
@@ -357,13 +382,19 @@ pub(crate) fn validate_backup_file_with_options(
         }
     };
 
-    if options.require_chained {
-        Ok(validate_backup_with_options(&backup, options))
-    } else {
-        Ok(validate_backup(&backup))
-    }
+    // Honor the caller's options directly. (Previously the permissive branch
+    // fell back to `validate_backup`, whose default was permissive; now that the
+    // default is fail-closed, routing through it would invert `--allow-unchained`.)
+    Ok(validate_backup_with_options(&backup, options))
 }
 
+/// Validate an in-memory backup with the default (fail-closed) options.
+///
+/// Test-only helper (its callers are the tamper-evidence backup tests):
+/// production paths call `validate_backup_file[_with_options]`, which now
+/// forwards options directly rather than routing the permissive case through
+/// here.
+#[cfg(all(test, feature = "tamper-evidence"))]
 pub(crate) fn validate_backup(backup: &MemoryBackup) -> BackupValidation {
     validate_backup_with_options(backup, &BackupValidationOptions::default())
 }
@@ -445,7 +476,10 @@ pub(crate) fn validate_backup_with_options(
             continue;
         }
 
-        if event.version != EVENT_ENVELOPE_VERSION {
+        // Legacy record versions (below the current one) are accepted: a backup of
+        // a legacy ledger must stay restorable. Only a future/unknown version is
+        // rejected. `validate_checksum` picks SHA-256 or legacy FNV per version.
+        if event.version > EVENT_ENVELOPE_VERSION {
             records_valid = false;
             issues.push(error_issue(
                 Some(record),
@@ -684,7 +718,7 @@ mod tests {
 
     #[cfg(feature = "tamper-evidence")]
     #[test]
-    fn backup_validation_rejects_chain_stripping_when_strict_mode_requires_links() {
+    fn backup_validation_fails_closed_on_chain_stripping() {
         let mut backup = create_backup(
             Path::new("memory.surrealdb"),
             &chained_events(3),
@@ -700,31 +734,31 @@ mod tests {
         }
         refresh_backup_checksums(&mut backup);
 
+        // Default (fail-closed): the chain-stripped backup is rejected even with a
+        // recomputed backup checksum.
         let default_report = validate_backup(&backup);
-        assert!(default_report.valid);
-        assert!(default_report.records_valid);
-        assert!(default_report.chain_valid);
-        assert!(!default_report.require_chained);
-
-        let strict_report = validate_backup_with_options(
-            &backup,
-            &BackupValidationOptions {
-                require_chained: true,
-            },
-        );
-
-        assert!(!strict_report.valid);
-        assert!(!strict_report.records_valid);
-        assert!(!strict_report.chain_valid);
-        assert!(strict_report.require_chained);
+        assert!(!default_report.valid);
+        assert!(!default_report.records_valid);
+        assert!(!default_report.chain_valid);
+        assert!(default_report.require_chained);
         assert!(
-            strict_report
+            default_report
                 .issues
                 .iter()
                 .any(|issue| issue.kind == BackupIssueKind::RecordHashChainMissing),
             "expected a chain-missing issue, got {:?}",
-            strict_report.issues
+            default_report.issues
         );
+        assert!(BackupValidationOptions::default().require_chained);
+
+        // Legacy-permissive escape hatch: the same backup is accepted.
+        let permissive_report =
+            validate_backup_with_options(&backup, &BackupValidationOptions::legacy_permissive());
+
+        assert!(permissive_report.valid);
+        assert!(permissive_report.records_valid);
+        assert!(permissive_report.chain_valid);
+        assert!(!permissive_report.require_chained);
     }
 
     #[cfg(feature = "tamper-evidence")]

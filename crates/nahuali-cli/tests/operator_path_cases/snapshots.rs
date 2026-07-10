@@ -122,6 +122,8 @@ fn backup_validate_and_restore_are_scriptable() {
     assert_eq!(written["written"], true);
     assert!(backup_path.exists());
 
+    // Default backup validation is fail-closed: a store written by the default
+    // (chained) CLI validates with `require_chained` true.
     let validate_output = run_ok(&source_store, &["backup-validate", &backup_arg, "--json"]);
     let validation: Value =
         serde_json::from_str(&validate_output).expect("backup validation output is JSON");
@@ -130,21 +132,24 @@ fn backup_validate_and_restore_are_scriptable() {
     assert_eq!(validation["checksum_valid"], true);
     assert_eq!(validation["records_valid"], true);
     assert_eq!(validation["chain_valid"], true);
-    assert_eq!(validation["require_chained"], false);
+    assert_eq!(validation["require_chained"], true);
 
-    let strict_validate_output = run_ok(
+    // The legacy-permissive escape hatch still validates a chained backup and
+    // reports the relaxed posture.
+    let permissive_validate_output = run_ok(
         &source_store,
-        &["backup-validate", &backup_arg, "--require-chained", "--json"],
+        &["backup-validate", &backup_arg, "--allow-unchained", "--json"],
     );
-    let strict_validation: Value =
-        serde_json::from_str(&strict_validate_output).expect("strict backup validation is JSON");
-    assert_eq!(strict_validation["valid"], true);
-    assert_eq!(strict_validation["chain_valid"], true);
-    assert_eq!(strict_validation["require_chained"], true);
+    let permissive_validation: Value = serde_json::from_str(&permissive_validate_output)
+        .expect("legacy-permissive backup validation is JSON");
+    assert_eq!(permissive_validation["valid"], true);
+    assert_eq!(permissive_validation["chain_valid"], true);
+    assert_eq!(permissive_validation["require_chained"], false);
 
-    let strict_store_output = run_ok(&source_store, &["validate", "--require-chained", "--json"]);
+    // Default store validation is fail-closed too.
+    let strict_store_output = run_ok(&source_store, &["validate", "--json"]);
     let strict_store: Value =
-        serde_json::from_str(&strict_store_output).expect("strict store validation is JSON");
+        serde_json::from_str(&strict_store_output).expect("default store validation is JSON");
     assert_eq!(strict_store["valid"], true);
     assert_eq!(strict_store["event_count"], 2);
     assert_eq!(strict_store["require_chained"], true);

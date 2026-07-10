@@ -690,11 +690,11 @@ fn assert_validation(server: &mut McpProcess) {
     assert_eq!(validated["result"]["structuredContent"]["source_count"], 0);
     assert_eq!(
         validated["result"]["structuredContent"]["supported_event_version"],
-        1
+        2
     );
     assert_eq!(
         validated["result"]["structuredContent"]["observed_event_versions"],
-        json!([1])
+        json!([2])
     );
     assert_eq!(
         validated["result"]["structuredContent"]["legacy_event_count"],
