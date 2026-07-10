@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
     AuthorityDecision, AuthorityMode, MEMORY_DATA_VERSION, MemoryData, MemoryKind, MemoryScope,
-    RecallOptions, RecallResult,
+    RecallOptions, RecallResult, RecallResultTrust,
     error::{NahualiError, Result},
     recall,
 };

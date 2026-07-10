@@ -86,6 +86,9 @@ impl HybridAccumulator {
             lexical_score: self.lexical_score,
             semantic_score: self.semantic_score,
             authority_score: authority.score,
+            // Per-result trust is grafted on later by the store layer, which holds
+            // the knowledge-health context the verdict needs.
+            trust: None,
             excerpt: self.excerpt,
             evidence_id: self.evidence_id,
             matched_terms: self.matched_terms,
