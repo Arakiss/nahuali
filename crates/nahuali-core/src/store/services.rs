@@ -99,7 +99,10 @@ impl MemoryEngine {
         }
 
         let authority = self.authority();
-        semantic::hybrid_recall(&self.data, query, limit.max(1), authority, config)
+        let mut report = semantic::hybrid_recall(&self.data, query, limit.max(1), authority, config)?;
+        let health = self.inspect();
+        recall::attach_hybrid_result_trust(&self.data, &health, &mut report.results);
+        Ok(report)
     }
 
     /// Recall memory with hybrid scoring, filters, and an explicit semantic configuration.
@@ -115,7 +118,12 @@ impl MemoryEngine {
 
         let limit = options.limit.max(1);
         let authority = self.authority();
-        semantic::hybrid_recall_with_options(&self.data, query, limit, options, authority, config)
+        let mut report = semantic::hybrid_recall_with_options(
+            &self.data, query, limit, options, authority, config,
+        )?;
+        let health = self.inspect();
+        recall::attach_hybrid_result_trust(&self.data, &health, &mut report.results);
+        Ok(report)
     }
 
     /// Inspect the projected store for support, contradictions, staleness, and

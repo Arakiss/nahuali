@@ -33,10 +33,11 @@ Three mechanisms make that concrete:
   signals, and an authority decision: certify, advisory, warn, or block, so a
   caller sees *why* a memory should or should not be trusted before acting on
   it.
-- **A tamper-evident history.** The CLI, MCP server, and local API hash-chain
-  every recorded event by default, and an opt-in Ed25519 tip attestation catches
-  even a full re-chain of the past. You can prove the recorded history was not
-  rewritten underneath you.
+- **A tamper-evident history.** Every default build hash-chains each recorded
+  event and can sign the chain tip with Ed25519 — both on by default, so the
+  claim is true out of the box. A full re-chain of the past still fails against a
+  signed receipt. You can prove the recorded history was not rewritten underneath
+  you.
 - **Governance benchmarks you can re-run.** Tamper detection, provenance
   coverage, contradiction detection, key lifecycle, and verdict calibration are
   measured by reproducible fixtures in this repository, not asserted in
@@ -92,8 +93,8 @@ and prints the MCP server config, so your agent uses governed memory as a
 protocol: recall before assuming, assert only with evidence, read the per-result
 trust decision. To make it binding for any harness, see the cross-harness
 [protocol](skills/nahuali/protocol.md). Building from source instead:
-`cargo install --path crates/nahuali-cli` (add `--features attestation` for the
-signed-checkpoint and `demo` paths).
+`cargo install --path crates/nahuali-cli` — the default build already includes
+the signed-checkpoint and `demo` paths (attestation is a default feature).
 
 ## Verify your download
 
@@ -149,9 +150,9 @@ own.
   event's hash, so
   rewriting any historical record breaks the chain at the next one and ledger
   replay detects it.
-- **Tip attestation** (opt-in). The chain tip can be signed with an Ed25519 key,
-  so even a full re-chain of the history, which repairs every internal link,
-  fails verification against a receipt the attacker cannot forge.
+- **Tip attestation** (on by default). The chain tip can be signed with an
+  Ed25519 key, so even a full re-chain of the history, which repairs every
+  internal link, fails verification against a receipt the attacker cannot forge.
 
 The `trust-report` command (and the `trust_report` tool / `GET /v1/trust-report`)
 composes these into one non-mutating verdict: knowledge counts, authority,
@@ -325,30 +326,34 @@ deleted in place.
 ## Tamper-Evidence And Attestation
 
 The history matters as much as the answer. At the base, Nahuali validates each
-record's sequence and a self-contained checksum on open. That catches accidental
-corruption, but a determined editor who rewrites a record and recomputes its
-checksum would pass. The `tamper-evidence` feature closes that gap with a hash
-chain, and the CLI, MCP server, and local API ship with it enabled by default.
-The `attestation` feature adds Ed25519 tip signing on top and stays opt-in. The
-core library keeps both behind feature gates so embedders can choose; a build
-without them writes byte-for-byte identical records.
+record's sequence and a per-event SHA-256 integrity checksum on open. That
+catches accidental corruption, but a determined editor who rewrites a record and
+recomputes its checksum would pass. The `tamper-evidence` feature closes that gap
+with a hash chain, and the `attestation` feature adds Ed25519 tip signing on top.
+Both are **on by default** across the whole workspace — a plain `cargo build` or
+`cargo install` produces SHA-256 chaining plus a signable tip. They stay named
+opt-OUTs: build with `--no-default-features` for a minimal, legacy-unchained
+build (records then carry no chain link).
 
 ```bash
-# The default CLI/MCP/API builds already chain records: validate detects an in-place rewrite.
+# The default builds chain records and are attestation-ready: validate detects
+# an in-place rewrite out of the box.
 cargo build -p nahuali-cli
 cargo build -p nahuali-mcp
 cargo build -p nahuali-api
 
-# Add Ed25519 tip signing (implies tamper-evidence).
-cargo build -p nahuali-cli --features attestation
+# Drop the chain and signing surface for a minimal / legacy build.
+cargo build -p nahuali-cli --no-default-features
 ```
 
 With the chain enabled, every recorded event binds the previous event's chained
 hash. Rewriting a historical record breaks the link at the next record, and
 `validate` reports a broken chain even if the attacker forged a fresh per-record
-checksum. Default validation remains compatible with pre-chain records; use
-`validate --require-chained` when a deployment must fail closed if records are
-missing chain links.
+checksum. Validation is **fail-closed by default**: a chain-stripped or partially
+chained ledger is rejected. For a legacy ledger written before the chain existed,
+use `validate --allow-unchained` — a loud, legacy-permissive escape hatch that
+accepts unchained records. Legacy FNV-checksummed records stay valid on read (the
+ledger is append-only); the report counts how many it accepted.
 
 With `attestation`, sign the current tip and keep the receipt outside the store.
 Nahuali never generates keys or touches the network. Supply a 32-byte Ed25519
@@ -799,7 +804,6 @@ cargo run -p nahuali-cli -- --database nahuali_demo backup \
   --json
 
 cargo run -p nahuali-cli -- backup-validate nahuali_demo.backup.json \
-  --require-chained \
   --json
 
 cargo run -p nahuali-cli -- backup-drill \
@@ -881,10 +885,10 @@ distribution channels.
   [Self-Repair Contract](SELF_REPAIR.md).
 - No guarantee that remembered information is true; Nahuali reports evidence,
   confidence, and health signals so callers can decide whether to trust it.
-- Tip attestation is an opt-in build feature. The core library keeps the hash
-  chain feature-gated; the CLI, MCP server, and local API enable hash chaining
-  by default so source installs and published binaries share the same ledger
-  protection. Use `--no-default-features` only for an intentional legacy
+- Hash chaining and tip attestation are on by default across the whole
+  workspace, so source installs and published binaries share the same ledger
+  protection out of the box. The core library keeps both feature-gated as named
+  opt-OUTs. Use `--no-default-features` only for an intentional legacy
   unchained build.
 - No stable 1.0 API guarantee yet.
 

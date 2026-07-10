@@ -315,6 +315,32 @@ pub(crate) fn attach_result_trust(
     }
 }
 
+/// Attach the same per-result trust verdict to hybrid recall results.
+///
+/// Reuses [`result_trust`] — the exact policy lexical recall runs — so a record
+/// that certifies lexically certifies hybridly. The hybrid result carries enough
+/// identity (kind, id, evidence) to reconstruct the recall proxy the verdict
+/// needs.
+pub(crate) fn attach_hybrid_result_trust(
+    data: &MemoryData,
+    health: &KnowledgeHealth,
+    results: &mut [crate::HybridRecallResult],
+) {
+    for result in results {
+        let proxy = RecallResult {
+            kind: result.kind.clone(),
+            id: result.id.clone(),
+            score: result.score,
+            excerpt: result.excerpt.clone(),
+            evidence_id: result.evidence_id.clone(),
+            matched_terms: result.matched_terms.clone(),
+            scope: None,
+            trust: None,
+        };
+        result.trust = Some(result_trust(data, health, &proxy));
+    }
+}
+
 fn result_trust(
     data: &MemoryData,
     health: &KnowledgeHealth,
@@ -662,6 +688,102 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].kind, MemoryKind::Episode);
         assert_eq!(results[0].evidence_id.as_deref(), Some("episode_1"));
+    }
+
+    /// D3 parity: the hybrid per-result trust verdict has the same shape and value
+    /// as the lexical one for the same store — a record that certifies lexically
+    /// certifies hybridly — because both paths call the same `result_trust` policy.
+    #[test]
+    fn hybrid_result_trust_matches_lexical_verdict() {
+        use crate::{HybridRecallResult, KnowledgeHealth, RecallResultTrustMode};
+
+        use super::{attach_hybrid_result_trust, attach_result_trust};
+
+        let data = MemoryData {
+            event_count: 3,
+            last_event_id: Some("event_3".to_string()),
+            episodes: vec![Episode {
+                id: "episode_1".to_string(),
+                event_id: "event_1".to_string(),
+                content: "Lena prefers concise release notes.".to_string(),
+                tags: vec!["product".to_string()],
+                mentions: Vec::new(),
+                source_id: None,
+                source_position: None,
+                source_role: None,
+                scope: None,
+                created_at_ms: 1,
+            }],
+            claims: vec![
+                Claim {
+                    id: "claim_supported".to_string(),
+                    event_id: "event_2".to_string(),
+                    subject: "Lena".to_string(),
+                    predicate: "prefers".to_string(),
+                    object: "release notes".to_string(),
+                    source_episode_id: Some("episode_1".to_string()),
+                    confidence: 0.8,
+                    scope: None,
+                    created_at_ms: 1,
+                },
+                Claim {
+                    id: "claim_unsupported".to_string(),
+                    event_id: "event_3".to_string(),
+                    subject: "Lena".to_string(),
+                    predicate: "prefers".to_string(),
+                    object: "release notes".to_string(),
+                    source_episode_id: None,
+                    confidence: 0.8,
+                    scope: None,
+                    created_at_ms: 1,
+                },
+            ],
+            ..MemoryData::default()
+        };
+        let health = KnowledgeHealth::inspect(&data);
+
+        // Lexical results with trust attached.
+        let mut lexical = recall(&data, "release notes", 10);
+        attach_result_trust(&data, &health, &mut lexical);
+
+        // Hybrid results mirroring the same items, trust attached by the reused
+        // policy.
+        let mut hybrid: Vec<HybridRecallResult> = lexical
+            .iter()
+            .map(|result| HybridRecallResult {
+                kind: result.kind.clone(),
+                id: result.id.clone(),
+                score: result.score,
+                lexical_score: Some(result.score),
+                semantic_score: None,
+                authority_score: 1.0,
+                trust: None,
+                excerpt: result.excerpt.clone(),
+                evidence_id: result.evidence_id.clone(),
+                matched_terms: result.matched_terms.clone(),
+                explanations: Vec::new(),
+            })
+            .collect();
+        attach_hybrid_result_trust(&data, &health, &mut hybrid);
+
+        assert!(!lexical.is_empty());
+        assert_eq!(lexical.len(), hybrid.len());
+        for (lex, hyb) in lexical.iter().zip(hybrid.iter()) {
+            let lexical_trust = lex.trust.as_ref().expect("lexical trust attached");
+            let hybrid_trust = hyb.trust.as_ref().expect("hybrid trust attached");
+            // Same verdict shape and value.
+            assert_eq!(lexical_trust.mode, hybrid_trust.mode);
+            assert_eq!(lexical_trust.can_trust, hybrid_trust.can_trust);
+            assert!((lexical_trust.score - hybrid_trust.score).abs() < f32::EPSILON);
+            assert_eq!(lexical_trust.signal_kinds, hybrid_trust.signal_kinds);
+        }
+        // At least one record certifies, and it certifies on both paths.
+        assert!(
+            hybrid
+                .iter()
+                .any(|result| result.trust.as_ref().unwrap().mode
+                    == RecallResultTrustMode::Certify)
+        );
     }
 
     #[test]

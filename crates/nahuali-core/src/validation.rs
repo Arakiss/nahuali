@@ -26,7 +26,9 @@ pub struct RecordLedgerValidation {
     pub supported_event_version: u32,
     /// Record-envelope versions observed in SurrealDB.
     pub observed_event_versions: Vec<u32>,
-    /// Number of accepted pre-public envelopes that require migration.
+    /// Number of accepted legacy-checksum records: records below the current
+    /// envelope version, verified under the legacy FNV-1a checksum rather than
+    /// SHA-256. They are valid (the ledger is append-only) and need no migration.
     pub legacy_event_count: usize,
     /// Whether callers should plan a non-destructive migration.
     pub migration_required: bool,
@@ -35,14 +37,40 @@ pub struct RecordLedgerValidation {
 }
 
 /// Options for non-mutating record-ledger validation.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordLedgerValidationOptions {
     /// Require every record to carry a tamper-evident hash-chain link.
     ///
-    /// The default validator remains legacy-compatible and accepts unchained
-    /// records. Set this when a deployment must fail closed on stripped chain
-    /// links or mixed chained/unchained ledgers.
+    /// Fail-closed by default: a chain-stripped or partially chained ledger is
+    /// rejected. Use [`RecordLedgerValidationOptions::legacy_permissive`] to
+    /// accept unchained (legacy) records — that path is loud in CLI output.
     pub require_chained: bool,
+}
+
+impl Default for RecordLedgerValidationOptions {
+    fn default() -> Self {
+        Self {
+            require_chained: true,
+        }
+    }
+}
+
+impl RecordLedgerValidationOptions {
+    /// Fail-closed validation: every record must carry a hash-chain link. This is
+    /// the default posture.
+    pub fn fail_closed() -> Self {
+        Self::default()
+    }
+
+    /// Legacy-permissive validation: accept unchained records instead of failing
+    /// closed on them. Use this only for legacy ledgers written before the
+    /// tamper-evident chain existed; callers should surface the reduced guarantee
+    /// (the CLI prints a "legacy-permissive validation" notice).
+    pub fn legacy_permissive() -> Self {
+        Self {
+            require_chained: false,
+        }
+    }
 }
 
 impl RecordLedgerValidation {
@@ -172,7 +200,7 @@ pub fn validate_record_ledger_with_options(
             continue;
         }
 
-        if event.version != EVENT_ENVELOPE_VERSION {
+        if event.version > EVENT_ENVELOPE_VERSION {
             report.valid = false;
             report.migration_required = true;
             report.issues.push(error_issue(
@@ -185,6 +213,12 @@ pub fn validate_record_ledger_with_options(
             ));
             continue;
         }
+
+        // Records below the current version are accepted as legacy: the
+        // append-only ledger keeps historical records valid. `validate_checksum`
+        // picks the right algorithm per version (SHA-256 for the current version,
+        // FNV-1a for legacy records), so a legacy-checksum record still verifies.
+        let is_legacy_checksum = event.version < EVENT_ENVELOPE_VERSION;
 
         if !event.validate_checksum() {
             report.valid = false;
@@ -232,6 +266,9 @@ pub fn validate_record_ledger_with_options(
         }
 
         report.event_count += 1;
+        if is_legacy_checksum {
+            report.legacy_event_count += 1;
+        }
         expected_sequence += 1;
     }
 
@@ -333,7 +370,9 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use crate::{EpisodeRecorded, EventEnvelope, MemoryEngine, MemoryEvent};
+    use crate::{
+        EVENT_ENVELOPE_VERSION, EpisodeRecorded, EventEnvelope, MemoryEngine, MemoryEvent,
+    };
 
     use super::{
         RecordLedgerIssueKind, block_on_database, database_error, open_database,
@@ -369,7 +408,9 @@ mod tests {
 
         assert!(report.valid);
         assert_eq!(report.event_count, 1);
-        assert_eq!(report.observed_event_versions, vec![1]);
+        // Newly written records use the current SHA-256 envelope version.
+        assert_eq!(report.observed_event_versions, vec![EVENT_ENVELOPE_VERSION]);
+        assert_eq!(report.legacy_event_count, 0);
 
         let _ = fs::remove_dir_all(path);
     }
@@ -386,7 +427,7 @@ mod tests {
 
         assert!(!report.valid);
         assert_eq!(report.event_count, 0);
-        assert_eq!(report.observed_event_versions, vec![1]);
+        assert_eq!(report.observed_event_versions, vec![EVENT_ENVELOPE_VERSION]);
         assert_eq!(report.issues.len(), 1);
         assert_eq!(
             report.issues[0].kind,
@@ -408,7 +449,7 @@ mod tests {
 
         assert!(!report.valid);
         assert_eq!(report.event_count, 0);
-        assert_eq!(report.observed_event_versions, vec![1]);
+        assert_eq!(report.observed_event_versions, vec![EVENT_ENVELOPE_VERSION]);
         assert_eq!(report.issues.len(), 1);
         assert_eq!(
             report.issues[0].kind,
@@ -431,7 +472,7 @@ mod tests {
 
         assert!(!report.valid);
         assert_eq!(report.event_count, 0);
-        assert_eq!(report.observed_event_versions, vec![1]);
+        assert_eq!(report.observed_event_versions, vec![EVENT_ENVELOPE_VERSION]);
         assert_eq!(report.issues.len(), 1);
         assert_eq!(
             report.issues[0].kind,
@@ -441,38 +482,119 @@ mod tests {
         let _ = fs::remove_dir_all(path);
     }
 
+    /// D2(a): default validation is fail-closed. An unchained record is rejected
+    /// by default; the explicit legacy-permissive escape hatch accepts it.
     #[cfg(feature = "tamper-evidence")]
     #[test]
-    fn strict_validation_rejects_unchained_records_without_breaking_legacy_default() {
-        let path = temp_path("strict-require-chained");
+    fn default_validation_fails_closed_on_unchained_records() {
+        let path = temp_path("default-fail-closed");
         let _ = fs::remove_dir_all(&path);
 
         let event = test_envelope(1);
         assert!(!event.is_chained());
         write_raw_record(&path, event.sequence, event);
 
+        // Default (fail-closed): the chain-stripped record is rejected.
         let default_report = validate_record_ledger(&path).unwrap();
-        assert!(default_report.valid);
-        assert_eq!(default_report.event_count, 1);
+        assert!(!default_report.valid);
+        assert_eq!(default_report.event_count, 0);
+        assert!(
+            default_report
+                .issues
+                .iter()
+                .any(|issue| issue.kind == RecordLedgerIssueKind::HashChainMissing),
+            "expected a HashChainMissing issue, got {:?}",
+            default_report.issues
+        );
 
-        let strict_report = validate_record_ledger_with_options(
+        // The default option is fail-closed.
+        assert!(RecordLedgerValidationOptions::default().require_chained);
+
+        // Legacy-permissive escape hatch: the same unchained record is accepted.
+        let permissive_report = validate_record_ledger_with_options(
             &path,
-            &RecordLedgerValidationOptions {
-                require_chained: true,
-            },
+            &RecordLedgerValidationOptions::legacy_permissive(),
         )
         .unwrap();
-
-        assert!(!strict_report.valid);
-        assert_eq!(strict_report.event_count, 0);
-        assert_eq!(strict_report.issues.len(), 1);
-        assert_eq!(
-            strict_report.issues[0].kind,
-            RecordLedgerIssueKind::HashChainMissing
-        );
-        assert_eq!(strict_report.issues[0].line, Some(1));
+        assert!(permissive_report.valid);
+        assert_eq!(permissive_report.event_count, 1);
 
         let _ = fs::remove_dir_all(path);
+    }
+
+    /// D2(b): a mixed ledger of legacy FNV records followed by current SHA-256
+    /// records validates, and the report counts the accepted legacy-checksum
+    /// records.
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn mixed_legacy_and_current_checksum_ledger_validates() {
+        use crate::LEGACY_FNV_CHECKSUM_MAX_VERSION;
+
+        let path = temp_path("mixed-checksums");
+        let _ = fs::remove_dir_all(&path);
+
+        // Two legacy (FNV, version 1) records, then one current (SHA-256) record,
+        // all chained together.
+        let mut chain: Vec<EventEnvelope> = Vec::new();
+        for sequence in 1..=3u64 {
+            let prev = chain.last().map(EventEnvelope::chain_hash);
+            let mut event = EventEnvelope::with_chain(
+                sequence,
+                1_700_000_000_000 + sequence,
+                MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                    id: format!("episode_{sequence}"),
+                    content: format!("Mixed ledger event {sequence}"),
+                    tags: vec!["validation".to_string()],
+                    mentions: Vec::new(),
+                    source_id: None,
+                    source_position: None,
+                    source_role: None,
+                    scope: None,
+                }),
+                prev.as_deref(),
+            );
+            if sequence < 3 {
+                // Rewrite the first two as legacy version-1 FNV records, keeping
+                // the chain link intact.
+                event = downgrade_to_legacy_fnv(event);
+            }
+            chain.push(event);
+        }
+
+        for event in &chain {
+            write_raw_record(&path, event.sequence, event.clone());
+        }
+
+        let report = validate_record_ledger(&path).unwrap();
+        assert!(report.valid, "issues: {:?}", report.issues);
+        assert_eq!(report.event_count, 3);
+        assert_eq!(report.legacy_event_count, 2);
+        let mut versions = report.observed_event_versions.clone();
+        versions.sort_unstable();
+        assert_eq!(
+            versions,
+            vec![LEGACY_FNV_CHECKSUM_MAX_VERSION, EVENT_ENVELOPE_VERSION]
+        );
+
+        let _ = fs::remove_dir_all(path);
+    }
+
+    /// Recompute a chained envelope as a legacy version-1 FNV record while keeping
+    /// its `prev_hash` link, so the chain still verifies (the chain hash is bound
+    /// to the stored version).
+    #[cfg(feature = "tamper-evidence")]
+    fn downgrade_to_legacy_fnv(mut event: EventEnvelope) -> EventEnvelope {
+        use crate::LEGACY_FNV_CHECKSUM_MAX_VERSION;
+
+        event.version = LEGACY_FNV_CHECKSUM_MAX_VERSION;
+        event.checksum = crate::event::fnv_checksum_for(
+            event.version,
+            event.sequence,
+            event.timestamp_ms,
+            &event.payload,
+        );
+        assert!(event.validate_checksum());
+        event
     }
 
     /// (b) THE KEY PROOF, exercised through the real non-mutating replay path.

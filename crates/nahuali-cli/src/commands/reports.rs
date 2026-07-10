@@ -1184,6 +1184,16 @@ fn print_hybrid_recall_results(results: Vec<nahuali_core::HybridRecallResult>) {
         if let Some(evidence_id) = result.evidence_id {
             println!("  evidence: {evidence_id}");
         }
+        if let Some(trust) = result.trust {
+            println!(
+                "  trust: {} (score {:.2})",
+                crate::style::trust_badge(&trust.mode),
+                trust.score
+            );
+            for reason in trust.reasons {
+                println!("  trust reason: {reason}");
+            }
+        }
         if !result.explanations.is_empty() {
             println!("  explanations: {}", result.explanations.join(", "));
         }

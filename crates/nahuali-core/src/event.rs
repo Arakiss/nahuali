@@ -6,7 +6,21 @@ use crate::model::MemoryScope;
 use crate::self_repair::{AutonomyLevel, RepairKind};
 
 /// Current event-envelope format written by `nahuali-core`.
-pub const EVENT_ENVELOPE_VERSION: u32 = 1;
+///
+/// Version `2` and above stamp a SHA-256 integrity checksum. Records at or below
+/// [`LEGACY_FNV_CHECKSUM_MAX_VERSION`] carry a legacy FNV-1a checksum and stay
+/// valid on read (the record ledger is append-only), but every newly written
+/// record is stamped with this version and a SHA-256 checksum.
+pub const EVENT_ENVELOPE_VERSION: u32 = 2;
+
+/// Highest envelope version whose integrity checksum is the legacy FNV-1a digest.
+///
+/// FNV-1a is fast but not collision-resistant, so it cannot carry the integrity
+/// path for new records. Records at or below this version predate the SHA-256
+/// checksum and remain valid as legacy; records above it must present a SHA-256
+/// checksum, and a higher-version record carrying an FNV-shaped checksum is
+/// rejected.
+pub const LEGACY_FNV_CHECKSUM_MAX_VERSION: u32 = 1;
 
 /// Validated record-ledger entry.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -59,17 +73,33 @@ impl EventEnvelope {
     }
 
     /// Return whether the stored checksum matches the event body.
+    ///
+    /// Records above [`LEGACY_FNV_CHECKSUM_MAX_VERSION`] must present the SHA-256
+    /// integrity checksum: an FNV-shaped checksum on such a record does not match
+    /// and is rejected. Legacy records (at or below that version) validate under
+    /// the FNV-1a digest, accepting both the version-in-body form and the
+    /// pre-version form, so the append-only ledger keeps historical records
+    /// valid.
     pub fn validate_checksum(&self) -> bool {
-        self.checksum
-            == checksum_for(
-                self.version,
-                self.sequence,
-                self.timestamp_ms,
-                &self.payload,
-            )
-            || (self.version == EVENT_ENVELOPE_VERSION
-                && self.checksum
-                    == legacy_checksum_for(self.sequence, self.timestamp_ms, &self.payload))
+        if self.version > LEGACY_FNV_CHECKSUM_MAX_VERSION {
+            self.checksum
+                == sha256_checksum_for(
+                    self.version,
+                    self.sequence,
+                    self.timestamp_ms,
+                    &self.payload,
+                )
+        } else {
+            self.checksum
+                == fnv_checksum_for(
+                    self.version,
+                    self.sequence,
+                    self.timestamp_ms,
+                    &self.payload,
+                )
+                || self.checksum
+                    == legacy_checksum_for(self.sequence, self.timestamp_ms, &self.payload)
+        }
     }
 }
 
@@ -598,10 +628,74 @@ struct LegacyChecksumBody<'a> {
 }
 
 fn default_event_version() -> u32 {
-    EVENT_ENVELOPE_VERSION
+    // A record with no `version` field predates the field entirely, so it can
+    // only be a legacy FNV-checksummed record. Map it to the legacy version
+    // rather than the current one, which now demands a SHA-256 checksum.
+    LEGACY_FNV_CHECKSUM_MAX_VERSION
 }
 
+/// Compute the integrity checksum a freshly stamped envelope of `version` uses.
+///
+/// The algorithm is chosen by version: version above
+/// [`LEGACY_FNV_CHECKSUM_MAX_VERSION`] gets the collision-resistant SHA-256
+/// digest; legacy versions keep the FNV-1a digest so re-reading a legacy record
+/// reproduces its stored checksum.
 fn checksum_for(version: u32, sequence: u64, timestamp_ms: u64, payload: &MemoryEvent) -> String {
+    if version > LEGACY_FNV_CHECKSUM_MAX_VERSION {
+        sha256_checksum_for(version, sequence, timestamp_ms, payload)
+    } else {
+        fnv_checksum_for(version, sequence, timestamp_ms, payload)
+    }
+}
+
+/// SHA-256 integrity checksum over the canonical event body.
+///
+/// This replaces FNV-1a on the integrity path: a forger who rewrites the payload
+/// cannot recompute a matching checksum without finding a SHA-256 preimage. The
+/// digest binds a domain separator and the same `(version, sequence,
+/// timestamp_ms, payload)` body the FNV checksum covered.
+fn sha256_checksum_for(
+    version: u32,
+    sequence: u64,
+    timestamp_ms: u64,
+    payload: &MemoryEvent,
+) -> String {
+    use sha2::{Digest, Sha256};
+
+    let body = ChecksumBody {
+        version,
+        sequence,
+        timestamp_ms,
+        payload,
+    };
+    let encoded = serde_json::to_vec(&body).expect("memory events must serialize");
+
+    let mut hasher = Sha256::new();
+    // Domain separator so this digest can never collide with an unrelated
+    // SHA-256 use over the same crate types (e.g. the chain hash).
+    hasher.update(b"nahuali.event.checksum.v2");
+    hasher.update(&encoded);
+    let digest = hasher.finalize();
+
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(hex, "{byte:02x}");
+    }
+    hex
+}
+
+/// Legacy FNV-1a integrity checksum over the versioned event body.
+///
+/// Retained only to keep pre-SHA-256 records (version at or below
+/// [`LEGACY_FNV_CHECKSUM_MAX_VERSION`]) valid on read. `pub(crate)` so sibling
+/// modules (and tests) can reconstruct a legacy record for coverage.
+pub(crate) fn fnv_checksum_for(
+    version: u32,
+    sequence: u64,
+    timestamp_ms: u64,
+    payload: &MemoryEvent,
+) -> String {
     let body = ChecksumBody {
         version,
         sequence,
@@ -689,7 +783,8 @@ fn absorb_field(hasher: &mut sha2::Sha256, bytes: &[u8]) {
 #[cfg(test)]
 mod tests {
     use super::{
-        EVENT_ENVELOPE_VERSION, EpisodeRecorded, EventEnvelope, MemoryEvent, legacy_checksum_for,
+        EVENT_ENVELOPE_VERSION, EpisodeRecorded, EventEnvelope, LEGACY_FNV_CHECKSUM_MAX_VERSION,
+        MemoryEvent, fnv_checksum_for, legacy_checksum_for,
     };
 
     #[test]
@@ -759,8 +854,64 @@ mod tests {
 
         let decoded: EventEnvelope = serde_json::from_value(encoded).unwrap();
 
-        assert_eq!(decoded.version, EVENT_ENVELOPE_VERSION);
+        // A record with no `version` field predates the field and is treated as
+        // a legacy FNV record, not the current SHA-256 version.
+        assert_eq!(decoded.version, LEGACY_FNV_CHECKSUM_MAX_VERSION);
         assert!(decoded.validate_checksum());
+    }
+
+    /// An explicit version-1 record still validates under the FNV checksum after
+    /// the current version moved to SHA-256 — the append-only legacy path.
+    #[test]
+    fn legacy_version_one_records_validate_under_fnv() {
+        let payload = MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+            id: "episode_1".to_string(),
+            content: "Lena prefers concise release notes.".to_string(),
+            tags: vec!["example".to_string()],
+            mentions: Vec::new(),
+            source_id: None,
+            source_position: None,
+            source_role: None,
+            scope: None,
+        });
+        let checksum = fnv_checksum_for(LEGACY_FNV_CHECKSUM_MAX_VERSION, 1, 1000, &payload);
+        let encoded = serde_json::json!({
+            "version": LEGACY_FNV_CHECKSUM_MAX_VERSION,
+            "id": format!("event_1_{checksum}"),
+            "sequence": 1,
+            "timestamp_ms": 1000,
+            "checksum": checksum,
+            "payload": payload,
+        });
+
+        let decoded: EventEnvelope = serde_json::from_value(encoded).unwrap();
+
+        assert_eq!(decoded.version, LEGACY_FNV_CHECKSUM_MAX_VERSION);
+        assert!(decoded.validate_checksum());
+    }
+
+    /// The current build stamps SHA-256 checksums, and a current-version record
+    /// carrying an FNV-shaped checksum is rejected: the integrity path no longer
+    /// accepts FNV for new records.
+    #[test]
+    fn new_records_use_sha256_and_reject_fnv_shaped_checksums() {
+        let envelope = EventEnvelope::new(1, 1000, sample_event(1));
+
+        assert_eq!(envelope.version, EVENT_ENVELOPE_VERSION);
+        // SHA-256 hex is 64 chars; the legacy FNV digest is 16.
+        assert_eq!(envelope.checksum.len(), 64);
+        assert!(envelope.validate_checksum());
+
+        // A forger who recomputes the FNV checksum for the current-version body
+        // does not pass: new records require SHA-256.
+        let mut fnv_shaped = envelope.clone();
+        fnv_shaped.checksum = fnv_checksum_for(
+            envelope.version,
+            envelope.sequence,
+            envelope.timestamp_ms,
+            &envelope.payload,
+        );
+        assert!(!fnv_shaped.validate_checksum());
     }
 
     fn sample_event(sequence: u64) -> MemoryEvent {

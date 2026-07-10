@@ -297,7 +297,15 @@ pub struct HybridRecallResult {
     /// Semantic score from Qdrant, when present.
     pub semantic_score: Option<f32>,
     /// Projection-level authority score at query time.
+    ///
+    /// Retained for compatibility; prefer the per-result [`Self::trust`] verdict,
+    /// which is computed by the same policy as lexical recall.
     pub authority_score: f32,
+    /// Per-result trust verdict, computed by the same policy lexical recall uses
+    /// (`RecallResultTrust`). Populated when callers request authority context, so
+    /// a record that certifies lexically certifies here too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust: Option<RecallResultTrust>,
     /// Human-readable excerpt.
     pub excerpt: String,
     /// Optional evidence episode identifier.

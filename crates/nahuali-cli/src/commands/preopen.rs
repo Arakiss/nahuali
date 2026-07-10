@@ -29,11 +29,13 @@ pub(crate) fn handle(command: &Command, database: &Path) -> anyhow::Result<bool>
         }
         Command::Validate {
             #[cfg(feature = "tamper-evidence")]
-            require_chained,
+            allow_unchained,
             json,
         } => {
+            // Fail-closed by default; `--allow-unchained` opts into
+            // legacy-permissive validation.
             #[cfg(feature = "tamper-evidence")]
-            let require_chained = *require_chained;
+            let require_chained = !*allow_unchained;
             #[cfg(not(feature = "tamper-evidence"))]
             let require_chained = false;
             validate(database, require_chained, *json)
@@ -41,11 +43,11 @@ pub(crate) fn handle(command: &Command, database: &Path) -> anyhow::Result<bool>
         Command::BackupValidate {
             path,
             #[cfg(feature = "tamper-evidence")]
-            require_chained,
+            allow_unchained,
             json,
         } => {
             #[cfg(feature = "tamper-evidence")]
-            let require_chained = *require_chained;
+            let require_chained = !*allow_unchained;
             #[cfg(not(feature = "tamper-evidence"))]
             let require_chained = false;
             backup_validate(path, require_chained, *json)
@@ -81,6 +83,12 @@ fn validate(database: &Path, require_chained: bool, json: bool) -> anyhow::Resul
     let options = RecordLedgerValidationOptions { require_chained };
     let report = MemoryEngine::validate_store_with_options(database, &options)
         .with_context(|| format!("failed to validate {}", database.display()))?;
+    // Loud legacy-permissive notice on the human path: the operator explicitly
+    // relaxed the fail-closed default. JSON callers read `require_chained`.
+    #[cfg(feature = "tamper-evidence")]
+    if !require_chained && !json {
+        eprintln!("legacy-permissive validation: unchained records accepted");
+    }
     if json {
         if report.valid {
             let memory = MemoryEngine::open(database)
@@ -181,6 +189,10 @@ fn backup_validate(path: &Path, require_chained: bool, json: bool) -> anyhow::Re
     let options = BackupValidationOptions { require_chained };
     let report = MemoryEngine::validate_backup_with_options(path, &options)
         .with_context(|| format!("failed to validate backup {}", path.display()))?;
+    #[cfg(feature = "tamper-evidence")]
+    if !require_chained && !json {
+        eprintln!("legacy-permissive validation: unchained backup records accepted");
+    }
     if json {
         let mut value = serde_json::to_value(&report)?;
         if let Some(object) = value.as_object_mut() {

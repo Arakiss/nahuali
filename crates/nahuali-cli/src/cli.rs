@@ -804,10 +804,12 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     },
     #[command(about = "Validate the SurrealDB memory_record ledger without mutating it.")]
     Validate {
-        /// Fail when any record lacks a tamper-evident hash-chain link.
+        /// Accept unchained (legacy) records instead of failing closed on them.
+        /// Validation is fail-closed by default; this legacy-permissive escape
+        /// hatch is loud in output.
         #[cfg(feature = "tamper-evidence")]
-        #[arg(long = "require-chained")]
-        require_chained: bool,
+        #[arg(long = "allow-unchained")]
+        allow_unchained: bool,
         #[arg(long)]
         json: bool,
     },
@@ -911,10 +913,12 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     BackupValidate {
         #[arg(value_name = "PATH")]
         path: PathBuf,
-        /// Fail when any backup record lacks a tamper-evident hash-chain link.
+        /// Accept unchained (legacy) backup records instead of failing closed on
+        /// them. Backup validation is fail-closed by default; this
+        /// legacy-permissive escape hatch is loud in output.
         #[cfg(feature = "tamper-evidence")]
-        #[arg(long = "require-chained")]
-        require_chained: bool,
+        #[arg(long = "allow-unchained")]
+        allow_unchained: bool,
         #[arg(long)]
         json: bool,
     },

@@ -61,6 +61,36 @@ what it stores.
   to the GitHub Actions release identity, failing closed on a bad signature. The
   README documents both verification layers.
 
+- **Flagship trust posture is now the default.** `tamper-evidence` and
+  `attestation` are default features in every crate (`nahuali-core`,
+  `nahuali-cli`, `nahuali-api`, `nahuali-mcp`, `nahuali-regression`). A plain
+  `cargo build` / `cargo install` produces SHA-256 chaining plus a signable chain
+  tip. Both stay named opt-OUTs — `--no-default-features` still builds a minimal,
+  legacy-unchained binary and the test suite still covers that path.
+- **Fail-closed validation by default.** `validate` and `backup-validate` reject
+  a chain-stripped or partially chained ledger by default
+  (`RecordLedgerValidationOptions` / `BackupValidationOptions` default to
+  `require_chained: true`). The new `--allow-unchained` flag (and
+  `RecordLedgerValidationOptions::legacy_permissive()`) is a loud
+  legacy-permissive escape hatch for pre-chain ledgers; it replaces the former
+  opt-in `--require-chained` flag. **BREAKING CHANGE:** the default validation
+  verdict for an unchained ledger flips from accept to reject, and the CLI flag
+  is renamed.
+- **SHA-256 on the integrity path.** New records carry a SHA-256 per-event
+  checksum instead of FNV-1a; the event envelope version moves to `2`. Existing
+  FNV-checksummed records (version `1` and pre-version) stay valid on read as
+  legacy — the ledger is append-only — and a new-version record presenting an
+  FNV-shaped checksum is rejected. The validation report counts accepted
+  legacy-checksum records. **BREAKING CHANGE:** the current envelope version and
+  the per-event checksum algorithm changed for new records.
+- **Per-result trust on hybrid recall.** Each `HybridRecallResult` now carries a
+  `trust` verdict computed by the same policy as lexical recall
+  (`RecallResultTrust`); a record that certifies lexically certifies hybridly.
+  `authority_score` is kept for compatibility.
+- **`nahuali demo` runs the full story on a default build.** With attestation on
+  by default, the source-build apology path only applies to an explicit
+  `--no-default-features` build.
+
 ## 0.3.0-beta.0 (2026-06-02)
 
 - Opt-in tamper-evident hash-chained ledger in `nahuali-core`.
