@@ -142,8 +142,17 @@ jobs:
             exit 0
           fi
 
+          pr_base="$(gh pr view "${pr_number}" --repo "${GITHUB_REPOSITORY}" --json baseRefOid --jq .baseRefOid)"
+          if [[ -z "${pr_base}" ]]; then
+            echo "::error::Release PR base commit could not be resolved."
+            exit 1
+          fi
+
           echo "Dispatching ci.yml for release PR branch ${pr_branch}"
-          gh workflow run ci.yml --repo "${GITHUB_REPOSITORY}" --ref "${pr_branch}"
+          gh workflow run ci.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref "${pr_branch}" \
+            -f base_sha="${pr_base}"
       - name: Name CLI release as the Nahuali product
         if: ${{ steps.release.outputs['crates/nahuali-cli--release_created'] == 'true' }}
         env:
