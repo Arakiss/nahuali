@@ -1,17 +1,16 @@
 # Controlled Beta
 
-Nahuali is not ready for broad daily-driver use yet. This page defines the
-smaller controlled beta gate for technical testers who can run a local Rust
-project and are comfortable using disposable databases.
+Nahuali is a public beta. This page defines the data-safety boundary for
+technical testers while the storage and API contracts are still pre-1.0.
 
 The beta goal is narrow: prove that the local CLI-first memory loop can run
-from a clean checkout without risking existing data.
+from a clean install without risking existing data.
 
 ## What The Beta Covers
 
 The controlled beta gate verifies that a checkout can:
 
-- start the local SurrealDB and Qdrant dev stack
+- open the embedded persistent store without Docker or an external database
 - record synthetic project memory into an isolated database
 - resume a session from persisted ledger state
 - recall scoped memory with evidence IDs, trust signals, and authority context
@@ -22,6 +21,9 @@ The controlled beta gate verifies that a checkout can:
 - rebuild and query the derived semantic index
 - avoid changing any globally installed `nahuali` command
 - pass the public security and supply-chain hygiene checks
+
+Semantic-index checks still use the optional Qdrant development service. The
+default lexical workflow and all ledger-integrity checks do not require it.
 
 Run the gate:
 

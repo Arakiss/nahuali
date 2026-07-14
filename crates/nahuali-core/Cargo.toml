@@ -39,8 +39,12 @@ tamper-evidence = []
 # private key. `ed25519-dalek` and its dependencies are already present
 # transitively (via surrealdb), so enabling this pulls no new crate versions.
 attestation = ["tamper-evidence", "dep:ed25519-dalek"]
+# Internal seam for the unpublished regression runner to inject deliberately
+# malformed ledgers. It is never enabled by the CLI, API, or MCP packages.
+regression-fixtures = []
 
 [dependencies]
+fs2 = "0.4"
 serde.workspace = true
 serde_json.workspace = true
 reqwest.workspace = true

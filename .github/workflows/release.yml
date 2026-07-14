@@ -216,6 +216,13 @@ jobs:
           fi
 
           gh workflow run release.yml --repo "${GITHUB_REPOSITORY}" --ref "${CLI_TAG}" -f "tag=${CLI_TAG}"
+      - name: Trigger MCP image and registry publication
+        if: ${{ steps.release.outputs['crates/nahuali-cli--release_created'] == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLI_TAG: ${{ steps.release.outputs['crates/nahuali-cli--tag_name'] }}
+        shell: bash
+        run: gh workflow run publish-mcp.yml --repo "${GITHUB_REPOSITORY}" --ref "${CLI_TAG}" -f "tag=${CLI_TAG}"
       - name: Trigger CLI SBOM build
         if: ${{ steps.release.outputs['crates/nahuali-cli--release_created'] == 'true' }}
         env:

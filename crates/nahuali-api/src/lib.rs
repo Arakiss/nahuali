@@ -309,6 +309,11 @@ async fn write_engine(
         let engine = MemoryEngine::open(state.database.as_ref()).map_err(ApiError::from)?;
         *guard = Some(engine);
     }
+    guard
+        .as_mut()
+        .expect("engine initialized above")
+        .refresh()
+        .map_err(ApiError::from)?;
     Ok(RwLockWriteGuard::map(guard, |slot| {
         slot.as_mut().expect("engine initialized above")
     }))
@@ -317,17 +322,9 @@ async fn write_engine(
 /// Acquire a shared read guard over the cached engine, opening it lazily on first
 /// use. Read endpoints use this so concurrent reads share one engine.
 async fn read_engine(state: &ApiState) -> Result<RwLockReadGuard<'_, MemoryEngine>, ApiError> {
-    {
-        let guard = state.engine.read().await;
-        if guard.is_some() {
-            return Ok(RwLockReadGuard::map(guard, |slot| {
-                slot.as_ref().expect("engine present under read guard")
-            }));
-        }
-    }
-    // Engine not yet opened: initialize it under the write lock, then downgrade to a
-    // fresh read guard. A racing reader may have opened it first; that is fine because
-    // `write_engine` is a no-op when the slot is already populated.
+    // Refresh under the write lock before taking a shared read guard. This keeps
+    // remote SurrealDB deployments coherent when another process writes between
+    // API requests.
     write_engine(state).await?;
     let guard = state.engine.read().await;
     Ok(RwLockReadGuard::map(guard, |slot| {

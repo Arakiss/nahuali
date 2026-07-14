@@ -1,0 +1,10 @@
+.git
+.github
+.codex-runs
+.release-dry-run
+.urd
+docs/private
+html-artifacts
+target
+*.tmp
+*.log

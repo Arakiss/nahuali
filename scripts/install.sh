@@ -223,7 +223,7 @@ EOF
 # Main flow.
 # ---------------------------------------------------------------------------
 printf '\n%s%sNahuali%s installer\n' "${C_BOLD}" "${C_CYAN}" "${C_RESET}"
-printf '%sGoverned memory for AI agents — prove what you know and that it was not altered.%s\n\n' "${C_DIM}" "${C_RESET}"
+printf '%sGoverned memory for AI agents. Prove what you know and that it was not altered.%s\n\n' "${C_DIM}" "${C_RESET}"
 
 step "Detecting platform"
 TARGET="$(detect_target)"
@@ -263,7 +263,7 @@ ok "${ARCHIVE}"
 
 step "Verifying checksum"
 # Checksum verification is mandatory. Without a SHA tool we cannot verify, and
-# without a published checksum asset the release is unverifiable — both abort
+# without a published checksum asset the release is unverifiable; both abort
 # rather than install unverified binaries.
 if [ -z "$SHA_CMD" ]; then
   fail "cannot verify the download: neither sha256sum nor shasum is available." \
@@ -271,7 +271,7 @@ if [ -z "$SHA_CMD" ]; then
     "macOS ships shasum) and re-run."
 fi
 if ! fetch_to "$CHECKSUM_URL" "$CHECKSUM_PATH" 2>/dev/null || [ ! -s "$CHECKSUM_PATH" ]; then
-  fail "no SHA-256 checksum was published for this release — refusing to install unverified binaries." \
+  fail "no SHA-256 checksum was published for this release. Refusing to install unverified binaries." \
     "URL: ${CHECKSUM_URL}" \
     "This release cannot be verified; do not install it. Report it upstream or pin a" \
     "verified release with NAHUALI_VERSION."
@@ -282,7 +282,7 @@ if [ -z "$EXPECTED_SHA" ] || [ -z "$ACTUAL_SHA" ]; then
   fail "could not compute or read the SHA-256 checksum for verification."
 fi
 if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
-  fail "checksum mismatch — refusing to install a corrupted or tampered archive." \
+  fail "checksum mismatch. Refusing to install a corrupted or tampered archive." \
     "expected: ${EXPECTED_SHA}" \
     "actual:   ${ACTUAL_SHA}" \
     "Delete any partial download and re-run; if it persists, report it upstream."
@@ -307,20 +307,20 @@ if ! have cosign; then
       "Install cosign (https://docs.sigstore.dev/cosign/system_config/installation/) and re-run," \
       "or unset NAHUALI_REQUIRE_SIGSTORE to install with checksum-only verification."
   fi
-  warn "cosign not found — SIGNATURE NOT VERIFIED (checksum verified). Install cosign and set NAHUALI_REQUIRE_SIGSTORE=1 to require it."
+  warn "cosign not found. SIGNATURE NOT VERIFIED (checksum verified). Install cosign and set NAHUALI_REQUIRE_SIGSTORE=1 to require it."
 elif ! fetch_to "$BUNDLE_URL" "$BUNDLE_PATH" 2>/dev/null || [ ! -s "$BUNDLE_PATH" ]; then
   if [ "$REQUIRE_SIGSTORE" = "1" ]; then
     fail "NAHUALI_REQUIRE_SIGSTORE=1 but no Sigstore bundle was published for this release." \
       "URL: ${BUNDLE_URL}"
   fi
-  warn "no Sigstore bundle published for this release — SIGNATURE NOT VERIFIED (checksum verified)."
+  warn "no Sigstore bundle published for this release. SIGNATURE NOT VERIFIED (checksum verified)."
 elif cosign verify-blob "$ARCHIVE_PATH" \
   --bundle "$BUNDLE_PATH" \
   --certificate-identity "$SIGNER_IDENTITY" \
   --certificate-oidc-issuer "$OIDC_ISSUER" >/dev/null 2>&1; then
   ok "signature verified (${TAG})"
 else
-  fail "Sigstore signature verification FAILED — refusing to install." \
+  fail "Sigstore signature verification FAILED. Refusing to install." \
     "The archive was not signed by the expected release identity, or it was altered in transit." \
     "Expected signer: ${SIGNER_IDENTITY}" \
     "Do not install this artifact; report it upstream."
@@ -383,7 +383,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# PATH guidance — we never edit shell rc files for you.
+# PATH guidance. We never edit shell rc files for you.
 # ---------------------------------------------------------------------------
 ON_PATH="false"
 case ":${PATH}:" in
@@ -403,7 +403,7 @@ else
     fish) _rc="${HOME}/.config/fish/config.fish" ;;
     *)    _rc="your shell profile" ;;
   esac
-  printf '\n%sAdd Nahuali to your PATH%s — paste this into %s:\n\n' "${C_BOLD}" "${C_RESET}" "$_rc"
+  printf '\n%sAdd Nahuali to your PATH%s. Paste this into %s:\n\n' "${C_BOLD}" "${C_RESET}" "$_rc"
   if [ "$_shell_name" = "fish" ]; then
     printf '    %sfish_add_path %s%s\n' "${C_CYAN}" "${BIN_DIR}" "${C_RESET}"
   else
@@ -418,7 +418,7 @@ fi
 # ---------------------------------------------------------------------------
 # The magic next step.
 # ---------------------------------------------------------------------------
-printf '\n%sNext:%s see why memory is trusted, flagged, or blocked — no Docker, no setup:\n\n' "${C_BOLD}" "${C_RESET}"
+printf '\n%sNext:%s see why memory is trusted, flagged, or blocked. No Docker, no setup:\n\n' "${C_BOLD}" "${C_RESET}"
 if [ "$ON_PATH" = "true" ]; then
   printf '    %snahuali demo%s\n' "${C_CYAN}${C_BOLD}" "${C_RESET}"
 else

@@ -55,7 +55,7 @@ Rust CLI is the intentional cutover:
 
 ## Database
 
-By default, `nahuali` selects the SurrealDB database:
+By default, `nahuali` opens the logical SurrealDB database:
 
 ```txt
 memory
@@ -69,11 +69,16 @@ nahuali --database memory remember "Lena owns the release notes"
 
 The value selects a SurrealDB database identifier. Nahuali accepts only
 `A-Z`, `a-z`, `0-9`, and `_`; it refuses path-like or hyphenated values rather
-than silently connecting to a different normalized name. The store is an append-only
+than silently connecting to a different normalized name. The zero-service
+default is an embedded SurrealKV store under `~/.nahuali/data`. Set
+`NAHUALI_DB_URL` to use a remote SurrealDB endpoint. The store is an append-only
 `memory_record` ledger. Opening the store validates event ordering and checksums
 before projecting memory state in Rust. The public storage boundary is
 summarized in the root README while design notes remain private during
 pre-release development.
+
+Embedded SurrealKV has one process owner. Use a remote endpoint if independent
+CLI, MCP, or HTTP processes need the same database concurrently.
 
 ## Primary Workflow
 

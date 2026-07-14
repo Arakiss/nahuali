@@ -235,5 +235,6 @@ pub use trust_report::{
 pub type LocalMemory = MemoryEngine;
 pub use validation::{
     RecordLedgerIssue, RecordLedgerIssueKind, RecordLedgerIssueSeverity, RecordLedgerValidation,
-    RecordLedgerValidationOptions, validate_record_ledger, validate_record_ledger_with_options,
+    RecordLedgerValidationOptions, validate_record_ledger,
+    validate_record_ledger_events_with_options, validate_record_ledger_with_options,
 };

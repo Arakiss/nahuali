@@ -12,13 +12,18 @@ pub struct McpProcess {
     child: Child,
     stdin: ChildStdin,
     stdout: Receiver<String>,
+    home: PathBuf,
 }
 
 impl McpProcess {
     pub fn spawn(store: &PathBuf) -> Self {
+        let home = std::env::temp_dir().join(format!("{}_home", store.display()));
+        std::fs::create_dir_all(&home).expect("isolated MCP home is created");
         let mut child = Command::new(env!("CARGO_BIN_EXE_nahuali-mcp"))
             .arg("--database")
             .arg(store)
+            .env("NAHUALI_HOME", &home)
+            .env_remove("NAHUALI_DB_URL")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -46,6 +51,7 @@ impl McpProcess {
             child,
             stdin,
             stdout: receiver,
+            home,
         }
     }
 
@@ -81,6 +87,7 @@ impl McpProcess {
     pub fn shutdown(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        let _ = std::fs::remove_dir_all(&self.home);
     }
 
     fn write(&mut self, message: Value) {
@@ -91,7 +98,10 @@ impl McpProcess {
     fn read(&self) -> Value {
         let line = self
             .stdout
-            .recv_timeout(Duration::from_secs(5))
+            // Six isolated MCP servers may initialize SurrealKV concurrently
+            // in the workspace suite. Allow startup headroom on constrained CI
+            // runners without weakening the protocol assertions themselves.
+            .recv_timeout(Duration::from_secs(15))
             .expect("server writes a response");
         serde_json::from_str(&line).expect("server stdout is valid JSON")
     }
@@ -101,6 +111,7 @@ impl Drop for McpProcess {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        let _ = std::fs::remove_dir_all(&self.home);
     }
 }
 

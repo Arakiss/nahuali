@@ -1,0 +1,32 @@
+FROM rust:1.96-bookworm AS builder
+
+ARG CARGO_PROFILE=release
+ARG CARGO_TARGET_DIR_NAME=release
+ARG CARGO_BUILD_JOBS=2
+ARG CARGO_PROFILE_DEV_DEBUG=0
+
+WORKDIR /src
+COPY . .
+RUN --mount=type=cache,id=nahuali-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=nahuali-mcp-target,target=/src/target \
+    cargo build --locked --profile "$CARGO_PROFILE" -p nahuali-mcp \
+    && cp "target/$CARGO_TARGET_DIR_NAME/nahuali-mcp" /tmp/nahuali-mcp
+
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && find /var/lib/apt/lists -type f -delete
+
+COPY --from=builder /tmp/nahuali-mcp /usr/local/bin/nahuali-mcp
+COPY LICENSE /usr/share/licenses/nahuali/LICENSE
+
+LABEL org.opencontainers.image.source="https://github.com/Arakiss/nahuali"
+LABEL org.opencontainers.image.description="Trust-aware memory for AI agents over MCP"
+LABEL org.opencontainers.image.licenses="FSL-1.1-MIT"
+LABEL io.modelcontextprotocol.server.name="io.github.arakiss/nahuali"
+
+ENV NAHUALI_HOME=/data
+VOLUME ["/data"]
+
+ENTRYPOINT ["nahuali-mcp"]

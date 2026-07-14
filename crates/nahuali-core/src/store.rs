@@ -20,7 +20,7 @@ use crate::{
     SleepModeOptions,
     backup::{self, SemanticTierRestorePolicy},
     briefing, consolidation_plan,
-    database::{database_name, normalized_endpoint, resolved_namespace},
+    database::{DatabaseSession, database_name},
     error::{NahualiError, Result},
     event::{
         EVENT_ENVELOPE_VERSION, EventEnvelope, FactAsserted, IntentionRecorded,
@@ -56,11 +56,7 @@ use crate::{
     },
 };
 use serde::Deserialize;
-use surrealdb::{
-    Surreal,
-    engine::remote::ws::{Client, Ws},
-    opt::auth::Root,
-};
+use surrealdb::{Surreal, engine::any::Any};
 use tokio::runtime::{Builder, Runtime};
 
 static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -74,6 +70,7 @@ static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 /// foundation.
 #[derive(Clone, Debug)]
 pub struct MemoryEngine {
+    _database: DatabaseSession,
     path: PathBuf,
     events: Vec<EventEnvelope>,
     data: MemoryData,

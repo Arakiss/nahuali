@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/Arakiss/nahuali/discussions
+    about: Ask how Nahuali works, share a use case, or discuss the trust model.
+  - name: Security vulnerability
+    url: https://github.com/Arakiss/nahuali/security/policy
+    about: Follow the private reporting instructions in the security policy.

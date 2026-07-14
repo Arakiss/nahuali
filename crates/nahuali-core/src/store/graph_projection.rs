@@ -831,7 +831,7 @@ async fn graph_projection_status(
 
 async fn graph_projection_status_with_db(
     path: &Path,
-    db: &Surreal<Client>,
+    db: &Surreal<Any>,
     data: &MemoryData,
     events: &[EventEnvelope],
 ) -> Result<GraphProjectionStatus> {
@@ -887,7 +887,7 @@ async fn graph_projection_status_with_db(
     })
 }
 
-async fn clear_graph_projection(path: &Path, db: &Surreal<Client>) -> Result<()> {
+async fn clear_graph_projection(path: &Path, db: &Surreal<Any>) -> Result<()> {
     for table in PROJECTED_RELATION_TABLES
         .iter()
         .chain(PROJECTED_NODE_TABLES.iter())
@@ -902,7 +902,7 @@ async fn clear_graph_projection(path: &Path, db: &Surreal<Client>) -> Result<()>
 
 async fn create_projected_record(
     path: &Path,
-    db: &Surreal<Client>,
+    db: &Surreal<Any>,
     table: &str,
     id: &str,
     content: serde_json::Value,
@@ -918,7 +918,7 @@ async fn create_projected_record(
 
 async fn relate_projected_records(
     path: &Path,
-    db: &Surreal<Client>,
+    db: &Surreal<Any>,
     input: ProjectedRelationInput<'_>,
 ) -> Result<()> {
     let query = format!(
@@ -936,7 +936,7 @@ async fn relate_projected_records(
     Ok(())
 }
 
-async fn count_projected_rows(path: &Path, db: &Surreal<Client>, table: &str) -> Result<usize> {
+async fn count_projected_rows(path: &Path, db: &Surreal<Any>, table: &str) -> Result<usize> {
     let mut response = db
         .query(format!("SELECT memory_id FROM {table}"))
         .await
@@ -949,7 +949,7 @@ async fn count_projected_rows(path: &Path, db: &Surreal<Client>, table: &str) ->
 
 async fn select_projected_rows<T>(
     path: &Path,
-    db: &Surreal<Client>,
+    db: &Surreal<Any>,
     query: &str,
 ) -> Result<Vec<T>>
 where

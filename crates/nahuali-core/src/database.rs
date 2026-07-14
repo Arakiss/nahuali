@@ -7,12 +7,28 @@
 //! `NAHUALI_DB_*` variables for resolution; doing so is what let a flag be
 //! silently overridden by the environment.
 
-use std::path::Path;
+use std::{
+    collections::HashMap,
+    fs::OpenOptions,
+    future::Future,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, OnceLock},
+    thread,
+    time::Duration,
+};
 
+use fs2::FileExt;
 use serde::Serialize;
+use surrealdb::{
+    Surreal,
+    engine::any::{Any, connect},
+    opt::auth::Root,
+};
+use tokio::runtime::{Builder, Runtime};
+
+use crate::error::{NahualiError, Result as CoreResult};
 
 pub(crate) const SURREAL_NAMESPACE: &str = "nahuali";
-const DEFAULT_SURREAL_ENDPOINT: &str = "localhost:18000";
 const SURREAL_DATABASE: &str = "memory";
 /// The documented read-only archive default. Its hyphen predates the strict
 /// identifier rule, so it is accepted verbatim and mapped to the identifier it
@@ -57,7 +73,7 @@ pub struct ResolvedValue {
 /// The fully resolved effective configuration, free of any secret material.
 #[derive(Clone, Debug, Serialize)]
 pub struct ResolvedConfig {
-    /// SurrealDB endpoint with any scheme prefix stripped, e.g. `localhost:18000`.
+    /// Effective embedded or remote SurrealDB endpoint, including its scheme.
     pub endpoint: ResolvedValue,
     /// SurrealDB namespace.
     pub namespace: ResolvedValue,
@@ -139,16 +155,17 @@ pub fn validate_database_name(raw: &str) -> Result<String, DatabaseNameError> {
     }
 }
 
-/// Resolve the SurrealDB endpoint (`NAHUALI_DB_URL` env, else default), with any
-/// `ws(s)://` or `http(s)://` scheme stripped.
+/// Resolve the storage endpoint (`NAHUALI_DB_URL` env, else an embedded
+/// SurrealKV store under `~/.nahuali/data`). Remote endpoints without a scheme
+/// keep compatibility with the historical `host:port` form by using `ws://`.
 pub fn resolve_endpoint() -> ResolvedValue {
     match std::env::var("NAHUALI_DB_URL") {
         Ok(url) if !url.trim().is_empty() => ResolvedValue {
-            value: strip_endpoint_scheme(&url),
+            value: normalize_endpoint(&url),
             source: ConfigSource::Env,
         },
         _ => ResolvedValue {
-            value: DEFAULT_SURREAL_ENDPOINT.to_string(),
+            value: default_embedded_endpoint(),
             source: ConfigSource::Default,
         },
     }
@@ -205,14 +222,201 @@ pub(crate) fn resolved_namespace() -> String {
     resolve_namespace().value
 }
 
-fn strip_endpoint_scheme(endpoint: &str) -> String {
-    endpoint
-        .trim()
-        .trim_start_matches("ws://")
-        .trim_start_matches("wss://")
-        .trim_start_matches("http://")
-        .trim_start_matches("https://")
-        .to_string()
+fn default_embedded_endpoint() -> String {
+    let root = std::env::var_os("NAHUALI_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".nahuali")))
+        .unwrap_or_else(|| PathBuf::from(".nahuali"));
+    format!("surrealkv://{}", root.join("data").display())
+}
+
+fn normalize_endpoint(endpoint: &str) -> String {
+    let endpoint = endpoint.trim();
+    if endpoint.contains("://") {
+        endpoint.to_string()
+    } else {
+        format!("ws://{endpoint}")
+    }
+}
+
+pub(crate) fn is_embedded_endpoint(endpoint: &str) -> bool {
+    endpoint.starts_with("surrealkv://") || endpoint.starts_with("mem://")
+}
+
+static STORE_RUNTIMES: OnceLock<Mutex<HashMap<String, Arc<StoreRuntime>>>> = OnceLock::new();
+
+struct StoreRuntime {
+    endpoint: String,
+    runtime: Option<Runtime>,
+    root: Mutex<Option<Surreal<Any>>>,
+}
+
+/// A logical database session backed by one process-owned SurrealDB router.
+///
+/// Embedded SurrealKV permits a single owner for its physical directory. All
+/// sessions in this process therefore share one router and runtime, while each
+/// clone keeps an independent namespace/database selection.
+#[derive(Clone)]
+pub(crate) struct DatabaseSession {
+    db: Surreal<Any>,
+    owner: Arc<StoreRuntime>,
+}
+
+impl std::fmt::Debug for DatabaseSession {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DatabaseSession")
+            .field("endpoint", &self.owner.endpoint)
+            .finish_non_exhaustive()
+    }
+}
+
+impl DatabaseSession {
+    pub(crate) fn open(path: &Path) -> CoreResult<Self> {
+        let endpoint = normalized_endpoint();
+        let owner = store_runtime(&endpoint, path)?;
+        let db = owner
+            .root
+            .lock()
+            .expect("database root lock must not be poisoned")
+            .as_ref()
+            .expect("database root exists while the runtime is alive")
+            .clone();
+        let namespace = resolved_namespace();
+        let database = database_name(path);
+        let logical_path = path.to_path_buf();
+        let selected = db.clone();
+        let selected = run_on(&owner, async move {
+            selected
+                .use_ns(namespace)
+                .use_db(database)
+                .await
+                .map_err(|source| database_error(&logical_path, source))?;
+            Ok(selected)
+        })?;
+        Ok(Self {
+            db: selected,
+            owner,
+        })
+    }
+}
+
+impl std::ops::Deref for DatabaseSession {
+    type Target = Surreal<Any>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.db
+    }
+}
+
+fn store_runtime(endpoint: &str, path: &Path) -> CoreResult<Arc<StoreRuntime>> {
+    let runtimes = STORE_RUNTIMES.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut runtimes = runtimes
+        .lock()
+        .expect("store runtime registry must not be poisoned");
+    if let Some(runtime) = runtimes.get(endpoint) {
+        return Ok(Arc::clone(runtime));
+    }
+
+    let endpoint_owned = endpoint.to_string();
+    let path_owned = path.to_path_buf();
+    let (runtime, root) = thread::spawn(move || -> CoreResult<_> {
+        let runtime = Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .map_err(|source| NahualiError::Runtime { source })?;
+        let root = runtime
+            .block_on(async { connect(&endpoint_owned).await })
+            .map_err(|source| database_error(&path_owned, source))?;
+        if !is_embedded_endpoint(&endpoint_owned) {
+            let username =
+                std::env::var("NAHUALI_DB_USERNAME").unwrap_or_else(|_| "root".to_string());
+            let password =
+                std::env::var("NAHUALI_DB_PASSWORD").unwrap_or_else(|_| "root".to_string());
+            runtime
+                .block_on(async { root.signin(Root { username, password }).await })
+                .map_err(|source| database_error(&path_owned, source))?;
+        }
+        Ok((runtime, root))
+    })
+    .join()
+    .unwrap_or_else(|payload| std::panic::resume_unwind(payload))?;
+    let owner = Arc::new(StoreRuntime {
+        endpoint: endpoint.to_string(),
+        runtime: Some(runtime),
+        root: Mutex::new(Some(root)),
+    });
+    runtimes.insert(endpoint.to_string(), Arc::clone(&owner));
+    Ok(owner)
+}
+
+fn run_on<F, T>(owner: &Arc<StoreRuntime>, future: F) -> CoreResult<T>
+where
+    F: Future<Output = CoreResult<T>> + Send + 'static,
+    T: Send + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        let owner = Arc::clone(owner);
+        return match thread::spawn(move || {
+            owner
+                .runtime
+                .as_ref()
+                .expect("database runtime exists while its owner is alive")
+                .block_on(future)
+        })
+        .join()
+        {
+            Ok(result) => result,
+            Err(payload) => std::panic::resume_unwind(payload),
+        };
+    }
+    owner
+        .runtime
+        .as_ref()
+        .expect("database runtime exists while its owner is alive")
+        .block_on(future)
+}
+
+impl Drop for StoreRuntime {
+    fn drop(&mut self) {
+        let root = self
+            .root
+            .get_mut()
+            .expect("database root lock must not be poisoned")
+            .take();
+        let runtime = self
+            .runtime
+            .take()
+            .expect("database runtime exists until its owner is dropped");
+        let lock_path = self
+            .endpoint
+            .strip_prefix("surrealkv://")
+            .map(|path| Path::new(path).join("LOCK"));
+        let _ = thread::spawn(move || {
+            drop(root);
+            runtime.shutdown_timeout(Duration::from_secs(2));
+            if let Some(lock_path) = lock_path {
+                for _ in 0..200 {
+                    if let Ok(file) = OpenOptions::new().read(true).write(true).open(&lock_path)
+                        && file.try_lock_exclusive().is_ok()
+                    {
+                        let _ = file.unlock();
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+            }
+        })
+        .join();
+    }
+}
+
+fn database_error(path: &Path, source: surrealdb::Error) -> NahualiError {
+    NahualiError::Database {
+        path: path.to_path_buf(),
+        source: Box::new(source),
+    }
 }
 
 /// The SurrealDB database identifier for an already-resolved database path.
@@ -257,8 +461,8 @@ fn normalize_database_name(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ConfigSource, database_name, normalize_database_name, resolve_database_name_from,
-        validate_database_name,
+        ConfigSource, database_name, normalize_database_name, normalize_endpoint,
+        resolve_database_name_from, validate_database_name,
     };
     use std::path::Path;
 
@@ -346,5 +550,19 @@ mod tests {
         // identifier; it does not consult NAHUALI_DB_DATABASE.
         assert_eq!(database_name(Path::new("memory")), "memory");
         assert_eq!(database_name(Path::new("ts-archive")), "ts_archive");
+    }
+
+    #[test]
+    fn endpoint_normalization_preserves_engine_and_transport_schemes() {
+        assert_eq!(
+            normalize_endpoint("localhost:18000"),
+            "ws://localhost:18000"
+        );
+        assert_eq!(normalize_endpoint("ws://db:8000"), "ws://db:8000");
+        assert_eq!(normalize_endpoint("wss://db.example"), "wss://db.example");
+        assert_eq!(
+            normalize_endpoint("surrealkv:///tmp/nahuali"),
+            "surrealkv:///tmp/nahuali"
+        );
     }
 }

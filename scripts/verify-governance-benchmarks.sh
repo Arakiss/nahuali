@@ -6,8 +6,8 @@ set -euo pipefail
 #
 # Two integrity-side measures are computed from the library (LIVR, ARP) and need
 # no services. The store-backed benchmarks (PCR, CDR, TVS, plus the
-# knowledge-health and recall regressions) connect to the local SurrealDB dev
-# stack, so start it first (`docker compose up -d`) when running this directly.
+# knowledge-health and recall regressions) use an isolated embedded SurrealKV
+# store so they never contend with or mutate the operator's memory.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -20,6 +20,14 @@ require_command() {
 }
 
 require_command cargo
+
+benchmark_home="$(mktemp -d "${TMPDIR:-/tmp}/nahuali-governance.XXXXXX")"
+cleanup() {
+  rm -r "$benchmark_home"
+}
+trap cleanup EXIT
+export NAHUALI_HOME="$benchmark_home"
+unset NAHUALI_DB_URL
 
 # Build the regression runner once with attestation so --livr and --arp exist.
 cargo build -p nahuali-regression --features attestation --quiet

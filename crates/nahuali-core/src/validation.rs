@@ -1,18 +1,12 @@
 use std::{collections::BTreeSet, future::Future, path::Path, thread};
 
 use serde::{Deserialize, Serialize};
-use surrealdb::{
-    Surreal,
-    engine::remote::ws::{Client, Ws},
-    opt::auth::Root,
-};
 use tokio::runtime::Builder;
 
 use crate::{
     EVENT_ENVELOPE_VERSION, EventEnvelope,
-    database::{database_name, normalized_endpoint, resolved_namespace},
+    database::DatabaseSession,
     error::{NahualiError, Result},
-    schema::MEMORY_RECORD_SCHEMA,
 };
 
 /// Non-destructive SurrealDB record-ledger validation report.
@@ -155,6 +149,18 @@ pub fn validate_record_ledger_with_options(
     path: impl AsRef<Path>,
     options: &RecordLedgerValidationOptions,
 ) -> Result<RecordLedgerValidation> {
+    validate_record_ledger_events_with_options(path, options).map(|(report, _)| report)
+}
+
+/// Validate the SurrealDB record ledger and return the accepted event envelopes.
+///
+/// Callers must only project the returned events when `report.valid` is true.
+/// Returning them from the validation pass avoids reopening a process-owned
+/// embedded store solely to build a read-only projection.
+pub fn validate_record_ledger_events_with_options(
+    path: impl AsRef<Path>,
+    options: &RecordLedgerValidationOptions,
+) -> Result<(RecordLedgerValidation, Vec<EventEnvelope>)> {
     #[cfg(not(feature = "tamper-evidence"))]
     let _ = options;
 
@@ -162,6 +168,7 @@ pub fn validate_record_ledger_with_options(
     let read_path = path.to_path_buf();
     let records = block_on_database(async move { read_records(&read_path).await })?;
     let mut report = RecordLedgerValidation::empty();
+    let mut accepted_events = Vec::new();
     let mut observed_versions = BTreeSet::new();
     let mut expected_sequence = 1_u64;
     // Running chained hash of the last accepted event, used to verify the next
@@ -270,14 +277,30 @@ pub fn validate_record_ledger_with_options(
             report.legacy_event_count += 1;
         }
         expected_sequence += 1;
+        accepted_events.push(event);
     }
 
     report.observed_event_versions = observed_versions.into_iter().collect();
-    Ok(report)
+    Ok((report, accepted_events))
 }
 
 async fn read_records(path: &Path) -> Result<Vec<MemoryRecord>> {
     let db = open_database(path).await?;
+    let mut info_response = db
+        .query("INFO FOR DB")
+        .await
+        .map_err(|source| database_error(path, source))?;
+    let info: Option<serde_json::Value> = info_response
+        .take(0)
+        .map_err(|source| database_error(path, source))?;
+    let ledger_exists = info
+        .as_ref()
+        .and_then(|value| value.get("tables"))
+        .and_then(serde_json::Value::as_object)
+        .is_some_and(|tables| tables.contains_key("memory_record"));
+    if !ledger_exists {
+        return Ok(Vec::new());
+    }
     let mut response = db
         .query("SELECT sequence, envelope FROM memory_record ORDER BY sequence ASC")
         .await
@@ -299,28 +322,8 @@ fn decode_record(path: &Path, record: usize, row: serde_json::Value) -> Result<M
     })
 }
 
-async fn open_database(path: &Path) -> Result<Surreal<Client>> {
-    let endpoint = normalized_endpoint();
-    let namespace = resolved_namespace();
-    let database = database_name(path);
-    let username = std::env::var("NAHUALI_DB_USERNAME").unwrap_or_else(|_| "root".to_string());
-    let db_pass = std::env::var("NAHUALI_DB_PASSWORD").unwrap_or_else(|_| "root".to_string());
-    let db = Surreal::new::<Ws>(&endpoint)
-        .await
-        .map_err(|source| database_error(path, source))?;
-    db.signin(Root {
-        username,
-        password: db_pass,
-    })
-    .await
-    .map_err(|source| database_error(path, source))?;
-    db.use_ns(namespace)
-        .use_db(database)
-        .await
-        .map_err(|source| database_error(path, source))?;
-    db.query(MEMORY_RECORD_SCHEMA)
-        .await
-        .map_err(|source| database_error(path, source))?;
+async fn open_database(path: &Path) -> Result<DatabaseSession> {
+    let db = DatabaseSession::open(path)?;
     Ok(db)
 }
 

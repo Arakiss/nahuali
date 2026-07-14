@@ -24,30 +24,62 @@ impl EvidenceContext {
 }
 
 impl MemoryEngine {
+    /// Replace a ledger with raw envelopes for the unpublished regression runner.
+    ///
+    /// This deliberately bypasses event validation so fixtures can prove that
+    /// malformed histories fail closed. Product builds never enable the feature.
+    #[doc(hidden)]
+    #[cfg(feature = "regression-fixtures")]
+    pub fn replace_record_ledger_for_regression(
+        path: impl AsRef<Path>,
+        events: &[EventEnvelope],
+    ) -> Result<()> {
+        let path = path.as_ref().to_path_buf();
+        let retained_path = path.clone();
+        let events = events.to_vec();
+        let _database = DatabaseSession::open(&path)?;
+        block_on_database(async move {
+            let db = open_database(&retained_path).await?;
+            db.query("DELETE memory_record")
+                .await
+                .map_err(|source| database_error(&retained_path, source))?;
+            write_records(&retained_path, &events).await
+        })
+    }
+
     /// Open an existing SurrealDB store or initialize an empty one at `path`.
     ///
     /// Existing records are validated for monotonic sequence order and checksum
     /// integrity before projection.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
+        let database = DatabaseSession::open(&path)?;
         let read_path = path.clone();
         let events = block_on_database(async move { read_records(&read_path).await })?;
         let next_sequence = events.last().map(|event| event.sequence + 1).unwrap_or(1);
         let data = projection::project(&events);
-        let graph_path = path.clone();
-        let graph_data = data.clone();
-        let graph_events = events.clone();
-        block_on_database(async move {
-            rebuild_graph_projection(&graph_path, &graph_data, &graph_events).await
-        })?;
-
         Ok(Self {
+            _database: database,
             path,
             events,
             data,
             next_sequence,
             batch_active: false,
         })
+    }
+
+    /// Reload the authoritative ledger and deterministic in-memory projection.
+    ///
+    /// Long-lived transports call this before serving a request so writes made
+    /// by another process against a remote SurrealDB endpoint are visible and
+    /// sequence allocation never relies on a stale cached projection.
+    pub fn refresh(&mut self) -> Result<()> {
+        let read_path = self.path.clone();
+        let events = block_on_database(async move { read_records(&read_path).await })?;
+        self.next_sequence = events.last().map(|event| event.sequence + 1).unwrap_or(1);
+        self.data = projection::project(&events);
+        self.events = events;
+        Ok(())
     }
 
     /// Validate a SurrealDB database name without mutating or projecting invalid records.

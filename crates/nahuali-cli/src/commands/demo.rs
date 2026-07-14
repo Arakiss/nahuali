@@ -1,4 +1,4 @@
-//! `nahuali demo` — a zero-dependency first look at governed agent memory.
+//! `nahuali demo` is a zero-dependency first look at governed agent memory.
 //!
 //! The whole story runs through public, read-only projection APIs and the public
 //! `EventEnvelope` API. A freshly installed binary can show evidence-aware
@@ -10,8 +10,13 @@
 /// `attestation` is a default feature, so a plain `cargo build` / `cargo install`
 /// runs the full story here. The `--no-default-features` build keeps a minimal
 /// pointer instead of the full history-integrity half of the demo.
-pub(crate) fn demo() -> anyhow::Result<()> {
-    print!("{}", run());
+pub(crate) fn demo(json: bool) -> anyhow::Result<()> {
+    let (narrative, evidence) = run();
+    if json {
+        crate::output::print_json(&evidence)?;
+    } else {
+        print!("{narrative}");
+    }
     Ok(())
 }
 
@@ -141,7 +146,7 @@ fn governed_events(now_ms: u64) -> Vec<nahuali_core::EventEnvelope> {
 }
 
 #[cfg(feature = "attestation")]
-fn run() -> String {
+fn run() -> (String, serde_json::Value) {
     use std::fmt::Write as _;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -285,6 +290,7 @@ fn run() -> String {
     // Part 3: an honest, chained ledger.
     let last = ledger.last().expect("ledger is not empty");
     let (tip_sequence, tip_hash) = (last.sequence, last.chain_hash());
+    let chain_intact = verify_event_chain(&ledger).is_none();
     let _ = writeln!(
         out,
         "{}3 · The same memory lives in an append-only ledger.{}",
@@ -298,7 +304,7 @@ fn run() -> String {
     let _ = writeln!(
         out,
         "    chain intact: {}   tip: seq {tip_sequence} {}",
-        s.yes(verify_event_chain(&ledger).is_none()),
+        s.yes(chain_intact),
         short(&tip_hash)
     );
     out.push('\n');
@@ -306,6 +312,7 @@ fn run() -> String {
     // Part 4: the operator signs the tip.
     let receipt =
         sign_chain_tip(DEMO_SEED_HEX, tip_sequence, &tip_hash).expect("signing the tip succeeds");
+    let receipt_verifies = verify_chain_tip(&receipt, tip_sequence, &tip_hash).unwrap();
     let _ = writeln!(
         out,
         "{}4 · The operator signs that tip and keeps the receipt separately.{}",
@@ -314,7 +321,7 @@ fn run() -> String {
     let _ = writeln!(
         out,
         "    receipt verifies against the live history: {}",
-        s.yes(verify_chain_tip(&receipt, tip_sequence, &tip_hash).unwrap())
+        s.yes(receipt_verifies)
     );
     out.push('\n');
 
@@ -328,6 +335,7 @@ fn run() -> String {
     );
     forged.prev_hash = original.prev_hash.clone();
     rewritten[1] = forged;
+    let local_checksum_valid = rewritten[1].validate_checksum();
     let _ = writeln!(
         out,
         "{}5 · An attacker rewrites event 2 and recomputes its checksum.{}",
@@ -336,9 +344,10 @@ fn run() -> String {
     let _ = writeln!(
         out,
         "    per-event checksum still valid (a checksum-only store is fooled): {}",
-        s.yes(rewritten[1].validate_checksum())
+        s.yes(local_checksum_valid)
     );
-    match verify_event_chain(&rewritten) {
+    let in_place_break = verify_event_chain(&rewritten);
+    match &in_place_break {
         Some(brk) => {
             let _ = writeln!(
                 out,
@@ -370,6 +379,8 @@ fn run() -> String {
     }
     let new_last = rechained.last().expect("ledger is not empty");
     let (new_sequence, new_tip) = (new_last.sequence, new_last.chain_hash());
+    let rechained_intact = verify_event_chain(&rechained).is_none();
+    let rewritten_receipt_verifies = verify_chain_tip(&receipt, new_sequence, &new_tip).unwrap();
     let _ = writeln!(
         out,
         "{}6 · The attacker re-chains the whole history to repair every link.{}",
@@ -378,7 +389,7 @@ fn run() -> String {
     let _ = writeln!(
         out,
         "    chain now reports intact: {}   but the tip changed: {}",
-        s.yes(verify_event_chain(&rechained).is_none()),
+        s.yes(rechained_intact),
         short(&new_tip)
     );
     let _ = writeln!(
@@ -386,7 +397,7 @@ fn run() -> String {
         "    {}the signed receipt still refuses{}: verifies = {} (forging one needs the private key).",
         s.green,
         s.reset,
-        s.yes(verify_chain_tip(&receipt, new_sequence, &new_tip).unwrap())
+        s.yes(rewritten_receipt_verifies)
     );
     out.push('\n');
 
@@ -412,16 +423,46 @@ fn run() -> String {
     );
     let _ = writeln!(
         out,
-        "    Persistent memory needs the local stack:  {}https://github.com/Arakiss/nahuali{}",
+        "    Record persistent memory now:          {}nahuali remember \"What happened\"{}",
         s.dim, s.reset
     );
     out.push('\n');
 
-    out
+    let evidence = serde_json::json!({
+        "supported_recall": {
+            "verdict": format!("{:?}", supported_trust.mode).to_ascii_lowercase(),
+            "can_trust": supported_trust.can_trust,
+            "evidence_id": supported_claim.evidence_id,
+        },
+        "unsupported_recall": {
+            "verdict": format!("{:?}", unsupported_trust.mode).to_ascii_lowercase(),
+            "can_trust": unsupported_trust.can_trust,
+            "evidence_id": unsupported_claim.evidence_id,
+        },
+        "inspection": {
+            "unsupported_claim_count": inspection.health.unsupported_fact_count,
+            "contradiction_count": inspection.summary.contradiction_count,
+            "review_required": !inspection.review_queue.is_empty(),
+            "automatic_write_back": inspection.write_back_policy.automatic_write_back,
+        },
+        "history_integrity": {
+            "event_count": ledger.len(),
+            "chain_intact": chain_intact,
+            "checkpoint_verifies_original_tip": receipt_verifies,
+            "rewritten_event_checksum_valid": local_checksum_valid,
+            "in_place_rewrite_detected": in_place_break.is_some(),
+            "full_rechain_intact": rechained_intact,
+            "tip_changed_after_rechain": tip_hash != new_tip,
+            "checkpoint_rejects_rechain": !rewritten_receipt_verifies,
+            "external_checkpoint": true,
+        }
+    });
+
+    (out, evidence)
 }
 
 #[cfg(not(feature = "attestation"))]
-fn run() -> String {
+fn run() -> (String, serde_json::Value) {
     use std::fmt::Write as _;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -535,7 +576,29 @@ fn run() -> String {
         "{}cargo run -p nahuali-cli -- demo{}\n",
         s.accent, s.reset
     );
-    out
+    let evidence = serde_json::json!({
+        "supported_recall": {
+            "verdict": format!("{:?}", supported_trust.mode).to_ascii_lowercase(),
+            "can_trust": supported_trust.can_trust,
+            "evidence_id": supported_claim.evidence_id,
+        },
+        "unsupported_recall": {
+            "verdict": format!("{:?}", unsupported_trust.mode).to_ascii_lowercase(),
+            "can_trust": unsupported_trust.can_trust,
+            "evidence_id": unsupported_claim.evidence_id,
+        },
+        "inspection": {
+            "unsupported_claim_count": inspection.health.unsupported_fact_count,
+            "contradiction_count": inspection.summary.contradiction_count,
+            "review_required": !inspection.review_queue.is_empty(),
+            "automatic_write_back": inspection.write_back_policy.automatic_write_back,
+        },
+        "history_integrity": {
+            "available": false,
+            "external_checkpoint": false,
+        }
+    });
+    (out, evidence)
 }
 
 #[cfg(all(test, feature = "attestation"))]
@@ -551,7 +614,7 @@ mod tests {
         unsafe {
             std::env::set_var("NO_COLOR", "1");
         }
-        let story = run();
+        let (story, evidence) = run();
 
         assert!(story.contains("memory that shows its work"));
         assert!(story.contains("1 · Recall returns evidence and a verdict."));
@@ -576,6 +639,15 @@ mod tests {
         // No apology / source-build guidance in the full story.
         assert!(!story.contains("was built with"));
         assert!(!story.contains("--no-default-features"));
+        assert_eq!(evidence["supported_recall"]["can_trust"], true);
+        assert_eq!(
+            evidence["history_integrity"]["in_place_rewrite_detected"],
+            true
+        );
+        assert_eq!(
+            evidence["history_integrity"]["checkpoint_rejects_rechain"],
+            true
+        );
     }
 }
 
@@ -588,12 +660,13 @@ mod legacy_tests {
         unsafe {
             std::env::set_var("NO_COLOR", "1");
         }
-        let story = run();
+        let (story, evidence) = run();
 
         assert!(story.contains("CERTIFY  Lena owns release notes"));
         assert!(story.contains("WARN     Mateo owns deployment keys"));
         assert!(story.contains("unsupported claims: 1"));
         assert!(story.contains("contradictions: 1"));
         assert!(story.contains("History integrity proof unavailable"));
+        assert_eq!(evidence["history_integrity"]["available"], false);
     }
 }

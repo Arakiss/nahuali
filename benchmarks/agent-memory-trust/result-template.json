@@ -1,0 +1,23 @@
+{
+  "benchmarkVersion": "1.0.0",
+  "system": { "name": "Your memory system", "version": "0.0.0" },
+  "commit": "replace-with-an-immutable-revision",
+  "runner": {
+    "relationship": "first-party",
+    "adapter": "path or URL to the adapter source"
+  },
+  "environment": {
+    "services": [],
+    "models": [],
+    "operatorActions": []
+  },
+  "cases": [
+    { "id": "evidence-traceability", "status": "unsupported" },
+    { "id": "unsupported-memory-abstention", "status": "unsupported" },
+    { "id": "contradiction-detection", "status": "unsupported" },
+    { "id": "staleness-signaling", "status": "unsupported" },
+    { "id": "non-mutating-inspection", "status": "unsupported" },
+    { "id": "in-place-tamper-detection", "status": "unsupported" },
+    { "id": "full-rechain-detection", "status": "unsupported" }
+  ]
+}

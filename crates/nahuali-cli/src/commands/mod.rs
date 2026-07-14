@@ -697,21 +697,24 @@ fn verbose_open_line(database: &ResolvedValue) {
     );
 }
 
-/// Open the store, but turn an unreachable database into a calm, actionable
-/// failure instead of a raw connection error: reassure that data is safe,
-/// best-effort start the local stack if it is just stopped, and otherwise print
-/// the exact command to bring it up. The ledger lives in the database's own
-/// durable volume, so an unreachable service never means lost data.
+/// Open the store and explain failures according to the selected storage mode.
 fn open_store(database: &std::path::Path, verbose: bool) -> anyhow::Result<MemoryEngine> {
     match MemoryEngine::open(database) {
         Ok(engine) => Ok(engine),
         Err(error) => {
             let endpoint = nahuali_core::resolve_endpoint().value;
             eprintln!();
-            eprintln!("\u{2717} Cannot reach the Nahuali store at ws://{endpoint}.");
-            eprintln!(
-                "  Your data is safe \u{2014} nothing was lost or deleted; the database service"
-            );
+            if endpoint.starts_with("surrealkv://") {
+                eprintln!("\u{2717} Cannot open the local Nahuali store at {endpoint}.");
+                eprintln!(
+                    "  Another Nahuali process may be using it, or the path may be unreadable."
+                );
+                eprintln!("  Close the other process and retry. No data was deleted.");
+                return Err(error).context("the local Nahuali store could not be opened");
+            }
+
+            eprintln!("\u{2717} Cannot reach the Nahuali store at {endpoint}.");
+            eprintln!("  Your data is safe. Nothing was lost or deleted; the database service");
             eprintln!("  is just unreachable (the append-only ledger lives in its own volume).");
 
             let local = endpoint.contains("localhost") || endpoint.contains("127.0.0.1");

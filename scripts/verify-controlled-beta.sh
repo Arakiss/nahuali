@@ -48,7 +48,7 @@ run_step "Public security and supply-chain hygiene" bash scripts/security-supply
 run_step "Service-backed dev stack" bash scripts/ensure-dev-stack.sh
 run_step "Governance benchmark suite" bash scripts/verify-governance-benchmarks.sh
 
-run_step "Build CLI once for beta checks" cargo build -p nahuali-cli --quiet
+run_step "Build local binaries once for beta checks" cargo build -p nahuali-cli -p nahuali-mcp --quiet
 TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
 case "$TARGET_DIR" in
   /*) ;;
@@ -60,6 +60,9 @@ if [[ ! -x "$NAHUALI_BIN" ]]; then
   echo "expected: $NAHUALI_BIN" >&2
   exit 1
 fi
+
+run_step "Embedded persistence, process ownership, and MCP handshake" \
+  env NAHUALI_VERIFY_BIN_DIR="$TARGET_DIR/debug" bash scripts/verify-embedded-store.sh
 
 export NAHUALI_VALIDATE_SKIP_DEV_STACK=1
 

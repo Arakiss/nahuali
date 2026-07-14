@@ -2,8 +2,8 @@
 
 This is the fastest path to give an AI agent governed, tamper-evident memory.
 If your client speaks MCP (Claude Desktop, Claude Code, Cursor, Windsurf, Cline,
-and most others), add one stdio server entry after starting the local data
-service.
+and most others), add one stdio server entry. The default persistent store is
+embedded, so there is no database service to start.
 
 ## Why governed, tamper-evident memory
 
@@ -22,16 +22,16 @@ record-keeping and traceability programs need from a memory layer. Nahuali can
 support those programs, but it is not a compliance certification or legal
 advice; deployment-specific obligations still need their own review.
 
-## Install the server binary
+## Install the server
 
-Persistent memory uses SurrealDB. From the repository root, start the bundled
-local stack first:
+Install the signed release binaries:
 
 ```bash
-docker compose up -d
+curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
+export PATH="$HOME/.nahuali/bin:$PATH"
 ```
 
-Then install the MCP binary:
+Or build only the MCP server from source:
 
 ```bash
 cargo install --path crates/nahuali-mcp --locked
@@ -45,7 +45,22 @@ nahuali-mcp --version
 
 The binary speaks MCP over stdin/stdout. Your client launches it; you do not run
 it by hand. The main argument is `--database`, a SurrealDB database identifier
-(default: `memory`). It is not a filesystem path.
+(default: `memory`). It is not a filesystem path. The embedded store lives under
+`~/.nahuali/data`; use `NAHUALI_DB_URL` for a remote SurrealDB deployment.
+
+Nahuali is also published as `io.github.arakiss/nahuali` in the official MCP
+Registry. Its OCI package can be launched with a persistent named volume:
+
+```json
+{
+  "mcpServers": {
+    "nahuali": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "-v", "nahuali-data:/data", "ghcr.io/arakiss/nahuali-mcp:latest"]
+    }
+  }
+}
+```
 
 ## Copy-paste config
 
@@ -201,7 +216,7 @@ binary, so npm is not required for any of these.
 
 | Target | URL | What a submission needs |
 | --- | --- | --- |
-| Official MCP Registry | `registry.modelcontextprotocol.io` | A `server.json` published with `mcp-publisher`. Namespace `io.github.<owner>/nahuali`, verified by GitHub login. The registry hosts metadata only, not artifacts, so point it at a published package. The Rust binary qualifies via an **MCPB GitHub release** or an **OCI image** (GitHub Container Registry) — both are supported, so npm/PyPI are not needed. Wire it into CI so each release self-registers via GitHub OIDC (no stored secrets). |
+| Official MCP Registry | `registry.modelcontextprotocol.io` | `server.json` points to the public OCI image and release automation publishes it as `io.github.arakiss/nahuali` through GitHub OIDC. |
 | Glama | `glama.ai/mcp/servers` | Auto-indexer. It crawls GitHub and refreshes daily, so a public repo with a clear README and the `mcp` topic is largely picked up on its own; an "Add Server" form exists to submit the repo URL directly. **Zero-maintenance / GitHub-indexed.** No npm package required. |
 | mcp.so | `mcp.so` | Community directory. Submit via the "Submit" button or by opening a GitHub issue on their repo with the server name, description, features, and connection details (the `nahuali-mcp` command and `--database` arg). **Low-maintenance**, one-time submission. No npm package required. |
 | awesome-mcp-servers | `github.com/punkpeye/awesome-mcp-servers` | A pull request against `main`. Add one line in the appropriate category (Rust language tag; a knowledge/memory category), in alphabetical order, matching the existing format, with an accurate link and description. The canonical GitHub list that other tools and LLMs read. **Zero-maintenance / GitHub-indexed** after merge. No npm package required. |

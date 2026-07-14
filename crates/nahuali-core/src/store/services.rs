@@ -575,6 +575,10 @@ impl MemoryEngine {
         let path = path.as_ref();
         let target_database = target_database.as_ref();
         let validation = backup::validate_backup_file(path)?;
+        // Keep the process-owned embedded runtime alive across the read, write,
+        // and verification passes. Reopening SurrealKV after each pass can race
+        // its lock-file shutdown even though all work belongs to this process.
+        let _target_database_session = DatabaseSession::open(target_database)?;
         let target_path = target_database.to_path_buf();
         let target_events = block_on_database(async move { read_records(&target_path).await })?;
         let target_was_empty = target_events.is_empty();

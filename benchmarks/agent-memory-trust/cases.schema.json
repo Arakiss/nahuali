@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Arakiss/nahuali/benchmarks/agent-memory-trust/cases.schema.json",
+  "type": "object",
+  "required": ["benchmarkVersion", "cases"],
+  "properties": {
+    "benchmarkVersion": { "type": "string" },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "capability", "required"],
+        "properties": {
+          "id": { "type": "string" },
+          "capability": { "type": "string" },
+          "required": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

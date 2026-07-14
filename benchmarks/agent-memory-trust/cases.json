@@ -1,0 +1,41 @@
+{
+  "$schema": "./cases.schema.json",
+  "benchmarkVersion": "1.0.0",
+  "cases": [
+    {
+      "id": "evidence-traceability",
+      "capability": "evidence_traceability",
+      "required": { "evidence": "present", "normalizedVerdict": "trusted" }
+    },
+    {
+      "id": "unsupported-memory-abstention",
+      "capability": "unsupported_memory_abstention",
+      "required": { "evidence": "absent", "normalizedVerdict": "refused" }
+    },
+    {
+      "id": "contradiction-detection",
+      "capability": "contradiction_detection",
+      "required": { "detected": true, "normalizedVerdict": "refused" }
+    },
+    {
+      "id": "staleness-signaling",
+      "capability": "staleness_signaling",
+      "required": { "detected": true, "normalizedVerdict": "qualified_or_refused" }
+    },
+    {
+      "id": "non-mutating-inspection",
+      "capability": "non_mutating_inspection",
+      "required": { "detected": true, "mutated": false }
+    },
+    {
+      "id": "in-place-tamper-detection",
+      "capability": "in_place_tamper_detection",
+      "required": { "detected": true }
+    },
+    {
+      "id": "full-rechain-detection",
+      "capability": "full_rechain_detection",
+      "required": { "detected": true, "externalCheckpoint": true }
+    }
+  ]
+}

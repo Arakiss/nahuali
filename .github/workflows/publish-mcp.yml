@@ -1,0 +1,103 @@
+name: Publish MCP server
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing Nahuali CLI release tag"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Set release version
+        id: version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: echo "version=${RELEASE_TAG#nahuali-cli-v}" >> "$GITHUB_OUTPUT"
+
+  image:
+    needs: prepare
+    uses: docker/github-builder/.github/workflows/build.yml@v1
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      output: image
+      push: true
+      context: .
+      file: Dockerfile.mcp
+      platforms: linux/amd64,linux/arm64
+      cache: true
+      cache-scope: nahuali-mcp
+      sbom: true
+      set-meta-labels: true
+      meta-images: ghcr.io/arakiss/nahuali-mcp
+      meta-tags: |
+        type=raw,value=${{ needs.prepare.outputs.version }}
+        type=raw,value=latest
+      labels: |
+        io.modelcontextprotocol.server.name=io.github.arakiss/nahuali
+        org.opencontainers.image.source=https://github.com/Arakiss/nahuali
+        org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    needs: [prepare, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.0
+    steps:
+      - name: Check out the release
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set registry metadata version
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          jq --arg version "$VERSION" \
+            '.version = $version | .packages[0].identifier = "ghcr.io/arakiss/nahuali-mcp:" + $version' \
+            server.json > server.tmp.json
+          mv server.tmp.json server.json
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Install verified MCP publisher
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz" \
+            --output mcp-publisher.tar.gz
+          curl --fail --location --silent --show-error \
+            "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz.sigstore.json" \
+            --output mcp-publisher.sigstore.json
+          cosign verify-blob \
+            --bundle mcp-publisher.sigstore.json \
+            --certificate-identity-regexp '^https://github.com/modelcontextprotocol/registry/.github/workflows/.*@refs/tags/v.*$' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            mcp-publisher.tar.gz
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
+
+      - name: Authenticate to the MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish registry metadata
+        run: ./mcp-publisher publish

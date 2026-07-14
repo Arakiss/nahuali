@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 use tower::ServiceExt;
 
 static API_CONTRACT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static API_TEST_ENDPOINT: OnceLock<()> = OnceLock::new();
 
 #[test]
 fn openapi_contract_has_the_frozen_beta_path_set() {
@@ -825,6 +826,21 @@ fn assert_schema_requires(openapi: &Value, schema: &str, property: &str) {
 }
 
 fn temp_database(name: &str) -> String {
+    API_TEST_ENDPOINT.get_or_init(|| {
+        // Workspace test binaries run concurrently. Keep this contract suite on
+        // its own process-specific store, so it cannot contend with another
+        // binary for the default embedded SurrealKV directory.
+        let endpoint = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/test-data")
+            .join(format!("nahuali-api-http-contract-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&endpoint);
+        unsafe {
+            std::env::set_var(
+                "NAHUALI_DB_URL",
+                format!("surrealkv://{}", endpoint.display()),
+            )
+        };
+    });
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()

@@ -10,8 +10,8 @@ use nahuali_api::{ApiConfig, router};
     about = "Run the Nahuali HTTP API server."
 )]
 struct Args {
-    #[arg(long, default_value = "memory")]
-    database: PathBuf,
+    #[arg(long)]
+    database: Option<PathBuf>,
     #[arg(long, default_value = "127.0.0.1:7070")]
     listen: SocketAddr,
 }
@@ -19,7 +19,9 @@ struct Args {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    let flag = args.database.as_deref().and_then(std::path::Path::to_str);
+    let database = nahuali_core::resolve_database_name(flag)?;
     let listener = tokio::net::TcpListener::bind(args.listen).await?;
-    axum::serve(listener, router(ApiConfig::new(args.database))).await?;
+    axum::serve(listener, router(ApiConfig::new(database.value))).await?;
     Ok(())
 }

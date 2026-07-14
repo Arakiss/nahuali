@@ -11,21 +11,12 @@ use clap::Parser;
 use nahuali_core::{
     AuthorityDecision, AuthorityMode, AutonomyLevel, EpisodeRecorded, EventEnvelope, FactAsserted,
     HealthDimension, HealthSeverity, HealthSignalKind, IntentionKind, IntentionPriority,
-    IntentionStatus, KnowledgeHealth, MEMORY_RECORD_SCHEMA, MemoryEngine, MemoryEvent, MemoryKind,
-    RecallResult, RelationRecorded, RepairClaim, RepairLink, RepairPayload, RepairProposal,
+    IntentionStatus, KnowledgeHealth, MemoryEngine, MemoryEvent, MemoryKind, RecallResult,
+    RelationRecorded, RepairClaim, RepairLink, RepairPayload, RepairProposal,
 };
 use serde::{Deserialize, Serialize};
-use surrealdb::{
-    Surreal,
-    engine::remote::ws::{Client, Ws},
-    opt::auth::Root,
-};
-use tokio::runtime::{Builder, Runtime};
 
 static RUN_COUNTER: AtomicU64 = AtomicU64::new(1);
-const SURREAL_NAMESPACE: &str = "nahuali";
-const DEFAULT_SURREAL_ENDPOINT: &str = "localhost:18000";
-const SURREAL_DATABASE: &str = "memory";
 
 #[derive(Debug, Parser)]
 #[command(name = "nahuali-regression")]

@@ -1,5 +1,6 @@
 use std::{
     fs,
+    ops::Deref,
     path::{Path, PathBuf},
     process::{Command, Output},
     time::{SystemTime, UNIX_EPOCH},
@@ -30,10 +31,29 @@ pub fn run_ok_with_semantic_collection(store: &Path, args: &[&str], collection: 
 }
 
 pub fn run(store: &Path, args: &[&str]) -> Output {
+    run_at_endpoint(store, store, args)
+}
+
+pub fn run_at_endpoint(database: &Path, endpoint_store: &Path, args: &[&str]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_nahuali"));
-    command.arg("--database").arg(store);
+    command
+        .arg("--database")
+        .arg(database)
+        .env("NAHUALI_DB_URL", test_endpoint(endpoint_store));
     command.args(args);
     command.output().expect("nahuali-cli runs")
+}
+
+pub fn run_ok_at_endpoint(database: &Path, endpoint_store: &Path, args: &[&str]) -> String {
+    let output = run_at_endpoint(database, endpoint_store, args);
+    assert!(
+        output.status.success(),
+        "command failed\nargs: {args:?}\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    String::from_utf8(output.stdout).expect("stdout is UTF-8")
 }
 
 pub fn run_with_semantic_collection(store: &Path, args: &[&str], collection: &str) -> Output {
@@ -41,6 +61,7 @@ pub fn run_with_semantic_collection(store: &Path, args: &[&str], collection: &st
     command
         .arg("--database")
         .arg(store)
+        .env("NAHUALI_DB_URL", test_endpoint(store))
         .env("NAHUALI_QDRANT_COLLECTION", collection);
     command.args(args);
     command.output().expect("nahuali-cli runs")
@@ -61,7 +82,32 @@ pub fn temp_store(name: &str) -> PathBuf {
 /// refuses a path-like `--database` name, so database stores use this instead of
 /// a temp-dir path (which `temp_store` still provides for artifact FILES like
 /// snapshots, backups, and interchange documents).
-pub fn temp_database(name: &str) -> PathBuf {
+pub struct TempDatabase {
+    name: PathBuf,
+    endpoint: PathBuf,
+}
+
+impl Deref for TempDatabase {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        &self.name
+    }
+}
+
+impl AsRef<Path> for TempDatabase {
+    fn as_ref(&self) -> &Path {
+        &self.name
+    }
+}
+
+impl Drop for TempDatabase {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.endpoint);
+    }
+}
+
+pub fn temp_database(name: &str) -> TempDatabase {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system clock is after epoch")
@@ -76,10 +122,23 @@ pub fn temp_database(name: &str) -> PathBuf {
             }
         })
         .collect();
-    PathBuf::from(format!(
+    let name = PathBuf::from(format!(
         "nahuali_cli_{sanitized}_{}_{nanos}",
         std::process::id()
-    ))
+    ));
+    let endpoint = endpoint_path(&name);
+    let _ = fs::remove_dir_all(&endpoint);
+    TempDatabase { name, endpoint }
+}
+
+fn endpoint_path(store: &Path) -> PathBuf {
+    std::env::temp_dir()
+        .join("nahuali-cli-test-stores")
+        .join(store.as_os_str())
+}
+
+fn test_endpoint(store: &Path) -> String {
+    format!("surrealkv://{}", endpoint_path(store).display())
 }
 
 pub fn semantic_collection_name(name: &str) -> String {

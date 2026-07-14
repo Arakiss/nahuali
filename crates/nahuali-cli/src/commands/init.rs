@@ -1,4 +1,4 @@
-//! `nahuali init` — turn "installed" into "my agent uses Nahuali".
+//! `nahuali init`: turn "installed" into "my agent uses Nahuali".
 //!
 //! Installs the bundled Claude Code skill into the user's harness and prints the
 //! MCP server config and the cross-harness protocol, so a freshly installed
@@ -55,11 +55,11 @@ pub(crate) fn init(dry_run: bool, force: bool) -> anyhow::Result<()> {
         s.bold, s.reset
     );
     if dry_run {
-        println!("{}(dry run — nothing will be written){}", s.dim, s.reset);
+        println!("{}(dry run: nothing will be written){}", s.dim, s.reset);
     }
     println!();
 
-    // 1 — the Claude Code skill (the concrete, safe, additive transition).
+    // 1. The Claude Code skill (the concrete, safe, additive transition).
     println!("{}1 · Claude Code skill{}", s.bold, s.reset);
     match claude_skill_target() {
         Some(target) => install_skill(&target, dry_run, force, &s)?,
@@ -70,7 +70,7 @@ pub(crate) fn init(dry_run: bool, force: bool) -> anyhow::Result<()> {
     }
     println!();
 
-    // 2 — the MCP server (printed, never auto-merged into the user's config).
+    // 2. The MCP server (printed, never auto-merged into the user's config).
     println!("{}2 · Add Nahuali as an MCP server{}", s.bold, s.reset);
     println!(
         "    Paste into your client's MCP config (e.g. {}.mcp.json{}):",
@@ -81,7 +81,7 @@ pub(crate) fn init(dry_run: bool, force: bool) -> anyhow::Result<()> {
     }
     println!();
 
-    // 3 — the cross-harness protocol.
+    // 3. The cross-harness protocol.
     println!("{}3 · Make it binding for any harness{}", s.bold, s.reset);
     println!(
         "    Copy the protocol into your {}AGENTS.md{} (or system prompt) so the agent",

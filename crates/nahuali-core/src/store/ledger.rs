@@ -73,25 +73,8 @@ fn decode_record(path: &Path, record: usize, row: serde_json::Value) -> Result<M
     })
 }
 
-async fn open_database(path: &Path) -> Result<Surreal<Client>> {
-    let endpoint = normalized_endpoint();
-    let namespace = resolved_namespace();
-    let database = database_name(path);
-    let username = std::env::var("NAHUALI_DB_USERNAME").unwrap_or_else(|_| "root".to_string());
-    let db_pass = std::env::var("NAHUALI_DB_PASSWORD").unwrap_or_else(|_| "root".to_string());
-    let db = Surreal::new::<Ws>(&endpoint)
-        .await
-        .map_err(|source| database_error(path, source))?;
-    db.signin(Root {
-        username,
-        password: db_pass,
-    })
-    .await
-    .map_err(|source| database_error(path, source))?;
-    db.use_ns(namespace)
-        .use_db(database)
-        .await
-        .map_err(|source| database_error(path, source))?;
+async fn open_database(path: &Path) -> Result<DatabaseSession> {
+    let db = DatabaseSession::open(path)?;
     db.query(MEMORY_RECORD_SCHEMA)
         .await
         .map_err(|source| database_error(path, source))?;

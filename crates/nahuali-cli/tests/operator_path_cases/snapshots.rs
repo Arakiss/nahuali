@@ -202,7 +202,7 @@ fn backup_validate_and_restore_are_scriptable() {
     assert_eq!(restore_dry_run["appendable_event_count"], 2);
     assert_eq!(restore_dry_run["restored_event_count"], 0);
 
-    let empty_validation = run_ok(&target_store, &["validate", "--json"]);
+    let empty_validation = run_ok_at_endpoint(&target_store, &source_store, &["validate", "--json"]);
     let empty: Value = serde_json::from_str(&empty_validation).expect("validation output is JSON");
     assert_eq!(empty["event_count"], 0);
 
@@ -221,7 +221,8 @@ fn backup_validate_and_restore_are_scriptable() {
     assert_eq!(restored["restored_event_count"], 2);
     assert_eq!(restored["semantic_restore_policy"], "rebuild_from_records");
 
-    let target_validation = run_ok(&target_store, &["validate", "--json"]);
+    let target_validation =
+        run_ok_at_endpoint(&target_store, &source_store, &["validate", "--json"]);
     let target: Value =
         serde_json::from_str(&target_validation).expect("target validation output is JSON");
     assert_eq!(target["event_count"], 2);

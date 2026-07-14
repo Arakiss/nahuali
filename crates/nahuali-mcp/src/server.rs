@@ -54,6 +54,7 @@ impl NahualiMcpServer {
             .memory
             .lock()
             .map_err(|_| "memory database lock is poisoned".to_string())?;
+        memory.refresh().map_err(|error| error.to_string())?;
         operation(&mut memory)
     }
 

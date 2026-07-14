@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.arakiss/nahuali",
+  "title": "Nahuali",
+  "description": "Trust-aware agent memory with evidence-backed recall, self-inspection, and audit history.",
+  "repository": {
+    "url": "https://github.com/Arakiss/nahuali",
+    "source": "github"
+  },
+  "version": "1.0.0-beta.1",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/arakiss/nahuali-mcp:1.0.0-beta.1",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

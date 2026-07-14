@@ -165,9 +165,13 @@ pub(crate) struct Cli {
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
     #[command(
-        about = "See recall trust, self-inspection, and history integrity — no database or Docker."
+        about = "See recall trust, self-inspection, and history integrity without a database or Docker."
     )]
-    Demo {},
+    Demo {
+        /// Print the computed demo evidence as machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
     #[command(
         about = "Wire your agent harness to use Nahuali (installs the skill, prints the MCP config)."
     )]

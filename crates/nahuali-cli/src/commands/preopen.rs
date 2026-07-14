@@ -3,7 +3,10 @@ use std::path::Path;
 use anyhow::{Context, bail};
 use clap::CommandFactory;
 use clap_complete::generate;
-use nahuali_core::{BackupValidationOptions, MemoryEngine, RecordLedgerValidationOptions};
+use nahuali_core::{
+    BackupValidationOptions, MemoryEngine, RecordLedgerValidationOptions, project_validated_events,
+    validate_record_ledger_events_with_options,
+};
 
 use crate::{
     cli::{Cli, Command},
@@ -14,7 +17,7 @@ use super::{migration, migration_legacy};
 
 pub(crate) fn handle(command: &Command, database: &Path) -> anyhow::Result<bool> {
     match command {
-        Command::Demo {} => super::demo::demo().map(|()| true),
+        Command::Demo { json } => super::demo::demo(*json).map(|()| true),
         Command::Init { dry_run, force } => super::init::init(*dry_run, *force).map(|()| true),
         Command::Completions { shell } => {
             let mut command = Cli::command();
@@ -81,8 +84,9 @@ pub(crate) fn handle(command: &Command, database: &Path) -> anyhow::Result<bool>
 
 fn validate(database: &Path, require_chained: bool, json: bool) -> anyhow::Result<bool> {
     let options = RecordLedgerValidationOptions { require_chained };
-    let report = MemoryEngine::validate_store_with_options(database, &options)
+    let (report, events) = validate_record_ledger_events_with_options(database, &options)
         .with_context(|| format!("failed to validate {}", database.display()))?;
+    let data = report.valid.then(|| project_validated_events(&events));
     // Loud legacy-permissive notice on the human path: the operator explicitly
     // relaxed the fail-closed default. JSON callers read `require_chained`.
     #[cfg(feature = "tamper-evidence")]
@@ -91,9 +95,7 @@ fn validate(database: &Path, require_chained: bool, json: bool) -> anyhow::Resul
     }
     if json {
         if report.valid {
-            let memory = MemoryEngine::open(database)
-                .with_context(|| format!("failed to open {}", database.display()))?;
-            let data = memory.data();
+            let data = data.as_ref().expect("valid ledgers are projected");
             output::print_json(&serde_json::json!({
                 "database": database.display().to_string(),
                 "record_ledger_table": "memory_record",
@@ -138,9 +140,7 @@ fn validate(database: &Path, require_chained: bool, json: bool) -> anyhow::Resul
             output::print_json(&value)?;
         }
     } else if report.valid {
-        let memory = MemoryEngine::open(database)
-            .with_context(|| format!("failed to open {}", database.display()))?;
-        let data = memory.data();
+        let data = data.as_ref().expect("valid ledgers are projected");
         println!("Database: {}", database.display());
         println!("Record ledger: memory_record");
         println!("Projection: Rust");

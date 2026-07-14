@@ -19,8 +19,8 @@ three questions before callers rely on it:
 4. Has the recorded history been altered?
 
 The first three are answered by inspectable trust: evidence, health signals, and
-authority context. The fourth is answered by a verifiable ledger: an opt-in hash
-chain and a signed tip let a caller prove the recorded past was not rewritten.
+authority context. The fourth is answered by a verifiable ledger: the default
+hash chain and a signed tip let a caller detect a rewritten past.
 
 The public source-available (FSL-1.1-MIT) engine should stay focused on that
 foundation: local persistence, ledger replay, evidence-backed recall,
@@ -51,6 +51,7 @@ The current public foundation includes:
 - local MCP stdio server: `nahuali-mcp`
 - local HTTP API: `nahuali-api`
 - SurrealDB-backed record ledger
+- embedded SurrealKV storage by default, with remote SurrealDB as an override
 - tamper-evident hash-chained ledger (default-on across core, CLI, MCP, and API)
 - Ed25519 chain-tip attestation (default-on build surface; signing remains an
   explicit operator action with an operator-held key)
@@ -75,6 +76,8 @@ The current public foundation includes:
   is missing, and whether history was altered in one non-mutating verdict
 - one-line installer, a zero-dependency `demo`, and a harness adoption skill and
   cross-harness protocol that `init` wires into the user's agent
+- OCI-packaged MCP server with official MCP Registry publication on release
+- vendor-neutral Agent Memory Trust Benchmark and a public adapter contract
 - synthetic regression fixtures and release-gate scripts
 
 ## Near-Term: Public Beta Hardening
@@ -89,8 +92,7 @@ Focus areas:
 - cut reproducible prerelease artifacts from tagged commits
 - keep the release gate runnable from a clean checkout
 - make errors and JSON output stable enough for scripts
-- extend the opt-in tamper-evidence, attestation, and local-model surfaces from
-  the CLI to the MCP and API binaries
+- keep tamper evidence and attestation consistent across the CLI, MCP, and API
 - keep the agent-first CLI daily-driver loop demo passing from a clean checkout
 - tighten validated examples around evidence-backed recall and self-inspection
 - document the exact boundaries of the local API and MCP surfaces
@@ -98,7 +100,7 @@ Focus areas:
 
 Exit criteria:
 
-- a new technical user can clone the repository, start local services, run the
+- a new technical user can install a release without local services, run the
   CLI, record memory, recall it with authority context, inspect health, and run
   the documented validation commands
 - public claims in README and ROADMAP are implemented or removed
