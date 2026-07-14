@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-regression-v0.3.0-beta.0...nahuali-regression-v1.0.0-beta.0) (2026-07-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* default builds now enable attestation and fail-closed validation; --require-chained becomes --allow-unchained (opt-out); new event envelopes are version 2 with SHA-256 checksums.
+* the default validation verdict for an unchained ledger flips from accept to reject, the `--require-chained` flag is renamed to `--allow-unchained`, and new records carry a SHA-256 checksum at envelope version 2.
+
+### merge
+
+* flagship defaults true by default (D1+D2+D3+C3) ([3cb436a](https://github.com/Arakiss/nahuali/commit/3cb436a62b33f6094aa6e69d106535cad2f24784))
+
+
+### Features
+
+* default to a fail-closed, SHA-256-checksummed, attested ledger ([118488f](https://github.com/Arakiss/nahuali/commit/118488fa936e9d1a83bc6d66c1816a77140f97f5))
+
 ## [0.3.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-regression-v0.2.0-beta.0...nahuali-regression-v0.3.0-beta.0) (2026-07-06)
 
 
