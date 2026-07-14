@@ -172,6 +172,7 @@ assert_file_contains scripts/verify-recall-contract.sh 'jq -e' "native recall co
 assert_file_contains .github/workflows/sbom.yml 'workflow_dispatch:' "SBOM workflow must support manual reruns for existing beta tags"
 assert_file_contains .github/workflows/sbom.yml 'startsWith\(inputs\.tag, .nahuali-cli-v.\)' "SBOM workflow manual dispatch must stay scoped to nahuali-cli tags"
 assert_file_contains .github/workflows/sbom.yml 'artifact-name: nahuali-\$\{\{ env\.RELEASE_TAG \}\}\.cdx\.json' "SBOM workflow must attach the canonical release SBOM asset"
+assert_file_contains .github/workflows/sbom.yml 'gh release upload .*\$\{RELEASE_TAG\}.*--clobber' "SBOM workflow dispatches must explicitly attach the generated file to the selected release"
 assert_file_contains docker-compose.yml 'nofile:' "Qdrant dev stack must raise nofile for long release-candidate gates"
 assert_file_contains docker-compose.yml 'container_name: nahual-mictlan-surrealdb' "SurrealDB dev container must use the Nahual universe name"
 assert_file_contains docker-compose.yml 'container_name: nahual-tonalli-qdrant' "Qdrant dev container must use the Nahual universe name"

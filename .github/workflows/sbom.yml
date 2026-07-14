@@ -34,4 +34,9 @@ jobs:
         with:
           format: cyclonedx-json
           artifact-name: nahuali-${{ env.RELEASE_TAG }}.cdx.json
-          upload-release-assets: true
+          output-file: nahuali-${{ env.RELEASE_TAG }}.cdx.json
+          upload-release-assets: false
+      - name: Attach CycloneDX SBOM to the selected release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${RELEASE_TAG}" "nahuali-${RELEASE_TAG}.cdx.json" --clobber
