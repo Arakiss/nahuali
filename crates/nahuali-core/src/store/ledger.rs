@@ -75,12 +75,8 @@ fn decode_record(path: &Path, record: usize, row: serde_json::Value) -> Result<M
 
 async fn open_database(path: &Path) -> Result<DatabaseSession> {
     let db = DatabaseSession::open(path)?;
-    db.query(MEMORY_RECORD_SCHEMA)
-        .await
-        .map_err(|source| database_error(path, source))?;
-    db.query(GRAPH_PROJECTION_SCHEMA)
-        .await
-        .map_err(|source| database_error(path, source))?;
+    db.ensure_schema(path, &[MEMORY_RECORD_SCHEMA, GRAPH_PROJECTION_SCHEMA])
+        .await?;
     Ok(db)
 }
 

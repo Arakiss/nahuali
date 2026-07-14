@@ -249,6 +249,7 @@ struct StoreRuntime {
     endpoint: String,
     runtime: Option<Runtime>,
     root: Mutex<Option<Surreal<Any>>>,
+    schema_lock: tokio::sync::Mutex<()>,
 }
 
 /// A logical database session backed by one process-owned SurrealDB router.
@@ -299,6 +300,19 @@ impl DatabaseSession {
             owner,
         })
     }
+
+    /// Apply idempotent schema definitions without racing another logical
+    /// database session on the same physical SurrealDB router.
+    pub(crate) async fn ensure_schema(&self, path: &Path, schemas: &[&str]) -> CoreResult<()> {
+        let _schema_guard = self.owner.schema_lock.lock().await;
+        for schema in schemas {
+            self.db
+                .query(*schema)
+                .await
+                .map_err(|source| database_error(path, source))?;
+        }
+        Ok(())
+    }
 }
 
 impl std::ops::Deref for DatabaseSession {
@@ -346,6 +360,7 @@ fn store_runtime(endpoint: &str, path: &Path) -> CoreResult<Arc<StoreRuntime>> {
         endpoint: endpoint.to_string(),
         runtime: Some(runtime),
         root: Mutex::new(Some(root)),
+        schema_lock: tokio::sync::Mutex::new(()),
     });
     runtimes.insert(endpoint.to_string(), Arc::clone(&owner));
     Ok(owner)

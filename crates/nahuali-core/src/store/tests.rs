@@ -3,6 +3,7 @@ mod tests {
     use std::{
         fs,
         path::PathBuf,
+        sync::{Arc, Barrier},
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -15,6 +16,29 @@ mod tests {
     };
 
     use super::MemoryEngine;
+
+    #[test]
+    fn concurrent_store_opens_serialize_schema_initialization() {
+        const SESSION_COUNT: usize = 12;
+        let barrier = Arc::new(Barrier::new(SESSION_COUNT));
+        let handles = (0..SESSION_COUNT)
+            .map(|index| {
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    let path = temp_path(&format!("concurrent_schema_open_{index}"));
+                    barrier.wait();
+                    let result = MemoryEngine::open(&path).map(|memory| memory.events().len());
+                    (path, result)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            let (path, result) = handle.join().expect("store opener thread completes");
+            assert_eq!(result.expect("concurrent store opens cleanly"), 0);
+            let _ = fs::remove_file(path);
+        }
+    }
 
     fn consolidate(
         subject: &str,
