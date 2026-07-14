@@ -290,13 +290,16 @@ impl DatabaseSession {
         let selected_database = database.clone();
         let logical_path = path.to_path_buf();
         let selected = db.clone();
+        let selection_owner = Arc::clone(&owner);
         let selected = run_on(&owner, async move {
-            selected
-                .use_ns(namespace)
-                .use_db(selected_database)
-                .await
-                .map_err(|source| database_error(&logical_path, source))?;
-            Ok(selected)
+            select_database_with_retry(
+                &selection_owner,
+                selected,
+                namespace,
+                selected_database,
+                &logical_path,
+            )
+            .await
         })?;
         Ok(Self {
             db: selected,
@@ -365,6 +368,48 @@ impl DatabaseSession {
         }
         query.await
     }
+}
+
+async fn select_database_with_retry(
+    owner: &StoreRuntime,
+    db: Surreal<Any>,
+    namespace: String,
+    database: String,
+    path: &Path,
+) -> CoreResult<Surreal<Any>> {
+    const MAX_ATTEMPTS: u32 = 16;
+
+    match select_database_once(&db, &namespace, &database).await {
+        Ok(selected) => return Ok(selected),
+        Err(source) if is_transaction_conflict(&source) => {}
+        Err(source) => return Err(database_error(path, source)),
+    }
+
+    let _recovery = owner.conflict_recovery.lock().await;
+    for attempt in 1..=MAX_ATTEMPTS {
+        match select_database_once(&db, &namespace, &database).await {
+            Ok(selected) => return Ok(selected),
+            Err(source) if is_transaction_conflict(&source) && attempt < MAX_ATTEMPTS => {
+                let delay_ms = 5_u64.saturating_mul(1_u64 << attempt.min(5));
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            }
+            Err(source) => return Err(database_error(path, source)),
+        }
+    }
+    unreachable!("the bounded database-selection loop always returns")
+}
+
+async fn select_database_once(
+    db: &Surreal<Any>,
+    namespace: &str,
+    database: &str,
+) -> Result<Surreal<Any>, surrealdb::Error> {
+    let selected = db.clone();
+    selected
+        .use_ns(namespace.to_string())
+        .use_db(database.to_string())
+        .await?;
+    Ok(selected)
 }
 
 impl std::ops::Deref for DatabaseSession {
