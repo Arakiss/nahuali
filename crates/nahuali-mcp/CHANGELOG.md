@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.0.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-mcp-v0.6.0-beta.0...nahuali-mcp-v1.0.0-beta.0) (2026-07-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* default builds now enable attestation and fail-closed validation; --require-chained becomes --allow-unchained (opt-out); new event envelopes are version 2 with SHA-256 checksums.
+* the default validation verdict for an unchained ledger flips from accept to reject, the `--require-chained` flag is renamed to `--allow-unchained`, and new records carry a SHA-256 checksum at envelope version 2.
+* --database now refuses names that normalization would rewrite (e.g. ./memory); the error suggests the normalized candidate. The documented idiom and all scripts/tests migrated to clean identifiers.
+
+### merge
+
+* config integrity + signed installer (C2+C6) ([94d9c22](https://github.com/Arakiss/nahuali/commit/94d9c22228c2d43ef2791fadb5af1154f628c50f))
+* flagship defaults true by default (D1+D2+D3+C3) ([3cb436a](https://github.com/Arakiss/nahuali/commit/3cb436a62b33f6094aa6e69d106535cad2f24784))
+
+
+### Features
+
+* **cli,mcp:** surface signal_count and distinct_flagged_record_count ([68c28df](https://github.com/Arakiss/nahuali/commit/68c28df23d265d741d311d9b25f28e65ddcd4d98))
+* **config:** resolve database name once with flag&gt;env&gt;default precedence ([2afe8c1](https://github.com/Arakiss/nahuali/commit/2afe8c1b7e93fa5f28941b5fc8835a506e36ad6f))
+* default to a fail-closed, SHA-256-checksummed, attested ledger ([118488f](https://github.com/Arakiss/nahuali/commit/118488fa936e9d1a83bc6d66c1816a77140f97f5))
+* make memory trust visible on first run ([15fc455](https://github.com/Arakiss/nahuali/commit/15fc455cb3eeceeecdb6a3b6e9e17c9eb31495fa))
+
 ## [0.6.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-mcp-v0.5.0-beta.0...nahuali-mcp-v0.6.0-beta.0) (2026-07-06)
 
 
