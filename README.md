@@ -88,7 +88,7 @@ review, repair, intentions, backup, and ledger verification.
 
 Run `nahuali init` to install the bundled skill where supported and print a
 native-binary MCP configuration. The server is also published as
-`io.github.arakiss/nahuali` in the official MCP Registry and as an OCI image:
+`io.github.Arakiss/nahuali` in the official MCP Registry and as an OCI image:
 
 ```json
 {

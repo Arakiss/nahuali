@@ -6,7 +6,7 @@
 set -eu
 
 REPO="${NAHUALI_GITHUB_REPO:-Arakiss/nahuali}"
-MCP_NAME="${NAHUALI_MCP_NAME:-io.github.arakiss/nahuali}"
+MCP_NAME="${NAHUALI_MCP_NAME:-io.github.Arakiss/nahuali}"
 REGISTRY_URL="${NAHUALI_MCP_REGISTRY_URL:-https://registry.modelcontextprotocol.io}"
 
 command -v gh >/dev/null 2>&1 || {
