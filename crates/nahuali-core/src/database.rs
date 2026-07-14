@@ -250,6 +250,7 @@ struct StoreRuntime {
     runtime: Option<Runtime>,
     root: Mutex<Option<Surreal<Any>>>,
     initialized_databases: tokio::sync::Mutex<HashSet<String>>,
+    conflict_recovery: tokio::sync::Mutex<()>,
 }
 
 /// A logical database session backed by one process-owned SurrealDB router.
@@ -330,23 +331,39 @@ impl DatabaseSession {
     ) -> CoreResult<surrealdb::IndexedResults> {
         const MAX_ATTEMPTS: u32 = 16;
         let statement = statement.into();
-        let mut attempt = 1;
+        match self.execute_query(&statement, &bindings).await {
+            Ok(response) => return Ok(response),
+            Err(source) if is_transaction_conflict(&source) => {}
+            Err(source) => return Err(database_error(path, source)),
+        }
 
-        loop {
-            let mut query = self.db.query(statement.clone());
-            for (name, value) in &bindings {
-                query = query.bind((name.clone(), value.clone()));
-            }
-            match query.await {
+        // Contending transactions otherwise retry in lockstep and can exhaust
+        // the bound together. Keep the normal path concurrent and serialize
+        // only recovery after SurrealDB has reported a retryable conflict.
+        let _recovery = self.owner.conflict_recovery.lock().await;
+        for attempt in 1..=MAX_ATTEMPTS {
+            match self.execute_query(&statement, &bindings).await {
                 Ok(response) => return Ok(response),
                 Err(source) if is_transaction_conflict(&source) && attempt < MAX_ATTEMPTS => {
                     let delay_ms = 5_u64.saturating_mul(1_u64 << attempt.min(5));
                     tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                    attempt += 1;
                 }
                 Err(source) => return Err(database_error(path, source)),
             }
         }
+        unreachable!("the bounded query loop always returns")
+    }
+
+    async fn execute_query(
+        &self,
+        statement: &str,
+        bindings: &[(String, serde_json::Value)],
+    ) -> Result<surrealdb::IndexedResults, surrealdb::Error> {
+        let mut query = self.db.query(statement.to_string());
+        for (name, value) in bindings {
+            query = query.bind((name.clone(), value.clone()));
+        }
+        query.await
     }
 }
 
@@ -396,6 +413,7 @@ fn store_runtime(endpoint: &str, path: &Path) -> CoreResult<Arc<StoreRuntime>> {
         runtime: Some(runtime),
         root: Mutex::new(Some(root)),
         initialized_databases: tokio::sync::Mutex::new(HashSet::new()),
+        conflict_recovery: tokio::sync::Mutex::new(()),
     });
     runtimes.insert(endpoint.to_string(), Arc::clone(&owner));
     Ok(owner)
