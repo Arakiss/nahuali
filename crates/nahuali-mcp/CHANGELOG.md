@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-mcp-v1.1.0-beta.0...nahuali-mcp-v1.1.1-beta.0) (2026-07-14)
+
+
+### Bug fixes
+
+* bind MCP publication to the canonical namespace ([0c1f39d](https://github.com/Arakiss/nahuali/commit/0c1f39da34de32b957ba7b76c0440683237da86f))
+* bind MCP publication to the canonical namespace ([324d62b](https://github.com/Arakiss/nahuali/commit/324d62b78f894d06142ddcfe9fd0ea964366b212))
+
 ## [1.1.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-mcp-v1.0.0-beta.0...nahuali-mcp-v1.1.0-beta.0) (2026-07-14)
 
 
