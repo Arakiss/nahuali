@@ -52,6 +52,39 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag internal components at the product release commit
+        if: ${{ steps.release.outputs['crates/nahuali-cli--release_created'] == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLI_TAG: ${{ steps.release.outputs['crates/nahuali-cli--tag_name'] }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${CLI_TAG#nahuali-cli-v}"
+          release_sha="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${CLI_TAG}" --jq .target_commitish)"
+          if [[ ! "${release_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Product release target is not an immutable commit SHA: ${release_sha}"
+            exit 1
+          fi
+
+          for component in nahuali-core nahuali-mcp nahuali-api nahuali-regression; do
+            tag="${component}-v${version}"
+            existing_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq .object.sha 2>/dev/null || true)"
+            if [[ -n "${existing_sha}" ]]; then
+              if [[ "${existing_sha}" != "${release_sha}" ]]; then
+                echo "::error::Existing ${tag} points to ${existing_sha}, expected ${release_sha}."
+                exit 1
+              fi
+              echo "${tag} already points to ${release_sha}"
+              continue
+            fi
+
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${tag}" \
+              -f sha="${release_sha}" >/dev/null
+            echo "created ${tag} at ${release_sha}"
+          done
       - name: Sync generated release PR workspace pins
         if: ${{ steps.release.outputs.prs_created == 'true' }}
         env:
