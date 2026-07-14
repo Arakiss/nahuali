@@ -23,6 +23,16 @@ pub(crate) fn project(events: &[EventEnvelope]) -> MemoryData {
     data
 }
 
+/// Deterministically project an in-memory record ledger into current memory.
+///
+/// This function does not validate sequence order, checksums, or hash-chain
+/// integrity. Callers must supply envelopes that already passed ledger
+/// validation. The returned projection is derived state, never an integrity
+/// proof by itself.
+pub fn project_validated_events(events: &[EventEnvelope]) -> MemoryData {
+    project(events)
+}
+
 pub(crate) fn project_event(data: &mut MemoryData, event: &EventEnvelope) {
     data.event_count += 1;
     data.last_event_id = Some(event.id.clone());

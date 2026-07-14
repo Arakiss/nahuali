@@ -15,7 +15,7 @@ if   [[ -n "${NAHUALI_BIN:-}" ]];        then N="$NAHUALI_BIN"
 elif [[ -x target/debug/nahuali ]];      then N="target/debug/nahuali"
 elif [[ -x target/release/nahuali ]];    then N="target/release/nahuali"
 else N=""; fi
-DB=".local/walkthrough-$$"
+DB="walkthrough_$$"
 run(){ if [[ -n "$N" ]]; then "$N" --database "$DB" "$@"; else cargo run -q -p nahuali-cli -- --database "$DB" "$@"; fi; }
 
 B(){ printf '\033[1m%s\033[0m\n' "$*"; }

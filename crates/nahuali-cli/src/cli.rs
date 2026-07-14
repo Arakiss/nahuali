@@ -23,7 +23,7 @@ Options:
 /// first inside each section. Kept in sync by hand with the `Command` variants.
 const GROUPED_COMMANDS_TEMPLATE: &str = "\
 Getting started:
-  demo                  See the tamper-evidence trust story (no database, no Docker)
+  demo                  See recall trust, self-inspection, and history integrity
   init                  Wire your agent harness to use Nahuali (installs the skill)
 
 Capture:
@@ -164,7 +164,9 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
-    #[command(about = "See the tamper-evidence trust story — no database, no Docker, in seconds.")]
+    #[command(
+        about = "See recall trust, self-inspection, and history integrity — no database or Docker."
+    )]
     Demo {},
     #[command(
         about = "Wire your agent harness to use Nahuali (installs the skill, prints the MCP config)."

@@ -49,7 +49,7 @@ authority, not this file.
 ## The one-minute mental model
 
 1. **Recall before you assume.** Start with `briefing`, then `recall` specifics.
-2. **Record what happened as an episode.** Episodes are ground truth and the
+2. **Record what happened as an episode.** Episodes preserve observations and the
    evidence everything else cites. Record them freely — that is the point, not a
    cost.
 3. **Graduate a durable fact into a claim, anchored to its episode.** A claim or

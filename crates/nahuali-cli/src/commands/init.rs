@@ -12,7 +12,7 @@ use anyhow::Context;
 /// The Claude Code skill, bundled into the binary so `init` needs no network.
 const SKILL: &str = include_str!("../../../../skills/nahuali/SKILL.md");
 
-const MCP_SNIPPET: &str = "{\n  \"mcpServers\": {\n    \"nahuali\": { \"command\": \"nahuali-mcp\", \"args\": [\"--database\", \"./memory\"] }\n  }\n}";
+const MCP_SNIPPET: &str = "{\n  \"mcpServers\": {\n    \"nahuali\": { \"command\": \"nahuali-mcp\", \"args\": [\"--database\", \"memory\"] }\n  }\n}";
 
 struct Style {
     bold: &'static str,
@@ -141,4 +141,24 @@ fn install_skill(target: &Path, dry_run: bool, force: bool, s: &Style) -> anyhow
         target.display()
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MCP_SNIPPET;
+
+    #[test]
+    fn generated_mcp_config_uses_a_valid_database_identifier() {
+        let snippet: serde_json::Value =
+            serde_json::from_str(MCP_SNIPPET).expect("MCP snippet is valid JSON");
+        let database = snippet["mcpServers"]["nahuali"]["args"][1]
+            .as_str()
+            .expect("database argument is a string");
+        assert_eq!(
+            nahuali_core::validate_database_name(database).expect("valid database"),
+            database
+        );
+        assert!(MCP_SNIPPET.contains("[\"--database\", \"memory\"]"));
+        assert!(!MCP_SNIPPET.contains("./memory"));
+    }
 }

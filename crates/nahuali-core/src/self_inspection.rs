@@ -320,6 +320,22 @@ pub(crate) fn self_inspect(data: &MemoryData) -> SelfInspectionReport {
     self_inspect_at(data, now_ms())
 }
 
+/// Run the same non-mutating self-inspection used by [`crate::MemoryEngine`]
+/// directly against an already projected memory state.
+///
+/// This keeps previews and dependency-free evaluations on the production
+/// inspection path without opening a database or rewriting memory. It inspects
+/// caller-supplied projected state and does not validate ledger integrity.
+pub fn self_inspect_projection(data: &MemoryData) -> SelfInspectionReport {
+    self_inspect(data)
+}
+
+/// Run projection self-inspection at an explicit timestamp for reproducible
+/// evaluations of freshness-sensitive findings.
+pub fn self_inspect_projection_at(data: &MemoryData, now_ms: u64) -> SelfInspectionReport {
+    self_inspect_at(data, now_ms)
+}
+
 pub(crate) fn self_inspect_at(data: &MemoryData, now_ms: u64) -> SelfInspectionReport {
     let health = KnowledgeHealth::inspect_at(data, now_ms);
     let authority = AuthorityDecision::evaluate(&health);

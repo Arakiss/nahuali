@@ -400,8 +400,25 @@ fn public_api_self_inspection_is_non_mutating_and_reviewable() {
 
     let event_count_before = memory.events().len();
     let report = memory.self_inspect();
+    let replayed_projection = project_validated_events(memory.events());
+    let projection_report = self_inspect_projection(memory.data());
+    let projection_recall = recall_projection_with_authority(
+        memory.data(),
+        "Lena role",
+        RecallOptions::default(),
+    )
+    .expect("read-only projection recall succeeds");
 
     assert_eq!(memory.events().len(), event_count_before);
+    assert_eq!(&replayed_projection, memory.data());
+    assert_eq!(projection_report, report);
+    assert!(
+        projection_recall
+            .results
+            .iter()
+            .filter_map(|result| result.trust.as_ref())
+            .any(|trust| trust.mode == RecallResultTrustMode::Block && !trust.can_trust)
+    );
     assert!(!report.write_back_policy.automatic_write_back);
     assert!(report.write_back_policy.requires_operator_review);
     assert!(report.summary.contradiction_count >= 1);

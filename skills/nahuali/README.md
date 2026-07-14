@@ -8,8 +8,8 @@ stale one, or an intact history from one that was edited after the fact.
 Nahuali is a governance layer over memory. Every recall comes back with the
 evidence behind it and a trust decision. The engine inspects its own health
 (unsupported claims, contradictions, stale facts, blind spots) before the agent
-acts, and its history is an append-only ledger you can audit — and, with the
-optional build, prove was not tampered with.
+acts, and its default history is an append-only, hash-chained ledger that can be
+checked against an operator-held signed checkpoint.
 
 The shift is from **recall-more** to **trust-what-you-recall**. An agent that
 recalls a confident wrong answer is worse than one with no memory. Nahuali
@@ -31,15 +31,15 @@ Register it with your MCP client. The server name the agent references is
   "mcpServers": {
     "nahuali": {
       "command": "nahuali-mcp",
-      "args": ["--database", "/absolute/path/to/memory"]
+      "args": ["--database", "my_project"]
     }
   }
 }
 ```
 
-Use an absolute database path for a user- or global-level config. A
-project-scoped `.mcp.json` may use a relative `./memory`. Full server details
-are in [`crates/nahuali-mcp/README.md`](../crates/nahuali-mcp/README.md).
+The database value is a SurrealDB identifier, not a filesystem path. Use a
+stable identifier such as `my_project` or `personal_memory`. Full server details
+are in [`crates/nahuali-mcp/README.md`](../../crates/nahuali-mcp/README.md).
 
 ## Teach the agent the protocol
 
@@ -54,7 +54,7 @@ do that:
   rewrite memory. If your harness reads a different convention (a system prompt,
   a skill, a hook), copy the protocol into that surface.
 
-- **[`skills/nahuali/SKILL.md`](../skills/nahuali/SKILL.md)** — the Claude Code
+- **[`SKILL.md`](SKILL.md)** — the Claude Code
   skill. Same substance, packaged so Claude Code loads it automatically when a
   task needs persistent context, recall before answering, or a trust check
   before acting.
@@ -66,7 +66,8 @@ context that can be queried. Capture decisions, facts, and events with
 `remember` as episodes; those episodes are the evidence everything else cites.
 Assert `claim`s and `link`s only when an episode supports them. On every recall
 result, read the trust mode (`Certify` / `Advisory` / `Warn` / `Block`), not
-just the relevance score: `Certify` is safe to state and cite, `Advisory` is a
+just the relevance score: `Certify` is evidence-backed and safe to cite without
+strengthening what its source actually says, `Advisory` is a
 lead, `Warn` / `Block` should not be acted through. Before leaning on a lot of
 recalled memory, check health with `inspect` or `trust_report`. And never edit
 history silently — repairs go through `review_resolve` and stay on the ledger.
@@ -75,8 +76,8 @@ history silently — repairs go through `review_resolve` and stay on the ledger.
 
 `trust_report` gives one composed verdict — what we know, why to trust it,
 what's missing, and whether the recorded history was altered. `audit` returns a
-verifiable diff of what the ledger recorded between two points. With the
-optional `tamper-evidence` build feature, events are chained by hash so an
+verifiable diff of what the ledger recorded between two points. Default builds
+chain events by hash so an
 in-place rewrite is detectable even if the checksum was recomputed. Signing a
 checkpoint (chain-tip attestation) is a CLI/operator action; the agent reads and
 audits integrity, it does not sign.

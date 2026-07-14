@@ -110,7 +110,7 @@ impl NahualiMcpServer {
                     Some(vec![
                         PromptArgument::new("observation")
                             .with_title("Observation")
-                            .with_description("Observed episode content to store as ground truth.")
+                            .with_description("Observed episode content to preserve as evidence.")
                             .with_required(true),
                         PromptArgument::new("subject")
                             .with_title("Subject")
@@ -262,7 +262,7 @@ impl NahualiMcpServer {
         let object = Self::optional_string_arg(request.arguments.as_ref(), "object");
 
         let mut text = format!(
-            "Record this observation as Nahuali ground truth before deriving assertions:\n\n{observation}\n\nWorkflow:\n1. Call `remember` with the observation.\n2. Only if the observation explicitly supports a claim, call `claim` with `sourceLast: true` so the claim cites the just-recorded episode.\n3. If a link is explicit, call `link` with `sourceLast: true`.\n4. Call `inspect` and confirm the derived memory is supported.\n5. Do not assert claims that are not directly supported by the observation."
+            "Record this observation as Nahuali evidence before deriving assertions:\n\n{observation}\n\nWorkflow:\n1. Call `remember` with the observation.\n2. Only if the observation explicitly supports a claim, call `claim` with `sourceLast: true` so the claim cites the just-recorded episode.\n3. If a link is explicit, call `link` with `sourceLast: true`.\n4. Call `inspect` and confirm the derived memory is supported.\n5. Do not assert claims that are not directly supported by the observation."
         );
 
         if let (Some(subject), Some(predicate), Some(object)) = (subject, predicate, object) {

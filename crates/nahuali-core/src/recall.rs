@@ -3,6 +3,7 @@ use crate::model::{
     Claim, IntentionStatus, Link, MemoryData, MemoryKind, MemoryScope, RecallResult,
     RecallResultTrust, RecallResultTrustMode,
 };
+use crate::{AuthorityDecision, AuthorityRecall, NahualiError, Result};
 use serde::{Deserialize, Serialize};
 
 /// Options for lexical recall over projected memory.
@@ -290,6 +291,36 @@ pub(crate) fn recall_with_options(
     });
     results.truncate(options.limit.max(1));
     results
+}
+
+/// Recall directly from an already projected memory state and attach the same
+/// health, authority, and per-result trust decisions used by [`crate::MemoryEngine`].
+///
+/// This read-only entry point is useful for import previews, deterministic
+/// evaluations, and dependency-free demonstrations that must exercise the real
+/// trust policy without opening a database. It evaluates caller-supplied
+/// projected state; it does not prove that the projection came from a valid
+/// ledger. Validate and project the ledger before treating integrity as part of
+/// the result's trust boundary.
+pub fn recall_projection_with_authority(
+    data: &MemoryData,
+    query: &str,
+    options: RecallOptions,
+) -> Result<AuthorityRecall> {
+    if query.trim().is_empty() {
+        return Err(NahualiError::EmptyQuery);
+    }
+
+    let mut results = recall_with_options(data, query, options);
+    let health = KnowledgeHealth::inspect(data);
+    let authority = AuthorityDecision::evaluate(&health);
+    attach_result_trust(data, &health, &mut results);
+
+    Ok(AuthorityRecall {
+        results,
+        authority,
+        health,
+    })
 }
 
 /// Whether an item created at `created_at_ms` falls inside the optional

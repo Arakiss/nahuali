@@ -19,8 +19,8 @@ after the fact.
 Nahuali is a governance layer over memory. Every recall comes back with the
 evidence behind it and a trust decision. The engine can inspect its own health
 (unsupported claims, contradictions, stale facts, blind spots) before you act,
-and its history is an append-only ledger you can audit — and, with the
-optional build, prove was not tampered with.
+and its default history is an append-only, hash-chained ledger that can be
+checked against an operator-held signed checkpoint.
 
 The shift is from **recall-more** to **trust-what-you-recall**. An agent that
 recalls a confident wrong answer is worse than one with no memory. Nahuali
@@ -37,7 +37,7 @@ These six rules are the contract. Follow them in order, every session.
 
 2. **Record observations as episodes.** When the user states a decision, fact,
    event, or preference worth keeping, capture it with `remember` as an
-   episode. Episodes are append-only ground truth and the evidence everything
+   episode. Episodes are append-only observations and the evidence everything
    else cites. Keep them factual and specific. Record the episode *before* you
    assert anything derived from it.
 
@@ -48,9 +48,11 @@ These six rules are the contract. Follow them in order, every session.
    will flag it.
 
 4. **Read the per-result TRUST decision, not just the score.** Every `recall`
-   result carries a trust mode, not only a relevance number:
+   result carries a trust mode, not only a relevance number. The decision
+   evaluates provenance and memory health; it does not prove external truth:
    - `Certify` (`can_trust=true`) — backed by source evidence, no result-local
-     signal weakens it. Safe to rely on; cite its evidence id.
+     signal weakens it. Safe to use as a supported memory claim when you cite
+     its evidence id and preserve any uncertainty in the source.
    - `Advisory` — observable but not a supported assertion on its own. Treat as
      a lead, not a fact.
    - `Warn` — relevant but missing support, or weakened by a medium-risk signal.
@@ -75,10 +77,11 @@ These six rules are the contract. Follow them in order, every session.
 ## Reading recall correctly (the part agents get wrong)
 
 The score tells you *how relevant* a result is. The trust mode tells you
-*whether you may treat it as true*. They are different axes. A highly relevant
+*whether its evidence and health support using it*. They are different axes. A highly relevant
 result can still be `Advisory` or `Warn`. Always branch on the trust mode:
 
-- `Certify` → state it as known, and cite the evidence id.
+- `Certify` → state what the evidence supports, cite the evidence id, and do not
+  turn source confidence into a stronger claim of external truth.
 - `Advisory` → state it as a lead ("memory suggests…"), not a settled fact.
 - `Warn` / `Block` → do not act through it; say the support is missing and, if
   it matters, capture the evidence or open a review.
@@ -91,11 +94,11 @@ prefer `inspect` / `self_inspect` before acting.
 
 `audit` returns a non-mutating diff of what the ledger recorded between two
 points, with the integrity of that history restated alongside it (checksums,
-sequence contiguity, and — in the tamper-evidence build — the hash chain). Use
+sequence contiguity, and the default hash chain). Use
 it when you need to show *what changed* and *that nothing was silently rewritten*.
 
-With the optional `tamper-evidence` build feature, recorded events are chained
-by hash, so an in-place rewrite of any historical record is detectable even if
+Default builds chain recorded events by hash, so an in-place rewrite of any
+historical record is detectable even if
 its checksum was recomputed. Chain-tip attestation (cryptographically signing a
 checkpoint) is a CLI/operator action; the MCP server exposes no signing tool,
 so an agent reads and audits integrity but does not sign.
@@ -110,16 +113,15 @@ The server name agents reference is `nahuali`.
   "mcpServers": {
     "nahuali": {
       "command": "nahuali-mcp",
-      "args": ["--database", "/absolute/path/to/memory"]
+      "args": ["--database", "my_project"]
     }
   }
 }
 ```
 
 Install the binary from source with
-`cargo install --path crates/nahuali-mcp --locked`. Use an absolute database
-path for a user- or global-level config so it resolves regardless of the launch
-directory; a project-scoped `.mcp.json` may use a relative `./memory`.
+`cargo install --path crates/nahuali-mcp --locked`. The database value is a
+SurrealDB identifier, not a path; choose a stable name for each memory context.
 
 At the start of every session, call `briefing` first. It returns the read-only
 pre-work surface (authority, health, recent episodes, active intentions,

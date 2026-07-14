@@ -185,7 +185,8 @@ pub use proactive::{
 pub use project::{
     MEMORY_PROJECT_VIEW_VERSION, MemoryProjectReport, ProjectViewOptions, ProjectViewSummary,
 };
-pub use recall::RecallOptions;
+pub use projection::project_validated_events;
+pub use recall::{RecallOptions, recall_projection_with_authority};
 pub use reflection::{
     MEMORY_REFLECTION_VERSION, MemoryReflectionReport, ReflectionCycle, ReflectionFinding,
     ReflectionOptions, ReflectionSourceCoverage, ReflectionSummary,
@@ -199,7 +200,7 @@ pub use self_inspection::{
     SELF_INSPECTION_REPORT_VERSION, SelfInspectionFinding, SelfInspectionFindingKind,
     SelfInspectionReport, SelfInspectionReviewAction, SelfInspectionReviewItem,
     SelfInspectionReviewPriority, SelfInspectionReviewStatus, SelfInspectionSummary,
-    SelfInspectionWriteBackPolicy,
+    SelfInspectionWriteBackPolicy, self_inspect_projection, self_inspect_projection_at,
 };
 pub use self_repair::{
     AutonomyLevel, RepairClaim, RepairKind, RepairLink, RepairPayload, RepairProposal,

@@ -26,7 +26,7 @@ pub fn tool_catalog() -> Vec<McpTool> {
     vec![
         McpTool {
             name: "remember",
-            description: "Use when you observe something worth remembering (a decision, event, or fact stated by the user) and want it captured verbatim as append-only ground truth. Episodes are the evidence other memory cites, so record them before asserting any claim or link. Then derive claims/links with `sourceLast: true` to cite this episode.",
+            description: "Use when you observe something worth remembering (a decision, event, or fact stated by the user) and want it preserved verbatim as append-only evidence. Episodes are the evidence other memory cites, so record them before asserting any claim or link. Then derive claims/links with `sourceLast: true` to cite this episode.",
         },
         McpTool {
             name: "ingest",

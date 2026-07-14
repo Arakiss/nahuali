@@ -1,45 +1,20 @@
-//! `nahuali demo` — a zero-dependency, no-Docker first look at the trust wedge.
+//! `nahuali demo` — a zero-dependency first look at governed agent memory.
 //!
-//! The whole story runs in memory using the public `EventEnvelope` API, so a
-//! freshly installed binary can show "memory you can prove was not altered" in
-//! one command, with no database and no services. It mirrors the
-//! `tamper_evidence` core example, dressed for a newcomer.
+//! The whole story runs through public, read-only projection APIs and the public
+//! `EventEnvelope` API. A freshly installed binary can show evidence-aware
+//! recall, self-inspection, and tamper detection in one command with no database
+//! or services.
 
-/// Run the narrated tamper-evidence demo.
+/// Run the narrated governed-memory demo.
 ///
 /// `attestation` is a default feature, so a plain `cargo build` / `cargo install`
 /// runs the full story here. The `--no-default-features` build keeps a minimal
-/// pointer instead of the apology-free full demo.
+/// pointer instead of the full history-integrity half of the demo.
 pub(crate) fn demo() -> anyhow::Result<()> {
-    #[cfg(feature = "attestation")]
-    {
-        print!("{}", run());
-    }
-    #[cfg(not(feature = "attestation"))]
-    {
-        let s = Style::detect();
-        println!(
-            "{}nahuali demo{} showcases the tamper-evidence trust layer, which needs the {}attestation{} build feature.",
-            s.bold, s.reset, s.accent, s.reset
-        );
-        println!(
-            "This binary was built with {}--no-default-features{}.",
-            s.dim, s.reset
-        );
-        println!(
-            "For the full story, build the default binary: {}cargo run -p nahuali-cli -- demo{}",
-            s.dim, s.reset
-        );
-        println!(
-            "Or install a release: {}https://github.com/Arakiss/nahuali/releases{}",
-            s.dim, s.reset
-        );
-    }
+    print!("{}", run());
     Ok(())
 }
 
-// `green`/`red`/`yes` are exercised only by the attestation-feature demo body.
-#[allow(dead_code)]
 struct Style {
     bold: &'static str,
     dim: &'static str,
@@ -74,7 +49,6 @@ impl Style {
         }
     }
 
-    #[allow(dead_code)]
     fn yes(&self, value: bool) -> String {
         if value {
             format!("{}yes{}", self.green, self.reset)
@@ -84,13 +58,97 @@ impl Style {
     }
 }
 
+fn governed_events(now_ms: u64) -> Vec<nahuali_core::EventEnvelope> {
+    use nahuali_core::{EpisodeRecorded, EventEnvelope, FactAsserted, MemoryEvent};
+
+    let payloads = vec![
+        MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+            id: "episode_release_notes".to_string(),
+            content: "Lena owns the release notes.".to_string(),
+            tags: vec!["release".to_string()],
+            mentions: vec!["Lena".to_string()],
+            source_id: None,
+            source_position: None,
+            source_role: Some("operator".to_string()),
+            scope: None,
+        }),
+        MemoryEvent::FactAsserted(FactAsserted {
+            id: "claim_release_owner".to_string(),
+            subject: "Lena".to_string(),
+            predicate: "owns".to_string(),
+            object: "release notes".to_string(),
+            source_episode_id: Some("episode_release_notes".to_string()),
+            confidence: 0.95,
+            scope: None,
+        }),
+        MemoryEvent::FactAsserted(FactAsserted {
+            id: "claim_deployment_owner".to_string(),
+            subject: "Mateo".to_string(),
+            predicate: "owns".to_string(),
+            object: "deployment keys".to_string(),
+            source_episode_id: None,
+            confidence: 0.9,
+            scope: None,
+        }),
+        MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+            id: "episode_launch_tuesday".to_string(),
+            content: "The release review set launch day to Tuesday.".to_string(),
+            tags: vec!["release".to_string()],
+            mentions: Vec::new(),
+            source_id: None,
+            source_position: None,
+            source_role: Some("release review".to_string()),
+            scope: None,
+        }),
+        MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+            id: "episode_launch_friday".to_string(),
+            content: "The incident review set launch day to Friday.".to_string(),
+            tags: vec!["incident".to_string()],
+            mentions: Vec::new(),
+            source_id: None,
+            source_position: None,
+            source_role: Some("incident review".to_string()),
+            scope: None,
+        }),
+        MemoryEvent::FactAsserted(FactAsserted {
+            id: "claim_launch_tuesday".to_string(),
+            subject: "Launch".to_string(),
+            predicate: "day".to_string(),
+            object: "Tuesday".to_string(),
+            source_episode_id: Some("episode_launch_tuesday".to_string()),
+            confidence: 0.9,
+            scope: None,
+        }),
+        MemoryEvent::FactAsserted(FactAsserted {
+            id: "claim_launch_friday".to_string(),
+            subject: "Launch".to_string(),
+            predicate: "day".to_string(),
+            object: "Friday".to_string(),
+            source_episode_id: Some("episode_launch_friday".to_string()),
+            confidence: 0.9,
+            scope: None,
+        }),
+    ];
+
+    payloads
+        .into_iter()
+        .enumerate()
+        .map(|(index, payload)| {
+            let sequence = (index + 1) as u64;
+            EventEnvelope::new(sequence, now_ms, payload)
+        })
+        .collect()
+}
+
 #[cfg(feature = "attestation")]
 fn run() -> String {
     use std::fmt::Write as _;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use nahuali_core::{
-        EpisodeRecorded, EventEnvelope, MemoryEvent, sign_chain_tip, verify_chain_tip,
-        verify_event_chain,
+        EpisodeRecorded, EventEnvelope, MemoryEvent, RecallOptions, project_validated_events,
+        recall_projection_with_authority, self_inspect_projection, sign_chain_tip,
+        verify_chain_tip, verify_event_chain,
     };
 
     let mut out = String::new();
@@ -112,50 +170,124 @@ fn run() -> String {
         })
     }
 
-    fn chained_ledger() -> Vec<EventEnvelope> {
-        let contents = [
-            "Lena owns the release notes.",
-            "Aaron reviews the changelog every Friday.",
-            "The 0.3 beta ships behind a feature flag.",
-            "Support escalations route to the on-call engineer.",
-        ];
-        let mut events: Vec<EventEnvelope> = Vec::new();
-        for (index, content) in contents.iter().enumerate() {
-            let sequence = (index + 1) as u64;
-            let previous = events.last().map(EventEnvelope::chain_hash);
-            events.push(EventEnvelope::with_chain(
-                sequence,
-                1_000 + sequence,
-                episode(&format!("episode_{sequence}"), content),
-                previous.as_deref(),
-            ));
-        }
-        events
-    }
-
     let s = Style::detect();
     let short = |hash: &str| -> String { hash.chars().take(16).collect::<String>() + "..." };
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time is after the Unix epoch")
+        .as_millis() as u64;
+    let mut ledger: Vec<EventEnvelope> = Vec::new();
+    for event in governed_events(now_ms) {
+        let previous = ledger.last().map(EventEnvelope::chain_hash);
+        ledger.push(EventEnvelope::with_chain(
+            event.sequence,
+            event.timestamp_ms,
+            event.payload,
+            previous.as_deref(),
+        ));
+    }
+    let memory = project_validated_events(&ledger);
+    let supported =
+        recall_projection_with_authority(&memory, "Lena release notes", RecallOptions::default())
+            .expect("supported recall succeeds");
+    let supported_claim = supported
+        .results
+        .iter()
+        .find(|result| result.id == "claim_release_owner")
+        .expect("supported claim is recalled");
+    let supported_trust = supported_claim
+        .trust
+        .as_ref()
+        .expect("authority recall attaches result trust");
+    let unsupported = recall_projection_with_authority(
+        &memory,
+        "Mateo deployment keys",
+        RecallOptions::default(),
+    )
+    .expect("unsupported recall succeeds");
+    let unsupported_claim = unsupported
+        .results
+        .iter()
+        .find(|result| result.id == "claim_deployment_owner")
+        .expect("unsupported claim is recalled");
+    let unsupported_trust = unsupported_claim
+        .trust
+        .as_ref()
+        .expect("authority recall attaches result trust");
+    let inspection = self_inspect_projection(&memory);
 
     out.push('\n');
     let _ = writeln!(
         out,
-        "{}Nahuali{} — memory you can prove was not altered.",
+        "{}Nahuali{}  memory that shows its work",
         s.accent, s.reset
     );
     let _ = writeln!(
         out,
-        "{}A 20-second look at the wedge, entirely in memory — no database, no Docker.{}",
+        "{}A zero-setup tour of recall trust, self-inspection, and history integrity.{}",
         s.dim, s.reset
     );
     out.push('\n');
 
-    // Part 1 — an honest, chained ledger.
-    let ledger = chained_ledger();
+    let _ = writeln!(
+        out,
+        "{}1 · Recall returns evidence and a verdict.{}",
+        s.bold, s.reset
+    );
+    let _ = writeln!(
+        out,
+        "    {}CERTIFY{}  {}",
+        s.green, s.reset, supported_claim.excerpt
+    );
+    let _ = writeln!(
+        out,
+        "             evidence: {}   can trust: {}",
+        supported_claim.evidence_id.as_deref().unwrap_or("none"),
+        s.yes(supported_trust.can_trust)
+    );
+    let _ = writeln!(
+        out,
+        "    {}WARN{}     {}",
+        s.red, s.reset, unsupported_claim.excerpt
+    );
+    let _ = writeln!(
+        out,
+        "             evidence: {}   can trust: {}",
+        unsupported_claim.evidence_id.as_deref().unwrap_or("none"),
+        s.yes(unsupported_trust.can_trust)
+    );
+    out.push('\n');
+
+    let _ = writeln!(
+        out,
+        "{}2 · The store inspects itself before anything is repaired.{}",
+        s.bold, s.reset
+    );
+    let _ = writeln!(
+        out,
+        "    unsupported claims: {}   contradictions: {}   review required: {}",
+        inspection.health.unsupported_fact_count,
+        inspection.summary.contradiction_count,
+        s.yes(!inspection.review_queue.is_empty())
+    );
+    let _ = writeln!(
+        out,
+        "    overall authority: {}   automatic write-back: {}",
+        format!("{:?}", inspection.authority.mode).to_ascii_uppercase(),
+        s.yes(inspection.write_back_policy.automatic_write_back)
+    );
+    let _ = writeln!(
+        out,
+        "    the supported result still certifies even while unrelated memory needs review"
+    );
+    out.push('\n');
+
+    // Part 3: an honest, chained ledger.
     let last = ledger.last().expect("ledger is not empty");
     let (tip_sequence, tip_hash) = (last.sequence, last.chain_hash());
     let _ = writeln!(
         out,
-        "{}1 · An append-only ledger of agent memory.{}",
+        "{}3 · The same memory lives in an append-only ledger.{}",
         s.bold, s.reset
     );
     let _ = writeln!(
@@ -171,12 +303,12 @@ fn run() -> String {
     );
     out.push('\n');
 
-    // Part 2 — the operator signs the tip.
+    // Part 4: the operator signs the tip.
     let receipt =
         sign_chain_tip(DEMO_SEED_HEX, tip_sequence, &tip_hash).expect("signing the tip succeeds");
     let _ = writeln!(
         out,
-        "{}2 · The operator signs that tip — a portable receipt.{}",
+        "{}4 · The operator signs that tip and keeps the receipt separately.{}",
         s.bold, s.reset
     );
     let _ = writeln!(
@@ -186,7 +318,7 @@ fn run() -> String {
     );
     out.push('\n');
 
-    // Part 3 — in-place rewrite with a recomputed checksum.
+    // Part 5: in-place rewrite with a recomputed checksum.
     let mut rewritten = ledger.clone();
     let original = &rewritten[1];
     let mut forged = EventEnvelope::new(
@@ -198,7 +330,7 @@ fn run() -> String {
     rewritten[1] = forged;
     let _ = writeln!(
         out,
-        "{}3 · An attacker rewrites event 2 and recomputes its checksum.{}",
+        "{}5 · An attacker rewrites event 2 and recomputes its checksum.{}",
         s.bold, s.reset
     );
     let _ = writeln!(
@@ -220,7 +352,7 @@ fn run() -> String {
     }
     out.push('\n');
 
-    // Part 4 — full suffix re-chain, then the signature catches it.
+    // Part 6: full suffix re-chain, then the signature catches it.
     let mut rechained: Vec<EventEnvelope> = Vec::new();
     for (index, event) in ledger.iter().enumerate() {
         let previous = rechained.last().map(EventEnvelope::chain_hash);
@@ -240,7 +372,7 @@ fn run() -> String {
     let (new_sequence, new_tip) = (new_last.sequence, new_last.chain_hash());
     let _ = writeln!(
         out,
-        "{}4 · The attacker re-chains the whole history to repair every link.{}",
+        "{}6 · The attacker re-chains the whole history to repair every link.{}",
         s.bold, s.reset
     );
     let _ = writeln!(
@@ -261,26 +393,26 @@ fn run() -> String {
     let _ = writeln!(out, "{}What you just saw{}", s.bold, s.reset);
     let _ = writeln!(
         out,
-        "    The checksum proves an event is internally consistent."
+        "    Recall can certify a supported result and warn on a weak one."
     );
     let _ = writeln!(
         out,
-        "    The chain proves the history was not rewritten in place."
+        "    Self-inspection turns memory problems into review work without rewriting memory."
     );
     let _ = writeln!(
         out,
-        "    The signed tip proves the history was not rewritten at all."
+        "    The chain detects in-place edits; an operator-held signed checkpoint detects a full re-chain."
     );
     out.push('\n');
     let _ = writeln!(out, "{}Next{}", s.bold, s.reset);
     let _ = writeln!(
         out,
-        "    Run the full engine on real memory:  {}nahuali --database memory trust-report{}",
+        "    Wire your agent to the same trust policy:  {}nahuali init{}",
         s.accent, s.reset
     );
     let _ = writeln!(
         out,
-        "    (needs the local stack — see {}https://github.com/Arakiss/nahuali{})",
+        "    Persistent memory needs the local stack:  {}https://github.com/Arakiss/nahuali{}",
         s.dim, s.reset
     );
     out.push('\n');
@@ -288,12 +420,130 @@ fn run() -> String {
     out
 }
 
+#[cfg(not(feature = "attestation"))]
+fn run() -> String {
+    use std::fmt::Write as _;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use nahuali_core::{
+        RecallOptions, project_validated_events, recall_projection_with_authority,
+        self_inspect_projection,
+    };
+
+    let s = Style::detect();
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time is after the Unix epoch")
+        .as_millis() as u64;
+    let memory = project_validated_events(&governed_events(now_ms));
+    let supported =
+        recall_projection_with_authority(&memory, "Lena release notes", RecallOptions::default())
+            .expect("supported recall succeeds");
+    let supported_claim = supported
+        .results
+        .iter()
+        .find(|result| result.id == "claim_release_owner")
+        .expect("supported claim is recalled");
+    let supported_trust = supported_claim
+        .trust
+        .as_ref()
+        .expect("authority recall attaches result trust");
+    let unsupported = recall_projection_with_authority(
+        &memory,
+        "Mateo deployment keys",
+        RecallOptions::default(),
+    )
+    .expect("unsupported recall succeeds");
+    let unsupported_claim = unsupported
+        .results
+        .iter()
+        .find(|result| result.id == "claim_deployment_owner")
+        .expect("unsupported claim is recalled");
+    let unsupported_trust = unsupported_claim
+        .trust
+        .as_ref()
+        .expect("authority recall attaches result trust");
+    let inspection = self_inspect_projection(&memory);
+
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "\n{}Nahuali{}  memory that shows its work",
+        s.accent, s.reset
+    );
+    let _ = writeln!(
+        out,
+        "{}A zero-setup tour of recall trust and self-inspection.{}\n",
+        s.dim, s.reset
+    );
+    let _ = writeln!(
+        out,
+        "{}1 · Recall returns evidence and a verdict.{}",
+        s.bold, s.reset
+    );
+    let _ = writeln!(
+        out,
+        "    {}CERTIFY{}  {}",
+        s.green, s.reset, supported_claim.excerpt
+    );
+    let _ = writeln!(
+        out,
+        "             evidence: {}   can trust: {}",
+        supported_claim.evidence_id.as_deref().unwrap_or("none"),
+        s.yes(supported_trust.can_trust)
+    );
+    let _ = writeln!(
+        out,
+        "    {}WARN{}     {}",
+        s.red, s.reset, unsupported_claim.excerpt
+    );
+    let _ = writeln!(
+        out,
+        "             evidence: {}   can trust: {}\n",
+        unsupported_claim.evidence_id.as_deref().unwrap_or("none"),
+        s.yes(unsupported_trust.can_trust)
+    );
+    let _ = writeln!(
+        out,
+        "{}2 · The store inspects itself before anything is repaired.{}",
+        s.bold, s.reset
+    );
+    let _ = writeln!(
+        out,
+        "    unsupported claims: {}   contradictions: {}   review required: {}",
+        inspection.health.unsupported_fact_count,
+        inspection.summary.contradiction_count,
+        s.yes(!inspection.review_queue.is_empty())
+    );
+    let _ = writeln!(
+        out,
+        "    overall authority: {}   automatic write-back: {}\n",
+        format!("{:?}", inspection.authority.mode).to_ascii_uppercase(),
+        s.yes(inspection.write_back_policy.automatic_write_back)
+    );
+    let _ = writeln!(
+        out,
+        "{}History integrity proof unavailable in this legacy build.{}",
+        s.bold, s.reset
+    );
+    let _ = writeln!(
+        out,
+        "Build with the default features to add the hash-chain and signed-checkpoint attack story."
+    );
+    let _ = writeln!(
+        out,
+        "{}cargo run -p nahuali-cli -- demo{}\n",
+        s.accent, s.reset
+    );
+    out
+}
+
 #[cfg(all(test, feature = "attestation"))]
 mod tests {
     use super::run;
 
-    /// C3: on a default (attestation) build the demo renders the full story — the
-    /// four narrated parts and the closing — with no source-build apology.
+    /// A default build proves both halves of the product promise with no services:
+    /// governed recall/self-inspection and tamper-evident history.
     #[test]
     fn default_build_demo_runs_the_full_story() {
         // SAFETY: single-threaded test; strip ANSI so the assertions match the
@@ -303,16 +553,47 @@ mod tests {
         }
         let story = run();
 
-        assert!(story.contains("memory you can prove was not altered"));
-        assert!(story.contains("1 · An append-only ledger of agent memory."));
-        assert!(story.contains("2 · The operator signs that tip"));
-        assert!(story.contains("3 · An attacker rewrites event 2"));
+        assert!(story.contains("memory that shows its work"));
+        assert!(story.contains("1 · Recall returns evidence and a verdict."));
+        assert!(story.contains("CERTIFY  Lena owns release notes"));
+        assert!(story.contains("WARN     Mateo owns deployment keys"));
+        assert!(story.contains("evidence: episode_release_notes   can trust: yes"));
+        assert!(story.contains("evidence: none   can trust: no"));
+        assert!(story.contains("2 · The store inspects itself"));
+        assert!(story.contains("unsupported claims: 1"));
+        assert!(story.contains("contradictions: 1"));
+        assert!(story.contains("review required: yes"));
+        assert!(story.contains("overall authority: BLOCK"));
+        assert!(story.contains("automatic write-back: no"));
+        assert!(story.contains("3 · The same memory lives in an append-only ledger."));
+        assert!(story.contains("4 · The operator signs that tip"));
+        assert!(story.contains("5 · An attacker rewrites event 2"));
         assert!(story.contains("the chain catches it"));
-        assert!(story.contains("4 · The attacker re-chains the whole history"));
+        assert!(story.contains("6 · The attacker re-chains the whole history"));
         assert!(story.contains("the signed receipt still refuses"));
+        assert!(story.contains("Self-inspection turns memory problems into review work"));
         assert!(story.contains("What you just saw"));
         // No apology / source-build guidance in the full story.
         assert!(!story.contains("was built with"));
         assert!(!story.contains("--no-default-features"));
+    }
+}
+
+#[cfg(all(test, not(feature = "attestation")))]
+mod legacy_tests {
+    use super::run;
+
+    #[test]
+    fn legacy_build_demo_still_runs_governed_recall_and_inspection() {
+        unsafe {
+            std::env::set_var("NO_COLOR", "1");
+        }
+        let story = run();
+
+        assert!(story.contains("CERTIFY  Lena owns release notes"));
+        assert!(story.contains("WARN     Mateo owns deployment keys"));
+        assert!(story.contains("unsupported claims: 1"));
+        assert!(story.contains("contradictions: 1"));
+        assert!(story.contains("History integrity proof unavailable"));
     }
 }

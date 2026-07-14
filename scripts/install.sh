@@ -418,13 +418,13 @@ fi
 # ---------------------------------------------------------------------------
 # The magic next step.
 # ---------------------------------------------------------------------------
-printf '\n%sNext:%s see the trust story in 30 seconds — no Docker, no setup:\n\n' "${C_BOLD}" "${C_RESET}"
+printf '\n%sNext:%s see why memory is trusted, flagged, or blocked — no Docker, no setup:\n\n' "${C_BOLD}" "${C_RESET}"
 if [ "$ON_PATH" = "true" ]; then
   printf '    %snahuali demo%s\n' "${C_CYAN}${C_BOLD}" "${C_RESET}"
 else
   printf '    %s%s/nahuali demo%s\n' "${C_CYAN}${C_BOLD}" "${BIN_DIR}" "${C_RESET}"
 fi
-printf '\n%sIt builds a tiny memory, tampers with the ledger, and shows Nahuali catch it.%s\n\n' "${C_DIM}" "${C_RESET}"
+printf '\n%sIt recalls supported and unsupported claims, inspects its own health, and tests ledger tampering.%s\n\n' "${C_DIM}" "${C_RESET}"
 
 printf '%sThen wire your agent harness to use Nahuali (installs the skill, prints the MCP config):%s\n\n' "${C_BOLD}" "${C_RESET}"
 if [ "$ON_PATH" = "true" ]; then

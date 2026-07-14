@@ -71,18 +71,14 @@ require_file_contains() {
 
 require_file_contains crates/nahuali-core/schema/memory_record.surql 'DEFINE TABLE IF NOT EXISTS memory_record SCHEMALESS;'
 require_file_contains crates/nahuali-core/schema/memory_record.surql 'DEFINE INDEX IF NOT EXISTS memory_record_sequence_idx ON TABLE memory_record COLUMNS sequence UNIQUE;'
-require_file_contains README.md 'memory_record'
-require_file_contains README.md 'derived semantic index'
-require_file_contains README.md 'Qdrant'
-require_file_contains README.md 'documents remain private during pre-release development'
+require_file_contains README.md 'nahuali demo'
+require_file_contains README.md 'GOVERNANCE_BENCHMARKS\.md'
+require_file_contains README.md 'SELF_REPAIR\.md'
+require_file_contains README.md 'BETA\.md'
+require_file_contains README.md 'crates/nahuali-mcp/ONBOARDING\.md'
 require_file_contains README.md 'scripts/verify-controlled-beta\.sh'
 require_file_contains BETA.md 'scripts/verify-controlled-beta\.sh'
 require_file_contains BETA.md 'self-inspection, review, reflection, sleep, consolidation, and proactive'
-require_file_contains README.md 'intention_update'
-require_file_contains README.md 'goal_progress'
-require_file_contains README.md 'anomaly_acknowledge'
-require_file_contains README.md 'projection_validate'
-require_file_contains README.md 'semantic_rebuild'
 require_file_contains crates/nahuali-core/README.md 'memory_record'
 require_file_contains crates/nahuali-core/README.md 'derived tiers'
 require_file_contains crates/nahuali-cli/README.md 'memory_record'
@@ -101,4 +97,4 @@ if [ -s "$contract_failures_file" ]; then
 fi
 
 echo "living release text avoids concrete nahuali-cli release tags"
-echo "public storage/vector contract references are present"
+echo "public landing-page links and crate contracts are present"

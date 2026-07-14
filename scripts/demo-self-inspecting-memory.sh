@@ -16,7 +16,7 @@ require_command() {
 require_command jq
 
 RUN_ID="${NAHUALI_DEMO_RUN_ID:-$(date +%s)}"
-DEMO_DB="${NAHUALI_DEMO_DB:-.local/demo-self-inspection-${RUN_ID}}"
+DEMO_DB="${NAHUALI_DEMO_DB:-demo_self_inspection_${RUN_ID}}"
 
 if [[ -n "${NAHUALI_BIN:-}" ]]; then
   NAHUALI="$NAHUALI_BIN"
@@ -44,7 +44,6 @@ summarize() {
   jq "$filter"
 }
 
-mkdir -p .local
 bash scripts/ensure-dev-stack.sh >/dev/null
 
 printf 'Nahuali self-inspection demo\n'

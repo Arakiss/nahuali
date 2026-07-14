@@ -7,7 +7,8 @@ workflows.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
-nahuali demo          # the tamper-evidence trust story, in memory, no Docker
+export PATH="$HOME/.nahuali/bin:$PATH"
+nahuali demo          # governed recall, self-inspection, and tamper detection
 nahuali init          # wire your agent harness to use Nahuali
 ```
 
@@ -66,9 +67,9 @@ Override the database name with `--database` or `NAHUALI_DB_DATABASE`:
 nahuali --database memory remember "Lena owns the release notes"
 ```
 
-The value selects a SurrealDB database name. Path-like values such as
-`./memory` are accepted for operator convenience and normalized into
-SurrealDB-safe identifiers before use. The store is an append-only
+The value selects a SurrealDB database identifier. Nahuali accepts only
+`A-Z`, `a-z`, `0-9`, and `_`; it refuses path-like or hyphenated values rather
+than silently connecting to a different normalized name. The store is an append-only
 `memory_record` ledger. Opening the store validates event ordering and checksums
 before projecting memory state in Rust. The public storage boundary is
 summarized in the root README while design notes remain private during
@@ -123,8 +124,8 @@ nahuali --database memory snapshot-validate ./memory.snapshot.json --json
 nahuali --database memory backup --output ./memory.backup.json --dry-run --json
 nahuali --database memory backup --output ./memory.backup.json
 nahuali backup-validate ./memory.backup.json --json
-nahuali backup-drill ./memory.backup.json --target-database ./restored-memory --json
-nahuali restore ./memory.backup.json --target-database ./restored-memory --dry-run --json
+nahuali backup-drill ./memory.backup.json --target-database restored_memory --json
+nahuali restore ./memory.backup.json --target-database restored_memory --dry-run --json
 nahuali --database memory export --output ./memory.interchange.json
 nahuali --database imported_memory import ./memory.interchange.json --dry-run --json
 nahuali --database memory data --json
@@ -335,7 +336,7 @@ time instead of collapsing migrated memory into the import time.
 
 ## Optional Build Features
 
-The CLI default build includes `tui` and `tamper-evidence`; build with
+The CLI default build includes `tui`, `tamper-evidence`, and `attestation`; build with
 `--no-default-features` only when you intentionally want the minimal,
 unchained compatibility surface. Extra features remain opt-in.
 
@@ -345,7 +346,7 @@ unchained compatibility surface. Extra features remain opt-in.
   `backup-validate --require-chained` reject ledgers or backups that are missing
   chain links. `audit --inclusion-proof <sequence> --json` emits a Merkle
   inclusion proof for one event under the audited root.
-- `--features attestation` (implies `tamper-evidence`): adds `attest-sign` and
+- `--features attestation` (default; implies `tamper-evidence`): adds `attest-sign` and
   `attest-verify`. `attest-sign --key-file <seed> -o tip.json` signs the current
   chain tip into a portable receipt; `attest-verify tip.json` checks it against
   the live ledger and exits non-zero when the tip has moved or the signature is

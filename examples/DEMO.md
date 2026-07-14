@@ -1,70 +1,53 @@
 # Nahuali demo walkthrough
 
-Two demos, both on synthetic data. The first needs nothing but Rust. The second
-runs against the local stack and ends in a trust report you can open in a browser.
+Two demos, both on synthetic data. The first is the product tour and needs only
+the released CLI. The second runs against the local stack and ends in a trust
+report you can open in a browser.
 
-The point of both is the same: memory that can answer what do we know, why
-trust it, what is missing, and was the history altered. The last one it can
-prove.
+Both answer the same questions: what does the memory contain, what supports it,
+what needs review, and has the recorded history changed? The integrity layers
+make the last answer verifiable.
 
-Every database name below starts with `.local/`, which is gitignored, so nothing
-you create here is tracked. Clean-up is at the end.
+The persistent walkthrough uses a dedicated SurrealDB database identifier, so
+it stays separate from normal memory. Clean-up is at the end.
 
 ---
 
-## Demo 1 — Tamper-evidence, zero dependencies (no Docker)
+## Demo 1 — Governed memory, zero dependencies (no Docker)
 
-This one runs entirely in memory and offline. It builds a hash-chained ledger,
-signs its tip, and then plays the attacker twice — first an in-place rewrite,
-then a full re-chain — to show what each layer catches.
+This one runs entirely in memory and offline. It uses the production recall and
+self-inspection policy to show a supported result, an unsupported result, and a
+contradictory store. It then builds a hash-chained ledger and plays the attacker
+twice to show what each integrity layer catches.
 
 ```bash
-cargo run -p nahuali-core --example tamper_evidence --features attestation
+cargo run -p nahuali-cli -- demo
 ```
 
-Expected output (deterministic — the demo uses a fixed, non-secret seed):
+The output is deterministic and uses a fixed, non-secret signing seed. Its
+opening sections demonstrate the product contract:
 
 ```text
-== Nahuali tamper-evidence demo ==
+1 · Recall returns evidence and a verdict.
+    CERTIFY  Lena owns release notes
+             evidence: episode_release_notes   can trust: yes
+    WARN     Mateo owns deployment keys
+             evidence: none   can trust: no
 
-1. An append-only ledger of 4 chained events.
-   Each event binds the previous event's chained hash.
-   chain intact: true
-   tip: seq 4 aff66e7daa32459e2be7e9feda4672405d408afdf7c40bc244de9ba5fb72f08b
-
-2. The operator signs that tip with an Ed25519 key (the receipt).
-   public key: 207a067892821e25d770f1fba0c47c11ff4b813e54162ece9eb839e076231ab6
-   receipt verifies against the live tip: true
-
-3. An attacker rewrites event 2 and recomputes its own checksum.
-   per-event checksum still valid (checksum-only model fooled): true
-   the chain catches it: broken link at record 3 (seq 3).
-
-4. The attacker re-chains the entire suffix to repair every link.
-   chain now reports intact: true
-   but the tip changed: seq 4 24ccf21d0f1984cb82025018e5d099d88c37fc346ae27e2afb66532ce2566ff8
-   the signed receipt no longer verifies: false
-   forging a fresh receipt would require the operator's private key.
-
-Checksum proves an event is internally consistent.
-The chain proves the history was not rewritten in place.
-The signed tip proves the history was not rewritten at all.
+2 · The store inspects itself before anything is repaired.
+    unsupported claims: 1   contradictions: 1   review required: yes
+    overall authority: BLOCK   automatic write-back: no
 ```
 
-What each step shows:
+The remaining sections show:
 
-1. An append-only ledger where every event binds the previous event's chained
-   hash.
-2. The operator signs the chain tip with an Ed25519 key. The receipt is
-   portable and can live off the machine that holds the ledger.
-3. The attacker rewrites a historical event and recomputes its self-contained
-   checksum. A checksum-only model is fooled; the chain still catches the broken
-   link.
-4. The attacker re-chains the whole suffix so no link is broken. The chain now
-   reports intact — but the tip moved, so the signed receipt no longer verifies.
-   Forging a fresh receipt would require the operator's private key.
+1. An append-only ledger where every event binds the previous event's hash.
+2. An operator-held Ed25519 receipt for the current chain tip.
+3. An in-place rewrite whose recomputed event checksum cannot repair the chain.
+4. A full re-chain whose changed tip no longer matches the signed receipt.
 
-The source is annotated in [`../crates/nahuali-core/examples/tamper_evidence.rs`](../crates/nahuali-core/examples/tamper_evidence.rs).
+The demo calls public functions from `nahuali-core`; it does not carry a second
+trust implementation inside the CLI.
 
 ---
 
@@ -80,8 +63,8 @@ SurrealDB + Qdrant stack and a CLI built with attestation.
 # Start SurrealDB + Qdrant (needs Docker)
 bash scripts/ensure-dev-stack.sh
 
-# Build the CLI with the optional attestation surface
-cargo build -p nahuali-cli --features attestation
+# The default CLI build includes tamper evidence and attestation
+cargo build -p nahuali-cli
 ```
 
 The walkthrough below calls the built binary directly. Set it once:

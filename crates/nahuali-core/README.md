@@ -33,13 +33,12 @@ private during pre-release development.
   append-only; they are not record ledgers or snapshots. Interchange and
   ingestion imports apply as a single batched ledger flush, so loading a large
   history stays fast.
-- An optional tamper-evident mode (`tamper-evidence` feature, off by default)
-  chains each event to the previous event's hash. An in-place rewrite of any
-  historical record breaks the chain at the next record, so replay detects it
-  even when the per-record checksum was recomputed. Default builds write
-  byte-identical records and pull no extra dependencies.
-- An optional attestation surface (`attestation` feature, implies
-  `tamper-evidence`) signs the chain tip with a detached Ed25519 signature.
+- Default builds enable `attestation`, which implies the `tamper-evidence` hash
+  chain. Each event binds the previous event's hash, so an in-place rewrite of
+  any historical record breaks the chain at the next record even when the
+  per-record checksum was recomputed. `--no-default-features` is the explicit
+  legacy opt-out for an unchained build.
+- The default attestation surface signs the chain tip with a detached Ed25519 signature.
   A full re-chain of history repairs every internal link but changes the tip, so
   a previously signed receipt no longer verifies and forging a new one needs the
   private key. Keys are operator-supplied seeds; the core never generates

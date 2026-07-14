@@ -2,7 +2,8 @@
 
 This is the fastest path to give an AI agent governed, tamper-evident memory.
 If your client speaks MCP (Claude Desktop, Claude Code, Cursor, Windsurf, Cline,
-and most others), you add one stdio server entry and you are done.
+and most others), add one stdio server entry after starting the local data
+service.
 
 ## Why governed, tamper-evident memory
 
@@ -13,16 +14,24 @@ append-only ledger where every recalled result carries its evidence and a trust
 decision (`certify`, `advisory`, `warn`, or `block`), so an agent can refuse to
 act on memory it should not trust. The ledger restates its own integrity:
 `audit` and `trust_report` answer what is known, why to trust it, what is
-missing, and whether any historical record was rewritten. With the optional
-`tamper-evidence` build feature, records are hash-chained, so an in-place rewrite
+missing, and whether any historical record was rewritten. Default builds use
+hash-chained records, so an in-place rewrite
 of any past record is detected even if its checksum was recomputed. The result
 is memory your agent can cite and an operator can verify, which is what
-record-keeping and traceability obligations (such as EU AI Act Article 12)
-actually require.
+record-keeping and traceability programs need from a memory layer. Nahuali can
+support those programs, but it is not a compliance certification or legal
+advice; deployment-specific obligations still need their own review.
 
 ## Install the server binary
 
-From the repository root:
+Persistent memory uses SurrealDB. From the repository root, start the bundled
+local stack first:
+
+```bash
+docker compose up -d
+```
+
+Then install the MCP binary:
 
 ```bash
 cargo install --path crates/nahuali-mcp --locked
@@ -35,37 +44,37 @@ nahuali-mcp --version
 ```
 
 The binary speaks MCP over stdin/stdout. Your client launches it; you do not run
-it by hand. The only argument is `--database`, the path to the memory store
-(default: `memory` in the launch directory).
+it by hand. The main argument is `--database`, a SurrealDB database identifier
+(default: `memory`). It is not a filesystem path.
 
 ## Copy-paste config
 
 ### Project-scoped (`.mcp.json` in the project root)
 
-Use a relative database path so the memory store lives next to the project.
+Choose a stable database identifier for the project.
 
 ```json
 {
   "mcpServers": {
     "nahuali": {
       "command": "nahuali-mcp",
-      "args": ["--database", "./memory"]
+      "args": ["--database", "my_project"]
     }
   }
 }
 ```
 
-### Global / user-level (absolute path)
+### Global / user-level
 
-Use an absolute database path so it resolves no matter where the client launches
-the server from. Replace the path with one you own.
+Use the same config shape and choose a different identifier when you want a
+separate personal memory context.
 
 ```json
 {
   "mcpServers": {
     "nahuali": {
       "command": "nahuali-mcp",
-      "args": ["--database", "/absolute/path/to/memory"]
+      "args": ["--database", "personal_memory"]
     }
   }
 }
@@ -78,17 +87,16 @@ Where this file goes depends on the client:
 - Cursor / Windsurf / Cline: each has an "MCP servers" settings file with the
   same `command` / `args` shape.
 
-If `nahuali-mcp` is not on your client's `PATH`, set `command` to the absolute
-path of the installed binary (for example `~/.cargo/bin/nahuali-mcp`).
+If `nahuali-mcp` is not on your client's `PATH`, set `command` to its fully
+expanded absolute path. MCP clients usually launch the process without a shell,
+so `~` may not be expanded.
 
-### Optional build features
+### Build features
 
-Both are off by default; a default build writes byte-identical records.
+Tamper evidence and attestation are enabled by default. The only optional trust
+adjacent feature in this example is the stronger local semantic model.
 
 ```bash
-# Hash-chained records: validate/audit detect an in-place rewrite of history.
-cargo install --path crates/nahuali-mcp --locked --features tamper-evidence
-
 # Local semantic recall via a static model2vec model instead of the
 # deterministic embedder.
 cargo install --path crates/nahuali-mcp --locked --features local-embeddings
@@ -160,8 +168,9 @@ session looks like this.
    }
    ```
 
-   (`fact`, `relate`, and `preference` are deprecated aliases of `claim`,
-   `link`, and `procedure`; prefer the canonical tools.)
+   (`fact` and `relate` are deprecated aliases of `claim` and `link`.
+   `preference` is a distinct type for stated rules and defaults, while
+   `procedure` records a repeatable how-to.)
 
 5. **Trust report.** Before relying on the memory as a whole, call
    `trust_report`. It returns one composed, non-mutating verdict over knowledge

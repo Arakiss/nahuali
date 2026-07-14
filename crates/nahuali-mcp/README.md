@@ -35,28 +35,30 @@ stdout.
 Register `nahuali-mcp` as a stdio server in your MCP client. The command is the
 installed binary; pass the memory database with `--database`.
 
-For a project-scoped MCP config file (for example `.mcp.json` in the project root):
+Use a stable SurrealDB database identifier for the memory context. Database
+identifiers may contain letters, numbers, and underscores; they are not file
+paths.
 
 ```json
 {
   "mcpServers": {
     "nahuali": {
       "command": "nahuali-mcp",
-      "args": ["--database", "./memory"]
+      "args": ["--database", "my_project"]
     }
   }
 }
 ```
 
-For a global or user-level MCP client config, use an absolute database
-path so it resolves regardless of the launch directory:
+For a global or user-level client, the same shape applies. Choose a different
+identifier when you want a separate memory context:
 
 ```json
 {
   "mcpServers": {
     "nahuali": {
       "command": "nahuali-mcp",
-      "args": ["--database", "/absolute/path/to/memory"]
+      "args": ["--database", "personal_memory"]
     }
   }
 }
@@ -208,6 +210,6 @@ the legacy unchained record format.
 Chain-tip attestation (signing) is a CLI/operator action; the MCP server exposes
 no signing tool.
 
-`fact`, `relate`, and `preference` are deprecated compatibility aliases of
-`claim`, `link`, and `procedure`. Prefer the canonical tools; the aliases stay
-only until clients finish migrating.
+`fact` and `relate` are deprecated compatibility aliases of `claim` and `link`.
+`preference` is a distinct procedural memory type for stated rules,
+conventions, and defaults; `procedure` records a repeatable how-to.

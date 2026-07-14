@@ -28,7 +28,8 @@ use nahuali_core::{
     SelfInspectionReviewPriority, SemanticTierProvider, SemanticTierRestorePolicy,
     SemanticTierSnapshotStatus, SleepConsolidationCandidateKind, SleepModeOptions,
     SnapshotIssueKind, SourceKind, TEXT_INGEST_ADAPTER_VERSION, TextChunking, TextIngestIssueKind,
-    TextIngestOptions, build_text_ingest_document,
+    TextIngestOptions, build_text_ingest_document, project_validated_events,
+    recall_projection_with_authority, self_inspect_projection,
 };
 use public_contract_support::{guard_for_collection, semantic_test_config, temp_store};
 
