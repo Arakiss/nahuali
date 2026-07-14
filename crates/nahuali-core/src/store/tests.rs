@@ -27,7 +27,10 @@ mod tests {
                 std::thread::spawn(move || {
                     let path = temp_path(&format!("concurrent_schema_open_{index}"));
                     barrier.wait();
-                    let result = MemoryEngine::open(&path).map(|memory| memory.events().len());
+                    let result = MemoryEngine::open(&path).and_then(|mut memory| {
+                        memory.remember(format!("Concurrent memory {index}"), Vec::new())?;
+                        Ok(memory.events().len())
+                    });
                     (path, result)
                 })
             })
@@ -35,7 +38,7 @@ mod tests {
 
         for handle in handles {
             let (path, result) = handle.join().expect("store opener thread completes");
-            assert_eq!(result.expect("concurrent store opens cleanly"), 0);
+            assert_eq!(result.expect("concurrent store opens and writes cleanly"), 1);
             let _ = fs::remove_file(path);
         }
     }

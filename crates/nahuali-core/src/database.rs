@@ -8,7 +8,7 @@
 //! silently overridden by the environment.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::OpenOptions,
     future::Future,
     path::{Path, PathBuf},
@@ -249,7 +249,7 @@ struct StoreRuntime {
     endpoint: String,
     runtime: Option<Runtime>,
     root: Mutex<Option<Surreal<Any>>>,
-    schema_lock: tokio::sync::Mutex<()>,
+    initialized_databases: tokio::sync::Mutex<HashSet<String>>,
 }
 
 /// A logical database session backed by one process-owned SurrealDB router.
@@ -260,6 +260,7 @@ struct StoreRuntime {
 #[derive(Clone)]
 pub(crate) struct DatabaseSession {
     db: Surreal<Any>,
+    database: String,
     owner: Arc<StoreRuntime>,
 }
 
@@ -285,18 +286,20 @@ impl DatabaseSession {
             .clone();
         let namespace = resolved_namespace();
         let database = database_name(path);
+        let selected_database = database.clone();
         let logical_path = path.to_path_buf();
         let selected = db.clone();
         let selected = run_on(&owner, async move {
             selected
                 .use_ns(namespace)
-                .use_db(database)
+                .use_db(selected_database)
                 .await
                 .map_err(|source| database_error(&logical_path, source))?;
             Ok(selected)
         })?;
         Ok(Self {
             db: selected,
+            database,
             owner,
         })
     }
@@ -304,13 +307,27 @@ impl DatabaseSession {
     /// Apply idempotent schema definitions without racing another logical
     /// database session on the same physical SurrealDB router.
     pub(crate) async fn ensure_schema(&self, path: &Path, schemas: &[&str]) -> CoreResult<()> {
-        let _schema_guard = self.owner.schema_lock.lock().await;
-        for schema in schemas {
-            self.db
-                .query(*schema)
-                .await
-                .map_err(|source| database_error(path, source))?;
+        const MAX_ATTEMPTS: u32 = 16;
+        let mut initialized = self.owner.initialized_databases.lock().await;
+        if initialized.contains(&self.database) {
+            return Ok(());
         }
+
+        for schema in schemas {
+            let mut attempt = 1;
+            loop {
+                match self.db.query(*schema).await {
+                    Ok(_) => break,
+                    Err(source) if is_transaction_conflict(&source) && attempt < MAX_ATTEMPTS => {
+                        let delay_ms = 5_u64.saturating_mul(1_u64 << attempt.min(5));
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        attempt += 1;
+                    }
+                    Err(source) => return Err(database_error(path, source)),
+                }
+            }
+        }
+        initialized.insert(self.database.clone());
         Ok(())
     }
 }
@@ -360,7 +377,7 @@ fn store_runtime(endpoint: &str, path: &Path) -> CoreResult<Arc<StoreRuntime>> {
         endpoint: endpoint.to_string(),
         runtime: Some(runtime),
         root: Mutex::new(Some(root)),
-        schema_lock: tokio::sync::Mutex::new(()),
+        initialized_databases: tokio::sync::Mutex::new(HashSet::new()),
     });
     runtimes.insert(endpoint.to_string(), Arc::clone(&owner));
     Ok(owner)
@@ -432,6 +449,13 @@ fn database_error(path: &Path, source: surrealdb::Error) -> NahualiError {
         path: path.to_path_buf(),
         source: Box::new(source),
     }
+}
+
+fn is_transaction_conflict(source: &surrealdb::Error) -> bool {
+    matches!(
+        source.query_details(),
+        Some(surrealdb::types::QueryError::TransactionConflict)
+    ) || source.to_string().starts_with("Transaction conflict:")
 }
 
 /// The SurrealDB database identifier for an already-resolved database path.
