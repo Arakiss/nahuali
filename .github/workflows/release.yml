@@ -44,6 +44,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Verify internal workspace dependency pins
         run: sh scripts/sync-workspace-internal-deps.sh --check
+      - name: Verify MCP server release metadata
+        run: sh scripts/sync-mcp-server-metadata.sh --check
       - name: Verify living release text avoids pinned release drift
         run: sh scripts/check-doc-release-refs.sh
       - id: release
@@ -120,14 +122,15 @@ jobs:
 
           gh pr checkout "${pr_number}" --repo "${GITHUB_REPOSITORY}"
           sh scripts/sync-workspace-internal-deps.sh
+          sh scripts/sync-mcp-server-metadata.sh
 
-          if git diff --quiet -- Cargo.toml; then
-            echo "Release PR workspace dependency pins already synchronized."
+          if git diff --quiet -- Cargo.toml server.json; then
+            echo "Release PR generated metadata already synchronized."
             exit 0
           fi
 
-          git add Cargo.toml
-          git commit -m "chore: sync workspace dependency pins"
+          git add Cargo.toml server.json
+          git commit -m "chore: sync generated release metadata"
           git push origin "HEAD:$(git branch --show-current)"
       - name: Trigger CI for generated release PR
         if: ${{ steps.release.outputs.prs_created == 'true' }}
