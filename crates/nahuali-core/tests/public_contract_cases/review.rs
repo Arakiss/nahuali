@@ -399,9 +399,10 @@ fn public_api_self_inspection_is_non_mutating_and_reviewable() {
         .expect("intention records");
 
     let event_count_before = memory.events().len();
-    let report = memory.self_inspect();
+    let inspection_time_ms = 1_784_038_550_876;
+    let report = memory.self_inspect_at(inspection_time_ms);
     let replayed_projection = project_validated_events(memory.events());
-    let projection_report = self_inspect_projection(memory.data());
+    let projection_report = self_inspect_projection_at(memory.data(), inspection_time_ms);
     let projection_recall = recall_projection_with_authority(
         memory.data(),
         "Lena role",
