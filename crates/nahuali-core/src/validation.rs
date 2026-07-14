@@ -377,9 +377,7 @@ mod tests {
         EVENT_ENVELOPE_VERSION, EpisodeRecorded, EventEnvelope, MemoryEngine, MemoryEvent,
     };
 
-    use super::{
-        RecordLedgerIssueKind, block_on_database, open_database, validate_record_ledger,
-    };
+    use super::{RecordLedgerIssueKind, block_on_database, open_database, validate_record_ledger};
 
     #[cfg(feature = "tamper-evidence")]
     use super::{RecordLedgerValidationOptions, validate_record_ledger_with_options};
