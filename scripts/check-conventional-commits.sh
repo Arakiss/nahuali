@@ -9,7 +9,7 @@
 # Accepted types must stay in sync with CONTRIBUTING.md and Release Please.
 set -euo pipefail
 
-types="feat|fix|docs|test|refactor|perf|build|ci|chore|security|revert"
+types="feat|fix|docs|style|test|refactor|perf|build|ci|chore|security|revert"
 pattern="^(${types})(\([a-z0-9._/-]+\))?!?: .+"
 
 validate_subject() {
