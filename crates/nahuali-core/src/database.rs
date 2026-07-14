@@ -307,28 +307,46 @@ impl DatabaseSession {
     /// Apply idempotent schema definitions without racing another logical
     /// database session on the same physical SurrealDB router.
     pub(crate) async fn ensure_schema(&self, path: &Path, schemas: &[&str]) -> CoreResult<()> {
-        const MAX_ATTEMPTS: u32 = 16;
         let mut initialized = self.owner.initialized_databases.lock().await;
         if initialized.contains(&self.database) {
             return Ok(());
         }
 
         for schema in schemas {
-            let mut attempt = 1;
-            loop {
-                match self.db.query(*schema).await {
-                    Ok(_) => break,
-                    Err(source) if is_transaction_conflict(&source) && attempt < MAX_ATTEMPTS => {
-                        let delay_ms = 5_u64.saturating_mul(1_u64 << attempt.min(5));
-                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                        attempt += 1;
-                    }
-                    Err(source) => return Err(database_error(path, source)),
-                }
-            }
+            self.query_with_retry(path, *schema, Vec::new()).await?;
         }
         initialized.insert(self.database.clone());
         Ok(())
+    }
+
+    /// Execute one SurrealQL request, retrying only SurrealDB's documented
+    /// transaction-conflict failure. The failed transaction was not committed,
+    /// so replaying the request is safe.
+    pub(crate) async fn query_with_retry(
+        &self,
+        path: &Path,
+        statement: impl Into<String>,
+        bindings: Vec<(String, serde_json::Value)>,
+    ) -> CoreResult<surrealdb::IndexedResults> {
+        const MAX_ATTEMPTS: u32 = 16;
+        let statement = statement.into();
+        let mut attempt = 1;
+
+        loop {
+            let mut query = self.db.query(statement.clone());
+            for (name, value) in &bindings {
+                query = query.bind((name.clone(), value.clone()));
+            }
+            match query.await {
+                Ok(response) => return Ok(response),
+                Err(source) if is_transaction_conflict(&source) && attempt < MAX_ATTEMPTS => {
+                    let delay_ms = 5_u64.saturating_mul(1_u64 << attempt.min(5));
+                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                    attempt += 1;
+                }
+                Err(source) => return Err(database_error(path, source)),
+            }
+        }
     }
 }
 

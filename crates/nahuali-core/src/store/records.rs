@@ -40,9 +40,8 @@ impl MemoryEngine {
         let _database = DatabaseSession::open(&path)?;
         block_on_database(async move {
             let db = open_database(&retained_path).await?;
-            db.query("DELETE memory_record")
-                .await
-                .map_err(|source| database_error(&retained_path, source))?;
+            db.query_with_retry(&retained_path, "DELETE memory_record", Vec::new())
+                .await?;
             write_records(&retained_path, &events).await
         })
     }

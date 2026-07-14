@@ -56,7 +56,6 @@ use crate::{
     },
 };
 use serde::Deserialize;
-use surrealdb::{Surreal, engine::any::Any};
 use tokio::runtime::{Builder, Runtime};
 
 static ID_COUNTER: AtomicU64 = AtomicU64::new(1);

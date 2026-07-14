@@ -831,7 +831,7 @@ async fn graph_projection_status(
 
 async fn graph_projection_status_with_db(
     path: &Path,
-    db: &Surreal<Any>,
+    db: &DatabaseSession,
     data: &MemoryData,
     events: &[EventEnvelope],
 ) -> Result<GraphProjectionStatus> {
@@ -841,12 +841,16 @@ async fn graph_projection_status_with_db(
     }
 
     let mut response = db
-        .query(
+        .query_with_retry(
+            path,
             "SELECT latest_sequence, latest_event_id FROM projection_checkpoint WHERE checkpoint_id = $checkpoint_id",
+            vec![(
+                "checkpoint_id".to_string(),
+                serde_json::Value::String(GRAPH_PROJECTION_CHECKPOINT_ID.to_string()),
+            )],
         )
-        .bind(("checkpoint_id", GRAPH_PROJECTION_CHECKPOINT_ID.to_string()))
         .await
-        .map_err(|source| database_error(path, source))?;
+        ?;
     let checkpoint_rows: Vec<serde_json::Value> = response
         .take(0)
         .map_err(|source| database_error(path, source))?;
@@ -887,60 +891,66 @@ async fn graph_projection_status_with_db(
     })
 }
 
-async fn clear_graph_projection(path: &Path, db: &Surreal<Any>) -> Result<()> {
+async fn clear_graph_projection(path: &Path, db: &DatabaseSession) -> Result<()> {
     for table in PROJECTED_RELATION_TABLES
         .iter()
         .chain(PROJECTED_NODE_TABLES.iter())
     {
         let query = format!("DELETE {table}");
-        db.query(query)
-            .await
-            .map_err(|source| database_error(path, source))?;
+        db.query_with_retry(path, query, Vec::new()).await?;
     }
     Ok(())
 }
 
 async fn create_projected_record(
     path: &Path,
-    db: &Surreal<Any>,
+    db: &DatabaseSession,
     table: &str,
     id: &str,
     content: serde_json::Value,
 ) -> Result<()> {
-    db.query("CREATE type::record($table, $id) CONTENT $content")
-        .bind(("table", table.to_string()))
-        .bind(("id", id.to_string()))
-        .bind(("content", content))
-        .await
-        .map_err(|source| database_error(path, source))?;
+    db.query_with_retry(
+        path,
+        "CREATE type::record($table, $id) CONTENT $content",
+        vec![
+            ("table".to_string(), serde_json::Value::String(table.to_string())),
+            ("id".to_string(), serde_json::Value::String(id.to_string())),
+            ("content".to_string(), content),
+        ],
+    )
+    .await?;
     Ok(())
 }
 
 async fn relate_projected_records(
     path: &Path,
-    db: &Surreal<Any>,
+    db: &DatabaseSession,
     input: ProjectedRelationInput<'_>,
 ) -> Result<()> {
     let query = format!(
         "LET $in_record = type::record($in_table, $in_id); LET $out_record = type::record($out_table, $out_id); RELATE $in_record->{}->$out_record CONTENT $content;",
         input.relation_table
     );
-    db.query(query)
-        .bind(("in_table", input.in_table.to_string()))
-        .bind(("in_id", input.in_id.to_string()))
-        .bind(("out_table", input.out_table.to_string()))
-        .bind(("out_id", input.out_id.to_string()))
-        .bind(("content", input.content))
-        .await
-        .map_err(|source| database_error(path, source))?;
+    db.query_with_retry(
+        path,
+        query,
+        vec![
+            ("in_table".to_string(), serde_json::Value::String(input.in_table.to_string())),
+            ("in_id".to_string(), serde_json::Value::String(input.in_id.to_string())),
+            ("out_table".to_string(), serde_json::Value::String(input.out_table.to_string())),
+            ("out_id".to_string(), serde_json::Value::String(input.out_id.to_string())),
+            ("content".to_string(), input.content),
+        ],
+    )
+    .await?;
     Ok(())
 }
 
-async fn count_projected_rows(path: &Path, db: &Surreal<Any>, table: &str) -> Result<usize> {
+async fn count_projected_rows(path: &Path, db: &DatabaseSession, table: &str) -> Result<usize> {
     let mut response = db
-        .query(format!("SELECT memory_id FROM {table}"))
+        .query_with_retry(path, format!("SELECT memory_id FROM {table}"), Vec::new())
         .await
-        .map_err(|source| database_error(path, source))?;
+        ?;
     let rows: Vec<serde_json::Value> = response
         .take(0)
         .map_err(|source| database_error(path, source))?;
@@ -949,16 +959,16 @@ async fn count_projected_rows(path: &Path, db: &Surreal<Any>, table: &str) -> Re
 
 async fn select_projected_rows<T>(
     path: &Path,
-    db: &Surreal<Any>,
+    db: &DatabaseSession,
     query: &str,
 ) -> Result<Vec<T>>
 where
     T: serde::de::DeserializeOwned,
 {
     let mut response = db
-        .query(query)
+        .query_with_retry(path, query, Vec::new())
         .await
-        .map_err(|source| database_error(path, source))?;
+        ?;
     let rows: Vec<serde_json::Value> = response
         .take(0)
         .map_err(|source| database_error(path, source))?;

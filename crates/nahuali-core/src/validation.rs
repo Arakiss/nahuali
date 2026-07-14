@@ -286,10 +286,7 @@ pub fn validate_record_ledger_events_with_options(
 
 async fn read_records(path: &Path) -> Result<Vec<MemoryRecord>> {
     let db = open_database(path).await?;
-    let mut info_response = db
-        .query("INFO FOR DB")
-        .await
-        .map_err(|source| database_error(path, source))?;
+    let mut info_response = db.query_with_retry(path, "INFO FOR DB", Vec::new()).await?;
     let info: Option<serde_json::Value> = info_response
         .take(0)
         .map_err(|source| database_error(path, source))?;
@@ -302,9 +299,12 @@ async fn read_records(path: &Path) -> Result<Vec<MemoryRecord>> {
         return Ok(Vec::new());
     }
     let mut response = db
-        .query("SELECT sequence, envelope FROM memory_record ORDER BY sequence ASC")
-        .await
-        .map_err(|source| database_error(path, source))?;
+        .query_with_retry(
+            path,
+            "SELECT sequence, envelope FROM memory_record ORDER BY sequence ASC",
+            Vec::new(),
+        )
+        .await?;
     let rows: Vec<serde_json::Value> = response
         .take(0)
         .map_err(|source| database_error(path, source))?;
@@ -378,8 +378,7 @@ mod tests {
     };
 
     use super::{
-        RecordLedgerIssueKind, block_on_database, database_error, open_database,
-        validate_record_ledger,
+        RecordLedgerIssueKind, block_on_database, open_database, validate_record_ledger,
     };
 
     #[cfg(feature = "tamper-evidence")]
@@ -702,10 +701,12 @@ mod tests {
                 "sequence": sequence,
                 "envelope": envelope,
             });
-            db.query("CREATE memory_record CONTENT $record")
-                .bind(("record", record))
-                .await
-                .map_err(|source| database_error(&path, source))?;
+            db.query_with_retry(
+                &path,
+                "CREATE memory_record CONTENT $record",
+                vec![("record".to_string(), record)],
+            )
+            .await?;
             Ok(())
         })
         .unwrap();

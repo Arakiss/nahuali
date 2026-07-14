@@ -7,9 +7,12 @@ struct MemoryRecord {
 async fn read_records(path: &Path) -> Result<Vec<EventEnvelope>> {
     let db = open_database(path).await?;
     let mut response = db
-        .query("SELECT sequence, envelope FROM memory_record ORDER BY sequence ASC")
-        .await
-        .map_err(|source| database_error(path, source))?;
+        .query_with_retry(
+            path,
+            "SELECT sequence, envelope FROM memory_record ORDER BY sequence ASC",
+            Vec::new(),
+        )
+        .await?;
     let rows: Vec<serde_json::Value> = response
         .take(0)
         .map_err(|source| database_error(path, source))?;
@@ -42,10 +45,12 @@ async fn write_record(path: &Path, event: &EventEnvelope) -> Result<()> {
         "sequence": event.sequence,
         "envelope": envelope,
     });
-    db.query("CREATE memory_record CONTENT $record")
-        .bind(("record", record))
-        .await
-        .map_err(|source| database_error(path, source))?;
+    db.query_with_retry(
+        path,
+        "CREATE memory_record CONTENT $record",
+        vec![("record".to_string(), record)],
+    )
+    .await?;
     Ok(())
 }
 
@@ -57,10 +62,12 @@ async fn write_records(path: &Path, events: &[EventEnvelope]) -> Result<()> {
             "sequence": event.sequence,
             "envelope": envelope,
         });
-        db.query("CREATE memory_record CONTENT $record")
-            .bind(("record", record))
-            .await
-            .map_err(|source| database_error(path, source))?;
+        db.query_with_retry(
+            path,
+            "CREATE memory_record CONTENT $record",
+            vec![("record".to_string(), record)],
+        )
+        .await?;
     }
     Ok(())
 }
