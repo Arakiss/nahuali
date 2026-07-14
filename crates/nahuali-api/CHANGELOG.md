@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-api-v1.0.0-beta.0...nahuali-api-v1.1.0-beta.0) (2026-07-14)
+
+
+### Features
+
+* make trusted memory usable without services ([3e1d70b](https://github.com/Arakiss/nahuali/commit/3e1d70bd5ed09f18ec3a0028299ad16c6a1aa2f4))
+
 ## [1.0.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-api-v0.6.0-beta.0...nahuali-api-v1.0.0-beta.0) (2026-07-14)
 
 

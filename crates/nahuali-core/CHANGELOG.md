@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-core-v1.0.0-beta.0...nahuali-core-v1.1.0-beta.0) (2026-07-14)
+
+
+### Features
+
+* make trusted memory usable without services ([3e1d70b](https://github.com/Arakiss/nahuali/commit/3e1d70bd5ed09f18ec3a0028299ad16c6a1aa2f4))
+
+
+### Bug fixes
+
+* coordinate embedded conflict recovery ([cb12252](https://github.com/Arakiss/nahuali/commit/cb12252b157da69b10096c67ad4939a8339f5dfd))
+* prevent concurrent store initialization conflicts ([4c13988](https://github.com/Arakiss/nahuali/commit/4c1398858b5f926b545c99cfa87856dd715aaedd))
+* retry embedded database selection conflicts ([1ff89ec](https://github.com/Arakiss/nahuali/commit/1ff89ec8b5dabd7a956576316540200bceaf513b))
+* retry embedded transaction conflicts consistently ([baa2330](https://github.com/Arakiss/nahuali/commit/baa23301a76471c37aad2c06edd9d5406a0ef889))
+* retry transient embedded schema conflicts ([1cc4096](https://github.com/Arakiss/nahuali/commit/1cc4096c44cc4c832ffb5073f36b30590a0a3d6d))
+
 ## [1.0.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-core-v0.7.0-beta.0...nahuali-core-v1.0.0-beta.0) (2026-07-14)
 
 
