@@ -48,7 +48,7 @@ it by hand. The main argument is `--database`, a SurrealDB database identifier
 (default: `memory`). It is not a filesystem path. The embedded store lives under
 `~/.nahuali/data`; use `NAHUALI_DB_URL` for a remote SurrealDB deployment.
 
-Nahuali is also published as `io.github.arakiss/nahuali` in the official MCP
+Nahuali is also published as `io.github.Arakiss/nahuali` in the official MCP
 Registry. Its OCI package can be launched with a persistent named volume:
 
 ```json
@@ -216,7 +216,7 @@ binary, so npm is not required for any of these.
 
 | Target | URL | What a submission needs |
 | --- | --- | --- |
-| Official MCP Registry | `registry.modelcontextprotocol.io` | `server.json` points to the public OCI image and release automation publishes it as `io.github.arakiss/nahuali` through GitHub OIDC. |
+| Official MCP Registry | `registry.modelcontextprotocol.io` | `server.json` points to the public OCI image and release automation publishes it as `io.github.Arakiss/nahuali` through GitHub OIDC. |
 | Glama | `glama.ai/mcp/servers` | Auto-indexer. It crawls GitHub and refreshes daily, so a public repo with a clear README and the `mcp` topic is largely picked up on its own; an "Add Server" form exists to submit the repo URL directly. **Zero-maintenance / GitHub-indexed.** No npm package required. |
 | mcp.so | `mcp.so` | Community directory. Submit via the "Submit" button or by opening a GitHub issue on their repo with the server name, description, features, and connection details (the `nahuali-mcp` command and `--database` arg). **Low-maintenance**, one-time submission. No npm package required. |
 | awesome-mcp-servers | `github.com/punkpeye/awesome-mcp-servers` | A pull request against `main`. Add one line in the appropriate category (Rust language tag; a knowledge/memory category), in alphabetical order, matching the existing format, with an accurate link and description. The canonical GitHub list that other tools and LLMs read. **Zero-maintenance / GitHub-indexed** after merge. No npm package required. |

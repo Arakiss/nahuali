@@ -24,7 +24,7 @@ COPY LICENSE /usr/share/licenses/nahuali/LICENSE
 LABEL org.opencontainers.image.source="https://github.com/Arakiss/nahuali"
 LABEL org.opencontainers.image.description="Trust-aware memory for AI agents over MCP"
 LABEL org.opencontainers.image.licenses="FSL-1.1-MIT"
-LABEL io.modelcontextprotocol.server.name="io.github.arakiss/nahuali"
+LABEL io.modelcontextprotocol.server.name="io.github.Arakiss/nahuali"
 
 ENV NAHUALI_HOME=/data
 VOLUME ["/data"]

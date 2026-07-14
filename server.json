@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.arakiss/nahuali",
+  "name": "io.github.Arakiss/nahuali",
   "title": "Nahuali",
   "description": "Trust-aware agent memory with evidence-backed recall, self-inspection, and audit history.",
   "repository": {

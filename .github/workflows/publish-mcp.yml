@@ -46,7 +46,7 @@ jobs:
         type=raw,value=${{ needs.prepare.outputs.version }}
         type=raw,value=latest
       labels: |
-        io.modelcontextprotocol.server.name=io.github.arakiss/nahuali
+        io.modelcontextprotocol.server.name=io.github.Arakiss/nahuali
         org.opencontainers.image.source=https://github.com/Arakiss/nahuali
         org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
     secrets:
@@ -74,7 +74,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           jq --arg version "$VERSION" \
-            '.version = $version | .packages[0].identifier = "ghcr.io/arakiss/nahuali-mcp:" + $version' \
+            '.name = "io.github.Arakiss/nahuali" | .version = $version | .packages[0].identifier = "ghcr.io/arakiss/nahuali-mcp:" + $version' \
             server.json > server.tmp.json
           mv server.tmp.json server.json
 
