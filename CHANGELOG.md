@@ -13,6 +13,16 @@ release histories.
   to restart its host after an upgrade, preventing old and new embedded engine
   versions from opening the same store.
 
+## [0.8.0-beta.1](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.0...v0.8.0-beta.1) (2026-07-15)
+
+
+### Fixed
+
+* bind benchmark evidence to product releases ([0968b1b](https://github.com/Arakiss/nahuali/commit/0968b1be2da221274b77fef8946ae9d0889f0d80))
+* make required CI independent of trigger type ([acc3836](https://github.com/Arakiss/nahuali/commit/acc38364d8d1052eebad59a105ff8b878a791bc2))
+* prevent mixed-engine store upgrades ([d742e66](https://github.com/Arakiss/nahuali/commit/d742e6601756e2dedd27d754c64f61424d63def3))
+* separate release proposals from public evidence ([8e38aa2](https://github.com/Arakiss/nahuali/commit/8e38aa2d8ed7a667b28397ece3843a35dec7783e))
+
 ## [0.8.0-beta.0] - 2026-07-15
 
 ### Why upgrade
