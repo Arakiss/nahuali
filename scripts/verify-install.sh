@@ -10,6 +10,7 @@ fi
 
 INSTALL_ROOT="$(mktemp -d)"
 STORE_DIR="$(mktemp -d)"
+export NAHUALI_HOME="$STORE_DIR/home"
 
 cleanup() {
   rm -rf "$INSTALL_ROOT" "$STORE_DIR"
