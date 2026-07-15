@@ -12,8 +12,9 @@
 //! the otherwise-empty detail pane. Both mirror the live store verdict.
 
 use std::io;
+use std::time::{Duration, Instant};
 
-use ratatui::backend::{Backend, CrosstermBackend};
+use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
@@ -80,6 +81,8 @@ struct App {
     /// Indices into `snapshot.items` matching the active filter.
     visible: Vec<usize>,
     list: ListState,
+    corner_mascot: Option<mascot::RasterMascot>,
+    mascot_tick: usize,
 }
 
 impl App {
@@ -96,6 +99,8 @@ impl App {
             filter: 0,
             visible: Vec::new(),
             list: ListState::default(),
+            corner_mascot: None,
+            mascot_tick: 0,
         };
         app.recompute_visible();
         app
@@ -153,7 +158,13 @@ impl App {
             self.kinds[self.filter - 1].clone()
         }
     }
+
+    fn on_tick(&mut self) {
+        self.mascot_tick = self.mascot_tick.wrapping_add(1);
+    }
 }
+
+const MASCOT_TICK_RATE: Duration = Duration::from_millis(240);
 
 /// Run the cockpit against `snapshot`, taking over the terminal until the user
 /// quits (`q`/`Esc`). Restores the terminal on the way out, including on error.
@@ -165,6 +176,8 @@ pub fn run(snapshot: Snapshot) -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new(snapshot);
+    let verdict = Verdict::from_label(&app.snapshot.store_trust_label);
+    app.corner_mascot = mascot::RasterMascot::from_terminal(verdict).ok();
     let outcome = event_loop(&mut terminal, &mut app);
 
     disable_raw_mode()?;
@@ -173,10 +186,16 @@ pub fn run(snapshot: Snapshot) -> io::Result<()> {
     outcome
 }
 
-fn event_loop<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
+fn event_loop(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+) -> io::Result<()> {
+    let mut last_tick = Instant::now();
     loop {
         terminal.draw(|frame| draw(frame, app))?;
-        if let Event::Key(key) = event::read()?
+        let timeout = MASCOT_TICK_RATE.saturating_sub(last_tick.elapsed());
+        if event::poll(timeout)?
+            && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {
             match key.code {
@@ -189,12 +208,16 @@ fn event_loop<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Resu
                 _ => {}
             }
         }
+        if last_tick.elapsed() >= MASCOT_TICK_RATE {
+            app.on_tick();
+            last_tick = Instant::now();
+        }
     }
 }
 
 fn draw(frame: &mut Frame, app: &mut App) {
-    let footer_height = if frame.area().height >= 18 {
-        mascot::MINI_HEIGHT
+    let footer_height = if app.corner_mascot.is_some() && frame.area().height >= 18 {
+        mascot::MINI_SLOT_HEIGHT
     } else {
         1
     };
@@ -231,7 +254,13 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_signals(frame, &app.snapshot.signals, rows[2]);
     let verdict = Verdict::from_label(&app.snapshot.store_trust_label);
-    draw_footer(frame, rows[3], verdict);
+    draw_footer(
+        frame,
+        rows[3],
+        verdict,
+        app.corner_mascot.as_ref(),
+        app.mascot_tick,
+    );
 }
 
 /// Draw the right-hand detail pane. With an item selected it shows that item's
@@ -523,7 +552,13 @@ fn detail_paragraph(item: &Item) -> Paragraph<'static> {
         .block(detail_block())
 }
 
-fn draw_footer(frame: &mut Frame, area: Rect, verdict: Verdict) {
+fn draw_footer(
+    frame: &mut Frame,
+    area: Rect,
+    verdict: Verdict,
+    corner_mascot: Option<&mascot::RasterMascot>,
+    mascot_tick: usize,
+) {
     let footer = Paragraph::new(Line::from(vec![
         Span::styled("  ↑↓/jk ", Style::default().fg(color(theme::CLAY))),
         Span::styled("move   ", Style::default().fg(color(theme::INK_FAINT))),
@@ -532,7 +567,10 @@ fn draw_footer(frame: &mut Frame, area: Rect, verdict: Verdict) {
         Span::styled("q/Esc ", Style::default().fg(color(theme::CLAY))),
         Span::styled("quit", Style::default().fg(color(theme::INK_FAINT))),
     ]));
-    if area.height < mascot::MINI_HEIGHT || area.width < mascot::MINI_WIDTH + 20 {
+    if corner_mascot.is_none()
+        || area.height < mascot::MINI_SLOT_HEIGHT
+        || area.width < mascot::MINI_WIDTH + 20
+    {
         let columns = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(0), Constraint::Length(9)])
@@ -550,7 +588,18 @@ fn draw_footer(frame: &mut Frame, area: Rect, verdict: Verdict) {
         .constraints([Constraint::Min(0), Constraint::Length(mascot::MINI_WIDTH)])
         .split(area);
     frame.render_widget(footer, columns[0]);
-    frame.render_widget(mascot::MiniMascot::new(verdict), columns[1]);
+    let image_area = Rect::new(
+        columns[1].x,
+        columns[1].y + mascot::motion_offset(mascot_tick),
+        mascot::MINI_WIDTH,
+        mascot::MINI_HEIGHT,
+    );
+    frame.render_widget(
+        corner_mascot
+            .expect("the raster mascot was checked above")
+            .frame(),
+        image_area,
+    );
 }
 
 #[cfg(test)]
@@ -562,7 +611,8 @@ mod tests {
 
     /// Render the whole cockpit into a `TestBackend` of the given size and hand
     /// back its buffer, so a test can inspect both the drawn text ([`text_of`])
-    /// and the half-block art it contains ([`block_glyphs`]).
+    /// and the empty-state half-block art it contains ([`block_glyphs`]). Raster
+    /// graphics are negotiated only by the real terminal, never TestBackend.
     fn render_cockpit(app: &mut App, width: u16, height: u16) -> Buffer {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal.draw(|frame| draw(frame, app)).unwrap();
@@ -574,8 +624,8 @@ mod tests {
         buf.content().iter().map(|cell| cell.symbol()).collect()
     }
 
-    /// The count of half-block glyphs on screen. Only the full mascot sprite
-    /// paints these now, so non-empty views should contain none.
+    /// The count of half-block glyphs on screen. Only the full empty-state
+    /// mascot paints these; the real corner mascot uses a terminal image.
     fn block_glyphs(buf: &Buffer) -> usize {
         buf.content()
             .iter()
@@ -630,6 +680,14 @@ mod tests {
         assert_eq!(app.list.selected(), None);
         app.step(1);
         assert_eq!(app.list.selected(), None);
+    }
+
+    #[test]
+    fn animation_tick_advances_without_input() {
+        let mut app = App::new(snapshot(1));
+        assert_eq!(app.mascot_tick, 0);
+        app.on_tick();
+        assert_eq!(app.mascot_tick, 1);
     }
 
     fn mixed() -> Snapshot {
@@ -704,7 +762,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_store_on_a_tiny_terminal_draws_only_the_corner_mascot() {
+    fn empty_store_on_a_tiny_terminal_draws_the_compact_fallback() {
         // Below the empty-state threshold the pane falls back to the plain
         // placeholder. The corner mascot remains visible and nothing panics.
         let mut app = App::new(snapshot(0));
@@ -714,10 +772,8 @@ mod tests {
             !text.contains("calm"),
             "no mascot caption should appear on a tiny terminal"
         );
-        assert!(
-            block_glyphs(&buf) > 50,
-            "the CERTIFY corner mascot remains visible on a tiny terminal"
-        );
+        assert_eq!(block_glyphs(&buf), 0);
+        assert!(text.contains("≋(•ᴗ•)≋"), "compact mascot fallback missing");
         assert!(
             text.contains("No memory"),
             "the plain placeholder should show instead"
@@ -725,28 +781,27 @@ mod tests {
     }
 
     #[test]
-    fn non_empty_store_shows_the_corner_mascot_not_the_full_sprite() {
-        // Browsing an actual item, the full sprite is gone while the recognizable
-        // mini axolotl remains in the bottom-right footer.
+    fn non_empty_test_backend_shows_the_compact_corner_fallback() {
+        // Unit tests have no terminal graphics negotiation. They prove the safe
+        // fallback while live Ghostty QA proves the high-resolution raster path.
         let mut app = App::new(snapshot(3));
         let buf = render_cockpit(&mut app, 120, 40);
-        assert!(
-            block_glyphs(&buf) > 50 && !text_of(&buf).contains("calm"),
-            "the footer should carry only the reduced CERTIFY axolotl"
-        );
+        let text = text_of(&buf);
+        assert_eq!(block_glyphs(&buf), 0);
+        assert!(text.contains("≋(•ᴗ•)≋"));
+        assert!(!text.contains("calm"));
     }
 
     #[test]
-    fn narrow_terminal_keeps_the_corner_mascot_and_layout() {
-        // The footer mascot survives narrow layouts without colliding with
-        // useful information.
+    fn narrow_terminal_keeps_the_compact_mascot_and_layout() {
+        // The fallback survives narrow layouts without colliding with useful
+        // information.
         let mut app = App::new(snapshot(3));
         let buf = render_cockpit(&mut app, 42, 30);
         let text = text_of(&buf);
-        assert!(
-            block_glyphs(&buf) > 50 && !text.contains("calm"),
-            "the reduced corner mascot must remain visible on a narrow terminal"
-        );
+        assert_eq!(block_glyphs(&buf), 0);
+        assert!(text.contains("≋(•ᴗ•)≋"));
+        assert!(!text.contains("calm"));
         assert!(text.contains("nahuali explore"), "header still renders");
         assert!(text.contains("memory"), "list pane still renders");
     }
@@ -769,16 +824,14 @@ mod tests {
             "must not show the CERTIFY caption for a BLOCK store"
         );
 
-        // Non-empty BLOCK store: the corner mascot switches to its guarded face
-        // while the full half-block sprite remains absent.
+        // Non-empty BLOCK store without terminal graphics: the compact fallback
+        // switches expression while the full half-block sprite remains absent.
         let mut full = snapshot(3);
         full.store_trust_label = "BLOCK · not yet trustworthy".to_string();
         full.store_trust_color = theme::RED;
         let mut app = App::new(full);
         let buf = render_cockpit(&mut app, 120, 40);
-        assert!(
-            (50..120).contains(&block_glyphs(&buf)),
-            "a non-empty BLOCK store draws only the reduced guarded mascot"
-        );
+        assert_eq!(block_glyphs(&buf), 0);
+        assert!(text_of(&buf).contains("≋(—_—)≋"));
     }
 }

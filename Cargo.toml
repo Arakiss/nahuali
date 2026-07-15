@@ -22,7 +22,9 @@ nahuali-core = { version = "=0.8.0-beta.1", path = "crates/nahuali-core" } # x-r
 nahuali-ui = { version = "=0.8.0-beta.1", path = "crates/nahuali-ui" } # x-release-please-version
 anyhow = "1.0"
 comfy-table = "7"
-ratatui = "0.29"
+image = { version = "0.25", default-features = false, features = ["png"] }
+ratatui = "0.30.1"
+ratatui-image = { version = "11.0.6", default-features = false, features = ["crossterm"] }
 axum = "0.8.9"
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }

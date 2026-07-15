@@ -33,10 +33,10 @@ chained, and an operator can sign its tip to detect a fully rewritten history.
 Nahuali is local-first, source-available, and in public beta.
 
 <p align="center">
-  <img src="assets/nahuali-tui.gif" alt="Nahuali explore showing memory, evidence, trust verdicts, ledger integrity, governance signals, and the nahual mascot" width="100%">
+  <img src="assets/nahuali-tui.png" alt="Nahuali explore showing memory, evidence, trust verdicts, ledger integrity, governance signals, and the nahual mascot" width="100%">
 </p>
 
-<p align="center"><sub><code>nahuali explore</code>: inspect what the agent remembers, why it trusts it, and whether the ledger is intact. The nahual in the bottom-right corner mirrors the current trust verdict.</sub></p>
+<p align="center"><sub><code>nahuali explore</code>: inspect what the agent remembers, why it trusts it, and whether the ledger is intact. The nahual in the bottom-right corner mirrors the current trust verdict and moves without obscuring the cockpit.</sub></p>
 
 ## Quickstart
 

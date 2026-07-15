@@ -14,8 +14,10 @@ categories = ["command-line-interface"]
 [features]
 # The interactive `explore` governance cockpit. Off by default so a minimal
 # build (or a server context) need not pull ratatui; the CLI turns it on.
-tui = ["dep:ratatui"]
+tui = ["dep:image", "dep:ratatui", "dep:ratatui-image"]
 
 [dependencies]
 comfy-table.workspace = true
+image = { workspace = true, optional = true }
 ratatui = { workspace = true, optional = true }
+ratatui-image = { workspace = true, optional = true }
