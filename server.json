@@ -7,11 +7,11 @@
     "url": "https://github.com/Arakiss/nahuali",
     "source": "github"
   },
-  "version": "0.8.0-beta.2",
+  "version": "0.8.0-beta.3",
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/arakiss/nahuali-mcp:0.8.0-beta.2",
+      "identifier": "ghcr.io/arakiss/nahuali-mcp:0.8.0-beta.3",
       "transport": {
         "type": "stdio"
       }
