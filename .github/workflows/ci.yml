@@ -58,15 +58,23 @@ jobs:
       - run: cargo clippy -p nahuali-core --features attestation --all-targets -- -D warnings
 
   test:
-    name: test (${{ matrix.os }})
+    name: test (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            command: bash scripts/ensure-dev-stack.sh && cargo test --workspace && cargo test -p nahuali-core --no-default-features --lib
+            label: ubuntu-latest, workspace
+            command: bash scripts/ensure-dev-stack.sh && cargo test --workspace
+          # SurrealDB's two feature graphs are both large. Keep the minimal-core
+          # contract on a clean runner so CI does not retain two complete build
+          # trees and exhaust the hosted runner's disk.
+          - os: ubuntu-latest
+            label: ubuntu-latest, minimal core
+            command: cargo test -p nahuali-core --no-default-features --lib
           - os: macos-latest
+            label: macos-latest, compile
             command: cargo test --workspace --no-run
     steps:
       - uses: actions/checkout@v6.0.2
