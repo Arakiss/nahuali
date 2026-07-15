@@ -52,9 +52,9 @@ else
   mkdir -p "$DIST_DIR"
 fi
 
-version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/nahuali-cli/Cargo.toml | head -n 1)"
+version="$(tr -d '[:space:]' < version.txt)"
 if [[ -z "$version" ]]; then
-  echo "failed to read nahuali-cli version from crates/nahuali-cli/Cargo.toml" >&2
+  echo "failed to read the product version from version.txt" >&2
   exit 1
 fi
 
@@ -73,7 +73,8 @@ for package in "${package_order[@]}"; do
     continue
   fi
 
-  if [[ "$package" != "nahuali-core" ]] && grep -q 'no matching package named `nahuali-core` found' "$package_log"; then
+  if [[ "$package" != "nahuali-core" ]] \
+    && grep -Eq 'no matching package named `nahuali-(core|ui)` found' "$package_log"; then
     cargo package -p "$package" --allow-dirty --list > "$DIST_DIR/${package}.package-files.txt"
     package_status+=("${package}=blocked_until_nahuali-core_registry")
     continue

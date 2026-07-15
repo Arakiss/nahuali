@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     tags:
-      - "nahuali-cli-v*"
+      - "v*"
   workflow_dispatch:
     inputs:
       release_please:
@@ -13,7 +13,7 @@ on:
         default: false
         type: boolean
       tag:
-        description: "Existing tag to build and attach binaries to (for example nahuali-cli-vX.Y.Z-beta.N)"
+        description: "Existing product tag to build and attach binaries to (for example vX.Y.Z-beta.N)"
         required: false
         type: string
 
@@ -42,8 +42,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: dtolnay/rust-toolchain@stable
-      - name: Verify internal workspace dependency pins
-        run: sh scripts/sync-workspace-internal-deps.sh --check
+      - name: Verify product version policy
+        run: bash scripts/check-version-policy.sh
       - name: Verify MCP server release metadata
         run: sh scripts/sync-mcp-server-metadata.sh --check
       - name: Verify living release text avoids pinned release drift
@@ -54,40 +54,7 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Tag internal components at the product release commit
-        if: ${{ steps.release.outputs['crates/nahuali-cli--release_created'] == 'true' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLI_TAG: ${{ steps.release.outputs['crates/nahuali-cli--tag_name'] }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          version="${CLI_TAG#nahuali-cli-v}"
-          release_sha="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${CLI_TAG}" --jq .target_commitish)"
-          if [[ ! "${release_sha}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Product release target is not an immutable commit SHA: ${release_sha}"
-            exit 1
-          fi
-
-          for component in nahuali-core nahuali-mcp nahuali-api nahuali-regression; do
-            tag="${component}-v${version}"
-            existing_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq .object.sha 2>/dev/null || true)"
-            if [[ -n "${existing_sha}" ]]; then
-              if [[ "${existing_sha}" != "${release_sha}" ]]; then
-                echo "::error::Existing ${tag} points to ${existing_sha}, expected ${release_sha}."
-                exit 1
-              fi
-              echo "${tag} already points to ${release_sha}"
-              continue
-            fi
-
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f ref="refs/tags/${tag}" \
-              -f sha="${release_sha}" >/dev/null
-            echo "created ${tag} at ${release_sha}"
-          done
-      - name: Sync generated release PR workspace pins
+      - name: Sync generated release PR metadata
         if: ${{ steps.release.outputs.prs_created == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -116,20 +83,20 @@ jobs:
           )"
 
           if [[ -z "${pr_number}" ]]; then
-            echo "No release PR number emitted; skipping workspace pin sync."
+            echo "No release PR number emitted; skipping generated metadata sync."
             exit 0
           fi
 
           gh pr checkout "${pr_number}" --repo "${GITHUB_REPOSITORY}"
-          sh scripts/sync-workspace-internal-deps.sh
+          cargo metadata --format-version 1 >/dev/null
           sh scripts/sync-mcp-server-metadata.sh
 
-          if git diff --quiet -- Cargo.toml server.json; then
+          if git diff --quiet -- Cargo.lock server.json; then
             echo "Release PR generated metadata already synchronized."
             exit 0
           fi
 
-          git add Cargo.toml server.json
+          git add Cargo.lock server.json
           git commit -m "chore: sync generated release metadata"
           git push origin "HEAD:$(git branch --show-current)"
       - name: Trigger CI for generated release PR
@@ -189,63 +156,65 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --ref "${pr_branch}" \
             -f base_sha="${pr_base}"
-      - name: Name CLI release as the Nahuali product
-        if: ${{ steps.release.outputs['crates/nahuali-cli--release_created'] == 'true' }}
+      - name: Name the Nahuali product release
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLI_TAG: ${{ steps.release.outputs['crates/nahuali-cli--tag_name'] }}
+          PRODUCT_TAG: ${{ steps.release.outputs.tag_name }}
         shell: bash
         run: |
           set -euo pipefail
 
-          version="${CLI_TAG#nahuali-cli-v}"
-          gh release edit "${CLI_TAG}" \
+          version="${PRODUCT_TAG#v}"
+          bash scripts/render-release-notes.sh "${version}" > release-notes.md
+          gh release edit "${PRODUCT_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "Nahuali v${version}" \
+            --notes-file release-notes.md \
             --prerelease \
             --latest=false
       - name: Trigger CLI binary build
-        if: ${{ steps.release.outputs['crates/nahuali-cli--release_created'] == 'true' }}
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLI_TAG: ${{ steps.release.outputs['crates/nahuali-cli--tag_name'] }}
+          PRODUCT_TAG: ${{ steps.release.outputs.tag_name }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "${CLI_TAG}" ]]; then
-            echo "::error::Release Please reported a CLI release but did not emit a tag."
+          if [[ -z "${PRODUCT_TAG}" ]]; then
+            echo "::error::Release Please reported a product release but did not emit a tag."
             exit 1
           fi
 
-          gh workflow run release.yml --repo "${GITHUB_REPOSITORY}" --ref "${CLI_TAG}" -f "tag=${CLI_TAG}"
+          gh workflow run release.yml --repo "${GITHUB_REPOSITORY}" --ref "${PRODUCT_TAG}" -f "tag=${PRODUCT_TAG}"
       - name: Trigger MCP image and registry publication
-        if: ${{ steps.release.outputs['crates/nahuali-cli--release_created'] == 'true' }}
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLI_TAG: ${{ steps.release.outputs['crates/nahuali-cli--tag_name'] }}
+          PRODUCT_TAG: ${{ steps.release.outputs.tag_name }}
         shell: bash
-        run: gh workflow run publish-mcp.yml --repo "${GITHUB_REPOSITORY}" --ref "${CLI_TAG}" -f "tag=${CLI_TAG}"
+        run: gh workflow run publish-mcp.yml --repo "${GITHUB_REPOSITORY}" --ref "${PRODUCT_TAG}" -f "tag=${PRODUCT_TAG}"
       - name: Trigger CLI SBOM build
-        if: ${{ steps.release.outputs['crates/nahuali-cli--release_created'] == 'true' }}
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLI_TAG: ${{ steps.release.outputs['crates/nahuali-cli--tag_name'] }}
+          PRODUCT_TAG: ${{ steps.release.outputs.tag_name }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "${CLI_TAG}" ]]; then
-            echo "::error::Release Please reported a CLI release but did not emit a tag."
+          if [[ -z "${PRODUCT_TAG}" ]]; then
+            echo "::error::Release Please reported a product release but did not emit a tag."
             exit 1
           fi
 
-          gh workflow run sbom.yml --repo "${GITHUB_REPOSITORY}" --ref "${CLI_TAG}" -f "tag=${CLI_TAG}"
+          gh workflow run sbom.yml --repo "${GITHUB_REPOSITORY}" --ref "${PRODUCT_TAG}" -f "tag=${PRODUCT_TAG}"
 
   build-binaries:
     name: build (${{ matrix.target }})
     if: >
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/nahuali-cli-v'))
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
       || (github.event_name == 'workflow_dispatch' && inputs.release_please != true && inputs.tag != '')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -286,7 +255,12 @@ jobs:
             exit 1
           fi
 
-          version="${upload_tag#nahuali-cli-v}"
+          if [[ ! "${upload_tag}" =~ ^v0\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+            echo "::error::Release tag must match the approved pre-1.0 product pattern vX.Y.Z-beta.N."
+            exit 1
+          fi
+
+          version="${upload_tag#v}"
           archive_basename="nahuali-v${version}-${{ matrix.target }}"
           echo "UPLOAD_TAG=${upload_tag}" >> "$GITHUB_ENV"
           echo "RELEASE_VERSION=${version}" >> "$GITHUB_ENV"

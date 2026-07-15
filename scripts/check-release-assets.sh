@@ -11,7 +11,7 @@ usage() {
 Usage: sh scripts/check-release-assets.sh [options]
 
 Options:
-  --tag TAG, --version TAG  Release tag to inspect. Default: latest nahuali-cli release.
+  --tag TAG, --version TAG  Release tag to inspect. Default: latest product release.
   --repo OWNER/NAME         GitHub repository. Default: Arakiss/nahuali.
   --json                    Emit machine-readable JSON.
   --require-sbom            Fail if nahuali-<tag>.cdx.json is missing.
@@ -70,17 +70,17 @@ fi
 if [ "$tag" = "latest" ]; then
   tag="$(
     gh release list --repo "$repo" --limit 50 --json tagName,publishedAt \
-      --jq '[.[] | select(.tagName | startswith("nahuali-cli-v"))] | sort_by(.publishedAt) | last | .tagName'
+      --jq '[.[] | select(.tagName | startswith("v"))] | sort_by(.publishedAt) | last | .tagName'
   )"
   if [ -z "$tag" ] || [ "$tag" = "null" ]; then
-    echo "release-assets: no nahuali-cli release found in $repo" >&2
+    echo "release-assets: no Nahuali product release found in $repo" >&2
     exit 1
   fi
 fi
 
-version="${tag#nahuali-cli-v}"
+version="${tag#v}"
 if [ "$version" = "$tag" ] || [ -z "$version" ]; then
-  echo "release-assets: unsupported nahuali-cli tag: $tag" >&2
+  echo "release-assets: unsupported product tag: $tag" >&2
   exit 2
 fi
 

@@ -1,19 +1,19 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "release-type": "rust",
-  "include-component-in-tag": true,
+  "release-type": "simple",
+  "include-component-in-tag": false,
   "include-v-in-tag": true,
-  "separate-pull-requests": false,
+  "bump-minor-pre-major": true,
+  "versioning": "prerelease",
   "prerelease": true,
   "prerelease-type": "beta",
-  "bootstrap-sha": "b5c29f752261ba9098aa5fe83c98476cdb6372b2",
-  "pull-request-title-pattern": "chore(release): release ${component} ${version}",
+  "pull-request-title-pattern": "chore(release): Nahuali ${version}",
   "changelog-sections": [
-    { "type": "feat", "section": "Features" },
-    { "type": "fix", "section": "Bug fixes" },
+    { "type": "feat", "section": "New" },
+    { "type": "fix", "section": "Fixed" },
     { "type": "perf", "section": "Performance" },
     { "type": "security", "section": "Security" },
-    { "type": "refactor", "section": "Refactor", "hidden": false },
+    { "type": "refactor", "section": "Changed", "hidden": false },
     { "type": "docs", "section": "Documentation", "hidden": true },
     { "type": "build", "section": "Build system", "hidden": true },
     { "type": "ci", "section": "CI", "hidden": true },
@@ -21,32 +21,14 @@
     { "type": "test", "section": "Tests", "hidden": true }
   ],
   "packages": {
-    "crates/nahuali-core": {
-      "component": "nahuali-core",
-      "package-name": "nahuali-core",
-      "skip-github-release": true
-    },
-    "crates/nahuali-cli": {
-      "component": "nahuali-cli",
-      "package-name": "nahuali-cli"
-    },
-    "crates/nahuali-mcp": {
-      "component": "nahuali-mcp",
-      "package-name": "nahuali-mcp",
-      "skip-github-release": true
-    },
-    "crates/nahuali-api": {
-      "component": "nahuali-api",
-      "package-name": "nahuali-api",
-      "skip-github-release": true
-    },
-    "crates/nahuali-regression": {
-      "component": "nahuali-regression",
-      "package-name": "nahuali-regression",
-      "skip-github-release": true
+    ".": {
+      "component": "nahuali",
+      "package-name": "nahuali",
+      "extra-files": [
+        { "type": "generic", "path": "Cargo.toml" },
+        { "type": "generic", "path": "README.md" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.version" }
+      ]
     }
-  },
-  "plugins": [
-    { "type": "cargo-workspace", "merge": true }
-  ]
+  }
 }

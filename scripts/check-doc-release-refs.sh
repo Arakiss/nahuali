@@ -40,18 +40,18 @@ done | sort | while IFS= read -r file; do
       ;;
   esac
 
-  grep -nE 'nahuali-cli-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' "$file" 2>/dev/null \
+  grep -nE '(NAHUALI_VERSION=|--tag |releases/(download|tag)/)v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' "$file" 2>/dev/null \
     | while IFS=: read -r line_number line; do
-        printf '%s:%s: hardcoded concrete nahuali-cli release tag in %s\n' \
+        printf '%s:%s: hardcoded concrete product release tag in %s\n' \
           "$relative" "$line_number" "$line" >>"$failures_file"
       done
 done
 
 if [ -s "$failures_file" ]; then
-  echo "living release text must not pin concrete nahuali-cli release tags:" >&2
+  echo "living release text must not pin concrete product release tags:" >&2
   sed 's/^/  - /' "$failures_file" >&2
   echo >&2
-  echo "Use placeholder tags such as nahuali-cli-vX.Y.Z-beta.N in examples." >&2
+  echo "Use placeholder tags such as vX.Y.Z-beta.N in examples." >&2
   exit 1
 fi
 
@@ -96,5 +96,5 @@ if [ -s "$contract_failures_file" ]; then
   exit 1
 fi
 
-echo "living release text avoids concrete nahuali-cli release tags"
+echo "living release text avoids concrete product release tags"
 echo "public landing-page links and crate contracts are present"

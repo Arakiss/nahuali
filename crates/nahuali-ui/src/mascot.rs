@@ -17,20 +17,22 @@
 //! sprite renders as a single-color silhouette so the shape still reads.
 //!
 //! The nahual has no column of its own — a dedicated panel read as too loud. It
-//! lives in two subtle places instead, both size-guarded so nothing is crowded:
-//! full-size in the detail pane's empty state (with its caption and a dim hint)
-//! when there is no item to show, and always-on as a two-cell "mini face" cue in
-//! the header beside the store verdict. The cockpit host ([`crate::tui`]) owns
-//! that placement; this module owns the art, the palette, and the [`Verdict`]
-//! binding, and exposes just enough ([`body_rgb`], [`gill_rgb`],
-//! [`Verdict::accent`], [`Mascot::block_height`]) for the host to compose them.
+//! lives in two subtle places instead: full-size in the detail pane's empty
+//! state (with its caption and a dim hint) when there is no item to show, and
+//! always-on as a compact gill-and-face mark in the header border. The mark puts
+//! the recognisable gill fans first, so it survives title clipping on narrow
+//! terminals without taking a row from the operator. The cockpit host
+//! ([`crate::tui`]) owns placement; this module owns the art, palette, and
+//! [`Verdict`] binding, and exposes [`compact_mark`], [`Verdict::accent`], and
+//! [`Mascot::block_height`] for composition.
 //!
 //! No animation: the cockpit's event loop blocks on `event::read`, so there is
 //! no tick to drive one — the mascot is deliberately still.
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::Span;
 use ratatui::widgets::Widget;
 
 use crate::theme::{self, Rgb};
@@ -97,6 +99,17 @@ impl Verdict {
             Self::Advisory => "curious · advisory",
             Self::Warn => "alert · warn",
             Self::Block => "guarded · blocked",
+        }
+    }
+
+    /// The expression used by the compact always-visible mark. Gill fans and
+    /// head shape remain stable while the mouth/eyes mirror the trust verdict.
+    fn compact_expression(self) -> &'static str {
+        match self {
+            Self::Certify => "•ᴗ•",
+            Self::Advisory => "•o•",
+            Self::Warn => "•△•",
+            Self::Block => "—_—",
         }
     }
 
@@ -268,17 +281,35 @@ const GILL: Rgb = Rgb(232, 128, 118); // coral frond
 const GILL_LIGHT: Rgb = Rgb(246, 172, 160); // frond towards the tip
 const GILL_DARK: Rgb = Rgb(196, 96, 92); // frond root
 
-/// The pale-rose body color — the top pixel of the header cue's two-cell "mini
-/// face". Exposed so the host reuses the sprite's palette instead of redefining
-/// it. See [`gill_rgb`] for the coral it sits over.
-pub fn body_rgb() -> Rgb {
-    BODY
-}
+/// A seven-column axolotl mark for the cockpit header: coral gill fans around a
+/// pale head, with a verdict-tinted expression. Unlike the old pair of colored
+/// half blocks, the silhouette is readable without its caption and remains
+/// recognizable in monochrome. It deliberately begins with the left gill so a
+/// very narrow title still carries the brand mark before trailing text clips.
+pub fn compact_mark(verdict: Verdict) -> Vec<Span<'static>> {
+    let colors = theme::colors_enabled();
+    let gill = colors.then(|| to_color(blend(GILL, verdict.accent(), 0.35)));
+    let body = colors.then(|| to_color(scale(BODY, verdict.body_factor())));
+    let expression = colors.then(|| to_color(verdict.accent()));
 
-/// The coral gill color — the bottom pixel of the header cue's "mini face",
-/// read as the gill fan under the rose head. Companion to [`body_rgb`].
-pub fn gill_rgb() -> Rgb {
-    GILL
+    let styled = |text: &'static str, fg: Option<Color>, bold: bool| {
+        let mut style = Style::default();
+        if let Some(fg) = fg {
+            style = style.fg(fg);
+        }
+        if bold {
+            style = style.add_modifier(Modifier::BOLD);
+        }
+        Span::styled(text, style)
+    };
+
+    vec![
+        styled("≋", gill, true),
+        styled("(", body, false),
+        styled(verdict.compact_expression(), expression, true),
+        styled(")", body, false),
+        styled("≋", gill, true),
+    ]
 }
 
 fn lerp(a: u8, b: u8, t: f32) -> u8 {
@@ -505,6 +536,21 @@ mod tests {
         // Unknown label falls back to the neutral pose, never panics.
         assert_eq!(Verdict::from_label(""), Verdict::Advisory);
         assert_eq!(Verdict::from_label("mystery"), Verdict::Advisory);
+    }
+
+    #[test]
+    fn compact_mark_keeps_the_axolotl_shape_and_tracks_every_verdict() {
+        let text = |verdict| {
+            compact_mark(verdict)
+                .into_iter()
+                .map(|span| span.content.into_owned())
+                .collect::<String>()
+        };
+
+        assert_eq!(text(Verdict::Certify), "≋(•ᴗ•)≋");
+        assert_eq!(text(Verdict::Advisory), "≋(•o•)≋");
+        assert_eq!(text(Verdict::Warn), "≋(•△•)≋");
+        assert_eq!(text(Verdict::Block), "≋(—_—)≋");
     }
 
     #[test]

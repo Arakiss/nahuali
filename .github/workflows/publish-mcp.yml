@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing Nahuali CLI release tag"
+        description: "Existing Nahuali product release tag"
         required: true
         type: string
 
@@ -22,7 +22,13 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-        run: echo "version=${RELEASE_TAG#nahuali-cli-v}" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v0\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]] || {
+            echo "::error::Expected a pre-1.0 product tag such as vX.Y.Z-beta.N, got $RELEASE_TAG"
+            exit 1
+          }
+          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
 
   image:
     needs: prepare

@@ -1,0 +1,7 @@
+{
+  "maturity": "pre-1.0 beta",
+  "allowed_major": 0,
+  "allowed_base_version": "0.8.0",
+  "prerelease": "beta",
+  "public_tag_pattern": "vX.Y.Z-beta.N"
+}

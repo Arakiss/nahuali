@@ -15,7 +15,7 @@ Usage: bash scripts/verify-release-please-dry-run.sh [options]
 Options:
   --repo OWNER/NAME           GitHub repository. Default: Arakiss/nahuali.
   --target-branch BRANCH      Branch to inspect. Default: current branch.
-  --expected-version VERSION  Require a nahuali-cli candidate for this version.
+  --expected-version VERSION  Require a Nahuali product candidate for this version.
   -h, --help                  Show this help.
 
 Runs Release Please in dry-run mode against a temporary local clone so the
@@ -99,24 +99,24 @@ if ! BUN_INSTALL_CACHE_DIR="$tmp_cache" TMPDIR="$tmp_dir" bunx release-please re
   exit 1
 fi
 
-if ! grep -Eq '^Would open [1-9][0-9]* pull requests$' "$output"; then
-  echo "release-please-dry-run: expected at least one Release Please PR candidate" >&2
-  sed -n '/Building candidate release pull request for path: crates\/nahuali-cli/,$p' "$output" | tail -n 120 >&2
+if ! grep -Fq 'Would open 1 pull requests' "$output"; then
+  echo "release-please-dry-run: expected exactly one product release PR candidate" >&2
+  sed -n '/Building candidate release pull request for path:/,$p' "$output" | tail -n 120 >&2
   exit 1
 fi
 
-if ! grep -Fq 'nahuali-cli:' "$output"; then
-  echo "release-please-dry-run: expected a nahuali-cli release candidate" >&2
+if ! grep -Fq 'title: chore(release): Nahuali ' "$output"; then
+  echo "release-please-dry-run: expected a Nahuali product release candidate" >&2
   sed -n '/Would open /,$p' "$output" >&2
   exit 1
 fi
 
 if [[ -n "$expected_version" ]] \
-  && ! grep -Eq "(nahuali-cli: ${expected_version}|version: ${expected_version} from release-please)" "$output"; then
-  echo "release-please-dry-run: expected nahuali-cli $expected_version" >&2
+  && ! grep -Fq "title: chore(release): Nahuali ${expected_version}" "$output"; then
+  echo "release-please-dry-run: expected Nahuali $expected_version" >&2
   sed -n '/Would open /,$p' "$output" >&2
   exit 1
 fi
 
-grep -E '^(Would open|title:|branch:|draft:)|nahuali-cli:' "$output" || true
+grep -E '^(Would open|title:|branch:|draft:)' "$output" || true
 echo "release-please dry-run passed"

@@ -7,10 +7,10 @@
 //! on the right. The CLI builds a plain `Snapshot` and hands it here, so this
 //! module stays decoupled from nahuali-core.
 //!
-//! The nahual mascot ([`crate::mascot`]) rides along quietly: a two-cell "mini
-//! face" cue beside the header verdict, and — when nothing is selected — the
-//! full sprite taking over the otherwise-empty detail pane. Neither costs the
-//! working operator any space.
+//! The nahual mascot ([`crate::mascot`]) rides along quietly: a compact axolotl
+//! mark in the header border, and — when nothing is selected — the full sprite
+//! taking over the otherwise-empty detail pane. Neither costs the working
+//! operator any space.
 
 use std::io;
 
@@ -208,7 +208,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     // The cockpit keeps a stable two-pane body; the nahual no longer claims a
     // column of its own. It surfaces subtly instead — full-size in the detail
-    // pane's empty state (`draw_detail`) and as a one-line cue in the header
+    // pane's empty state (`draw_detail`) and as a compact mark in the header
     // (`draw_header`) — so a working operator never loses room to it.
     let body = Layout::default()
         .direction(Direction::Horizontal)
@@ -322,6 +322,7 @@ fn draw_signals(frame: &mut Frame, signals: &[Signal], area: Rect) {
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
+    let verdict = Verdict::from_label(&app.snapshot.store_trust_label);
     let trust = Line::from(vec![
         Span::styled(
             format!(" {} ", app.snapshot.store_trust_label),
@@ -334,57 +335,19 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(color(theme::INK_FAINT)),
         ),
     ]);
+    let mut title = mascot::compact_mark(verdict);
+    title.push(Span::styled(
+        format!(" nahuali explore · {} ", app.snapshot.database),
+        Style::default()
+            .fg(color(theme::CLAY))
+            .add_modifier(Modifier::BOLD),
+    ));
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(color(theme::INK_FAINT)))
-        .title(Span::styled(
-            format!(" nahuali explore · {} ", app.snapshot.database),
-            Style::default()
-                .fg(color(theme::CLAY))
-                .add_modifier(Modifier::BOLD),
-        ));
-    let inner = block.inner(area);
+        .title(Line::from(title));
     let header = Paragraph::new(vec![trust, integrity_line(&app.snapshot.integrity)]).block(block);
     frame.render_widget(header, area);
-    draw_header_chip(frame, &app.snapshot, inner);
-}
-
-/// The always-on subtle cue: a two-cell "mini face" (rose head over coral gills,
-/// reusing the sprite palette) plus the pose caption in the verdict's accent,
-/// right-aligned on the trust row. It is drawn only when it clears the trust
-/// label with room to spare, so it never truncates or collides on a narrow
-/// terminal — below that width the header simply carries no chip.
-fn draw_header_chip(frame: &mut Frame, snapshot: &Snapshot, inner: Rect) {
-    if inner.width == 0 || inner.height == 0 {
-        return;
-    }
-    let verdict = Verdict::from_label(&snapshot.store_trust_label);
-    let caption = verdict.caption();
-    // Display columns of the trust row's text (mirrors `draw_header`'s spans)
-    // and of the chip; both are single-column glyphs, so char counts are exact.
-    let trust_w = format!(
-        " {} · score {:.2}",
-        snapshot.store_trust_label, snapshot.store_trust_score
-    )
-    .chars()
-    .count() as u16;
-    let chip_w = 3 + caption.chars().count() as u16; // "▀▀" + a space + caption
-    // Keep at least two columns of air between the trust label and the chip.
-    if inner.width < trust_w + 2 + chip_w {
-        return;
-    }
-    let chip = Line::from(vec![
-        Span::styled(
-            "\u{2580}\u{2580}",
-            Style::default()
-                .fg(color(mascot::body_rgb()))
-                .bg(color(mascot::gill_rgb())),
-        ),
-        Span::raw(" "),
-        Span::styled(caption, Style::default().fg(color(verdict.accent()))),
-    ]);
-    let x = inner.x + inner.width - chip_w;
-    frame.render_widget(Paragraph::new(chip), Rect::new(x, inner.y, chip_w, 1));
 }
 
 /// The integrity line — Nahuali's differentiator, stated honestly: a green
@@ -591,9 +554,8 @@ mod tests {
         buf.content().iter().map(|cell| cell.symbol()).collect()
     }
 
-    /// The count of half-block glyphs on screen. The full mascot sprite paints
-    /// dozens; the header's mini-face cue paints exactly two; nothing else in
-    /// the cockpit uses them — so this cleanly separates the two placements.
+    /// The count of half-block glyphs on screen. Only the full mascot sprite
+    /// paints these now, so non-empty views should contain none.
     fn block_glyphs(buf: &Buffer) -> usize {
         buf.content()
             .iter()
@@ -724,7 +686,8 @@ mod tests {
     #[test]
     fn empty_store_on_a_tiny_terminal_draws_no_mascot_and_does_not_panic() {
         // Below the empty-state threshold the pane falls back to the plain
-        // placeholder, the header chip cannot fit either, and nothing panics.
+        // placeholder. The compact header mark remains visible and nothing
+        // panics.
         let mut app = App::new(snapshot(0));
         let buf = render_cockpit(&mut app, 40, 24);
         let text = text_of(&buf);
@@ -738,50 +701,54 @@ mod tests {
             "no half-block art should be drawn on a tiny terminal"
         );
         assert!(
+            text.contains("≋(•ᴗ•)≋"),
+            "the compact CERTIFY mark remains visible on a tiny terminal"
+        );
+        assert!(
             text.contains("No memory"),
             "the plain placeholder should show instead"
         );
     }
 
     #[test]
-    fn non_empty_store_shows_only_the_header_chip_not_the_full_mascot() {
-        // Browsing an actual item, the full sprite is gone; only the header's
-        // two-cell mini face remains, and it carries the pose caption.
+    fn non_empty_store_shows_the_compact_mark_not_the_full_mascot() {
+        // Browsing an actual item, the full sprite is gone while the recognisable
+        // one-line axolotl remains in the header border.
         let mut app = App::new(snapshot(3));
         let buf = render_cockpit(&mut app, 120, 40);
         assert!(
-            text_of(&buf).contains("calm"),
-            "the header chip should carry the pose caption"
-        );
-        assert_eq!(
-            block_glyphs(&buf),
-            2,
-            "a non-empty store draws only the chip's mini face, not the sprite"
-        );
-    }
-
-    #[test]
-    fn narrow_terminal_hides_the_chip_but_keeps_the_layout() {
-        // When the chip cannot clear the trust label it hides entirely rather
-        // than truncate or collide — and the two-pane cockpit renders around it.
-        let mut app = App::new(snapshot(3));
-        let buf = render_cockpit(&mut app, 42, 30);
-        let text = text_of(&buf);
-        assert!(
-            !text.contains("calm"),
-            "the chip must hide when it would crowd the trust label"
+            text_of(&buf).contains("≋(•ᴗ•)≋"),
+            "the header should carry the compact CERTIFY axolotl"
         );
         assert_eq!(
             block_glyphs(&buf),
             0,
-            "no half-block art once the chip is hidden and no item is empty-state"
+            "a non-empty store must not draw the full half-block sprite"
+        );
+    }
+
+    #[test]
+    fn narrow_terminal_keeps_the_compact_mark_and_layout() {
+        // The mark occupies the header border rather than the trust row, so it
+        // survives narrow layouts without colliding with useful information.
+        let mut app = App::new(snapshot(3));
+        let buf = render_cockpit(&mut app, 42, 30);
+        let text = text_of(&buf);
+        assert!(
+            text.contains("≋(•ᴗ•)≋"),
+            "the compact mark must remain visible on a narrow terminal"
+        );
+        assert_eq!(
+            block_glyphs(&buf),
+            0,
+            "the compact mark must not consume half-block sprite cells"
         );
         assert!(text.contains("nahuali explore"), "header still renders");
         assert!(text.contains("memory"), "list pane still renders");
     }
 
     #[test]
-    fn pose_tracks_the_verdict_in_both_the_chip_and_the_empty_state() {
+    fn pose_tracks_the_verdict_in_both_the_mark_and_the_empty_state() {
         // Empty BLOCK store: the full mascot wears the guarded pose, never the
         // CERTIFY one — the empty-state art is bound to the live verdict.
         let mut empty = snapshot(0);
@@ -798,21 +765,21 @@ mod tests {
             "must not show the CERTIFY caption for a BLOCK store"
         );
 
-        // Non-empty BLOCK store: the header chip carries the same guarded
-        // caption, and still nothing but the mini face draws half-blocks.
+        // Non-empty BLOCK store: the header mark switches to its guarded face
+        // while the full half-block sprite remains absent.
         let mut full = snapshot(3);
         full.store_trust_label = "BLOCK · not yet trustworthy".to_string();
         full.store_trust_color = theme::RED;
         let mut app = App::new(full);
         let buf = render_cockpit(&mut app, 120, 40);
         assert!(
-            text_of(&buf).contains("guarded"),
-            "the header chip tracks the BLOCK verdict"
+            text_of(&buf).contains("≋(—_—)≋"),
+            "the compact header mark tracks the BLOCK verdict"
         );
         assert_eq!(
             block_glyphs(&buf),
-            2,
-            "a non-empty store draws only the chip's mini face"
+            0,
+            "a non-empty store does not draw the full mascot"
         );
     }
 }

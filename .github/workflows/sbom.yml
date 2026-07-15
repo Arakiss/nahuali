@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing nahuali-cli tag to generate and attach a CycloneDX SBOM for"
+        description: "Existing Nahuali product tag to generate and attach a CycloneDX SBOM for"
         required: true
         type: string
 
@@ -17,8 +17,8 @@ jobs:
   cyclonedx:
     name: cyclonedx (${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }})
     if: >
-      (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'nahuali-cli-v'))
-      || (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'nahuali-cli-v'))
+      (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
+      || (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'v'))
     runs-on: ubuntu-latest
     permissions:
       contents: write

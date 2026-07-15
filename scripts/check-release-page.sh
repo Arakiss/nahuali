@@ -11,7 +11,7 @@ usage() {
 Usage: sh scripts/check-release-page.sh [options]
 
 Options:
-  --tag TAG, --version TAG   Release tag to inspect. Default: latest nahuali-cli release.
+  --tag TAG, --version TAG   Release tag to inspect. Default: latest product release.
   --repo OWNER/NAME          GitHub repository. Default: Arakiss/nahuali.
   --json                     Emit machine-readable JSON.
   --allow-missing-assets     Do not fail when binary assets are still uploading.
@@ -21,8 +21,8 @@ The check treats the GitHub release page as a public product surface, not a raw
 Release Please changelog. A curated beta release page must include:
   - product title: "Nahuali vX.Y.Z-beta.N"
   - useful public body, not generated boilerplate
-  - Highlights, Install, Verify the release, Component versions, Beta limits,
-    and Changelog sections
+  - Why upgrade, Breaking changes and migration, Install, Verify the release,
+    Beta limits, and Full changelog sections
   - install.sh, check-release-assets.sh, and verify-release.sh references
   - explicit beta limits, including no hosted service claim
   - 12 owned binary-channel assets unless --allow-missing-assets is passed
@@ -72,17 +72,17 @@ fi
 if [ "$tag" = "latest" ]; then
   tag="$(
     gh release list --repo "$repo" --limit 50 --json tagName,publishedAt \
-      --jq '[.[] | select(.tagName | startswith("nahuali-cli-v"))] | sort_by(.publishedAt) | last | .tagName'
+      --jq '[.[] | select(.tagName | startswith("v"))] | sort_by(.publishedAt) | last | .tagName'
   )"
   if [ -z "$tag" ] || [ "$tag" = "null" ]; then
-    echo "release-page: no nahuali-cli release found in $repo" >&2
+    echo "release-page: no Nahuali product release found in $repo" >&2
     exit 1
   fi
 fi
 
-version="${tag#nahuali-cli-v}"
+version="${tag#v}"
 if [ "$version" = "$tag" ] || [ -z "$version" ]; then
-  echo "release-page: unsupported nahuali-cli tag: $tag" >&2
+  echo "release-page: unsupported product tag: $tag" >&2
   exit 2
 fi
 
@@ -149,12 +149,12 @@ reject_body_pattern ':robot:|beep boop|I have created a release|This PR was gene
 
 require_body_pattern '^Nahuali v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+ is a prerelease' \
   "release body must open with a product-focused prerelease summary"
-require_body_pattern '^## Highlights$' "release body must include a Highlights section"
+require_body_pattern '^## Why upgrade$' "release body must include a Why upgrade section"
+require_body_pattern '^## Breaking changes and migration$' "release body must include migration guidance"
 require_body_pattern '^## Install$' "release body must include an Install section"
 require_body_pattern '^## Verify the release$' "release body must include a Verify the release section"
-require_body_pattern '^## Component versions in this release$' "release body must include component versions"
 require_body_pattern '^## Beta limits$' "release body must include beta limits"
-require_body_pattern '^## Changelog$' "release body must include a changelog pointer"
+require_body_pattern '^## Full changelog$' "release body must include the product changelog pointer"
 require_body_pattern 'install\.sh' "release body must reference the installer"
 require_body_pattern 'scripts/check-release-assets\.sh' "release body must reference the asset checker"
 require_body_pattern 'scripts/verify-release\.sh' "release body must reference the release verifier"

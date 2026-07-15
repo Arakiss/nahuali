@@ -34,6 +34,7 @@ require_package_metadata() {
   assert_file_contains "$manifest" '^repository\.workspace = true$' "$package must inherit the workspace repository"
   assert_file_contains "$manifest" '^homepage\.workspace = true$' "$package must inherit the workspace homepage"
   assert_file_contains "$manifest" '^authors\.workspace = true$' "$package must inherit the workspace authors"
+  assert_file_contains "$manifest" '^version\.workspace = true$' "$package must inherit the one product version"
   assert_file_contains "$manifest" '^description = ".+"$' "$package must include a package description"
   assert_file_contains "$manifest" '^readme = "README\.md"$' "$package must include a crate README"
 }
@@ -56,11 +57,11 @@ assert_file_contains .gitignore '^\.runs/$' "local run workspace must stay ignor
 assert_file_contains .gitignore '^\.nahual-rust/$' "Nahual-named local workspace must stay ignored"
 
 private_path_pattern='(^docs/|^\.private/|^\.local/|^\.runs/)'
-if git ls-tree -r --name-only HEAD | rg -n "$private_path_pattern"; then
+if git ls-tree -r --name-only HEAD | grep -En "$private_path_pattern"; then
   echo "current HEAD tracks private documentation or local workspace paths" >&2
   exit 1
 fi
-if git log --all --name-only --format= | sort -u | rg -n "$private_path_pattern"; then
+if git log --all --name-only --format= | sort -u | grep -En "$private_path_pattern"; then
   echo "git history contains private documentation or local workspace paths" >&2
   exit 1
 fi
@@ -84,18 +85,19 @@ if [[ -f "$private_denylist" ]]; then
       echo "private denylist scan failed for historical content" >&2
       exit 1
     fi
-    if git log --all --name-only --format= | sort -u | rg -n -i "$private_pattern"; then
+    if git log --all --name-only --format= | sort -u | grep -Ein "$private_pattern"; then
       echo "private denylist scan failed for historical paths" >&2
       exit 1
     fi
-    if git log --all --format='%H%x09%an%x09%ae%x09%cn%x09%ce' | rg -n -i "$private_pattern"; then
+    if git log --all --format='%H%x09%an%x09%ae%x09%cn%x09%ce' | grep -Ein "$private_pattern"; then
       echo "private denylist scan failed for git identity metadata" >&2
       exit 1
     fi
   done <"$private_denylist"
 fi
 
-assert_file_contains Cargo.toml '^nahuali-core = \{ version = "=[^"]+", path = "crates/nahuali-core" \}$' "nahuali-core must be pinned as an exact workspace dependency"
+assert_file_contains Cargo.toml '^nahuali-core = \{ version = "=[^"]+", path = "crates/nahuali-core" \} # x-release-please-version$' "nahuali-core must keep an exact publishable version and workspace path"
+assert_file_contains Cargo.toml '^nahuali-ui = \{ version = "=[^"]+", path = "crates/nahuali-ui" \} # x-release-please-version$' "nahuali-ui must keep an exact publishable version and workspace path"
 assert_file_contains crates/nahuali-cli/Cargo.toml '^nahuali-core\.workspace = true$' "nahuali-cli must use the workspace nahuali-core pin"
 assert_file_contains crates/nahuali-mcp/Cargo.toml '^nahuali-core\.workspace = true$' "nahuali-mcp must use the workspace nahuali-core pin"
 assert_file_contains crates/nahuali-api/Cargo.toml '^nahuali-core\.workspace = true$' "nahuali-api must use the workspace nahuali-core pin"
@@ -116,31 +118,29 @@ assert_file_not_contains .github/workflows/audit.yml 'pull_request_target' "audi
 assert_file_not_contains .github/workflows/scorecard.yml '^  (branch_protection_rule|push|schedule):' "scorecard automatic triggers stay manual until the public security cadence is chosen"
 assert_file_contains .github/workflows/release.yml '^  push:' "release workflow must run from controlled public push triggers"
 assert_file_contains .github/workflows/release.yml '^    branches: \[main\]' "Release Please must update release PRs from main pushes"
-assert_file_contains .github/workflows/release.yml 'nahuali-cli-v\*' "release binary builds must stay scoped to nahuali-cli tags"
+assert_file_contains .github/workflows/release.yml '"v\*"' "release binary builds must stay scoped to product tags"
 assert_file_contains .github/workflows/release.yml 'cancel-in-progress: false' "release workflow must not cancel in-flight tag artifact uploads"
 assert_file_contains .github/workflows/release.yml 'attestations: write' "release binary builds must be allowed to publish artifact attestations"
 assert_file_contains .github/workflows/release.yml 'actions/attest@v4' "release binary builds must generate GitHub artifact attestations"
 assert_file_contains .github/workflows/release.yml 'subject-path: dist/\$\{\{ env\.ARCHIVE_BASENAME \}\}\.tar\.gz' "release attestations must bind the published platform archive"
 assert_file_contains release-please-config.json '"prerelease-type": "beta"' "Release Please must emit beta prereleases for the beta release train"
-assert_file_contains release-please-config.json '"component": "nahuali-regression"' "Release Please must track the regression runner as an internal skipped component"
+assert_file_contains release-please-config.json '"bump-minor-pre-major": true' "Release Please must keep breaking pre-1.0 changes on the 0.x train"
+assert_file_contains release-please-config.json '"versioning": "prerelease"' "Release Please must advance beta iterations instead of changing the product line implicitly"
+assert_file_contains release-please-config.json '"component": "nahuali"' "Release Please must model one public product"
 assert_file_contains .github/workflows/release.yml 'googleapis/release-please-action@v5' "release workflow must use the current Release Please action"
 assert_file_contains .github/workflows/release.yml 'release_please:' "release workflow must expose a manual Release Please rerun"
 assert_file_contains .github/workflows/release.yml "inputs\\.release_please == true" "release workflow must route manual Release Please dispatches to the release-please job"
 assert_file_contains .github/workflows/release.yml "inputs\\.release_please != true && inputs\\.tag != ''" "release workflow must keep manual binary builds separate from Release Please dispatches"
-assert_file_contains .github/workflows/release.yml 'scripts/sync-workspace-internal-deps\.sh --check' "release workflow must verify internal workspace dependency pins before release-please"
+assert_file_contains .github/workflows/release.yml 'scripts/check-version-policy\.sh' "release workflow must verify the product version policy before release-please"
 assert_file_contains .github/workflows/release.yml 'scripts/sync-mcp-server-metadata\.sh' "release workflow must synchronize MCP package metadata in generated release PRs"
-assert_file_contains .github/workflows/release.yml 'Sync generated release PR workspace pins' "release workflow must repair generated release PR dependency pins"
+assert_file_contains .github/workflows/release.yml 'Sync generated release PR metadata' "release workflow must repair generated release PR metadata"
 assert_file_contains .github/workflows/release.yml 'gh workflow run ci\.yml' "release workflow must dispatch CI for generated release PRs"
 assert_file_contains .github/workflows/release.yml 'gh workflow run sbom\.yml' "release workflow must explicitly dispatch the CLI SBOM build"
-assert_file_contains .github/workflows/release.yml 'Tag internal components at the product release commit' "release workflow must tag components whose GitHub releases are intentionally skipped"
-assert_file_contains .github/workflows/release.yml 'for component in nahuali-core nahuali-mcp nahuali-api nahuali-regression' "release workflow must tag every versioned internal component"
-assert_file_contains .github/workflows/release.yml 'Product release target is not an immutable commit SHA' "companion component tags must be pinned to the immutable product release commit"
-assert_file_contains scripts/tag-skipped-release-please-components.sh 'skip-github-release=true' "internal release tag script must target skipped Release Please components"
-assert_file_contains scripts/tag-skipped-release-please-components.sh 'product_tag="nahuali-cli-v\$version"' "internal release tags must prefer the matching public CLI release boundary"
+assert_file_not_contains .github/workflows/release.yml 'for component in nahuali-core nahuali-mcp nahuali-api nahuali-regression' "release workflow must not multiply public component tags"
 assert_file_contains README.md 'NAHUALI_VERIFY_GITHUB_SETTINGS=1 bash scripts/security-supply-chain-check.sh' "README must document the repository settings verification command"
-assert_file_contains scripts/validate-clean-tree.sh 'scripts/sync-workspace-internal-deps\.sh --check' "local validation must check workspace internal dependency pins"
+assert_file_contains scripts/validate-clean-tree.sh 'scripts/check-version-policy\.sh' "local validation must check the product version policy"
 assert_file_contains scripts/validate-clean-tree.sh 'scripts/sync-mcp-server-metadata\.sh --check' "local validation must check MCP server release metadata"
-assert_file_contains scripts/release-dry-run.sh 'crates/nahuali-cli/Cargo\.toml' "release dry-run must use the user-facing CLI version"
+assert_file_contains scripts/release-dry-run.sh 'version\.txt' "release dry-run must use the canonical product version"
 assert_file_contains scripts/check-release-assets.sh 'nahuali-v\$\{version\}-\$\{target\}\.tar\.gz' "release asset checker must verify versioned target archives"
 assert_file_contains scripts/check-release-page.sh 'Release Please changelog' "release page checker must reject raw generated changelog pages"
 assert_file_contains scripts/check-release-page.sh 'Verify the release' "release page checker must require a verification section"
@@ -172,7 +172,10 @@ assert_file_contains scripts/verify-recall-contract.sh '--require-evidence' "nat
 assert_file_contains scripts/verify-recall-contract.sh '--authority' "native recall contract must require authority context"
 assert_file_contains scripts/verify-recall-contract.sh 'jq -e' "native recall contract must validate structured JSON output"
 assert_file_contains .github/workflows/sbom.yml 'workflow_dispatch:' "SBOM workflow must support manual reruns for existing beta tags"
-assert_file_contains .github/workflows/sbom.yml 'startsWith\(inputs\.tag, .nahuali-cli-v.\)' "SBOM workflow manual dispatch must stay scoped to nahuali-cli tags"
+assert_file_contains .github/workflows/sbom.yml 'startsWith\(inputs\.tag, .v.\)' "SBOM workflow manual dispatch must stay scoped to product tags"
+assert_file_contains .github/workflows/ci.yml 'cargo llvm-cov --locked --workspace --lcov' "CI must produce real workspace coverage"
+assert_file_contains .github/workflows/ci.yml 'use_oidc: true' "Codecov uploads must use short-lived OIDC identity"
+assert_file_contains .github/workflows/ci.yml 'id-token: write' "the coverage job must be able to request an OIDC token"
 assert_file_contains .github/workflows/sbom.yml 'artifact-name: nahuali-\$\{\{ env\.RELEASE_TAG \}\}\.cdx\.json' "SBOM workflow must attach the canonical release SBOM asset"
 assert_file_contains .github/workflows/sbom.yml 'gh release upload .*\$\{RELEASE_TAG\}.*--clobber' "SBOM workflow dispatches must explicitly attach the generated file to the selected release"
 assert_file_contains docker-compose.yml 'nofile:' "Qdrant dev stack must raise nofile for long release-candidate gates"
@@ -187,36 +190,23 @@ assert_file_contains scripts/verify-controlled-beta.sh 'scripts/security-supply-
 assert_file_contains scripts/verify-controlled-beta.sh 'scripts/verify-dogfood-daily-workflow\.sh' "controlled beta gate must include the daily-driver reliability gate"
 assert_file_contains scripts/verify-controlled-beta.sh 'scripts/verify-recall-contract\.sh' "controlled beta gate must include the evidence-backed recall contract"
 
-sh scripts/sync-workspace-internal-deps.sh --check
+bash scripts/check-version-policy.sh
 
-readme_protected_recipe_pattern='(?i)(Quadrant|generic[[:space:]]+vector[[:space:]]+database|vector[[:space:]]+database|graph[[:space:]]+storage|graph[[:space:]]+store|record/graph|database/vector|storage/vector|dockerized|json[[:space:]]*l|json[[:space:]]+lines)'
-if rg -n "$readme_protected_recipe_pattern" README.md BETA.md; then
+readme_protected_recipe_pattern='(Quadrant|generic[[:space:]]+vector[[:space:]]+database|vector[[:space:]]+database|graph[[:space:]]+storage|graph[[:space:]]+store|record/graph|database/vector|storage/vector|dockerized|json[[:space:]]*l|json[[:space:]]+lines)'
+if grep -Ein "$readme_protected_recipe_pattern" README.md BETA.md; then
   echo "public docs contain unbounded implementation-recipe language outside the storage contract" >&2
   exit 1
 fi
 
-readme_hosted_overpromise_pattern='(?i)(Nahuali Cloud|public[[:space:]]+release[[:space:]]+(approved|ready)|ships[[:space:]]+with[[:space:]]+hosted|ships[[:space:]]+hosted|includes[[:space:]]+hosted[[:space:]]+operations|includes[[:space:]]+a[[:space:]]+hosted[[:space:]]+service|offers[^.\n]*(hosted|managed|accounts|teams|billing|sync|dashboards)|provides[^.\n]*(hosted|managed|accounts|teams|billing|sync|dashboards)|hosted[[:space:]]+control[[:space:]]+plane[[:space:]]+is[[:space:]]+part[[:space:]]+of|managed[[:space:]]+deployment[[:space:]]+is[[:space:]]+part[[:space:]]+of|accounts[[:space:]]+are[[:space:]]+part[[:space:]]+of|billing[[:space:]]+is[[:space:]]+part[[:space:]]+of|managed[[:space:]]+backup[[:space:]]+automation[[:space:]]+is[[:space:]]+included|point-in-time[[:space:]]+restore[[:space:]]+is[[:space:]]+included|SLA-backed[[:space:]]+recovery[[:space:]]+is[[:space:]]+included)'
-if rg -n "$readme_hosted_overpromise_pattern" README.md BETA.md; then
+readme_hosted_overpromise_pattern='(Nahuali Cloud|public[[:space:]]+release[[:space:]]+(approved|ready)|ships[[:space:]]+with[[:space:]]+hosted|ships[[:space:]]+hosted|includes[[:space:]]+hosted[[:space:]]+operations|includes[[:space:]]+a[[:space:]]+hosted[[:space:]]+service|offers[^.\n]*(hosted|managed|accounts|teams|billing|sync|dashboards)|provides[^.\n]*(hosted|managed|accounts|teams|billing|sync|dashboards)|hosted[[:space:]]+control[[:space:]]+plane[[:space:]]+is[[:space:]]+part[[:space:]]+of|managed[[:space:]]+deployment[[:space:]]+is[[:space:]]+part[[:space:]]+of|accounts[[:space:]]+are[[:space:]]+part[[:space:]]+of|billing[[:space:]]+is[[:space:]]+part[[:space:]]+of|managed[[:space:]]+backup[[:space:]]+automation[[:space:]]+is[[:space:]]+included|point-in-time[[:space:]]+restore[[:space:]]+is[[:space:]]+included|SLA-backed[[:space:]]+recovery[[:space:]]+is[[:space:]]+included)'
+if grep -Ein "$readme_hosted_overpromise_pattern" README.md BETA.md; then
   echo "public docs contain hosted-product claims that need review" >&2
   exit 1
 fi
 
-legacy_line_format_pattern='(?i)(json[[:space:]_-]*l([^[:alpha:]]|$)|json[[:space:]]+lines)'
-if rg -n --hidden \
-  --glob '!.git/**' \
-  --glob '!target/**' \
-  --glob '!.private/**' \
-  --glob '!.local/**' \
-  --glob '!.runs/**' \
-  --glob '!.dev-bin/**' \
-  --glob '!.nahuali-oss/**' --glob '!.nahual-rust/**' \
-  --glob '!.release-dry-run/**' \
-  --glob '!.nahuali-demo' \
-  --glob '!*.snapshot.json' \
-  --glob '!*.backup.json' \
-  --glob '!*.interchange.json' \
-  --glob '!Cargo.lock' \
-  "$legacy_line_format_pattern" .; then
+legacy_line_format_pattern='(json[[:space:]_-]*l([^[:alpha:]]|$)|json[[:space:]]+lines)'
+if git grep -n -I -i -E -- "$legacy_line_format_pattern" -- \
+  ':!Cargo.lock' ':!*.snapshot.json' ':!*.backup.json' ':!*.interchange.json'; then
   echo "legacy line-oriented file format references are not part of this codebase" >&2
   exit 1
 fi
@@ -241,20 +231,25 @@ if [[ -n "$large_files" ]]; then
   exit 1
 fi
 
-identity_pattern='(?i)([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|legal name|personal email)'
-if rg -n -i --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.nahual-rust/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$identity_pattern" .; then
+identity_pattern='([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|legal name|personal email)'
+if git grep -n -I -i -E -- "$identity_pattern" -- \
+  ':!*.snapshot.json' ':!*.backup.json' ':!*.interchange.json' \
+  ':!scripts/security-supply-chain-check.sh' ':!scripts/go-public-audit.sh'; then
   echo "identity scan failed" >&2
   exit 1
 fi
 
-secret_pattern='(?i)(api[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|secret[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|password[[:space:]]*[:=][[:space:]]*["'\'']?[a-z0-9._-]{8,}["'\'']?|bearer[[:space:]]+[a-z0-9._-]{16,}|sk-[a-z0-9]{20,}|ghp_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|AKIA[0-9A-Z]{16})'
-if rg -n --hidden --glob '!.git/**' --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.nahual-rust/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!Cargo.lock' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$secret_pattern" .; then
+secret_pattern='(api[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|secret[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|password[[:space:]]*[:=][[:space:]]*["'\'']?[a-z0-9._-]{8,}["'\'']?|bearer[[:space:]]+[a-z0-9._-]{16,}|sk-[a-z0-9]{20,}|ghp_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|AKIA[0-9A-Z]{16})'
+if git grep -n -I -i -E -- "$secret_pattern" -- \
+  ':!Cargo.lock' ':!*.snapshot.json' ':!*.backup.json' ':!*.interchange.json' \
+  ':!scripts/security-supply-chain-check.sh' ':!scripts/go-public-audit.sh'; then
   echo "secret scan failed" >&2
   exit 1
 fi
 
 publication_pattern='(cargo publish|npm publish|pnpm publish|bun publish|twine upload|gh release create|git tag)'
-if rg -n --hidden --glob '.github/**' --glob 'scripts/**' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/tag-skipped-release-please-components.sh' "$publication_pattern" .; then
+if git grep -n -I -E -- "$publication_pattern" -- '.github/**' 'scripts/**' \
+  ':!scripts/security-supply-chain-check.sh'; then
   echo "publication command found in automation" >&2
   exit 1
 fi
