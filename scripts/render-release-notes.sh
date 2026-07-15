@@ -25,22 +25,26 @@ section="$(
   exit 1
 }
 
-for required in \
-  "### Why upgrade" \
-  "### Breaking changes and migration" \
-  "### Beta limits"; do
-  grep -Fq "$required" <<<"$section" || {
-    echo "release-notes: missing '$required' in CHANGELOG.md" >&2
-    exit 1
-  }
-done
-
 cat <<EOF
 Nahuali v${version} is a prerelease of the local trust layer for agent memory.
 Every recall can carry its evidence and a deterministic verdict, and the ledger
 can prove whether its recorded history was rewritten.
 
-$(sed 's/^### /## /' <<<"$section")
+## Why upgrade
+
+This beta keeps the published product, its benchmark evidence, and the exact
+source tag aligned. It also prevents old and new embedded engine versions from
+opening the same local store without a clear recovery path.
+
+## Changes
+
+$(sed 's/^### /### /' <<<"$section")
+
+## Breaking changes and migration
+
+This beta introduces no new memory-envelope migration. Existing version 1 and
+version 2 records remain readable. After upgrading, restart every long-lived
+\`nahuali-mcp\` host before using the CLI against the same local store.
 
 ## Install
 
@@ -61,6 +65,13 @@ bash scripts/verify-release.sh --tag ${tag}
 
 The release contains four platform archives, mandatory SHA-256 checksums,
 Sigstore bundles, GitHub artifact attestations, and one CycloneDX SBOM.
+
+## Beta limits
+
+- No stable 1.0 API guarantee yet.
+- No hosted service, accounts, teams, billing, managed sync, or managed uptime.
+- Nahuali evaluates evidence and memory health. It does not claim that recalled
+  information is objectively true.
 
 ## Full changelog
 
