@@ -73,7 +73,8 @@ for package in "${package_order[@]}"; do
     continue
   fi
 
-  if [[ "$package" != "nahuali-core" ]] && grep -q 'no matching package named `nahuali-core` found' "$package_log"; then
+  if [[ "$package" != "nahuali-core" ]] \
+    && grep -Eq 'no matching package named `nahuali-(core|ui)` found' "$package_log"; then
     cargo package -p "$package" --allow-dirty --list > "$DIST_DIR/${package}.package-files.txt"
     package_status+=("${package}=blocked_until_nahuali-core_registry")
     continue

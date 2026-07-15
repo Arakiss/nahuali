@@ -32,6 +32,16 @@ workspace_version="$(
 [[ "$workspace_version" == "$version" ]] \
   || fail "workspace version $workspace_version does not match version.txt $version"
 
+internal_versions="$(
+  sed -n 's/^nahuali-[a-z-]* = { version = "=\([^"]*\)", path = .*/\1/p' Cargo.toml
+)"
+[[ "$(printf '%s\n' "$internal_versions" | wc -l | tr -d '[:space:]')" == "2" ]] \
+  || fail "workspace dependencies must keep exact publishable versions for nahuali-core and nahuali-ui"
+while IFS= read -r internal_version; do
+  [[ "$internal_version" == "$version" ]] \
+    || fail "internal workspace dependency $internal_version does not match $version"
+done <<< "$internal_versions"
+
 manifest_version="$(jq -r '.["."]' .release-please-manifest.json)"
 [[ "$manifest_version" == "$version" ]] \
   || fail "Release Please manifest $manifest_version does not match $version"
