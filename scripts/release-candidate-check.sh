@@ -107,7 +107,7 @@ if [[ -n "$remote_tags" ]]; then
   unexpected_tags="$(
     printf '%s\n' "$remote_tags" \
       | awk '{print $2}' \
-      | grep -Ev '^refs/tags/nahuali-(cli|core|mcp|api|regression)-v.*(\^\{\})?$' || true
+      | grep -Ev '^refs/tags/(v|nahuali-(cli|core|mcp|api|regression)-v).*(\^\{\})?$' || true
   )"
   if [[ -n "$unexpected_tags" ]]; then
     echo "remote tags outside the Nahuali beta release stream are not allowed" >&2
@@ -157,18 +157,18 @@ if rg -n "$public_claim_pattern" README.md crates; then
   exit 1
 fi
 
-cli_version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/nahuali-cli/Cargo.toml | head -n 1)"
-cli_tag="nahuali-cli-v${cli_version}"
-if gh release view "$cli_tag" --repo "$REMOTE_REPO" >/dev/null 2>&1; then
-  sh scripts/check-release-page.sh --repo "$REMOTE_REPO" --tag "$cli_tag"
-  sh scripts/check-release-assets.sh --repo "$REMOTE_REPO" --tag "$cli_tag"
-  bash scripts/verify-release.sh --repo "$REMOTE_REPO" --tag "$cli_tag"
+product_version="$(tr -d '[:space:]' < version.txt)"
+product_tag="v${product_version}"
+if gh release view "$product_tag" --repo "$REMOTE_REPO" >/dev/null 2>&1; then
+  sh scripts/check-release-page.sh --repo "$REMOTE_REPO" --tag "$product_tag"
+  sh scripts/check-release-assets.sh --repo "$REMOTE_REPO" --tag "$product_tag"
+  bash scripts/verify-release.sh --repo "$REMOTE_REPO" --tag "$product_tag"
 
-  release_target="$(gh release view "$cli_tag" --repo "$REMOTE_REPO" --json targetCommitish --jq '.targetCommitish')"
+  release_target="$(gh release view "$product_tag" --repo "$REMOTE_REPO" --json targetCommitish --jq '.targetCommitish')"
   current_head="$(git rev-parse HEAD)"
   if [[ "$release_target" != "$current_head" ]]; then
     ahead_count="$(git rev-list --count "${release_target}..HEAD" 2>/dev/null || echo "unknown")"
-    message="release $cli_tag points at $release_target while current HEAD is $current_head ($ahead_count commits ahead)"
+    message="release $product_tag points at $release_target while current HEAD is $current_head ($ahead_count commits ahead)"
     if [[ "${NAHUALI_RELEASE_CANDIDATE_REQUIRE_CURRENT_RELEASE:-0}" == "1" ]]; then
       echo "$message" >&2
       echo "cut a new signed prerelease or unset NAHUALI_RELEASE_CANDIDATE_REQUIRE_CURRENT_RELEASE for local-only RC checks" >&2
@@ -177,7 +177,7 @@ if gh release view "$cli_tag" --repo "$REMOTE_REPO" >/dev/null 2>&1; then
     echo "warning: $message" >&2
   fi
 else
-  echo "release asset verification skipped; no GitHub release exists for $cli_tag"
+  echo "release asset verification skipped; no GitHub release exists for $product_tag"
 fi
 
 bash scripts/security-supply-chain-check.sh

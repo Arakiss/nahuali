@@ -90,17 +90,17 @@ fi
 if [[ "$tag" == "latest" ]]; then
   tag="$(
     gh release list --repo "$repo" --limit 50 --json tagName,publishedAt \
-      --jq '[.[] | select(.tagName | startswith("nahuali-cli-v"))] | sort_by(.publishedAt) | last | .tagName'
+      --jq '[.[] | select(.tagName | startswith("v"))] | sort_by(.publishedAt) | last | .tagName'
   )"
   if [[ -z "$tag" || "$tag" == "null" ]]; then
-    echo "verify-release: no nahuali-cli release found in $repo" >&2
+    echo "verify-release: no Nahuali product release found in $repo" >&2
     exit 1
   fi
 fi
 
-version="${tag#nahuali-cli-v}"
+version="${tag#v}"
 if [[ "$version" == "$tag" || -z "$version" ]]; then
-  die "unsupported nahuali-cli tag: $tag"
+  die "unsupported Nahuali product tag: $tag"
 fi
 
 detect_target() {

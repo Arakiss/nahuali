@@ -60,7 +60,7 @@ jq -n \
       },
       releases: [
         $releases[]
-        | select(.tag_name | startswith("nahuali-cli-v"))
+        | select(.tag_name | startswith("v"))
         | {
             tag: .tag_name,
             published_at: .published_at,

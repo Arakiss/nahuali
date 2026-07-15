@@ -52,9 +52,9 @@ else
   mkdir -p "$DIST_DIR"
 fi
 
-version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/nahuali-cli/Cargo.toml | head -n 1)"
+version="$(tr -d '[:space:]' < version.txt)"
 if [[ -z "$version" ]]; then
-  echo "failed to read nahuali-cli version from crates/nahuali-cli/Cargo.toml" >&2
+  echo "failed to read the product version from version.txt" >&2
   exit 1
 fi
 

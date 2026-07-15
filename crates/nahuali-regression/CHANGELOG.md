@@ -1,5 +1,9 @@
 # Changelog
 
+> Technical appendix only. The authoritative product history is the root
+> [`CHANGELOG.md`](../../CHANGELOG.md). The generated 1.x entries below record
+> withdrawn automation output and are not current Nahuali releases.
+
 ## [1.1.0-beta.0](https://github.com/Arakiss/nahuali/compare/nahuali-regression-v1.0.0-beta.0...nahuali-regression-v1.1.0-beta.0) (2026-07-14)
 
 

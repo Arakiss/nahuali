@@ -72,13 +72,13 @@ NAHUALI_VERIFY_GITHUB_SETTINGS=1 bash scripts/security-supply-chain-check.sh
 
 ## Published Prerelease Verification
 
-When Release Please creates a `nahuali-cli-vX.Y.Z-beta.N` tag and the release
+When Release Please creates a `vX.Y.Z-beta.N` product tag and the release
 workflow uploads binaries, verify the release shape:
 
 ```bash
-sh scripts/check-release-page.sh --tag nahuali-cli-vX.Y.Z-beta.N
-sh scripts/check-release-assets.sh --tag nahuali-cli-vX.Y.Z-beta.N --require-sbom
-bash scripts/verify-release.sh --tag nahuali-cli-vX.Y.Z-beta.N --require-sbom
+sh scripts/check-release-page.sh --tag vX.Y.Z-beta.N
+sh scripts/check-release-assets.sh --tag vX.Y.Z-beta.N --require-sbom
+bash scripts/verify-release.sh --tag vX.Y.Z-beta.N --require-sbom
 ```
 
 The GitHub release page is a public product surface. The generated Release

@@ -153,9 +153,9 @@ detect_target() {
 # ---------------------------------------------------------------------------
 # Resolve which release tag to install.
 #
-# The binary releases are tagged `nahuali-cli-vX.Y.Z-beta.N` and published as
+# The binary releases are tagged `vX.Y.Z-beta.N` and published as
 # non-"latest" prereleases, so /releases/latest is not reliable. We scan the
-# releases list (newest first) and pick the first nahuali-cli tag that actually
+# releases list (newest first) and pick the first product tag that actually
 # carries a .tar.gz asset for the detected target. This deliberately skips
 # releases (such as the workspace-root tag) that only ship an SBOM and no
 # binaries.
@@ -171,17 +171,17 @@ resolve_tag() {
   if [ -z "$_releases_json" ]; then
     fail "could not reach the GitHub releases API for ${REPO}." \
       "Check your network connection and try again." \
-      "You can also pin a version, e.g. NAHUALI_VERSION=nahuali-cli-vX.Y.Z-beta.N."
+      "You can also pin a version, e.g. NAHUALI_VERSION=vX.Y.Z-beta.N."
   fi
 
   # The API returns releases newest-first. Walk them in order and, per release,
   # check whether the asset for our target exists. The asset name embeds the
-  # version (without the nahuali-cli- prefix), so matching on the target triple
+  # version (without the v prefix), so matching on the target triple
   # plus the .tar.gz suffix is unambiguous.
   _chosen=""
   _tag=""
   # Stream tag_name lines and asset name lines together, keeping the most recent
-  # nahuali-cli tag that has seen a matching archive asset.
+  # product tag that has seen a matching archive asset.
   _parsed="$(
     printf '%s\n' "$_releases_json" \
       | grep -E '"tag_name"|"name"[[:space:]]*:' \
@@ -189,7 +189,7 @@ resolve_tag() {
   )"
 
   # Iterate: track the current tag; when we see an asset matching the target
-  # under a nahuali-cli tag, that tag wins (first match = newest).
+  # under a product tag, that tag wins (first match = newest).
   _cur_tag=""
   # shellcheck disable=SC2034
   while IFS="$(printf '\t')" read -r _kind _val; do
@@ -199,7 +199,7 @@ resolve_tag() {
         ;;
       ASSET)
         case "$_cur_tag" in
-          nahuali-cli-v*) ;;
+          v*) ;;
           *) continue ;;
         esac
         case "$_val" in
@@ -231,10 +231,10 @@ ok "${TARGET}"
 
 step "Resolving release"
 TAG="$(resolve_tag "$TARGET")"
-VERSION="${TAG#nahuali-cli-v}"
+VERSION="${TAG#v}"
 if [ "$VERSION" = "$TAG" ] || [ -z "$VERSION" ]; then
-  fail "release tag '${TAG}' is not a recognized nahuali-cli version." \
-    "Expected the form nahuali-cli-vX.Y.Z-beta.N."
+  fail "release tag '${TAG}' is not a recognized Nahuali product version." \
+    "Expected the form vX.Y.Z-beta.N."
 fi
 ok "${TAG}  (v${VERSION})"
 

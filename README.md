@@ -1,16 +1,24 @@
+<p align="center">
+  <img src="assets/nahuali-cover.webp" alt="Nahuali, governed and verifiable memory for AI agents" width="100%">
+</p>
+
 # Nahuali
 
 **The trust layer for agent memory.** Nahuali shows what a memory is based on,
 whether it is safe to use, and when an agent should refuse it.
 
-<p>
-  <a href="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml"><img src="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/Arakiss/nahuali/releases"><img src="https://img.shields.io/github/v/release/Arakiss/nahuali?include_prereleases&sort=semver&label=beta" alt="Latest beta"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--MIT-yellow.svg" alt="FSL-1.1-MIT license"></a>
-</p>
-
 <p align="center">
-  <img src="assets/nahuali-demo.gif" alt="Nahuali showing evidence-backed recall, a trust warning, self-inspection, and tamper detection" width="100%">
+  <a href="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml"><img src="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="Tests"></a>
+  <a href="https://codecov.io/gh/Arakiss/nahuali"><img src="https://codecov.io/gh/Arakiss/nahuali/branch/main/graph/badge.svg" alt="Coverage"></a>
+  <a href="https://github.com/Arakiss/nahuali/releases"><img src="https://img.shields.io/badge/release-0.8.0--beta.0-blue.svg" alt="Latest release: 0.8.0-beta.0"></a><!-- x-release-please-version -->
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--MIT-yellow.svg" alt="FSL-1.1-MIT license"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-2024_edition-orange.svg" alt="Rust 2024 edition"></a>
+  <img src="https://img.shields.io/badge/platform-macOS_%7C_Linux-5d6d7e.svg" alt="macOS and Linux">
+  <a href="https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Arakiss%2Fnahuali"><img src="https://img.shields.io/badge/MCP_Registry-published-6f5bd3.svg" alt="Published in the official MCP Registry"></a>
+  <img src="https://img.shields.io/badge/default-local--first-3f7f6c.svg" alt="Local-first by default">
+  <a href="RELEASE_VERIFICATION.md"><img src="https://img.shields.io/badge/releases-Sigstore_signed-2f6f4e.svg" alt="Sigstore-signed release artifacts"></a>
+  <a href=".github/workflows/sbom.yml"><img src="https://img.shields.io/badge/SBOM-CycloneDX-4c6ef5.svg" alt="CycloneDX software bill of materials"></a>
+  <a href="TRUST_MODEL.md"><img src="https://img.shields.io/badge/ledger-tamper--evident_by_default-8b5cf6.svg" alt="Tamper-evident ledger by default"></a>
 </p>
 
 Most memory systems optimize for finding relevant context. Nahuali asks the
@@ -24,7 +32,13 @@ chained, and an operator can sign its tip to detect a fully rewritten history.
 
 Nahuali is local-first, source-available, and in public beta.
 
-## Try persistent memory in one minute
+<p align="center">
+  <img src="assets/nahuali-tui.gif" alt="Nahuali explore showing memory, evidence, trust verdicts, ledger integrity, governance signals, and the nahual mascot" width="100%">
+</p>
+
+<p align="center"><sub><code>nahuali explore</code>: inspect what the agent remembers, why it trusts it, and whether the ledger is intact. The nahual in the header mirrors the current trust verdict.</sub></p>
+
+## Quickstart
 
 Install the signed macOS or Linux binaries:
 
@@ -57,6 +71,10 @@ The demo shows a supported recall that certifies, an unsupported claim that
 warns, a contradiction that blocks, non-mutating self-inspection, an in-place
 history rewrite caught by the hash chain, and a fully re-chained history caught
 by an Ed25519 checkpoint.
+
+<p align="center">
+  <img src="assets/nahuali-demo.gif" alt="Nahuali showing evidence-backed recall, a trust warning, self-inspection, and tamper detection" width="100%">
+</p>
 
 ## Why this is different
 

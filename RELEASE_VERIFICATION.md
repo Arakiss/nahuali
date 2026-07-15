@@ -5,7 +5,7 @@ Arm64. Each archive contains `nahuali`, `nahuali-mcp`, and `nahuali-api`.
 
 ## Installer behavior
 
-The installer selects the newest `nahuali-cli-v*` prerelease that contains an
+The installer selects the newest `v*` prerelease that contains an
 archive for the current platform. It always verifies the adjacent SHA-256 file
 before installing. If `cosign` is available, it also verifies the Sigstore
 bundle against the repository's release workflow identity.
@@ -28,7 +28,7 @@ Pin an exact release with `NAHUALI_VERSION`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh \
-  | NAHUALI_VERSION=nahuali-cli-vX.Y.Z-beta.N sh
+  | NAHUALI_VERSION=vX.Y.Z-beta.N sh
 ```
 
 ## Repository verifier
@@ -39,7 +39,7 @@ identity, GitHub artifact provenance, and an install smoke test:
 
 ```bash
 bash scripts/verify-release.sh \
-  --tag nahuali-cli-vX.Y.Z-beta.N \
+  --tag vX.Y.Z-beta.N \
   --require-sbom \
   --require-provenance
 ```
@@ -47,7 +47,7 @@ bash scripts/verify-release.sh \
 Required signing identity:
 
 ```text
-https://github.com/Arakiss/nahuali/.github/workflows/release.yml@refs/tags/nahuali-cli-vX.Y.Z-beta.N
+https://github.com/Arakiss/nahuali/.github/workflows/release.yml@refs/tags/vX.Y.Z-beta.N
 ```
 
 The release page should contain, for each supported target:

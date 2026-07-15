@@ -58,7 +58,7 @@ run_quiet_step() {
 
 if [[ "${NAHUALI_VALIDATE_SKIP_BASE_CHECKS:-0}" != "1" ]]; then
   run_step "Rust formatting" cargo fmt --check
-  run_step "Workspace internal dependency pins" sh scripts/sync-workspace-internal-deps.sh --check
+  run_step "Product version policy" bash scripts/check-version-policy.sh
   run_step "MCP server release metadata" sh scripts/sync-mcp-server-metadata.sh --check
 fi
 run_step "Private memory dry-run helper interface" bash scripts/private-memory-dry-run.sh --help
