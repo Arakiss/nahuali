@@ -87,4 +87,13 @@ grep -q "^## \[$version\]" CHANGELOG.md \
 grep -Fq "release-${version//-/--}" README.md \
   || fail "README.md release badge does not match $version"
 
+benchmark_result="benchmarks/agent-memory-trust/results/nahuali-${version}.json"
+[[ -f "$benchmark_result" ]] \
+  || fail "published trust benchmark result must match the product version"
+benchmark_system_version="$(jq -r '.system.version' "$benchmark_result")"
+[[ "$benchmark_system_version" == "nahuali $version" ]] \
+  || fail "published trust benchmark reports $benchmark_system_version instead of nahuali $version"
+grep -Fq "results/nahuali-${version}.json" benchmarks/agent-memory-trust/README.md \
+  || fail "trust benchmark table must link the current product result"
+
 echo "version-policy: $version is one coherent pre-1.0 product release"

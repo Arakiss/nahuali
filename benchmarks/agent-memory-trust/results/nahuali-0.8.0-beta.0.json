@@ -2,9 +2,9 @@
   "benchmarkVersion": "1.0.0",
   "system": {
     "name": "Nahuali",
-    "version": "nahuali 1.1.0-beta.0"
+    "version": "nahuali 0.8.0-beta.0"
   },
-  "commit": "76056fe6fdeafdf4e578e5644cca6cfb09bb4f24",
+  "commit": "974a44b38f3b6be5a40bd425607248b1b2a5db23",
   "runner": {
     "relationship": "first-party",
     "adapter": "benchmarks/agent-memory-trust/adapters/nahuali.py"
@@ -23,7 +23,7 @@
       "verdict": "certify",
       "normalizedVerdict": "trusted",
       "evidenceIds": [
-        "episode_1784060345612_1"
+        "episode_1784107676999_1"
       ],
       "detected": true,
       "mutated": false
