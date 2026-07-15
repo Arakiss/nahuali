@@ -149,6 +149,7 @@ assert_file_contains scripts/check-release-page.sh 'Beta limits' "release page c
 assert_file_contains scripts/verify-release.sh 'cosign verify-blob' "release verifier must validate Sigstore bundles"
 assert_file_contains scripts/verify-release.sh 'gh attestation verify' "release verifier must validate GitHub artifact provenance"
 assert_file_contains scripts/verify-release.sh 'NAHUALI_VERIFY_INSTALL_BIN_DIR' "release verifier must run the install smoke against extracted binaries"
+assert_file_contains scripts/verify-install.sh 'export NAHUALI_HOME="\$STORE_DIR/home"' "install smoke must not contend with an operator store"
 assert_file_contains scripts/release-candidate-check.sh 'scripts/check-release-page\.sh' "release-candidate gate must check the public release page"
 assert_file_contains scripts/release-candidate-check.sh 'scripts/check-release-assets\.sh' "release-candidate gate must check existing release assets"
 assert_file_contains scripts/release-candidate-check.sh 'scripts/verify-release\.sh' "release-candidate gate must verify existing release signatures and install smoke"
