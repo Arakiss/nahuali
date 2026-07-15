@@ -73,7 +73,7 @@ deterministic trust verdict from one local installation.
 ### Beta limits
 
 - No stable 1.0 API guarantee yet.
-- No hosted accounts, teams, billing, managed sync, or managed uptime.
+- No hosted service, accounts, teams, billing, managed sync, or managed uptime.
 - Nahuali evaluates evidence and memory health. It does not claim that recalled
   information is objectively true.
 
