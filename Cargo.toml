@@ -10,7 +10,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.8.0-beta.1" # x-release-please-version
+version = "0.8.0-beta.2" # x-release-please-version
 edition = "2024"
 license-file = "LICENSE"
 repository = "https://github.com/Arakiss/nahuali"
@@ -18,8 +18,8 @@ homepage = "https://github.com/Arakiss/nahuali"
 authors = ["Nahuali contributors"]
 
 [workspace.dependencies]
-nahuali-core = { version = "=0.8.0-beta.1", path = "crates/nahuali-core" } # x-release-please-version
-nahuali-ui = { version = "=0.8.0-beta.1", path = "crates/nahuali-ui" } # x-release-please-version
+nahuali-core = { version = "=0.8.0-beta.2", path = "crates/nahuali-core" } # x-release-please-version
+nahuali-ui = { version = "=0.8.0-beta.2", path = "crates/nahuali-ui" } # x-release-please-version
 anyhow = "1.0"
 comfy-table = "7"
 image = { version = "0.25", default-features = false, features = ["png"] }

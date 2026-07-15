@@ -13,6 +13,20 @@ release histories.
   to restart its host after an upgrade, preventing old and new embedded engine
   versions from opening the same store.
 
+## [0.8.0-beta.2](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.1...v0.8.0-beta.2) (2026-07-15)
+
+
+### New
+
+* make governed recall visible end to end ([56fdb14](https://github.com/Arakiss/nahuali/commit/56fdb14dd2c145860f9a7a93491ef9329d1866f1))
+* make the TUI mascot crisp and reliably visible ([94caaef](https://github.com/Arakiss/nahuali/commit/94caaef7ed02943702322c1d5fe9e54b9b96f38d))
+
+
+### Fixed
+
+* keep the mascot asset within release limits ([ab16d31](https://github.com/Arakiss/nahuali/commit/ab16d3171cef05c981e5d82e62f0fb276aacaa7a))
+* render curated notes from generated changelogs ([84d8d8f](https://github.com/Arakiss/nahuali/commit/84d8d8fbe9cadc4781cf61397612d35db1632e05))
+
 ## [0.8.0-beta.1](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.0...v0.8.0-beta.1) (2026-07-15)
 
 
