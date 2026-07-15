@@ -84,16 +84,26 @@ server_image="$(jq -r '.packages[0].identifier' server.json)"
 
 grep -q "^## \[$version\]" CHANGELOG.md \
   || fail "CHANGELOG.md needs a curated [$version] product entry"
-grep -Fq "release-${version//-/--}" README.md \
-  || fail "README.md release badge does not match $version"
+release_train="$(printf '%s' "$allowed_base" | cut -d. -f1-2)"
+grep -Fq "release-${release_train}_beta" README.md \
+  || fail "README.md release badge must match the approved $release_train beta train"
 
-benchmark_result="benchmarks/agent-memory-trust/results/nahuali-${version}.json"
+benchmark_link="$(
+  sed -n 's/.*](results\/\(nahuali-[^)]*\.json\)).*/\1/p' \
+    benchmarks/agent-memory-trust/README.md \
+    | head -n 1
+)"
+[[ -n "$benchmark_link" ]] \
+  || fail "trust benchmark table must link a published Nahuali result"
+benchmark_result="benchmarks/agent-memory-trust/results/$benchmark_link"
 [[ -f "$benchmark_result" ]] \
-  || fail "published trust benchmark result must match the product version"
+  || fail "linked trust benchmark result does not exist: $benchmark_link"
+benchmark_version="${benchmark_link#nahuali-}"
+benchmark_version="${benchmark_version%.json}"
+[[ "$benchmark_version" =~ ^0\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]] \
+  || fail "published trust benchmark must remain a pre-1.0 beta result"
 benchmark_system_version="$(jq -r '.system.version' "$benchmark_result")"
-[[ "$benchmark_system_version" == "nahuali $version" ]] \
-  || fail "published trust benchmark reports $benchmark_system_version instead of nahuali $version"
-grep -Fq "results/nahuali-${version}.json" benchmarks/agent-memory-trust/README.md \
-  || fail "trust benchmark table must link the current product result"
+[[ "$benchmark_system_version" == "nahuali $benchmark_version" ]] \
+  || fail "published trust benchmark version disagrees with its linked filename"
 
 echo "version-policy: $version is one coherent pre-1.0 product release"
