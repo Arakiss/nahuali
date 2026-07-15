@@ -57,11 +57,11 @@ assert_file_contains .gitignore '^\.runs/$' "local run workspace must stay ignor
 assert_file_contains .gitignore '^\.nahual-rust/$' "Nahual-named local workspace must stay ignored"
 
 private_path_pattern='(^docs/|^\.private/|^\.local/|^\.runs/)'
-if git ls-tree -r --name-only HEAD | rg -n "$private_path_pattern"; then
+if git ls-tree -r --name-only HEAD | grep -En "$private_path_pattern"; then
   echo "current HEAD tracks private documentation or local workspace paths" >&2
   exit 1
 fi
-if git log --all --name-only --format= | sort -u | rg -n "$private_path_pattern"; then
+if git log --all --name-only --format= | sort -u | grep -En "$private_path_pattern"; then
   echo "git history contains private documentation or local workspace paths" >&2
   exit 1
 fi
@@ -85,18 +85,19 @@ if [[ -f "$private_denylist" ]]; then
       echo "private denylist scan failed for historical content" >&2
       exit 1
     fi
-    if git log --all --name-only --format= | sort -u | rg -n -i "$private_pattern"; then
+    if git log --all --name-only --format= | sort -u | grep -Ein "$private_pattern"; then
       echo "private denylist scan failed for historical paths" >&2
       exit 1
     fi
-    if git log --all --format='%H%x09%an%x09%ae%x09%cn%x09%ce' | rg -n -i "$private_pattern"; then
+    if git log --all --format='%H%x09%an%x09%ae%x09%cn%x09%ce' | grep -Ein "$private_pattern"; then
       echo "private denylist scan failed for git identity metadata" >&2
       exit 1
     fi
   done <"$private_denylist"
 fi
 
-assert_file_contains Cargo.toml '^nahuali-core = \{ path = "crates/nahuali-core" \}$' "nahuali-core must resolve from the workspace path"
+assert_file_contains Cargo.toml '^nahuali-core = \{ version = "=[^"]+", path = "crates/nahuali-core" \} # x-release-please-version$' "nahuali-core must keep an exact publishable version and workspace path"
+assert_file_contains Cargo.toml '^nahuali-ui = \{ version = "=[^"]+", path = "crates/nahuali-ui" \} # x-release-please-version$' "nahuali-ui must keep an exact publishable version and workspace path"
 assert_file_contains crates/nahuali-cli/Cargo.toml '^nahuali-core\.workspace = true$' "nahuali-cli must use the workspace nahuali-core pin"
 assert_file_contains crates/nahuali-mcp/Cargo.toml '^nahuali-core\.workspace = true$' "nahuali-mcp must use the workspace nahuali-core pin"
 assert_file_contains crates/nahuali-api/Cargo.toml '^nahuali-core\.workspace = true$' "nahuali-api must use the workspace nahuali-core pin"
@@ -191,34 +192,21 @@ assert_file_contains scripts/verify-controlled-beta.sh 'scripts/verify-recall-co
 
 bash scripts/check-version-policy.sh
 
-readme_protected_recipe_pattern='(?i)(Quadrant|generic[[:space:]]+vector[[:space:]]+database|vector[[:space:]]+database|graph[[:space:]]+storage|graph[[:space:]]+store|record/graph|database/vector|storage/vector|dockerized|json[[:space:]]*l|json[[:space:]]+lines)'
-if rg -n "$readme_protected_recipe_pattern" README.md BETA.md; then
+readme_protected_recipe_pattern='(Quadrant|generic[[:space:]]+vector[[:space:]]+database|vector[[:space:]]+database|graph[[:space:]]+storage|graph[[:space:]]+store|record/graph|database/vector|storage/vector|dockerized|json[[:space:]]*l|json[[:space:]]+lines)'
+if grep -Ein "$readme_protected_recipe_pattern" README.md BETA.md; then
   echo "public docs contain unbounded implementation-recipe language outside the storage contract" >&2
   exit 1
 fi
 
-readme_hosted_overpromise_pattern='(?i)(Nahuali Cloud|public[[:space:]]+release[[:space:]]+(approved|ready)|ships[[:space:]]+with[[:space:]]+hosted|ships[[:space:]]+hosted|includes[[:space:]]+hosted[[:space:]]+operations|includes[[:space:]]+a[[:space:]]+hosted[[:space:]]+service|offers[^.\n]*(hosted|managed|accounts|teams|billing|sync|dashboards)|provides[^.\n]*(hosted|managed|accounts|teams|billing|sync|dashboards)|hosted[[:space:]]+control[[:space:]]+plane[[:space:]]+is[[:space:]]+part[[:space:]]+of|managed[[:space:]]+deployment[[:space:]]+is[[:space:]]+part[[:space:]]+of|accounts[[:space:]]+are[[:space:]]+part[[:space:]]+of|billing[[:space:]]+is[[:space:]]+part[[:space:]]+of|managed[[:space:]]+backup[[:space:]]+automation[[:space:]]+is[[:space:]]+included|point-in-time[[:space:]]+restore[[:space:]]+is[[:space:]]+included|SLA-backed[[:space:]]+recovery[[:space:]]+is[[:space:]]+included)'
-if rg -n "$readme_hosted_overpromise_pattern" README.md BETA.md; then
+readme_hosted_overpromise_pattern='(Nahuali Cloud|public[[:space:]]+release[[:space:]]+(approved|ready)|ships[[:space:]]+with[[:space:]]+hosted|ships[[:space:]]+hosted|includes[[:space:]]+hosted[[:space:]]+operations|includes[[:space:]]+a[[:space:]]+hosted[[:space:]]+service|offers[^.\n]*(hosted|managed|accounts|teams|billing|sync|dashboards)|provides[^.\n]*(hosted|managed|accounts|teams|billing|sync|dashboards)|hosted[[:space:]]+control[[:space:]]+plane[[:space:]]+is[[:space:]]+part[[:space:]]+of|managed[[:space:]]+deployment[[:space:]]+is[[:space:]]+part[[:space:]]+of|accounts[[:space:]]+are[[:space:]]+part[[:space:]]+of|billing[[:space:]]+is[[:space:]]+part[[:space:]]+of|managed[[:space:]]+backup[[:space:]]+automation[[:space:]]+is[[:space:]]+included|point-in-time[[:space:]]+restore[[:space:]]+is[[:space:]]+included|SLA-backed[[:space:]]+recovery[[:space:]]+is[[:space:]]+included)'
+if grep -Ein "$readme_hosted_overpromise_pattern" README.md BETA.md; then
   echo "public docs contain hosted-product claims that need review" >&2
   exit 1
 fi
 
-legacy_line_format_pattern='(?i)(json[[:space:]_-]*l([^[:alpha:]]|$)|json[[:space:]]+lines)'
-if rg -n --hidden \
-  --glob '!.git/**' \
-  --glob '!target/**' \
-  --glob '!.private/**' \
-  --glob '!.local/**' \
-  --glob '!.runs/**' \
-  --glob '!.dev-bin/**' \
-  --glob '!.nahuali-oss/**' --glob '!.nahual-rust/**' \
-  --glob '!.release-dry-run/**' \
-  --glob '!.nahuali-demo' \
-  --glob '!*.snapshot.json' \
-  --glob '!*.backup.json' \
-  --glob '!*.interchange.json' \
-  --glob '!Cargo.lock' \
-  "$legacy_line_format_pattern" .; then
+legacy_line_format_pattern='(json[[:space:]_-]*l([^[:alpha:]]|$)|json[[:space:]]+lines)'
+if git grep -n -I -i -E -- "$legacy_line_format_pattern" -- \
+  ':!Cargo.lock' ':!*.snapshot.json' ':!*.backup.json' ':!*.interchange.json'; then
   echo "legacy line-oriented file format references are not part of this codebase" >&2
   exit 1
 fi
@@ -243,20 +231,25 @@ if [[ -n "$large_files" ]]; then
   exit 1
 fi
 
-identity_pattern='(?i)([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|legal name|personal email)'
-if rg -n -i --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.nahual-rust/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$identity_pattern" .; then
+identity_pattern='([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|legal name|personal email)'
+if git grep -n -I -i -E -- "$identity_pattern" -- \
+  ':!*.snapshot.json' ':!*.backup.json' ':!*.interchange.json' \
+  ':!scripts/security-supply-chain-check.sh' ':!scripts/go-public-audit.sh'; then
   echo "identity scan failed" >&2
   exit 1
 fi
 
-secret_pattern='(?i)(api[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|secret[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|password[[:space:]]*[:=][[:space:]]*["'\'']?[a-z0-9._-]{8,}["'\'']?|bearer[[:space:]]+[a-z0-9._-]{16,}|sk-[a-z0-9]{20,}|ghp_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|AKIA[0-9A-Z]{16})'
-if rg -n --hidden --glob '!.git/**' --glob '!target/**' --glob '!.private/**' --glob '!.local/**' --glob '!.runs/**' --glob '!.dev-bin/**' --glob '!.nahuali-oss/**' --glob '!.nahual-rust/**' --glob '!.release-dry-run/**' --glob '!.nahuali-demo' --glob '!*.snapshot.json' --glob '!*.backup.json' --glob '!*.interchange.json' --glob '!Cargo.lock' --glob '!scripts/security-supply-chain-check.sh' --glob '!scripts/go-public-audit.sh' "$secret_pattern" .; then
+secret_pattern='(api[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|secret[_-]?key[[:space:]]*[:=][[:space:]]*[a-z0-9._-]{8,}|password[[:space:]]*[:=][[:space:]]*["'\'']?[a-z0-9._-]{8,}["'\'']?|bearer[[:space:]]+[a-z0-9._-]{16,}|sk-[a-z0-9]{20,}|ghp_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|AKIA[0-9A-Z]{16})'
+if git grep -n -I -i -E -- "$secret_pattern" -- \
+  ':!Cargo.lock' ':!*.snapshot.json' ':!*.backup.json' ':!*.interchange.json' \
+  ':!scripts/security-supply-chain-check.sh' ':!scripts/go-public-audit.sh'; then
   echo "secret scan failed" >&2
   exit 1
 fi
 
 publication_pattern='(cargo publish|npm publish|pnpm publish|bun publish|twine upload|gh release create|git tag)'
-if rg -n --hidden --glob '.github/**' --glob 'scripts/**' --glob '!scripts/security-supply-chain-check.sh' "$publication_pattern" .; then
+if git grep -n -I -E -- "$publication_pattern" -- '.github/**' 'scripts/**' \
+  ':!scripts/security-supply-chain-check.sh'; then
   echo "publication command found in automation" >&2
   exit 1
 fi
