@@ -55,6 +55,8 @@ deterministic trust verdict from one local installation.
 - Configuration precedence is deterministic: command-line flag, environment,
   then built-in default.
 - Same-observation multi-value facts are no longer misreported as contradictions.
+- Embedded storage uses SurrealDB 3.1.5, which fixes the upstream cold-start
+  session race that could intermittently abort a fresh local database.
 
 ### Security and integrity
 
