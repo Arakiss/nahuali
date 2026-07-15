@@ -2777,7 +2777,7 @@ dependencies = [
 
 [[package]]
 name = "nahuali-api"
-version = "0.8.0-beta.0"
+version = "0.8.0-beta.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -2791,7 +2791,7 @@ dependencies = [
 
 [[package]]
 name = "nahuali-cli"
-version = "0.8.0-beta.0"
+version = "0.8.0-beta.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2805,7 +2805,7 @@ dependencies = [
 
 [[package]]
 name = "nahuali-core"
-version = "0.8.0-beta.0"
+version = "0.8.0-beta.1"
 dependencies = [
  "ed25519-dalek",
  "fs2",
@@ -2821,7 +2821,7 @@ dependencies = [
 
 [[package]]
 name = "nahuali-mcp"
-version = "0.8.0-beta.0"
+version = "0.8.0-beta.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2834,7 +2834,7 @@ dependencies = [
 
 [[package]]
 name = "nahuali-regression"
-version = "0.8.0-beta.0"
+version = "0.8.0-beta.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2845,7 +2845,7 @@ dependencies = [
 
 [[package]]
 name = "nahuali-ui"
-version = "0.8.0-beta.0"
+version = "0.8.0-beta.1"
 dependencies = [
  "comfy-table",
  "ratatui",
