@@ -256,11 +256,12 @@ jobs:
           else
             echo "at least one required CI job failed or was skipped"
           fi
-      - name: Publish workflow dispatch commit status
-        if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+      - name: Publish required commit status
+        if: ${{ always() }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ROLLUP_STATE: ${{ steps.rollup.outputs.state || 'failure' }}
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
         run: |
@@ -271,9 +272,9 @@ jobs:
             state="failure"
           fi
 
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${TARGET_SHA}" \
             -f state="$state" \
-            -f context="CI / workflow_dispatch" \
+            -f context="CI / required" \
             -f description="CI ${state}" \
             -f target_url="$TARGET_URL"
       - name: Fail when required CI failed
