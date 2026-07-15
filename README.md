@@ -36,7 +36,7 @@ Nahuali is local-first, source-available, and in public beta.
   <img src="assets/nahuali-tui.gif" alt="Nahuali explore showing memory, evidence, trust verdicts, ledger integrity, governance signals, and the nahual mascot" width="100%">
 </p>
 
-<p align="center"><sub><code>nahuali explore</code>: inspect what the agent remembers, why it trusts it, and whether the ledger is intact. The nahual in the header mirrors the current trust verdict.</sub></p>
+<p align="center"><sub><code>nahuali explore</code>: inspect what the agent remembers, why it trusts it, and whether the ledger is intact. The nahual in the bottom-right corner mirrors the current trust verdict.</sub></p>
 
 ## Quickstart
 
@@ -65,19 +65,24 @@ After upgrading Nahuali, restart any application that keeps `nahuali-mcp`
 running. This ensures the CLI and the long-lived MCP server open the embedded
 store with the same engine version.
 
-For a narrated example with no writes, run:
+For a narrated integrity example with no writes, run:
 
 ```bash
 nahuali demo
 ```
 
-The demo shows a supported recall that certifies, an unsupported claim that
-warns, a contradiction that blocks, non-mutating self-inspection, an in-place
-history rewrite caught by the hash chain, and a fully re-chained history caught
-by an Ed25519 checkpoint.
+That command explains the hash chain and signed checkpoint without changing
+your store. The end-to-end demo below is a separate, reproducible product flow.
+From a source checkout, run `scripts/run-launch-demo.sh verify`. It creates a
+disposable store, follows it through the CLI, TUI, and a real MCP tool call, then
+asserts the expected results.
+
+An evidence-backed claim can drive action. A competing unsourced claim is
+retained but blocks action, and self-inspection explains the contradiction
+without silently rewriting the ledger.
 
 <p align="center">
-  <img src="assets/nahuali-demo.gif" alt="Nahuali showing evidence-backed recall, a trust warning, self-inspection, and tamper detection" width="100%">
+  <img src="assets/nahuali-demo.gif" alt="Nahuali showing evidence-backed recall across CLI, TUI, and MCP, then blocking an unsupported contradiction without rewriting memory" width="100%">
 </p>
 
 ## Why this is different

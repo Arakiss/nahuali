@@ -16,15 +16,12 @@
 //! carries a one-line caption. On non-truecolor terminals (or `NO_COLOR`) the
 //! sprite renders as a single-color silhouette so the shape still reads.
 //!
-//! The nahual has no column of its own — a dedicated panel read as too loud. It
-//! lives in two subtle places instead: full-size in the detail pane's empty
-//! state (with its caption and a dim hint) when there is no item to show, and
-//! always-on as a compact gill-and-face mark in the header border. The mark puts
-//! the recognisable gill fans first, so it survives title clipping on narrow
-//! terminals without taking a row from the operator. The cockpit host
+//! The nahual has no column of its own. It lives in two places: full-size in the
+//! detail pane's empty state, and always visible as a small body-and-gills sprite
+//! in the bottom-right footer. The compact one-line mark remains the fallback
+//! for terminals too small to fit the mini sprite. The cockpit host
 //! ([`crate::tui`]) owns placement; this module owns the art, palette, and
-//! [`Verdict`] binding, and exposes [`compact_mark`], [`Verdict::accent`], and
-//! [`Mascot::block_height`] for composition.
+//! [`Verdict`] binding.
 //!
 //! No animation: the cockpit's event loop blocks on `event::read`, so there is
 //! no tick to drive one — the mascot is deliberately still.
@@ -312,6 +309,13 @@ pub fn compact_mark(verdict: Verdict) -> Vec<Span<'static>> {
     ]
 }
 
+/// Width of the always-visible corner mascot in terminal cells.
+pub const MINI_WIDTH: u16 = 18;
+/// Height of the always-visible corner mascot in terminal rows. The source
+/// sprite is resampled to this fixed footprint, then packs two pixel rows per
+/// terminal cell.
+pub const MINI_HEIGHT: u16 = 9;
+
 fn lerp(a: u8, b: u8, t: f32) -> u8 {
     let a = f32::from(a);
     let b = f32::from(b);
@@ -382,7 +386,7 @@ impl Mascot {
     /// Build a mascot for `verdict`, choosing truecolor vs. monochrome from the
     /// terminal's advertised capabilities.
     pub fn new(verdict: Verdict) -> Self {
-        let mono = !(theme::colors_enabled() && theme::truecolor_enabled());
+        let mono = std::env::var_os("NO_COLOR").is_some() || !theme::truecolor_enabled();
         Self { verdict, mono }
     }
 
@@ -489,6 +493,159 @@ impl Widget for Mascot {
     }
 }
 
+/// The same pixel-art nahual, reduced for the cockpit's bottom-right corner.
+/// This samples the full pose instead of maintaining a second drawing, so the
+/// silhouette, palette, and verdict-specific posture cannot drift apart.
+#[derive(Clone, Copy)]
+pub struct MiniMascot {
+    verdict: Verdict,
+    mono: bool,
+}
+
+impl MiniMascot {
+    pub fn new(verdict: Verdict) -> Self {
+        let mono = std::env::var_os("NO_COLOR").is_some() || !theme::truecolor_enabled();
+        Self { verdict, mono }
+    }
+
+    #[cfg(test)]
+    fn with_mono(verdict: Verdict, mono: bool) -> Self {
+        Self { verdict, mono }
+    }
+}
+
+fn sampled_key(
+    sprite: &[&str],
+    source_x_start: usize,
+    source_x_end: usize,
+    source_y_start: usize,
+    source_y_end: usize,
+) -> u8 {
+    let mut best = b'.';
+    let mut best_priority = 0_u8;
+    for row in sprite
+        .iter()
+        .skip(source_y_start)
+        .take(source_y_end.saturating_sub(source_y_start))
+    {
+        for key in row
+            .as_bytes()
+            .iter()
+            .skip(source_x_start)
+            .take(source_x_end.saturating_sub(source_x_start))
+            .copied()
+        {
+            if !is_ink(key) {
+                continue;
+            }
+            let priority = match key {
+                b'e' | b'x' | b'm' | b'O' | b'*' => 10,
+                b'G' => 9,
+                b'g' | b'h' | b'q' => 8,
+                b'k' => 7,
+                b'b' => 6,
+                b'l' | b'w' => 5,
+                b'o' | b'd' => 4,
+                _ => 1,
+            };
+            if priority > best_priority {
+                best = key;
+                best_priority = priority;
+            }
+        }
+    }
+    best
+}
+
+impl Widget for MiniMascot {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        if area.width == 0 || area.height == 0 {
+            return;
+        }
+        let sprite = self.verdict.sprite();
+        let source_width = sprite.iter().map(|row| row.len()).max().unwrap_or(0);
+        let source_height = sprite.len();
+        let mini_width = MINI_WIDTH.min(area.width);
+        let mini_height = MINI_HEIGHT.min(area.height);
+        let target_pixel_height = mini_height as usize * 2;
+        let ox = area.x + area.width.saturating_sub(mini_width) / 2;
+        let oy = area.y + area.height.saturating_sub(mini_height) / 2;
+
+        for cell_y in 0..mini_height {
+            let y = oy + cell_y;
+            if y >= area.bottom() {
+                break;
+            }
+            for cell_x in 0..mini_width {
+                let x = ox + cell_x;
+                if x >= area.right() {
+                    break;
+                }
+                let source_x_start = cell_x as usize * source_width / mini_width as usize;
+                let source_x_end = ((cell_x as usize + 1) * source_width / mini_width as usize)
+                    .max(source_x_start + 1);
+                let top_pixel_y = cell_y as usize * 2;
+                let bottom_pixel_y = top_pixel_y + 1;
+                let source_top_start = top_pixel_y * source_height / target_pixel_height;
+                let source_top_end = ((top_pixel_y + 1) * source_height / target_pixel_height)
+                    .max(source_top_start + 1);
+                let source_bottom_start = bottom_pixel_y * source_height / target_pixel_height;
+                let source_bottom_end = ((bottom_pixel_y + 1) * source_height
+                    / target_pixel_height)
+                    .max(source_bottom_start + 1);
+                let top_key = sampled_key(
+                    sprite,
+                    source_x_start,
+                    source_x_end,
+                    source_top_start,
+                    source_top_end,
+                );
+                let bottom_key = sampled_key(
+                    sprite,
+                    source_x_start,
+                    source_x_end,
+                    source_bottom_start,
+                    source_bottom_end,
+                );
+                let (top_set, bottom_set) = (is_ink(top_key), is_ink(bottom_key));
+                if !top_set && !bottom_set {
+                    continue;
+                }
+                let Some(cell) = buf.cell_mut((x, y)) else {
+                    continue;
+                };
+                if self.mono {
+                    let symbol = match (top_set, bottom_set) {
+                        (true, true) => "\u{2588}",
+                        (true, false) => "\u{2580}",
+                        _ => "\u{2584}",
+                    };
+                    cell.set_symbol(symbol).set_fg(Color::Reset);
+                    continue;
+                }
+
+                let top_rgb = pixel_rgb(top_key, self.verdict).unwrap_or(BODY);
+                let bottom_rgb = pixel_rgb(bottom_key, self.verdict).unwrap_or(BODY);
+                match (top_set, bottom_set) {
+                    (true, true) => {
+                        cell.set_symbol("\u{2580}");
+                        cell.set_fg(to_color(top_rgb));
+                        cell.set_bg(to_color(bottom_rgb));
+                    }
+                    (true, false) => {
+                        cell.set_symbol("\u{2580}");
+                        cell.set_fg(to_color(top_rgb));
+                    }
+                    _ => {
+                        cell.set_symbol("\u{2584}");
+                        cell.set_fg(to_color(bottom_rgb));
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -551,6 +708,31 @@ mod tests {
         assert_eq!(text(Verdict::Advisory), "≋(•o•)≋");
         assert_eq!(text(Verdict::Warn), "≋(•△•)≋");
         assert_eq!(text(Verdict::Block), "≋(—_—)≋");
+    }
+
+    #[test]
+    fn mini_mascot_is_a_dense_reduction_of_every_pose() {
+        let signatures: Vec<Vec<String>> = [
+            Verdict::Certify,
+            Verdict::Advisory,
+            Verdict::Warn,
+            Verdict::Block,
+        ]
+        .into_iter()
+        .map(|verdict| {
+            let area = Rect::new(0, 0, MINI_WIDTH, MINI_HEIGHT);
+            let mut buffer = Buffer::empty(area);
+            MiniMascot::with_mono(verdict, false).render(area, &mut buffer);
+            assert!(painted_cells(&buffer) > 20, "mini pose is too sparse");
+            signature(&buffer)
+        })
+        .collect();
+
+        for i in 0..signatures.len() {
+            for j in (i + 1)..signatures.len() {
+                assert_ne!(signatures[i], signatures[j]);
+            }
+        }
     }
 
     #[test]

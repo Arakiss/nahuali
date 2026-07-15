@@ -7,10 +7,9 @@
 //! on the right. The CLI builds a plain `Snapshot` and hands it here, so this
 //! module stays decoupled from nahuali-core.
 //!
-//! The nahual mascot ([`crate::mascot`]) rides along quietly: a compact axolotl
-//! mark in the header border, and — when nothing is selected — the full sprite
-//! taking over the otherwise-empty detail pane. Neither costs the working
-//! operator any space.
+//! The nahual mascot ([`crate::mascot`]) rides along quietly: a small axolotl in
+//! the bottom-right corner during normal use, and the full sprite taking over
+//! the otherwise-empty detail pane. Both mirror the live store verdict.
 
 use std::io;
 
@@ -194,22 +193,26 @@ fn event_loop<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Resu
 }
 
 fn draw(frame: &mut Frame, app: &mut App) {
+    let footer_height = if frame.area().height >= 18 {
+        mascot::MINI_HEIGHT
+    } else {
+        1
+    };
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(4),
             Constraint::Min(0),
             Constraint::Length(3),
-            Constraint::Length(1),
+            Constraint::Length(footer_height),
         ])
         .split(frame.area());
 
     draw_header(frame, app, rows[0]);
 
-    // The cockpit keeps a stable two-pane body; the nahual no longer claims a
-    // column of its own. It surfaces subtly instead — full-size in the detail
-    // pane's empty state (`draw_detail`) and as a compact mark in the header
-    // (`draw_header`) — so a working operator never loses room to it.
+    // The cockpit keeps a stable two-pane body. The full nahual owns only the
+    // empty detail state; the always-visible mini version lives in the footer,
+    // outside the operator's working panes.
     let body = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(42), Constraint::Percentage(58)])
@@ -227,7 +230,8 @@ fn draw(frame: &mut Frame, app: &mut App) {
     draw_detail(frame, app, body[1]);
 
     draw_signals(frame, &app.snapshot.signals, rows[2]);
-    draw_footer(frame, rows[3]);
+    let verdict = Verdict::from_label(&app.snapshot.store_trust_label);
+    draw_footer(frame, rows[3], verdict);
 }
 
 /// Draw the right-hand detail pane. With an item selected it shows that item's
@@ -322,7 +326,6 @@ fn draw_signals(frame: &mut Frame, signals: &[Signal], area: Rect) {
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
-    let verdict = Verdict::from_label(&app.snapshot.store_trust_label);
     let trust = Line::from(vec![
         Span::styled(
             format!(" {} ", app.snapshot.store_trust_label),
@@ -335,13 +338,12 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(color(theme::INK_FAINT)),
         ),
     ]);
-    let mut title = mascot::compact_mark(verdict);
-    title.push(Span::styled(
+    let title = vec![Span::styled(
         format!(" nahuali explore · {} ", app.snapshot.database),
         Style::default()
             .fg(color(theme::CLAY))
             .add_modifier(Modifier::BOLD),
-    ));
+    )];
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(color(theme::INK_FAINT)))
@@ -521,7 +523,7 @@ fn detail_paragraph(item: &Item) -> Paragraph<'static> {
         .block(detail_block())
 }
 
-fn draw_footer(frame: &mut Frame, area: Rect) {
+fn draw_footer(frame: &mut Frame, area: Rect, verdict: Verdict) {
     let footer = Paragraph::new(Line::from(vec![
         Span::styled("  ↑↓/jk ", Style::default().fg(color(theme::CLAY))),
         Span::styled("move   ", Style::default().fg(color(theme::INK_FAINT))),
@@ -530,7 +532,25 @@ fn draw_footer(frame: &mut Frame, area: Rect) {
         Span::styled("q/Esc ", Style::default().fg(color(theme::CLAY))),
         Span::styled("quit", Style::default().fg(color(theme::INK_FAINT))),
     ]));
-    frame.render_widget(footer, area);
+    if area.height < mascot::MINI_HEIGHT || area.width < mascot::MINI_WIDTH + 20 {
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(9)])
+            .split(area);
+        frame.render_widget(footer, columns[0]);
+        frame.render_widget(
+            Paragraph::new(Line::from(mascot::compact_mark(verdict))).alignment(Alignment::Right),
+            columns[1],
+        );
+        return;
+    }
+
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(mascot::MINI_WIDTH)])
+        .split(area);
+    frame.render_widget(footer, columns[0]);
+    frame.render_widget(mascot::MiniMascot::new(verdict), columns[1]);
 }
 
 #[cfg(test)]
@@ -684,10 +704,9 @@ mod tests {
     }
 
     #[test]
-    fn empty_store_on_a_tiny_terminal_draws_no_mascot_and_does_not_panic() {
+    fn empty_store_on_a_tiny_terminal_draws_only_the_corner_mascot() {
         // Below the empty-state threshold the pane falls back to the plain
-        // placeholder. The compact header mark remains visible and nothing
-        // panics.
+        // placeholder. The corner mascot remains visible and nothing panics.
         let mut app = App::new(snapshot(0));
         let buf = render_cockpit(&mut app, 40, 24);
         let text = text_of(&buf);
@@ -695,14 +714,9 @@ mod tests {
             !text.contains("calm"),
             "no mascot caption should appear on a tiny terminal"
         );
-        assert_eq!(
-            block_glyphs(&buf),
-            0,
-            "no half-block art should be drawn on a tiny terminal"
-        );
         assert!(
-            text.contains("≋(•ᴗ•)≋"),
-            "the compact CERTIFY mark remains visible on a tiny terminal"
+            block_glyphs(&buf) > 50,
+            "the CERTIFY corner mascot remains visible on a tiny terminal"
         );
         assert!(
             text.contains("No memory"),
@@ -711,37 +725,27 @@ mod tests {
     }
 
     #[test]
-    fn non_empty_store_shows_the_compact_mark_not_the_full_mascot() {
-        // Browsing an actual item, the full sprite is gone while the recognisable
-        // one-line axolotl remains in the header border.
+    fn non_empty_store_shows_the_corner_mascot_not_the_full_sprite() {
+        // Browsing an actual item, the full sprite is gone while the recognizable
+        // mini axolotl remains in the bottom-right footer.
         let mut app = App::new(snapshot(3));
         let buf = render_cockpit(&mut app, 120, 40);
         assert!(
-            text_of(&buf).contains("≋(•ᴗ•)≋"),
-            "the header should carry the compact CERTIFY axolotl"
-        );
-        assert_eq!(
-            block_glyphs(&buf),
-            0,
-            "a non-empty store must not draw the full half-block sprite"
+            block_glyphs(&buf) > 50 && !text_of(&buf).contains("calm"),
+            "the footer should carry only the reduced CERTIFY axolotl"
         );
     }
 
     #[test]
-    fn narrow_terminal_keeps_the_compact_mark_and_layout() {
-        // The mark occupies the header border rather than the trust row, so it
-        // survives narrow layouts without colliding with useful information.
+    fn narrow_terminal_keeps_the_corner_mascot_and_layout() {
+        // The footer mascot survives narrow layouts without colliding with
+        // useful information.
         let mut app = App::new(snapshot(3));
         let buf = render_cockpit(&mut app, 42, 30);
         let text = text_of(&buf);
         assert!(
-            text.contains("≋(•ᴗ•)≋"),
-            "the compact mark must remain visible on a narrow terminal"
-        );
-        assert_eq!(
-            block_glyphs(&buf),
-            0,
-            "the compact mark must not consume half-block sprite cells"
+            block_glyphs(&buf) > 50 && !text.contains("calm"),
+            "the reduced corner mascot must remain visible on a narrow terminal"
         );
         assert!(text.contains("nahuali explore"), "header still renders");
         assert!(text.contains("memory"), "list pane still renders");
@@ -765,7 +769,7 @@ mod tests {
             "must not show the CERTIFY caption for a BLOCK store"
         );
 
-        // Non-empty BLOCK store: the header mark switches to its guarded face
+        // Non-empty BLOCK store: the corner mascot switches to its guarded face
         // while the full half-block sprite remains absent.
         let mut full = snapshot(3);
         full.store_trust_label = "BLOCK · not yet trustworthy".to_string();
@@ -773,13 +777,8 @@ mod tests {
         let mut app = App::new(full);
         let buf = render_cockpit(&mut app, 120, 40);
         assert!(
-            text_of(&buf).contains("≋(—_—)≋"),
-            "the compact header mark tracks the BLOCK verdict"
-        );
-        assert_eq!(
-            block_glyphs(&buf),
-            0,
-            "a non-empty store does not draw the full mascot"
+            (50..120).contains(&block_glyphs(&buf)),
+            "a non-empty BLOCK store draws only the reduced guarded mascot"
         );
     }
 }
