@@ -7,6 +7,10 @@ on:
         description: "Existing Nahuali product release tag"
         required: true
         type: string
+      withdraw_version:
+        description: "Previously published registry version to withdraw after a successful replacement"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -107,3 +111,15 @@ jobs:
 
       - name: Publish registry metadata
         run: ./mcp-publisher publish
+
+      - name: Withdraw superseded registry version
+        if: ${{ inputs.withdraw_version != '' }}
+        env:
+          CURRENT_VERSION: ${{ needs.prepare.outputs.version }}
+          WITHDRAW_VERSION: ${{ inputs.withdraw_version }}
+        run: |
+          ./mcp-publisher status \
+            --status deleted \
+            --message "Withdrawn after an incorrect release version. Use ${CURRENT_VERSION}." \
+            io.github.Arakiss/nahuali \
+            "${WITHDRAW_VERSION}"
