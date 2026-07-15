@@ -104,7 +104,7 @@ jobs:
           use_oidc: true
           files: lcov.info
           disable_search: true
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
   release-gate:
     name: release/install dry-run gate
