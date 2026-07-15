@@ -392,6 +392,15 @@ esac
 
 printf '\n%s%sNahuali v%s is installed.%s\n' "${C_GREEN}${C_BOLD}" "" "${VERSION}" "${C_RESET}"
 
+# Replacing a binary does not replace code already loaded by a long-lived MCP
+# process. Mixing engine versions against one embedded store can fail while the
+# old process remains alive, so make the required host restart explicit.
+if command -v pgrep >/dev/null 2>&1 \
+  && pgrep -f '[/]nahuali-mcp([[:space:]]|$)' >/dev/null 2>&1; then
+  printf '\n%sRestart the application currently running nahuali-mcp before using the upgraded store.%s\n' \
+    "${C_YELLOW}${C_BOLD}" "${C_RESET}"
+fi
+
 if [ "$ON_PATH" = "true" ]; then
   printf '%s%s is already on your PATH.%s\n' "${C_DIM}" "${BIN_DIR}" "${C_RESET}"
 else

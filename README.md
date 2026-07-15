@@ -61,6 +61,10 @@ This is real persistent memory. The default store lives under
 server, model, account, or API key. Set `NAHUALI_DB_URL` when you want a shared
 remote SurrealDB deployment instead.
 
+After upgrading Nahuali, restart any application that keeps `nahuali-mcp`
+running. This ensures the CLI and the long-lived MCP server open the embedded
+store with the same engine version.
+
 For a narrated example with no writes, run:
 
 ```bash

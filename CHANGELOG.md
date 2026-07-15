@@ -7,7 +7,11 @@ release histories.
 
 ## Unreleased
 
-No user-facing changes yet.
+### Changed
+
+- The installer now detects a running `nahuali-mcp` process and asks the user
+  to restart its host after an upgrade, preventing old and new embedded engine
+  versions from opening the same store.
 
 ## [0.8.0-beta.0] - 2026-07-15
 
