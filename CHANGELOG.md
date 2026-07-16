@@ -13,6 +13,29 @@ release histories.
   to restart its host after an upgrade, preventing old and new embedded engine
   versions from opening the same store.
 
+## [0.8.0-beta.6](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.5...v0.8.0-beta.6) (2026-07-16)
+
+
+### New
+
+* close memory reliability gaps ([bde618d](https://github.com/Arakiss/nahuali/commit/bde618da9ddd285ba0df6227201744b48a268838))
+* expose serving readiness ([3e83893](https://github.com/Arakiss/nahuali/commit/3e83893e262335b60a420afc59ed4cc2c0987784))
+
+
+### Fixed
+
+* certify derived projection freshness ([ada1e9a](https://github.com/Arakiss/nahuali/commit/ada1e9a8467edc1a92b1460900321ac5f1c2460a))
+* coalesce completed graph rebuilds ([58e3c0b](https://github.com/Arakiss/nahuali/commit/58e3c0b99c5f8c0109b2f92ea9088bb4985c2dd0))
+* keep query trust scoped to returned memory ([b736e04](https://github.com/Arakiss/nahuali/commit/b736e043dfd5eda484a2d7472efe32a928f46a9f))
+* make ledger write outcomes unambiguous ([4e63e05](https://github.com/Arakiss/nahuali/commit/4e63e0533e047592d342a8bfa49b749bc1c12679))
+* make restored stores operationally explicit ([c459c23](https://github.com/Arakiss/nahuali/commit/c459c2311f83fa29c3fdec61fb5b2171fec9e047))
+* make trust benchmark results artifact-bound ([e47e8b7](https://github.com/Arakiss/nahuali/commit/e47e8b7001449e83ac957276eb690c70429ba89d))
+
+
+### Performance
+
+* skip unchanged ledger replay ([cd88d34](https://github.com/Arakiss/nahuali/commit/cd88d348305a6818651ab6af9c6dca6bb395e30b))
+
 ## [0.8.0-beta.5](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.4...v0.8.0-beta.5) (2026-07-16)
 
 
