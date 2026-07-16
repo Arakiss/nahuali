@@ -51,6 +51,7 @@ fn openapi_contract_has_the_frozen_beta_path_set() {
             "/v1/projection/rebuild",
             "/v1/projection/status",
             "/v1/projection/validate",
+            "/v1/ready",
             "/v1/recall",
             "/v1/review/resolve",
             "/v1/semantic/rebuild",
@@ -587,6 +588,7 @@ async fn api_returns_structured_core_errors() {
     )));
 
     let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -642,6 +644,121 @@ async fn api_health_does_not_open_the_engine() {
     assert_eq!(root.status(), StatusCode::OK);
     let root_body = response_json(root).await;
     assert_eq!(root_body["openapi"], "/v1/openapi.json");
+    assert_eq!(root_body["readiness"], "/v1/ready");
+}
+
+#[tokio::test]
+async fn api_readiness_verifies_ledger_graph_and_configured_semantic_state() {
+    let _guard = api_contract_lock().lock().await;
+    let database = temp_database("api_readiness_verifies_configured_tiers");
+    let app = router(ApiConfig::new(&database));
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/ready")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let empty = response_json(response).await;
+    assert_eq!(empty["ready"], false);
+    assert_eq!(empty["ledger"]["ready"], true);
+    assert_eq!(empty["graph"]["ready"], false);
+
+    let rebuild = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/projection/rebuild")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rebuild.status(), StatusCode::OK);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/ready")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let ready = response_json(response).await;
+    assert_eq!(ready["ready"], true);
+    assert_eq!(ready["ledger"]["ready"], true);
+    assert_eq!(ready["graph"]["ready"], true);
+    assert_eq!(ready["semantic"]["required"], false);
+    assert_eq!(ready["semantic"]["status"], "not_required");
+
+    let semantic_database = temp_database("api_readiness_requires_semantic");
+    let semantic_app = router(ApiConfig::new(&semantic_database).require_semantic(true));
+    let before = semantic_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/ready")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(before.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let before = response_json(before).await;
+    assert_eq!(before["ready"], false);
+    assert_eq!(before["semantic"]["required"], true);
+    assert_eq!(before["semantic"]["ready"], false);
+
+    json_request(
+        semantic_app.clone(),
+        "/v1/episode",
+        json!({"content": "Hrafn verifies HTTP readiness."}),
+    )
+    .await;
+    let rebuild = semantic_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/semantic/rebuild")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    if rebuild.status() == StatusCode::BAD_GATEWAY {
+        return;
+    }
+    assert_eq!(rebuild.status(), StatusCode::OK);
+
+    let after = semantic_app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/ready")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(after.status(), StatusCode::OK);
+    let after = response_json(after).await;
+    assert_eq!(after["ready"], true);
+    assert_eq!(after["semantic"]["status"], "current");
+    assert_eq!(after["semantic"]["missing_point_count"], 0);
+    assert_eq!(after["semantic"]["orphan_point_count"], 0);
+    assert_eq!(after["semantic"]["stale_point_count"], 0);
 }
 
 #[tokio::test]

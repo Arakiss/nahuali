@@ -23,6 +23,7 @@ Health check and OpenAPI contract:
 
 ```bash
 curl http://127.0.0.1:7070/v1/health
+curl http://127.0.0.1:7070/v1/ready
 curl http://127.0.0.1:7070/v1/status
 curl http://127.0.0.1:7070/v1/openapi.json
 ```
@@ -31,6 +32,16 @@ curl http://127.0.0.1:7070/v1/openapi.json
 database, so they are safe as liveness probes. Transport-level failures (unknown
 route, wrong `Content-Type`, malformed JSON, unknown or missing fields) return the
 same structured envelope as core errors: `{"error":{"code":"...","message":"..."}}`.
+
+`GET /ready` and `GET /v1/ready` open and refresh the ledger, validate the graph
+projection, and return `503` unless those serving dependencies are current. Start
+the server with `--require-semantic` to make Qdrant freshness part of readiness;
+without that flag the response reports the semantic check as `not_required`.
+Readiness responses contain only state and counts, never memory content.
+
+The server handles Ctrl+C and SIGTERM with graceful shutdown. Request timing is
+written to stderr with method, path, status, and duration only; query strings and
+request or response bodies are never logged.
 
 Core endpoint groups:
 

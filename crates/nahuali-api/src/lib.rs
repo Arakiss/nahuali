@@ -7,6 +7,7 @@
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
+    time::Instant,
 };
 
 use axum::Json as AxumJson;
@@ -17,6 +18,7 @@ use axum::{
         rejection::{JsonRejection, QueryRejection},
     },
     http::{StatusCode, header, request::Parts},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -40,6 +42,7 @@ pub const OPENAPI_JSON: &str = include_str!("../openapi.json");
 #[derive(Clone, Debug)]
 pub struct ApiConfig {
     database: PathBuf,
+    require_semantic: bool,
 }
 
 impl ApiConfig {
@@ -47,7 +50,14 @@ impl ApiConfig {
     pub fn new(database: impl Into<PathBuf>) -> Self {
         Self {
             database: database.into(),
+            require_semantic: false,
         }
+    }
+
+    /// Require a current semantic index before readiness can succeed.
+    pub fn require_semantic(mut self, required: bool) -> Self {
+        self.require_semantic = required;
+        self
     }
 
     /// Database path/name passed to `nahuali-core`.
@@ -66,6 +76,7 @@ impl Default for ApiConfig {
 pub fn router(config: ApiConfig) -> Router {
     let state = ApiState {
         database: Arc::new(config.database),
+        require_semantic: config.require_semantic,
         engine: Arc::new(RwLock::new(None)),
     };
 
@@ -73,6 +84,8 @@ pub fn router(config: ApiConfig) -> Router {
         .route("/", get(root))
         .route("/health", get(health))
         .route("/v1/health", get(health))
+        .route("/ready", get(readiness))
+        .route("/v1/ready", get(readiness))
         .route("/v1/status", get(status))
         .route("/v1/openapi.json", get(openapi))
         .route("/v1/episode", post(record_episode))
@@ -105,12 +118,14 @@ pub fn router(config: ApiConfig) -> Router {
         .route("/v1/review/resolve", post(resolve_review))
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
+        .layer(middleware::from_fn(request_timing))
         .with_state(state)
 }
 
 #[derive(Clone)]
 struct ApiState {
     database: Arc<PathBuf>,
+    require_semantic: bool,
     /// Cached memory engine, opened lazily on first database-touching request and
     /// reused across requests so the ledger replay and SurrealDB graph projection
     /// rebuild that `MemoryEngine::open` performs run once instead of per request.
@@ -296,11 +311,100 @@ async fn root() -> impl IntoResponse {
         "service": "nahuali-api",
         "openapi": "/v1/openapi.json",
         "health": "/v1/health",
+        "readiness": "/v1/ready",
     }))
 }
 
 async fn health() -> impl IntoResponse {
     AxumJson(serde_json::json!({ "status": "ok" }))
+}
+
+async fn request_timing(request: Request, next: Next) -> Response {
+    let method = request.method().as_str().to_string();
+    let path = request.uri().path().to_string();
+    let started = Instant::now();
+    let response = next.run(request).await;
+    eprintln!(
+        "nahuali_api_request method={method} path={path} status={} duration_ms={}",
+        response.status().as_u16(),
+        started.elapsed().as_millis()
+    );
+    response
+}
+
+async fn readiness(State(state): State<ApiState>) -> Response {
+    let database = state.database.display().to_string();
+    let report_database = database.clone();
+    let require_semantic = state.require_semantic;
+    let report = match with_refreshed_engine_blocking(&state, move |memory| {
+        let ledger = ReadinessCheck::ready_with_status(format!(
+            "validated:{}_events",
+            memory.data().event_count
+        ));
+        let graph = match memory.projection_validate() {
+            Ok(validation) if validation.valid => ReadinessCheck::ready_with_status("in_sync"),
+            Ok(_) => ReadinessCheck::failed("projection_out_of_sync"),
+            Err(_) => ReadinessCheck::failed("projection_unavailable"),
+        };
+        let semantic = if require_semantic {
+            match memory.semantic_index_status() {
+                Ok(status) => SemanticReadiness {
+                    required: true,
+                    ready: status.is_current,
+                    status: if status.is_current {
+                        "current".to_string()
+                    } else {
+                        "stale".to_string()
+                    },
+                    collection_exists: Some(status.collection_exists),
+                    expected_point_count: Some(status.expected_point_count),
+                    indexed_point_count: Some(status.indexed_point_count),
+                    missing_point_count: Some(status.missing_point_count),
+                    orphan_point_count: Some(status.orphan_point_count),
+                    stale_point_count: Some(status.stale_point_count),
+                },
+                Err(_) => SemanticReadiness::failed(true, "unavailable"),
+            }
+        } else {
+            SemanticReadiness::not_required()
+        };
+        let ready = ledger.ready && graph.ready && semantic.ready;
+        Ok(ReadinessResponse {
+            ready,
+            database: report_database,
+            ledger,
+            graph,
+            semantic,
+        })
+    })
+    .await
+    {
+        Ok(report) => report,
+        Err(error) => {
+            return readiness_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ReadinessResponse {
+                    ready: false,
+                    database: state.database.display().to_string(),
+                    ledger: ReadinessCheck::failed(error.code),
+                    graph: ReadinessCheck::not_checked(),
+                    semantic: SemanticReadiness::not_checked(state.require_semantic),
+                },
+            );
+        }
+    };
+    readiness_response(
+        if report.ready {
+            StatusCode::OK
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        },
+        report,
+    )
+}
+
+fn readiness_response(status: StatusCode, report: ReadinessResponse) -> Response {
+    (status, AxumJson(report)).into_response()
 }
 
 /// Acquire an exclusive write guard over the cached engine, opening it lazily on
@@ -335,6 +439,40 @@ async fn read_engine(state: &ApiState) -> Result<RwLockReadGuard<'_, MemoryEngin
     Ok(RwLockReadGuard::map(guard, |slot| {
         slot.as_ref().expect("engine initialized before read guard")
     }))
+}
+
+/// Run a synchronous core operation away from Axum's async executor.
+///
+/// The semantic tier uses reqwest's blocking client. Constructing or dropping
+/// that client inside Tokio can panic, and the core's synchronous database calls
+/// would otherwise block an executor worker. The cached engine stays serialized
+/// behind the same write lock while this closure opens, refreshes, and reads it
+/// on Tokio's blocking pool.
+async fn with_refreshed_engine_blocking<T, F>(state: &ApiState, operation: F) -> Result<T, ApiError>
+where
+    T: Send + 'static,
+    F: FnOnce(&MemoryEngine) -> Result<T, NahualiError> + Send + 'static,
+{
+    let database = Arc::clone(&state.database);
+    let engine = Arc::clone(&state.engine);
+    tokio::task::spawn_blocking(move || {
+        let mut guard = engine.blocking_write();
+        if guard.is_none() {
+            *guard = Some(MemoryEngine::open(database.as_ref())?);
+        }
+        let memory = guard.as_mut().expect("engine initialized above");
+        memory.refresh()?;
+        operation(memory)
+    })
+    .await
+    .map_err(|error| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "blocking_task_failed",
+            format!("memory operation task failed: {error}"),
+        )
+    })?
+    .map_err(ApiError::from)
 }
 
 async fn openapi() -> impl IntoResponse {
@@ -722,20 +860,24 @@ async fn projection_validate(
 }
 
 async fn semantic_status(State(state): State<ApiState>) -> ApiResult<SemanticStatusResponse> {
-    let memory = read_engine(&state).await?;
+    let database = state.database.display().to_string();
+    let status =
+        with_refreshed_engine_blocking(&state, |memory| memory.semantic_index_status()).await?;
     Ok(Json(SemanticStatusResponse {
-        database: state.database.display().to_string(),
+        database,
         semantic_index_role: "derived",
-        status: memory.semantic_index_status()?,
+        status,
     }))
 }
 
 async fn semantic_rebuild(State(state): State<ApiState>) -> ApiResult<SemanticRebuildResponse> {
-    let memory = read_engine(&state).await?;
+    let database = state.database.display().to_string();
+    let report =
+        with_refreshed_engine_blocking(&state, |memory| memory.rebuild_semantic_index()).await?;
     Ok(Json(SemanticRebuildResponse {
-        database: state.database.display().to_string(),
+        database,
         semantic_index_role: "derived",
-        report: memory.rebuild_semantic_index()?,
+        report,
     }))
 }
 
@@ -743,11 +885,13 @@ async fn semantic_rebuild(State(state): State<ApiState>) -> ApiResult<SemanticRe
 /// the Qdrant index without dropping the collection, so recall stays current
 /// without a gap.
 async fn semantic_sync(State(state): State<ApiState>) -> ApiResult<SemanticRebuildResponse> {
-    let memory = read_engine(&state).await?;
+    let database = state.database.display().to_string();
+    let report =
+        with_refreshed_engine_blocking(&state, |memory| memory.sync_semantic_index()).await?;
     Ok(Json(SemanticRebuildResponse {
-        database: state.database.display().to_string(),
+        database,
         semantic_index_role: "derived",
-        report: memory.sync_semantic_index()?,
+        report,
     }))
 }
 
@@ -990,6 +1134,94 @@ struct ReviewResolveRequest {
     note: String,
     #[serde(default)]
     dry_run: bool,
+}
+
+#[derive(Serialize)]
+struct ReadinessResponse {
+    ready: bool,
+    database: String,
+    ledger: ReadinessCheck,
+    graph: ReadinessCheck,
+    semantic: SemanticReadiness,
+}
+
+#[derive(Serialize)]
+struct ReadinessCheck {
+    ready: bool,
+    status: String,
+}
+
+impl ReadinessCheck {
+    fn ready_with_status(status: impl Into<String>) -> Self {
+        Self {
+            ready: true,
+            status: status.into(),
+        }
+    }
+
+    fn failed(status: impl Into<String>) -> Self {
+        Self {
+            ready: false,
+            status: status.into(),
+        }
+    }
+
+    fn not_checked() -> Self {
+        Self::failed("not_checked")
+    }
+}
+
+#[derive(Serialize)]
+struct SemanticReadiness {
+    required: bool,
+    ready: bool,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    collection_exists: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected_point_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    indexed_point_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    missing_point_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    orphan_point_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stale_point_count: Option<usize>,
+}
+
+impl SemanticReadiness {
+    fn not_required() -> Self {
+        Self {
+            required: false,
+            ready: true,
+            status: "not_required".to_string(),
+            collection_exists: None,
+            expected_point_count: None,
+            indexed_point_count: None,
+            missing_point_count: None,
+            orphan_point_count: None,
+            stale_point_count: None,
+        }
+    }
+
+    fn not_checked(required: bool) -> Self {
+        Self::failed(required, "not_checked")
+    }
+
+    fn failed(required: bool, status: impl Into<String>) -> Self {
+        Self {
+            required,
+            ready: false,
+            status: status.into(),
+            collection_exists: None,
+            expected_point_count: None,
+            indexed_point_count: None,
+            missing_point_count: None,
+            orphan_point_count: None,
+            stale_point_count: None,
+        }
+    }
 }
 
 #[derive(Serialize)]
