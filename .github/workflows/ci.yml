@@ -216,6 +216,12 @@ jobs:
             --source-revision "$GITHUB_SHA" \
             --output "$result"
           python3 benchmarks/agent-memory-trust/score.py "$result"
+      - name: Run agent memory retrieval benchmark gate
+        timeout-minutes: 10
+        env:
+          NAHUALI_RETRIEVAL_BIN: target/release/nahuali
+          NAHUALI_RETRIEVAL_SOURCE_REVISION: ${{ github.sha }}
+        run: bash scripts/verify-retrieval-benchmark.sh
       - name: Verify unchanged-ledger refresh budgets
         timeout-minutes: 10
         run: bash scripts/verify-refresh-performance.sh
