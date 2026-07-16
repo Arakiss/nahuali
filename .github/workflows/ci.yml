@@ -118,6 +118,9 @@ jobs:
     name: release/install dry-run gate
     runs-on: ubuntu-latest
     timeout-minutes: 80
+    permissions:
+      contents: read
+      attestations: read
     # Keep this gate independent so it is queued with the rest of CI instead of
     # waiting until cheaper checks have already consumed the account minute
     # budget. `CI (all)` still requires it before a workflow can pass.
@@ -127,6 +130,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Private memory dry-run helper interface
         timeout-minutes: 1
         run: bash scripts/private-memory-dry-run.sh --help
@@ -175,6 +179,12 @@ jobs:
         env:
           NAHUALI_VALIDATE_SKIP_DEV_STACK: "1"
           NAHUALI_DOGFOOD_BIN_DIR: target/release
+      - name: Verify published N-1 release upgrade
+        timeout-minutes: 15
+        run: bash scripts/verify-release-upgrade.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAHUALI_CURRENT_BIN_DIR: target/release
       - name: Verify recall contract
         timeout-minutes: 5
         run: bash scripts/verify-recall-contract.sh
