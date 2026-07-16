@@ -8,6 +8,8 @@ pub struct Rgb(pub u8, pub u8, pub u8);
 
 // The palette is the same identity as the Nahuali HTML artifacts, so the
 // terminal, the TUI, and the web dossiers read as one product.
+/// Coffee background used by the TUI capture and alpha-aware terminal art.
+pub const BACKGROUND: Rgb = Rgb(23, 19, 17);
 /// Primary accent — signal, used sparingly (headings, the live cursor).
 pub const CLAY: Rgb = Rgb(217, 119, 87);
 /// Trustworthy / certify.

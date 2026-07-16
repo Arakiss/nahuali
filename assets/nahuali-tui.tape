@@ -12,6 +12,7 @@ Set WindowBar Rings
 Set BorderRadius 10
 Set Framerate 30
 Set CursorBlink false
+Set TypingSpeed 1ms
 Set Theme { "name": "Nahuali", "black": "#171311", "red": "#e16b66", "green": "#72b58b", "yellow": "#d9a45f", "blue": "#7eadd1", "magenta": "#c38db8", "cyan": "#78b9b0", "white": "#e8ddd3", "brightBlack": "#786d66", "brightRed": "#ef8a82", "brightGreen": "#8fc9a2", "brightYellow": "#e7bd7d", "brightBlue": "#9fc4df", "brightMagenta": "#d5a7ca", "brightCyan": "#98cec6", "brightWhite": "#fff8f0", "background": "#171311", "foreground": "#e8ddd3", "selection": "#493a34", "cursor": "#d99a7b" }
 
 Hide
@@ -23,6 +24,8 @@ Type "export NAHUALI_HOME=$NAHUALI_DEMO_HOME"
 Enter
 Type "export COLORTERM=truecolor"
 Enter
+Type "export NAHUALI_TUI_FORCE_HALF_BLOCKS=1"
+Enter
 Type "unset NO_COLOR"
 Enter
 Type "set -e"
@@ -31,9 +34,11 @@ Type "printf '\033[2J\033[H'"
 Enter
 Type "target/debug/nahuali --database $NAHUALI_DEMO_DB explore"
 Enter
-Sleep 3s
+Wait+Screen /Ledger/
 Show
-Sleep 3s
+Sleep 1s
+Screenshot "/tmp/nahuali-tui-empty.png"
+Sleep 1s
 
 Hide
 Type "q"
@@ -50,7 +55,7 @@ Type "printf '\033[2J\033[H'"
 Enter
 Type "target/debug/nahuali --database $NAHUALI_DEMO_DB explore"
 Enter
-Sleep 3s
+Wait+Screen /Ledger/
 Show
 Sleep 2s
 Type "j"
@@ -65,11 +70,13 @@ Type "printf '\033[2J\033[H'"
 Enter
 Type "target/debug/nahuali --database $NAHUALI_DEMO_DB explore"
 Enter
-Sleep 3s
+Wait+Screen /Ledger/
 Show
 Sleep 1s
 Tab 2
 Type "j"
-Sleep 3s
+Sleep 2s
+Screenshot "/tmp/nahuali-tui-blocked.png"
+Sleep 1s
 Hide
 Type "q"

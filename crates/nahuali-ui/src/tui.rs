@@ -23,7 +23,7 @@ use ratatui::crossterm::terminal::{
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 
-use crate::mascot::{self, Mascot, Verdict};
+use crate::mascot::{self, Verdict};
 use crate::theme::{self, Rgb};
 
 /// One memory item to browse, already reduced to display strings by the caller.
@@ -81,12 +81,13 @@ struct App {
     /// Indices into `snapshot.items` matching the active filter.
     visible: Vec<usize>,
     list: ListState,
-    corner_mascot: Option<mascot::RasterMascot>,
+    mascot_images: Option<mascot::MascotImages>,
     mascot_tick: usize,
 }
 
 impl App {
     fn new(snapshot: Snapshot) -> Self {
+        let verdict = Verdict::from_label(&snapshot.store_trust_label);
         let mut kinds: Vec<String> = Vec::new();
         for item in &snapshot.items {
             if !kinds.iter().any(|kind| kind == &item.kind) {
@@ -99,7 +100,7 @@ impl App {
             filter: 0,
             visible: Vec::new(),
             list: ListState::default(),
-            corner_mascot: None,
+            mascot_images: mascot::MascotImages::halfblocks(verdict).ok(),
             mascot_tick: 0,
         };
         app.recompute_visible();
@@ -177,7 +178,9 @@ pub fn run(snapshot: Snapshot) -> io::Result<()> {
 
     let mut app = App::new(snapshot);
     let verdict = Verdict::from_label(&app.snapshot.store_trust_label);
-    app.corner_mascot = mascot::RasterMascot::from_terminal(verdict).ok();
+    if let Ok(images) = mascot::MascotImages::from_terminal(verdict) {
+        app.mascot_images = Some(images);
+    }
     let outcome = event_loop(&mut terminal, &mut app);
 
     disable_raw_mode()?;
@@ -216,7 +219,11 @@ fn event_loop(
 }
 
 fn draw(frame: &mut Frame, app: &mut App) {
-    let footer_height = if app.corner_mascot.is_some() && frame.area().height >= 18 {
+    let corner_mascot = app
+        .mascot_images
+        .as_ref()
+        .and_then(mascot::MascotImages::corner);
+    let footer_height = if corner_mascot.is_some() && frame.area().height >= 18 {
         mascot::MINI_SLOT_HEIGHT
     } else {
         1
@@ -254,13 +261,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_signals(frame, &app.snapshot.signals, rows[2]);
     let verdict = Verdict::from_label(&app.snapshot.store_trust_label);
-    draw_footer(
-        frame,
-        rows[3],
-        verdict,
-        app.corner_mascot.as_ref(),
-        app.mascot_tick,
-    );
+    draw_footer(frame, rows[3], verdict, corner_mascot, app.mascot_tick);
 }
 
 /// Draw the right-hand detail pane. With an item selected it shows that item's
@@ -272,7 +273,8 @@ fn draw_detail(frame: &mut Frame, app: &App, area: Rect) {
         Some(item) => frame.render_widget(detail_paragraph(item), area),
         None => {
             let verdict = Verdict::from_label(&app.snapshot.store_trust_label);
-            draw_empty_detail(frame, verdict, area);
+            let empty_mascot = app.mascot_images.as_ref().map(mascot::MascotImages::empty);
+            draw_empty_detail(frame, verdict, empty_mascot, area);
         }
     }
 }
@@ -282,14 +284,19 @@ fn draw_detail(frame: &mut Frame, app: &App, area: Rect) {
 /// caption, and a dim hint — which is where the art lives now that it has no
 /// panel; it costs no space while the operator is actually browsing. Below that
 /// size the pane falls back to the plain placeholder line.
-fn draw_empty_detail(frame: &mut Frame, verdict: Verdict, area: Rect) {
+fn draw_empty_detail(
+    frame: &mut Frame,
+    verdict: Verdict,
+    empty_mascot: Option<&mascot::RasterMascot>,
+    area: Rect,
+) {
     let block = detail_block();
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     let roomy =
         area.width >= mascot::EMPTY_STATE_MIN_COLS && area.height >= mascot::EMPTY_STATE_MIN_ROWS;
-    if !roomy {
+    if !roomy || empty_mascot.is_none() {
         frame.render_widget(
             Paragraph::new(Line::styled(
                 "No memory to show yet.",
@@ -300,16 +307,32 @@ fn draw_empty_detail(frame: &mut Frame, verdict: Verdict, area: Rect) {
         return;
     }
 
-    // Give the mascot an area of exactly its own height so it centers cleanly
-    // and its caption is never clipped, then hang the hint one row beneath it.
-    let mascot = Mascot::new(verdict);
-    let block_h = mascot.block_height();
-    let total_h = block_h.saturating_add(1); // sprite block + one hint line
+    let empty_mascot = empty_mascot.expect("the empty mascot was checked above");
+    let image_size = empty_mascot.size();
+    let total_h = image_size.height.saturating_add(3); // image, gap, caption, hint
     let top = inner.y + inner.height.saturating_sub(total_h) / 2;
-    frame.render_widget(mascot, Rect::new(inner.x, top, inner.width, block_h));
+    let image_x = inner.x + inner.width.saturating_sub(image_size.width) / 2;
+    frame.render_widget(
+        empty_mascot.frame(),
+        Rect::new(image_x, top, image_size.width, image_size.height),
+    );
+
+    let caption = verdict.caption();
+    let caption_y = top + image_size.height + 1;
+    if caption_y < inner.bottom() {
+        let caption_w = (caption.chars().count() as u16).min(inner.width);
+        let caption_x = inner.x + inner.width.saturating_sub(caption_w) / 2;
+        frame.render_widget(
+            Paragraph::new(Line::styled(
+                caption,
+                Style::default().fg(color(verdict.accent())),
+            )),
+            Rect::new(caption_x, caption_y, caption_w, 1),
+        );
+    }
 
     let hint = "the nahual mirrors store trust";
-    let hint_y = top + block_h;
+    let hint_y = caption_y + 1;
     if hint_y < inner.bottom() {
         let hint_w = (hint.chars().count() as u16).min(inner.width);
         let hint_x = inner.x + inner.width.saturating_sub(hint_w) / 2;
