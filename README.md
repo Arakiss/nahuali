@@ -230,18 +230,18 @@ systems. It reports each capability separately and keeps failures and
 unsupported controls visible.
 
 The first-party [Agent Memory Retrieval Benchmark](benchmarks/agent-memory-retrieval/README.md)
-runs the shipped CLI against a versioned 24-memory, 12-query corpus. Its first
-development baseline is bound to the corpus digest, binary SHA-256, and source
+runs the shipped CLI against a versioned 24-memory, 12-query corpus. The
+published release result is bound to the corpus digest, binary SHA-256, and source
 revision:
 
 | Mode | Recall@1 | Recall@3 | MRR | nDCG@10 | Median | p95 |
 |---|---:|---:|---:|---:|---:|---:|
-| Lexical | 1.000 | 1.000 | 1.000 | 1.000 | 36.6 ms | 57.2 ms |
-| Deterministic hybrid | 1.000 | 1.000 | 1.000 | 1.000 | 119.4 ms | 439.4 ms |
+| Lexical | 1.000 | 1.000 | 1.000 | 1.000 | 33.8 ms | 55.0 ms |
+| Deterministic hybrid | 1.000 | 1.000 | 1.000 | 1.000 | 39.0 ms | 40.9 ms |
 
 This small corpus is a regression gate, not a state-of-the-art claim and not a
 substitute for LoCoMo or LongMemEval. The checked-in
-[result](benchmarks/agent-memory-retrieval/results/nahuali-0.8.0-beta.5-dev.json)
+[result](benchmarks/agent-memory-retrieval/results/nahuali-0.8.0-beta.6.json)
 contains every ranked item and latency sample; the scorer recomputes the metrics
 and rejects drift or omitted required modes.
 

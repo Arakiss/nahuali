@@ -11,15 +11,15 @@ deterministic embedder. A local model result is measured only when
 unexplained optional modes, incomplete queries, altered metrics, corpus drift,
 and results that do not identify the tested binary and source revision.
 
-## First baseline
+## Published baseline
 
-The first development-head result is published as
-[`nahuali-0.8.0-beta.5-dev.json`](results/nahuali-0.8.0-beta.5-dev.json).
+The current release result is published as
+[`nahuali-0.8.0-beta.6.json`](results/nahuali-0.8.0-beta.6.json).
 
 | Mode | Recall@1 | Recall@3 | MRR | nDCG@10 | Median latency | p95 latency |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Lexical | 1.000 | 1.000 | 1.000 | 1.000 | 36.6 ms | 57.2 ms |
-| Deterministic hybrid | 1.000 | 1.000 | 1.000 | 1.000 | 119.4 ms | 439.4 ms |
+| Lexical | 1.000 | 1.000 | 1.000 | 1.000 | 33.8 ms | 55.0 ms |
+| Deterministic hybrid | 1.000 | 1.000 | 1.000 | 1.000 | 39.0 ms | 40.9 ms |
 | Optional local model | not configured | — | — | — | — | — |
 
 This is a deliberately small regression corpus, so a perfect score is a gate,
