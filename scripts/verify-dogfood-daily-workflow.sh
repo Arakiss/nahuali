@@ -353,18 +353,22 @@ require_pattern "$RESTORE_DRY_RUN_OUTPUT" '"valid"[[:space:]]*:[[:space:]]*true'
 require_pattern "$RESTORE_DRY_RUN_OUTPUT" '"restored_event_count"[[:space:]]*:[[:space:]]*0' "restore dry-run wrote records"
 
 RESTORE_OUTPUT="$WORK_DIR/restore.json"
-"$NAHUALI_BIN" restore "$BACKUP" --target-database "$RESTORE_STORE" --json >"$RESTORE_OUTPUT"
+"$NAHUALI_BIN" restore "$BACKUP" --target-database "$RESTORE_STORE" --rebuild-semantic --json >"$RESTORE_OUTPUT"
 require_pattern "$RESTORE_OUTPUT" '"valid"[[:space:]]*:[[:space:]]*true' "restore failed"
 require_pattern "$RESTORE_OUTPUT" '"restored_event_count"[[:space:]]*:[[:space:]]*6' "restore did not write six records"
+require_pattern "$RESTORE_OUTPUT" '"graph_projection_valid"[[:space:]]*:[[:space:]]*true' "restore did not validate the rebuilt graph"
+require_pattern "$RESTORE_OUTPUT" '"semantic_rebuild_completed"[[:space:]]*:[[:space:]]*true' "restore did not rebuild semantic state"
+require_pattern "$RESTORE_OUTPUT" '"semantic_rebuild_required"[[:space:]]*:[[:space:]]*false' "restore still requires semantic reconstruction"
+require_pattern "$RESTORE_OUTPUT" '"operationally_ready"[[:space:]]*:[[:space:]]*true' "restore did not reach operational readiness"
 
 RESTORED_VALIDATE_OUTPUT="$WORK_DIR/restored-validate.json"
 "$NAHUALI_BIN" --database "$RESTORE_STORE" validate --json >"$RESTORED_VALIDATE_OUTPUT"
 require_pattern "$RESTORED_VALIDATE_OUTPUT" '"valid"[[:space:]]*:[[:space:]]*true' "restored store validation failed"
 require_pattern "$RESTORED_VALIDATE_OUTPUT" '"event_count"[[:space:]]*:[[:space:]]*6' "restored store did not preserve six events"
 
-RESTORED_SEMANTIC_OUTPUT="$WORK_DIR/restored-semantic-rebuild.json"
-"$NAHUALI_BIN" --database "$RESTORE_STORE" semantic-rebuild --json >"$RESTORED_SEMANTIC_OUTPUT"
-require_pattern "$RESTORED_SEMANTIC_OUTPUT" '"source_event_count"[[:space:]]*:[[:space:]]*6' "restored semantic rebuild did not index six events"
+RESTORED_SEMANTIC_OUTPUT="$WORK_DIR/restored-semantic-status.json"
+"$NAHUALI_BIN" --database "$RESTORE_STORE" semantic-status --json >"$RESTORED_SEMANTIC_OUTPUT"
+require_pattern "$RESTORED_SEMANTIC_OUTPUT" '"is_current"[[:space:]]*:[[:space:]]*true' "restored semantic index is not current"
 
 GLOBAL_NAHUALI_AFTER="$(command -v nahuali || true)"
 if [[ "$GLOBAL_NAHUALI_AFTER" != "$GLOBAL_NAHUALI_BEFORE" ]]; then

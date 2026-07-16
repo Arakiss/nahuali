@@ -221,8 +221,29 @@ pub struct BackupRestoreReport {
     pub record_ledger_checksum: Option<String>,
     /// Semantic-tier policy that must run after record restore.
     pub semantic_restore_policy: Option<SemanticTierRestorePolicy>,
+    /// Whether the graph projection was rebuilt after writing the ledger.
+    pub graph_projection_rebuilt: bool,
+    /// Whether the rebuilt graph projection matches the restored ledger.
+    pub graph_projection_valid: bool,
+    /// Whether semantic reconstruction is still required.
+    pub semantic_rebuild_required: bool,
+    /// Whether semantic reconstruction completed during this restore.
+    pub semantic_rebuild_completed: bool,
+    /// Exact semantic freshness after an attempted rebuild.
+    pub semantic_index_current: Option<bool>,
+    /// Whether ledger, graph, and configured semantic state are ready for serving.
+    pub operationally_ready: bool,
     /// Validation or restore issues found before or during restore.
     pub issues: Vec<BackupIssue>,
+}
+
+/// Options controlling derived-state reconstruction during restore.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BackupRestoreOptions {
+    /// Validate the backup and target without writing records.
+    pub dry_run: bool,
+    /// Rebuild and verify the derived semantic index after ledger and graph recovery.
+    pub rebuild_semantic_index: bool,
 }
 
 /// Result of a non-mutating backup recovery drill.
@@ -283,6 +304,12 @@ pub enum BackupIssueKind {
     TargetNotEmpty,
     /// The restored target did not match the backup after writing.
     RestoreVerificationMismatch,
+    /// The graph projection could not be rebuilt from the restored ledger.
+    GraphProjectionRebuildFailed,
+    /// The graph projection rebuild completed but did not validate.
+    GraphProjectionValidationFailed,
+    /// The requested semantic index rebuild failed or remained stale.
+    SemanticIndexRebuildFailed,
 }
 
 /// Backup issue severity.
@@ -568,6 +595,17 @@ pub(crate) fn restore_verification_issue() -> BackupIssue {
         BackupIssueKind::RestoreVerificationMismatch,
         "restored database did not match backup checksum after write".to_string(),
     )
+}
+
+pub(crate) fn graph_projection_restore_issue(
+    kind: BackupIssueKind,
+    message: String,
+) -> BackupIssue {
+    error_issue(None, kind, message)
+}
+
+pub(crate) fn semantic_restore_issue(message: String) -> BackupIssue {
+    error_issue(None, BackupIssueKind::SemanticIndexRebuildFailed, message)
 }
 
 pub(crate) fn backup_drill_report(

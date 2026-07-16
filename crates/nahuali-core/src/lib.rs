@@ -92,10 +92,10 @@ pub use audit::{
 };
 pub use authority::{AuthorityDecision, AuthorityMode, AuthorityRecall};
 pub use backup::{
-    BackupDrillReport, BackupIssue, BackupIssueKind, BackupIssueSeverity, BackupRestoreReport,
-    BackupSummary, BackupValidation, BackupValidationOptions, MEMORY_BACKUP_VERSION, MemoryBackup,
-    SemanticTierBackup, SemanticTierProvider, SemanticTierRestorePolicy,
-    SemanticTierSnapshotStatus,
+    BackupDrillReport, BackupIssue, BackupIssueKind, BackupIssueSeverity, BackupRestoreOptions,
+    BackupRestoreReport, BackupSummary, BackupValidation, BackupValidationOptions,
+    MEMORY_BACKUP_VERSION, MemoryBackup, SemanticTierBackup, SemanticTierProvider,
+    SemanticTierRestorePolicy, SemanticTierSnapshotStatus,
 };
 pub use briefing::{
     BriefingEpisode, BriefingGraphSeed, BriefingIntention, BriefingOptions, BriefingSummary,

@@ -602,6 +602,22 @@ impl MemoryEngine {
         target_database: impl AsRef<Path>,
         dry_run: bool,
     ) -> Result<BackupRestoreReport> {
+        Self::restore_backup_with_options(
+            path,
+            target_database,
+            &BackupRestoreOptions {
+                dry_run,
+                rebuild_semantic_index: false,
+            },
+        )
+    }
+
+    /// Restore a backup with explicit derived-state reconstruction options.
+    pub fn restore_backup_with_options(
+        path: impl AsRef<Path>,
+        target_database: impl AsRef<Path>,
+        options: &BackupRestoreOptions,
+    ) -> Result<BackupRestoreReport> {
         let path = path.as_ref();
         let target_database = target_database.as_ref();
         let validation = backup::validate_backup_file(path)?;
@@ -626,7 +642,7 @@ impl MemoryEngine {
         let appendable_event_count = validation.backup_record_count.unwrap_or_default();
         let mut report = BackupRestoreReport {
             valid: validation.valid && target_was_empty,
-            dry_run,
+            dry_run: options.dry_run,
             backup_path: path.display().to_string(),
             target_database: target_database.display().to_string(),
             appendable_event_count,
@@ -634,10 +650,16 @@ impl MemoryEngine {
             target_was_empty,
             record_ledger_checksum: validation.backup_record_ledger_checksum.clone(),
             semantic_restore_policy,
+            graph_projection_rebuilt: false,
+            graph_projection_valid: false,
+            semantic_rebuild_required: true,
+            semantic_rebuild_completed: false,
+            semantic_index_current: None,
+            operationally_ready: false,
             issues,
         };
 
-        if dry_run || !report.valid {
+        if options.dry_run || !report.valid {
             return Ok(report);
         }
 
@@ -655,7 +677,72 @@ impl MemoryEngine {
         if restored_events.len() != backup.records.len() || restored_checksum != expected_checksum {
             report.valid = false;
             report.issues.push(backup::restore_verification_issue());
+            return Ok(report);
         }
+
+        let graph_path = target_database.to_path_buf();
+        match block_on_database(async move { rebuild_graph_projection(&graph_path).await }) {
+            Ok(graph) => {
+                report.graph_projection_rebuilt = true;
+                report.graph_projection_valid = graph.status.in_sync;
+                if !graph.status.in_sync {
+                    report.valid = false;
+                    report
+                        .issues
+                        .push(backup::graph_projection_restore_issue(
+                            crate::BackupIssueKind::GraphProjectionValidationFailed,
+                            "rebuilt graph projection did not match the restored ledger"
+                                .to_string(),
+                        ));
+                }
+            }
+            Err(error) => {
+                report.valid = false;
+                report
+                    .issues
+                    .push(backup::graph_projection_restore_issue(
+                        crate::BackupIssueKind::GraphProjectionRebuildFailed,
+                        format!("failed to rebuild graph projection after ledger restore: {error}"),
+                    ));
+            }
+        }
+
+        if options.rebuild_semantic_index && report.valid {
+            match MemoryEngine::open(target_database)
+                .and_then(|memory| memory.rebuild_semantic_index().map(|_| memory))
+                .and_then(|memory| memory.semantic_index_status())
+            {
+                Ok(status) => {
+                    report.semantic_index_current = Some(status.is_current);
+                    report.semantic_rebuild_completed = status.is_current;
+                    report.semantic_rebuild_required = !status.is_current;
+                    if !status.is_current {
+                        report.valid = false;
+                        report.issues.push(backup::semantic_restore_issue(format!(
+                            "semantic index remained stale after rebuild: expected {}, indexed {}, missing {}, orphan {}, stale {}",
+                            status.expected_point_count,
+                            status.indexed_point_count,
+                            status.missing_point_count,
+                            status.orphan_point_count,
+                            status.stale_point_count
+                        )));
+                    }
+                }
+                Err(error) => {
+                    report.valid = false;
+                    report
+                        .issues
+                        .push(backup::semantic_restore_issue(format!(
+                            "failed to rebuild semantic index after ledger restore: {error}"
+                        )));
+                }
+            }
+        }
+
+        report.operationally_ready = report.valid
+            && report.graph_projection_valid
+            && report.semantic_rebuild_completed
+            && report.semantic_index_current == Some(true);
 
         Ok(report)
     }

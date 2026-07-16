@@ -330,6 +330,12 @@ fn public_api_writes_validates_and_restores_local_backup() {
     assert_eq!(dry_run.appendable_event_count, 3);
     assert_eq!(dry_run.restored_event_count, 0);
     assert!(dry_run.target_was_empty);
+    assert!(!dry_run.graph_projection_rebuilt);
+    assert!(!dry_run.graph_projection_valid);
+    assert!(dry_run.semantic_rebuild_required);
+    assert!(!dry_run.semantic_rebuild_completed);
+    assert_eq!(dry_run.semantic_index_current, None);
+    assert!(!dry_run.operationally_ready);
 
     let empty_target = MemoryEngine::open(&target_path).expect("target remains empty");
     assert_eq!(empty_target.events().len(), 0);
@@ -338,10 +344,17 @@ fn public_api_writes_validates_and_restores_local_backup() {
         MemoryEngine::restore_backup(&backup_path, &target_path, false).expect("restore succeeds");
     assert!(restored.valid);
     assert_eq!(restored.restored_event_count, 3);
+    assert!(restored.graph_projection_rebuilt);
+    assert!(restored.graph_projection_valid);
+    assert!(restored.semantic_rebuild_required);
+    assert!(!restored.semantic_rebuild_completed);
+    assert_eq!(restored.semantic_index_current, None);
+    assert!(!restored.operationally_ready);
 
     let reopened = MemoryEngine::open(&target_path).expect("restored target opens");
     assert_eq!(reopened.events(), source.events());
     assert_eq!(reopened.data(), source.data());
+    assert!(reopened.projection_validate().expect("graph validates").valid);
 
     let blocked = MemoryEngine::restore_backup(&backup_path, &target_path, false)
         .expect("non-empty restore reports validation failure");

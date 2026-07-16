@@ -201,6 +201,9 @@ fn backup_validate_and_restore_are_scriptable() {
     assert_eq!(restore_dry_run["dry_run"], true);
     assert_eq!(restore_dry_run["appendable_event_count"], 2);
     assert_eq!(restore_dry_run["restored_event_count"], 0);
+    assert_eq!(restore_dry_run["graph_projection_rebuilt"], false);
+    assert_eq!(restore_dry_run["semantic_rebuild_required"], true);
+    assert_eq!(restore_dry_run["operationally_ready"], false);
 
     let empty_validation = run_ok_at_endpoint(&target_store, &source_store, &["validate", "--json"]);
     let empty: Value = serde_json::from_str(&empty_validation).expect("validation output is JSON");
@@ -220,6 +223,11 @@ fn backup_validate_and_restore_are_scriptable() {
     assert_eq!(restored["valid"], true);
     assert_eq!(restored["restored_event_count"], 2);
     assert_eq!(restored["semantic_restore_policy"], "rebuild_from_records");
+    assert_eq!(restored["graph_projection_rebuilt"], true);
+    assert_eq!(restored["graph_projection_valid"], true);
+    assert_eq!(restored["semantic_rebuild_required"], true);
+    assert_eq!(restored["semantic_rebuild_completed"], false);
+    assert_eq!(restored["operationally_ready"], false);
 
     let target_validation =
         run_ok_at_endpoint(&target_store, &source_store, &["validate", "--json"]);
@@ -247,6 +255,69 @@ fn backup_validate_and_restore_are_scriptable() {
 
     let _ = fs::remove_file(source_store);
     let _ = fs::remove_file(target_store);
+    let _ = fs::remove_file(backup_path);
+}
+
+#[test]
+fn restore_can_rebuild_every_derived_tier_in_one_operation() {
+    let source_store = temp_database("complete-restore-source");
+    let target_store = temp_database("complete-restore-target");
+    let backup_path = temp_store("complete-restore-backup");
+    let backup_arg = backup_path.display().to_string();
+    let target_arg = target_store.display().to_string();
+    let collection_guard = QdrantCollectionGuard::new("complete_restore");
+    let collection = collection_guard.name();
+
+    let probe = run_with_semantic_collection(
+        &source_store,
+        &["semantic-status", "--json"],
+        collection,
+    );
+    if !probe.status.success() {
+        let _ = fs::remove_file(backup_path);
+        return;
+    }
+
+    run_ok(
+        &source_store,
+        &[
+            "remember",
+            "Hrafn verifies complete restore readiness",
+            "--mention",
+            "Hrafn",
+        ],
+    );
+    run_ok(
+        &source_store,
+        &["backup", "--output", &backup_arg, "--json"],
+    );
+    let restored = run_ok_with_semantic_collection(
+        &source_store,
+        &[
+            "restore",
+            &backup_arg,
+            "--target-database",
+            &target_arg,
+            "--rebuild-semantic",
+            "--json",
+        ],
+        collection,
+    );
+    let report: Value = serde_json::from_str(&restored).expect("restore report is JSON");
+    assert_eq!(report["valid"], true);
+    assert_eq!(report["graph_projection_rebuilt"], true);
+    assert_eq!(report["graph_projection_valid"], true);
+    assert_eq!(report["semantic_rebuild_required"], false);
+    assert_eq!(report["semantic_rebuild_completed"], true);
+    assert_eq!(report["semantic_index_current"], true);
+    assert_eq!(report["operationally_ready"], true);
+
+    let target_validation =
+        run_ok_at_endpoint(&target_store, &source_store, &["projection-validate", "--json"]);
+    let graph: Value =
+        serde_json::from_str(&target_validation).expect("projection validation is JSON");
+    assert_eq!(graph["validation"]["valid"], true);
+
     let _ = fs::remove_file(backup_path);
 }
 
