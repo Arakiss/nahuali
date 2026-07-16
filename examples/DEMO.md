@@ -217,19 +217,27 @@ curl -s -X POST "http://localhost:18000/sql" -u root:root \
 
 ---
 
-## Regenerating the public sample
+## Regenerating the public sample and README capture
 
 [`sample-trust-report.html`](./sample-trust-report.html) is checked in for the
 instant-view aha. To regenerate it on the clean Certify state used above:
 
 ```bash
 BIN="target/debug/nahuali"
-DB="demo_sample_clean"
+DB="readme_evidence"
 
-"$BIN" --database "$DB" remember "Lena owns the release notes for the 0.3 beta." \
-  --tag product --mention Lena --mention "release notes"
-"$BIN" --database "$DB" claim Lena owns "release notes" --confidence 0.92 --source-last
-"$BIN" --database "$DB" link  Lena owns "release notes" --confidence 0.90 --source-last
+"$BIN" --database "$DB" ingest-text examples/source-note.md \
+  --kind note --title "Release notes source" --chunking paragraphs \
+  --tag product --mention Lena --role release-review --scope project:Nahuali
+"$BIN" --database "$DB" claim Lena owns "release notes" \
+  --confidence 0.96 --source-last --scope project:Nahuali
+"$BIN" --database "$DB" link Lena owns "release notes" \
+  --confidence 0.94 --source-last --scope project:Nahuali
+"$BIN" --database "$DB" procedure "Evidence-backed release notes" \
+  "Keep release notes concise and cite the source episode." \
+  --confidence 0.95 --source-last --scope project:Nahuali
+"$BIN" --database "$DB" intention "Publish verified release notes" \
+  --kind task --priority high --source-last --scope project:Nahuali
 
 openssl rand -hex 32 > .local/demo-clean.key
 "$BIN" --database "$DB" attest-sign --key-file .local/demo-clean.key --output .local/checkpoint-clean.json
@@ -237,10 +245,10 @@ openssl rand -hex 32 > .local/demo-clean.key
   --html examples/sample-trust-report.html
 ```
 
-Then prepend the header comment back to the file:
+The README image at `assets/nahuali-trust-report.png` is a browser capture of
+this exact self-contained HTML output at a 1440-pixel viewport. It shows eight
+events, one source, a `Certify` authority verdict, no health defects, and the
+anchored checkpoint at sequence eight. Do not edit values into either artifact;
+regenerate the report from the synthetic ledger and recapture it.
 
-```text
-<!-- Generated YYYY-MM-DD on synthetic data; regenerate with examples/DEMO.md -->
-```
-
-Clean up the same way as Demo 2 (`_local_demo_sample_clean`).
+Clean up the same way as Demo 2, using the `readme_evidence` database name.

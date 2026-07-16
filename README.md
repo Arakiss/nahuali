@@ -33,10 +33,10 @@ chained, and an operator can sign its tip to detect a fully rewritten history.
 Nahuali is local-first, source-available, and in public beta.
 
 <p align="center">
-  <img src="assets/nahuali-tui.png" alt="Nahuali explore showing memory, evidence, trust verdicts, ledger integrity, governance signals, and the nahual mascot" width="100%">
+  <img src="assets/nahuali-trust-report.png" alt="A Nahuali memory trust report showing a Certify verdict, verified ledger, zero unsupported or conflicting memories, and an anchored signed checkpoint" width="100%">
 </p>
 
-<p align="center"><sub><code>nahuali explore</code>: inspect what the agent remembers, why it trusts it, and whether the ledger is intact. The nahual in the bottom-right corner mirrors the current trust verdict and moves without obscuring the cockpit.</sub></p>
+<p align="center"><sub>A real <code>nahuali trust-report --attestation</code> generated from the checked-in synthetic source note: 8 ledger events, a verified hash chain, evidence-backed memory, and an anchored signed checkpoint. Open the <a href="examples/sample-trust-report.html">self-contained HTML receipt</a>.</sub></p>
 
 ## Quickstart
 
@@ -65,6 +65,8 @@ After upgrading Nahuali, restart any application that keeps `nahuali-mcp`
 running. This ensures the CLI and the long-lived MCP server open the embedded
 store with the same engine version.
 
+## Watch the trust decision change
+
 For a narrated integrity example with no writes, run:
 
 ```bash
@@ -84,6 +86,20 @@ without silently rewriting the ledger.
 <p align="center">
   <img src="assets/nahuali-demo.gif" alt="Nahuali showing evidence-backed recall across CLI, TUI, and MCP, then blocking an unsupported contradiction without rewriting memory" width="100%">
 </p>
+
+<p align="center"><sub>The animation runs the public CLI and MCP server against a disposable store. Reproduce it with <code>vhs assets/nahuali-launch-demo.tape</code>; verify the underlying assertions with <code>scripts/run-launch-demo.sh verify</code>.</sub></p>
+
+## What ships today
+
+| Capability | Shipped behavior | Proof |
+|---|---|---|
+| Evidence-backed recall | Every result can carry its source episode and its own deterministic trust verdict | `nahuali recall --require-evidence --authority --json` |
+| Tamper evidence | Checksums, contiguous sequence, hash chain, Merkle root, and optional Ed25519 checkpoint | `nahuali validate`, `nahuali attest-sign`, `nahuali trust-report` |
+| Governed self-inspection | Unsupported, stale, contradictory, and isolated memory becomes review work; inspection never rewrites history | `nahuali inspect`, `nahuali self-inspect`, `nahuali review` |
+| Atomic authoritative writes | Multi-event operations either append their full ledger batch or append nothing; projection failure is reported separately after commit | Core and public API regression suites |
+| Rebuildable derived tiers | Graph rows and semantic vectors are checked against the authoritative ledger and can be rebuilt | `projection-validate`, `semantic-status`, `semantic-rebuild` |
+| Operational recovery | Restore rebuilds and validates the graph; `--rebuild-semantic` can return a store that is ready to serve in one operation | `nahuali restore --rebuild-semantic` |
+| Agent integrations | Native CLI, stdio MCP server, local HTTP API, OpenAPI contract, and OCI MCP image | Interface documentation below |
 
 ## Why this is different
 
@@ -107,6 +123,14 @@ A verdict does not prove that remembered content is true. It makes the reason
 for trust inspectable: evidence, provenance, confidence, freshness,
 contradictions, and ledger integrity. The exact guarantees and limits live in
 the [trust model](TRUST_MODEL.md).
+
+## Inspect the memory directly
+
+<p align="center">
+  <img src="assets/nahuali-tui.png" alt="Nahuali explore showing a selected evidence-backed Hrafn claim, Certify authority, verified tamper-evident ledger, graph relations, one active intention, zero health signals, and four of four memories evidenced" width="100%">
+</p>
+
+<p align="center"><sub><code>nahuali explore</code> on the current build. The selected claim links to its source episode; the list includes the projected claim, fact, link, relation, intention, and entities that were missing from the older capture. Reproduce the exact disposable-store capture with <code>vhs assets/nahuali-tui.tape</code>.</sub></p>
 
 ## Use it from an agent
 
@@ -167,6 +191,12 @@ The local HTTP API is unauthenticated. Do not expose it to an untrusted
 network. Nahuali does not currently provide accounts, hosted sync, billing, or
 a managed control plane.
 
+The API exposes process liveness at `/v1/health` and serving readiness at
+`/v1/ready`. Readiness verifies the ledger and graph and can require an exact,
+current semantic index with `nahuali-api --require-semantic`. It returns `503`
+until the configured tiers are ready, handles `SIGTERM` gracefully, and logs
+method, path, status, and duration without query strings or request bodies.
+
 ## Storage
 
 SurrealDB's `memory_record` table is the source of truth. Current memory, graph
@@ -177,7 +207,11 @@ tables, snapshots, and semantic vectors are derived and rebuildable.
 - Qdrant is optional and used only for semantic recall.
 - Deterministic lexical recall works without Qdrant or a model.
 - `reconcile` verifies the ledger and rebuilds derived data.
-- Backup and restore operate on the authoritative record ledger.
+- `semantic-status` compares expected ledger-derived payloads with Qdrant and
+  reports missing, orphaned, and stale points instead of trusting row counts.
+- Backup and restore operate on the authoritative record ledger. Restore always
+  rebuilds and validates the graph; `--rebuild-semantic` also rebuilds Qdrant
+  and reports whether the restored store is operationally ready.
 
 The embedded store has one process owner. A long-running MCP or HTTP server owns
 the local store while it is active; a second process fails clearly instead of
@@ -195,10 +229,39 @@ defines an adapter contract for comparing these capabilities across memory
 systems. It reports each capability separately and keeps failures and
 unsupported controls visible.
 
+The first-party [Agent Memory Retrieval Benchmark](benchmarks/agent-memory-retrieval/README.md)
+runs the shipped CLI against a versioned 24-memory, 12-query corpus. Its first
+development baseline is bound to the corpus digest, binary SHA-256, and source
+revision:
+
+| Mode | Recall@1 | Recall@3 | MRR | nDCG@10 | Median | p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| Lexical | 1.000 | 1.000 | 1.000 | 1.000 | 36.6 ms | 57.2 ms |
+| Deterministic hybrid | 1.000 | 1.000 | 1.000 | 1.000 | 119.4 ms | 439.4 ms |
+
+This small corpus is a regression gate, not a state-of-the-art claim and not a
+substitute for LoCoMo or LongMemEval. The checked-in
+[result](benchmarks/agent-memory-retrieval/results/nahuali-0.8.0-beta.5-dev.json)
+contains every ranked item and latency sample; the scorer recomputes the metrics
+and rejects drift or omitted required modes.
+
+The release gate also exercises operational properties that unit tests cannot
+establish alone:
+
+- unchanged-ledger refresh at 1,000 and 10,000 events, with a 25 ms p95 budget;
+- exact semantic freshness against Qdrant payloads;
+- a published N-1 release binary, verified by checksum, Sigstore identity, and
+  GitHub artifact attestation, writing a ledger that the current binary must
+  open, recall, extend, back up, and restore;
+- install, CLI/MCP coexistence, migration, backup drills, release assets, SBOM,
+  provenance, and signed-release verification.
+
 Run Nahuali's release gate:
 
 ```bash
 bash scripts/verify-governance-benchmarks.sh
+bash scripts/verify-retrieval-benchmark.sh
+bash scripts/verify-release-upgrade.sh
 bash scripts/verify-controlled-beta.sh
 NAHUALI_VERIFY_GITHUB_SETTINGS=1 bash scripts/security-supply-chain-check.sh
 ```
