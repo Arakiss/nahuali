@@ -65,6 +65,25 @@ pub enum NahualiError {
         /// Maximum time spent waiting for the active rebuild to finish.
         timeout_ms: u64,
     },
+    /// The authoritative ledger commit succeeded, but rebuilding its derived
+    /// graph projection failed afterwards.
+    #[error(
+        "ledger committed {event_count} event(s) from {first_event_id} (sequence {first_sequence}) through {last_event_id} (sequence {last_sequence}), but graph projection rebuild failed: {source}"
+    )]
+    LedgerCommittedProjectionFailed {
+        /// First committed event identifier in this write.
+        first_event_id: String,
+        /// Last committed event identifier in this write.
+        last_event_id: String,
+        /// First committed ledger sequence in this write.
+        first_sequence: u64,
+        /// Last committed ledger sequence in this write.
+        last_sequence: u64,
+        /// Number of events committed before projection failed.
+        event_count: usize,
+        /// Derived projection failure. The ledger remains authoritative.
+        source: Box<NahualiError>,
+    },
     /// The memory database path could not be represented for SurrealDB.
     #[error("memory database path is not valid UTF-8: {path}")]
     InvalidDatabasePath {
@@ -195,3 +214,11 @@ pub enum NahualiError {
 
 /// Result alias used by `nahuali-core`.
 pub type Result<T> = std::result::Result<T, NahualiError>;
+
+impl NahualiError {
+    /// Whether this error confirms that the authoritative ledger changed even
+    /// though a derived projection step failed afterwards.
+    pub fn ledger_commit_confirmed(&self) -> bool {
+        matches!(self, Self::LedgerCommittedProjectionFailed { .. })
+    }
+}

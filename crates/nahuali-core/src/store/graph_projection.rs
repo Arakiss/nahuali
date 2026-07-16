@@ -7,6 +7,11 @@ const GRAPH_PROJECTION_REBUILD_LEASE_MS: u64 = 120_000;
 const GRAPH_PROJECTION_REBUILD_WAIT_MS: u64 = 30_000;
 const GRAPH_PROJECTION_REBUILD_POLL_MS: u64 = 50;
 
+#[cfg(test)]
+static INJECTED_GRAPH_PROJECTION_FAILURES: std::sync::OnceLock<
+    std::sync::Mutex<BTreeSet<PathBuf>>,
+> = std::sync::OnceLock::new();
+
 const PROJECTED_NODE_TABLES: &[&str] = &[
     "projection_checkpoint",
     "projection_error",
@@ -316,6 +321,10 @@ impl MemoryEngine {
 }
 
 async fn rebuild_graph_projection(path: &Path) -> Result<GraphProjectionRebuildReport> {
+    #[cfg(test)]
+    if consume_injected_graph_projection_failure(path) {
+        return Err(NahualiError::GraphProjectionRebuildBusy { timeout_ms: 0 });
+    }
     let db = open_database(path).await?;
     let lock_token = make_id("projection_rebuild");
     acquire_graph_projection_rebuild_lock(path, &db, &lock_token).await?;
@@ -331,6 +340,24 @@ async fn rebuild_graph_projection(path: &Path) -> Result<GraphProjectionRebuildR
         (Err(error), _) => Err(error),
         (Ok(_), Err(error)) => Err(error),
     }
+}
+
+#[cfg(test)]
+fn inject_graph_projection_failure_once(path: &Path) {
+    INJECTED_GRAPH_PROJECTION_FAILURES
+        .get_or_init(|| std::sync::Mutex::new(BTreeSet::new()))
+        .lock()
+        .expect("projection failure registry lock")
+        .insert(path.to_path_buf());
+}
+
+#[cfg(test)]
+fn consume_injected_graph_projection_failure(path: &Path) -> bool {
+    INJECTED_GRAPH_PROJECTION_FAILURES
+        .get_or_init(|| std::sync::Mutex::new(BTreeSet::new()))
+        .lock()
+        .expect("projection failure registry lock")
+        .remove(path)
 }
 
 async fn rebuild_graph_projection_locked(

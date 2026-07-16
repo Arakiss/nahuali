@@ -748,37 +748,48 @@ impl MemoryEngine {
         timestamp_ms: u64,
         payload: MemoryEvent,
     ) -> Result<EventEnvelope> {
-        // FEATURE OFF (default): plain self-contained envelope, `prev_hash` stays
-        // `None` and is skipped on serialization — byte-identical to before.
-        #[cfg(not(feature = "tamper-evidence"))]
-        let envelope = EventEnvelope::new(self.next_sequence, timestamp_ms, payload);
-        // FEATURE ON: bind the previous event's chained hash so any later rewrite
-        // of this or an earlier event breaks the chain at the next event. The
-        // chain is computed against `self.events.last()` whether or not we are in
-        // a batch, so a buffered batch produces exactly the same chain as
-        // appending the same events one at a time. A full suffix re-chain (which
-        // changes the tip) is caught externally by signing `chain_tip()` — see
-        // the `attestation` feature.
-        #[cfg(feature = "tamper-evidence")]
-        let envelope = {
-            let previous_chain_hash = self.events.last().map(EventEnvelope::chain_hash);
-            EventEnvelope::with_chain(
-                self.next_sequence,
-                timestamp_ms,
-                payload,
-                previous_chain_hash.as_deref(),
-            )
-        };
+        const MAX_SEQUENCE_CONFLICT_RETRIES: u32 = 16;
+        let mut attempt = 0;
+        let envelope = loop {
+            // FEATURE OFF (default): plain self-contained envelope, `prev_hash`
+            // stays `None` and is skipped on serialization.
+            #[cfg(not(feature = "tamper-evidence"))]
+            let candidate =
+                EventEnvelope::new(self.next_sequence, timestamp_ms, payload.clone());
+            // FEATURE ON: every retry rebuilds the envelope against the latest
+            // committed chain tip after refreshing a colliding writer.
+            #[cfg(feature = "tamper-evidence")]
+            let candidate = {
+                let previous_chain_hash = self.events.last().map(EventEnvelope::chain_hash);
+                EventEnvelope::with_chain(
+                    self.next_sequence,
+                    timestamp_ms,
+                    payload.clone(),
+                    previous_chain_hash.as_deref(),
+                )
+            };
 
-        // Outside a batch, persist this single record first so a write failure
-        // leaves the in-memory projection untouched (unchanged single-mutation
-        // semantics). Inside a batch, defer the write to the one-shot flush in
-        // `flush_import_batch`.
-        if !self.batch_active {
+            if self.batch_active {
+                break candidate;
+            }
+
             let write_path = self.path.clone();
-            let write_envelope = envelope.clone();
-            block_on_database(async move { write_record(&write_path, &write_envelope).await })?;
-        }
+            let write_candidate = candidate.clone();
+            match block_on_database(async move {
+                write_record(&write_path, &write_candidate).await
+            }) {
+                Ok(()) => break candidate,
+                Err(error)
+                    if is_record_sequence_conflict(&error)
+                        && attempt < MAX_SEQUENCE_CONFLICT_RETRIES =>
+                {
+                    attempt += 1;
+                    append_retry_backoff(attempt);
+                    self.refresh()?;
+                }
+                Err(error) => return Err(error),
+            }
+        };
 
         self.events.push(envelope.clone());
         projection::project_event(&mut self.data, &envelope);
@@ -789,7 +800,14 @@ impl MemoryEngine {
         // batch we rebuild it exactly once at flush time instead.
         if !self.batch_active {
             let graph_path = self.path.clone();
-            block_on_database(async move { rebuild_graph_projection(&graph_path).await })?;
+            if let Err(source) =
+                block_on_database(async move { rebuild_graph_projection(&graph_path).await })
+            {
+                return Err(committed_projection_error(
+                    std::slice::from_ref(&envelope),
+                    source,
+                ));
+            }
         }
 
         Ok(envelope)
@@ -806,24 +824,42 @@ impl MemoryEngine {
     /// pre-batch snapshot so the engine stays consistent with the database.
     fn run_import_batch<T>(
         &mut self,
-        body: impl FnOnce(&mut Self) -> Result<T>,
+        mut body: impl FnMut(&mut Self) -> Result<T>,
     ) -> Result<T> {
         debug_assert!(!self.batch_active, "import batches must not be nested");
-        let restore_len = self.events.len();
-        let restore_sequence = self.next_sequence;
-        let restore_data = self.data.clone();
+        const MAX_SEQUENCE_CONFLICT_RETRIES: u32 = 16;
+        let mut attempt = 0;
 
-        self.batch_active = true;
-        let outcome = body(self);
-        self.batch_active = false;
+        loop {
+            let restore_len = self.events.len();
+            let restore_sequence = self.next_sequence;
+            let restore_data = self.data.clone();
 
-        match outcome.and_then(|value| self.flush_import_batch(restore_len).map(|()| value)) {
-            Ok(value) => Ok(value),
-            Err(error) => {
-                self.events.truncate(restore_len);
-                self.next_sequence = restore_sequence;
-                self.data = restore_data;
+            self.batch_active = true;
+            let outcome = body(self);
+            self.batch_active = false;
+
+            match outcome.and_then(|value| self.flush_import_batch(restore_len).map(|()| value)) {
+                Ok(value) => return Ok(value),
                 Err(error)
+                    if is_record_sequence_conflict(&error)
+                        && attempt < MAX_SEQUENCE_CONFLICT_RETRIES =>
+                {
+                    self.events.truncate(restore_len);
+                    self.next_sequence = restore_sequence;
+                    self.data = restore_data;
+                    attempt += 1;
+                    append_retry_backoff(attempt);
+                    self.refresh()?;
+                }
+                Err(error) => {
+                    if !error.ledger_commit_confirmed() {
+                        self.events.truncate(restore_len);
+                        self.next_sequence = restore_sequence;
+                        self.data = restore_data;
+                    }
+                    return Err(error);
+                }
             }
         }
     }
@@ -837,11 +873,28 @@ impl MemoryEngine {
 
         let write_path = self.path.clone();
         let pending = self.events[persisted_len..].to_vec();
-        block_on_database(async move { write_records(&write_path, &pending).await })?;
+        let write_pending = pending.clone();
+        block_on_database(async move { write_records(&write_path, &write_pending).await })?;
 
         let graph_path = self.path.clone();
-        block_on_database(async move { rebuild_graph_projection(&graph_path).await })?;
+        if let Err(source) =
+            block_on_database(async move { rebuild_graph_projection(&graph_path).await })
+        {
+            return Err(committed_projection_error(&pending, source));
+        }
 
         Ok(())
     }
+}
+
+fn append_retry_backoff(attempt: u32) {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    std::process::id().hash(&mut hasher);
+    std::thread::current().id().hash(&mut hasher);
+    attempt.hash(&mut hasher);
+    let jitter_ms = hasher.finish() % 11;
+    let base_ms = 2_u64.saturating_pow(attempt.min(6)).saturating_mul(2);
+    std::thread::sleep(std::time::Duration::from_millis(base_ms + jitter_ms));
 }

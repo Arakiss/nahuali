@@ -183,6 +183,11 @@ impl From<NahualiError> for ApiError {
                 "semantic_tier_unavailable",
                 message,
             ),
+            NahualiError::LedgerCommittedProjectionFailed { .. } => Self::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "ledger_committed_projection_degraded",
+                message,
+            ),
             _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_error", message),
         }
     }
@@ -1139,4 +1144,28 @@ fn default_review_limit() -> usize {
 
 fn default_graph_seed_limit() -> usize {
     8
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn committed_projection_failure_has_a_retry_safe_api_code() {
+        let error = NahualiError::LedgerCommittedProjectionFailed {
+            first_event_id: "event_7".to_string(),
+            last_event_id: "event_7".to_string(),
+            first_sequence: 7,
+            last_sequence: 7,
+            event_count: 1,
+            source: Box::new(NahualiError::GraphProjectionRebuildBusy { timeout_ms: 0 }),
+        };
+
+        let api_error = ApiError::from(error);
+
+        assert_eq!(api_error.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(api_error.code, "ledger_committed_projection_degraded");
+        assert!(api_error.message.contains("event_7"));
+        assert!(api_error.message.contains("sequence 7"));
+    }
 }

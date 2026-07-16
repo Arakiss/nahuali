@@ -11,11 +11,15 @@ mod tests {
         AuthorityMode, AutonomyLevel, IntentionKind, IntentionPriority, IntentionStatus,
         IntentionUpdateOptions, NahualiError, RepairClaim, RepairKind, RepairLink, RepairPayload,
         RepairProposal, SourceKind, SourceRecordOptions,
+        event::{EpisodeRecorded, EventEnvelope, MemoryEvent},
         model::{MemoryScope, MemoryScopeKind, ProcedureKind},
         projection,
     };
 
-    use super::MemoryEngine;
+    use super::{
+        MemoryEngine, block_on_database, inject_graph_projection_failure_once, read_records,
+        write_records,
+    };
 
     #[test]
     fn concurrent_store_opens_serialize_schema_initialization() {
@@ -777,6 +781,162 @@ mod tests {
         assert!(projection.valid, "{:?}", projection.issues);
 
         let _ = fs::remove_file(target_path);
+    }
+
+    #[test]
+    fn bulk_ledger_insert_rolls_back_every_record_when_one_conflicts() {
+        let path = temp_path("bulk_ledger_insert_is_atomic");
+        let _ = fs::remove_file(&path);
+        drop(MemoryEngine::open(&path).unwrap());
+
+        let payload = |id: &str| {
+            MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                id: id.to_string(),
+                content: format!("Atomic fixture {id}"),
+                tags: Vec::new(),
+                mentions: Vec::new(),
+                source_id: None,
+                source_position: None,
+                source_role: None,
+                scope: None,
+            })
+        };
+        let events = vec![
+            EventEnvelope::new(1, 1, payload("episode_first")),
+            EventEnvelope::new(2, 2, payload("episode_second")),
+            EventEnvelope::new(2, 3, payload("episode_conflict")),
+        ];
+        let write_path = path.clone();
+        let error = block_on_database(async move { write_records(&write_path, &events).await })
+            .expect_err("duplicate sequence aborts the bulk insert");
+        assert!(
+            super::is_record_sequence_conflict(&error),
+            "unexpected error: {error}"
+        );
+
+        let read_path = path.clone();
+        let persisted =
+            block_on_database(async move { read_records(&read_path).await }).unwrap();
+        assert!(persisted.is_empty(), "a failed batch persisted a prefix");
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn concurrent_direct_writers_recover_sequence_collisions() {
+        const WRITER_COUNT: usize = 4;
+        let path = temp_path("concurrent_direct_writers");
+        let _ = fs::remove_file(&path);
+        drop(MemoryEngine::open(&path).unwrap());
+
+        let barrier = Arc::new(Barrier::new(WRITER_COUNT));
+        let handles = (0..WRITER_COUNT)
+            .map(|index| {
+                let path = path.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    let mut memory = MemoryEngine::open(&path)?;
+                    barrier.wait();
+                    memory.remember(format!("Concurrent episode {index}"), Vec::new())
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            handle
+                .join()
+                .expect("concurrent writer thread completes")
+                .expect("sequence collision is recovered without operator retry");
+        }
+
+        let reopened = MemoryEngine::open(&path).unwrap();
+        assert_eq!(reopened.events().len(), WRITER_COUNT);
+        assert_eq!(
+            reopened
+                .events()
+                .iter()
+                .map(|event| event.sequence)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3, 4]
+        );
+        assert!(reopened.projection_validate().unwrap().valid);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn post_commit_projection_failure_reports_committed_event_and_keeps_state() {
+        let path = temp_path("post_commit_projection_failure");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        inject_graph_projection_failure_once(&path);
+
+        let error = memory
+            .remember("Committed before projection failure", Vec::new())
+            .expect_err("injected projection failure must be surfaced");
+        match &error {
+            NahualiError::LedgerCommittedProjectionFailed {
+                first_event_id,
+                last_event_id,
+                first_sequence,
+                last_sequence,
+                event_count,
+                ..
+            } => {
+                assert_eq!(first_event_id, last_event_id);
+                assert_eq!((*first_sequence, *last_sequence, *event_count), (1, 1, 1));
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+        assert!(error.ledger_commit_confirmed());
+        assert_eq!(memory.events().len(), 1, "committed state was rolled back");
+
+        let mut reopened = MemoryEngine::open(&path).unwrap();
+        assert_eq!(reopened.events().len(), 1);
+        assert!(!reopened.projection_validate().unwrap().valid);
+        reopened.projection_rebuild().unwrap();
+        assert!(reopened.projection_validate().unwrap().valid);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn batch_projection_failure_reports_the_full_committed_range() {
+        let interchange = seed_interchange("batch_projection_failure_source");
+        let path = temp_path("batch_projection_failure");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        inject_graph_projection_failure_once(&path);
+
+        let error = memory
+            .import_interchange(&interchange, false)
+            .expect_err("injected batch projection failure must be surfaced");
+        match &error {
+            NahualiError::LedgerCommittedProjectionFailed {
+                first_event_id,
+                last_event_id,
+                first_sequence,
+                last_sequence,
+                event_count,
+                ..
+            } => {
+                assert_ne!(first_event_id, last_event_id);
+                assert_eq!(*first_sequence, 1);
+                assert_eq!(*last_sequence as usize, *event_count);
+                assert_eq!(*event_count, memory.events().len());
+                assert!(*event_count >= 6, "fixture should be multi-record");
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+        assert!(error.ledger_commit_confirmed());
+
+        let mut reopened = MemoryEngine::open(&path).unwrap();
+        assert_eq!(reopened.events().len(), memory.events().len());
+        assert!(!reopened.projection_validate().unwrap().valid);
+        reopened.projection_rebuild().unwrap();
+        assert!(reopened.projection_validate().unwrap().valid);
+
+        let _ = fs::remove_file(path);
     }
 
     #[cfg(feature = "tamper-evidence")]
