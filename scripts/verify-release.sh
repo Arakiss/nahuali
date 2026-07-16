@@ -5,8 +5,6 @@ repo="${NAHUALI_GITHUB_REPO:-Arakiss/nahuali}"
 tag="${NAHUALI_VERSION:-latest}"
 asset="${NAHUALI_RELEASE_ASSET:-auto}"
 json="false"
-require_sbom="false"
-require_provenance="false"
 download_dir=""
 
 usage() {
@@ -19,15 +17,16 @@ Options:
   --asset NAME                Archive asset to verify. Default: current OS/arch.
   --dir DIR                   Download assets into DIR instead of a temp directory.
   --json                      Emit machine-readable JSON.
-  --require-sbom              Fail if nahuali-<tag>.cdx.json is missing.
-  --require-provenance        Fail if GitHub artifact attestation verification is missing.
+  --require-sbom              Compatibility flag; the SBOM is always required.
+  --require-provenance        Compatibility flag; provenance is always required.
   --require-attestation       Alias for --require-provenance.
   -h, --help                  Show this help.
 
 The verifier downloads the current-platform release archive, checksum, and
 Sigstore bundle. It verifies SHA-256, Cosign/Sigstore identity, and runs the
 repository install smoke against the extracted nahuali, nahuali-mcp, and
-nahuali-api binaries. SBOM and provenance checks are warnings unless required.
+nahuali-api binaries. The CycloneDX SBOM and GitHub artifact provenance are
+mandatory release checks.
 USAGE
 }
 
@@ -59,11 +58,9 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --require-sbom)
-      require_sbom="true"
       shift
       ;;
     --require-provenance | --require-attestation)
-      require_provenance="true"
       shift
       ;;
     -h | --help)
@@ -216,14 +213,12 @@ if tar -xzf "$tmp_dir/$asset" -C "$extract_dir" >/dev/null 2>&1; then
 fi
 
 status="pass"
-if [[ "$checksum_status" != "pass" || "$sigstore_status" != "pass" || "$install_smoke_status" != "pass" ]]; then
+if [[ "$checksum_status" != "pass" \
+  || "$sigstore_status" != "pass" \
+  || "$install_smoke_status" != "pass" \
+  || "$sbom_status" != "pass" \
+  || "$provenance_status" != "pass" ]]; then
   status="fail"
-elif [[ "$require_sbom" == "true" && "$sbom_status" != "pass" ]]; then
-  status="fail"
-elif [[ "$require_provenance" == "true" && "$provenance_status" != "pass" ]]; then
-  status="fail"
-elif [[ "$sbom_status" != "pass" || "$provenance_status" != "pass" ]]; then
-  status="warn"
 fi
 
 json_string() {

@@ -35,7 +35,8 @@ curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/instal
 
 From a source checkout, the release verifier downloads the archive, checksum,
 and Sigstore bundle for the current platform. It verifies SHA-256, the signing
-identity, GitHub artifact provenance, and an install smoke test:
+identity, GitHub artifact provenance, the CycloneDX SBOM, and an install smoke
+test. All of these checks are mandatory:
 
 ```bash
 bash scripts/verify-release.sh \
@@ -43,6 +44,10 @@ bash scripts/verify-release.sh \
   --require-sbom \
   --require-provenance
 ```
+
+The `--require-sbom` and `--require-provenance` flags remain accepted for
+compatibility with existing automation; omitting them does not make either
+check optional.
 
 Required signing identity:
 
@@ -56,7 +61,7 @@ The release page should contain, for each supported target:
 - the matching `.sha256` file
 - the matching `.sigstore.json` bundle
 
-It should also contain the CycloneDX SBOM named for the CLI tag. The supported
+It must also contain the CycloneDX SBOM named for the CLI tag. The supported
 targets are:
 
 - `aarch64-apple-darwin`

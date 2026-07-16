@@ -161,8 +161,12 @@ product_version="$(tr -d '[:space:]' < version.txt)"
 product_tag="v${product_version}"
 if gh release view "$product_tag" --repo "$REMOTE_REPO" >/dev/null 2>&1; then
   sh scripts/check-release-page.sh --repo "$REMOTE_REPO" --tag "$product_tag"
-  sh scripts/check-release-assets.sh --repo "$REMOTE_REPO" --tag "$product_tag"
-  bash scripts/verify-release.sh --repo "$REMOTE_REPO" --tag "$product_tag"
+  sh scripts/check-release-assets.sh --repo "$REMOTE_REPO" --tag "$product_tag" --require-sbom
+  bash scripts/verify-release.sh \
+    --repo "$REMOTE_REPO" \
+    --tag "$product_tag" \
+    --require-sbom \
+    --require-provenance
 
   release_target="$(gh release view "$product_tag" --repo "$REMOTE_REPO" --json targetCommitish --jq '.targetCommitish')"
   current_head="$(git rev-parse HEAD)"

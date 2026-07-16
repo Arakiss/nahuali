@@ -78,7 +78,7 @@ workflow uploads binaries, verify the release shape:
 ```bash
 sh scripts/check-release-page.sh --tag vX.Y.Z-beta.N
 sh scripts/check-release-assets.sh --tag vX.Y.Z-beta.N --require-sbom
-bash scripts/verify-release.sh --tag vX.Y.Z-beta.N --require-sbom
+bash scripts/verify-release.sh --tag vX.Y.Z-beta.N --require-sbom --require-provenance
 ```
 
 The GitHub release page is a public product surface. The generated Release
@@ -95,7 +95,8 @@ The expected beta release shape is:
 - four platform archives
 - four `.sha256` checksum files
 - four `.sigstore.json` Sigstore bundles
-- one optional or required CycloneDX SBOM, depending on the command flag
+- one required CycloneDX SBOM
+- verifiable GitHub artifact provenance for the selected platform archive
 - an install smoke test against the extracted `nahuali`, `nahuali-mcp`, and
   `nahuali-api` binaries
 

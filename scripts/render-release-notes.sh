@@ -60,7 +60,7 @@ To pin this release, set \`NAHUALI_VERSION=${tag}\` before running the installer
 
 \`\`\`bash
 bash scripts/check-release-assets.sh --tag ${tag} --require-sbom
-bash scripts/verify-release.sh --tag ${tag}
+bash scripts/verify-release.sh --tag ${tag} --require-sbom --require-provenance
 \`\`\`
 
 The release contains four platform archives, mandatory SHA-256 checksums,

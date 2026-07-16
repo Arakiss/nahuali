@@ -4,7 +4,6 @@ set -eu
 repo="${NAHUALI_GITHUB_REPO:-Arakiss/nahuali}"
 tag="${NAHUALI_VERSION:-latest}"
 json="false"
-require_sbom="false"
 
 usage() {
   cat <<'USAGE'
@@ -14,14 +13,14 @@ Options:
   --tag TAG, --version TAG  Release tag to inspect. Default: latest product release.
   --repo OWNER/NAME         GitHub repository. Default: Arakiss/nahuali.
   --json                    Emit machine-readable JSON.
-  --require-sbom            Fail if nahuali-<tag>.cdx.json is missing.
+  --require-sbom            Compatibility flag; the SBOM is always required.
   -h, --help                Show this help.
 
 The check expects the current beta release channel shape:
   - 4 platform archives
   - 4 .sha256 checksum files
   - 4 .sigstore.json Sigstore bundles
-  - optional CycloneDX SBOM: nahuali-<tag>.cdx.json
+  - required CycloneDX SBOM: nahuali-<tag>.cdx.json
 
 Unknown extra assets are reported as warnings but do not fail the check.
 USAGE
@@ -42,7 +41,6 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --require-sbom)
-      require_sbom="true"
       shift
       ;;
     -h | --help)
@@ -117,6 +115,10 @@ for expected in $expected_assets; do
 }$expected"
   fi
 done
+if [ "$sbom_count" -ne 1 ]; then
+  missing="${missing}${missing:+
+}$sbom_asset"
+fi
 
 unexpected=""
 for asset in $asset_names; do
@@ -128,9 +130,7 @@ for asset in $asset_names; do
 done
 
 status="pass"
-if [ -n "$missing" ] || [ "$archive_count" -ne 4 ] || [ "$checksum_count" -ne 4 ] || [ "$sigstore_count" -ne 4 ]; then
-  status="fail"
-elif [ "$require_sbom" = "true" ] && [ "$sbom_count" -ne 1 ]; then
+if [ -n "$missing" ] || [ "$archive_count" -ne 4 ] || [ "$checksum_count" -ne 4 ] || [ "$sigstore_count" -ne 4 ] || [ "$sbom_count" -ne 1 ]; then
   status="fail"
 elif [ -n "$unexpected" ]; then
   status="warn"
@@ -153,11 +153,6 @@ json_string_array() {
 }
 
 if [ "$json" = "true" ]; then
-  if [ "$require_sbom" = "true" ]; then
-    sbom_expectation="required"
-  else
-    sbom_expectation="optional"
-  fi
   missing_json="$(printf '%s\n' "$missing" | json_string_array)"
   unexpected_json="$(printf '%s\n' "$unexpected" | json_string_array)"
   release_summary="$(
@@ -176,11 +171,11 @@ if [ "$json" = "true" ]; then
   printf '    "cyclonedx_sbom": %s\n' "$sbom_count"
   printf '  },\n'
   printf '  "expected": {\n'
-  printf '    "required_assets": 12,\n'
+  printf '    "required_assets": 13,\n'
   printf '    "archives": 4,\n'
   printf '    "checksums": 4,\n'
   printf '    "sigstore_bundles": 4,\n'
-  printf '    "cyclonedx_sbom": "%s"\n' "$sbom_expectation"
+  printf '    "cyclonedx_sbom": "required"\n'
   printf '  },\n'
   printf '  "missing": %s,\n' "$missing_json"
   printf '  "unexpected": %s\n' "$unexpected_json"
@@ -195,7 +190,7 @@ else
   echo "target: $release_target"
   echo "assets: $asset_count total, $archive_count archives, $checksum_count checksums, $sigstore_count sigstore bundles, $sbom_count CycloneDX SBOM"
   echo "url: $release_url"
-  if [ "$require_sbom" = "true" ] && [ "$sbom_count" -ne 1 ]; then
+  if [ "$sbom_count" -ne 1 ]; then
     echo "missing required CycloneDX SBOM: $sbom_asset"
   fi
   if [ -n "$missing" ]; then
