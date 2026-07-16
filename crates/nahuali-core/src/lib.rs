@@ -220,8 +220,8 @@ pub use sleep::{
 pub use store::{
     GRAPH_PROJECTION_VERSION, GraphProjectionEntity, GraphProjectionEpisode,
     GraphProjectionHealthSignal, GraphProjectionPendingIntention, GraphProjectionRebuildReport,
-    GraphProjectionStatus, GraphProjectionValidation, MemoryEngine, SourceEpisodeOptions,
-    SourceRecordOptions,
+    GraphProjectionStatus, GraphProjectionValidation, MemoryEngine, RefreshOutcome,
+    SourceEpisodeOptions, SourceRecordOptions,
 };
 pub use trust_report::{
     MEMORY_TRUST_REPORT_VERSION, MemoryTrustReport, TrustIntegrity, TrustKnowledge,

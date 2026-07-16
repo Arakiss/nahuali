@@ -65,3 +65,7 @@ ed25519-dalek = { version = "2.2", default-features = false, features = ["std", 
 [[example]]
 name = "tamper_evidence"
 required-features = ["attestation"]
+
+[[example]]
+name = "refresh_performance"
+required-features = ["regression-fixtures"]

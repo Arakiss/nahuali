@@ -4,6 +4,12 @@ struct MemoryRecord {
     envelope: EventEnvelope,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MemoryRecordTip {
+    sequence: u64,
+    event_id: String,
+}
+
 async fn read_records(path: &Path) -> Result<Vec<EventEnvelope>> {
     let db = open_database(path).await?;
     let mut response = db
@@ -36,6 +42,38 @@ async fn read_records(path: &Path) -> Result<Vec<EventEnvelope>> {
     }
 
     Ok(events)
+}
+
+async fn read_record_tip(path: &Path) -> Result<Option<MemoryRecordTip>> {
+    let db = open_database(path).await?;
+    let mut response = db
+        .query_with_retry(
+            path,
+            "SELECT sequence, envelope FROM memory_record ORDER BY sequence DESC LIMIT 1",
+            Vec::new(),
+        )
+        .await?;
+    let rows: Vec<serde_json::Value> = response
+        .take(0)
+        .map_err(|source| database_error(path, source))?;
+    let Some(row) = rows.into_iter().next() else {
+        return Ok(None);
+    };
+    let record = decode_record(path, 1, row)?;
+    if record.sequence != record.envelope.sequence {
+        return Err(NahualiError::InvalidRecordLedger {
+            path: path.to_path_buf(),
+            record: 1,
+            message: format!(
+                "record sequence {} does not match envelope sequence {}",
+                record.sequence, record.envelope.sequence
+            ),
+        });
+    }
+    Ok(Some(MemoryRecordTip {
+        sequence: record.sequence,
+        event_id: record.envelope.id,
+    }))
 }
 
 async fn write_record(path: &Path, event: &EventEnvelope) -> Result<()> {

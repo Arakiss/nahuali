@@ -216,6 +216,9 @@ jobs:
             --source-revision "$GITHUB_SHA" \
             --output "$result"
           python3 benchmarks/agent-memory-trust/score.py "$result"
+      - name: Verify unchanged-ledger refresh budgets
+        timeout-minutes: 10
+        run: bash scripts/verify-refresh-performance.sh
       - name: Run security and supply-chain checks
         timeout-minutes: 5
         run: bash scripts/security-supply-chain-check.sh

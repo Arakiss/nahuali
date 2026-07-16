@@ -73,12 +73,48 @@ impl MemoryEngine {
     /// by another process against a remote SurrealDB endpoint are visible and
     /// sequence allocation never relies on a stale cached projection.
     pub fn refresh(&mut self) -> Result<()> {
+        self.refresh_if_changed().map(|_| ())
+    }
+
+    /// Check the authoritative ledger tip and replay only when it changed.
+    ///
+    /// The unchanged path reads one record and leaves the validated in-memory
+    /// ledger and projection intact. Integrity commands still perform their
+    /// explicit full-ledger validation; a changed tip also triggers a complete
+    /// replay before this method returns.
+    pub fn refresh_if_changed(&mut self) -> Result<RefreshOutcome> {
+        let previous_sequence = self.events.last().map(|event| event.sequence);
+        let previous_event_id = self.events.last().map(|event| event.id.clone());
+        let tip_path = self.path.clone();
+        let observed_tip = block_on_database(async move { read_record_tip(&tip_path).await })?;
+        let cached_tip = previous_sequence.zip(previous_event_id.as_deref());
+        let observed = observed_tip
+            .as_ref()
+            .map(|tip| (tip.sequence, tip.event_id.as_str()));
+        if cached_tip == observed {
+            return Ok(RefreshOutcome {
+                changed: false,
+                previous_sequence,
+                observed_sequence: observed_tip.as_ref().map(|tip| tip.sequence),
+                previous_event_id: previous_event_id.clone(),
+                observed_event_id: observed_tip.map(|tip| tip.event_id),
+                replayed_event_count: 0,
+            });
+        }
+
         let read_path = self.path.clone();
         let events = block_on_database(async move { read_records(&read_path).await })?;
         self.next_sequence = events.last().map(|event| event.sequence + 1).unwrap_or(1);
         self.data = projection::project(&events);
         self.events = events;
-        Ok(())
+        Ok(RefreshOutcome {
+            changed: true,
+            previous_sequence,
+            observed_sequence: self.events.last().map(|event| event.sequence),
+            previous_event_id,
+            observed_event_id: self.events.last().map(|event| event.id.clone()),
+            replayed_event_count: self.events.len(),
+        })
     }
 
     /// Validate a SurrealDB database name without mutating or projecting invalid records.

@@ -55,7 +55,7 @@ use crate::{
         validate_record_ledger_with_options,
     },
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::runtime::{Builder, Runtime};
 
 static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -79,6 +79,23 @@ pub struct MemoryEngine {
     /// once when the surrounding import batch commits. Off for ordinary single
     /// mutations, which still persist synchronously and stay byte-identical.
     batch_active: bool,
+}
+
+/// Result of checking whether a long-lived engine needed to replay its ledger.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RefreshOutcome {
+    /// Whether a changed ledger tip required a full validated replay.
+    pub changed: bool,
+    /// Cached sequence before the refresh check.
+    pub previous_sequence: Option<u64>,
+    /// Sequence observed after the refresh check or replay.
+    pub observed_sequence: Option<u64>,
+    /// Cached event identifier before the refresh check.
+    pub previous_event_id: Option<String>,
+    /// Event identifier observed after the refresh check or replay.
+    pub observed_event_id: Option<String>,
+    /// Number of events replayed. Zero on the unchanged fast path.
+    pub replayed_event_count: usize,
 }
 
 /// Options for registering provenance source material.

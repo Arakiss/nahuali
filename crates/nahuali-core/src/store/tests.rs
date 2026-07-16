@@ -93,6 +93,40 @@ mod tests {
     }
 
     #[test]
+    fn refresh_skips_unchanged_ledger_and_replays_a_changed_tip() {
+        let path = temp_path("refresh_changed_tip");
+        let _ = fs::remove_file(&path);
+        let mut cached = MemoryEngine::open(&path).unwrap();
+
+        let empty = cached.refresh_if_changed().unwrap();
+        assert!(!empty.changed);
+        assert_eq!(empty.replayed_event_count, 0);
+        assert_eq!(empty.observed_sequence, None);
+
+        cached.remember("First episode", Vec::new()).unwrap();
+        let unchanged = cached.refresh_if_changed().unwrap();
+        assert!(!unchanged.changed);
+        assert_eq!(unchanged.replayed_event_count, 0);
+        assert_eq!(unchanged.previous_sequence, Some(1));
+        assert_eq!(unchanged.observed_sequence, Some(1));
+
+        let mut writer = MemoryEngine::open(&path).unwrap();
+        writer.remember("Second episode", Vec::new()).unwrap();
+        let changed = cached.refresh_if_changed().unwrap();
+        assert!(changed.changed);
+        assert_eq!(changed.previous_sequence, Some(1));
+        assert_eq!(changed.observed_sequence, Some(2));
+        assert_eq!(changed.replayed_event_count, 2);
+        assert_eq!(cached.events().len(), 2);
+
+        let stable_again = cached.refresh_if_changed().unwrap();
+        assert!(!stable_again.changed);
+        assert_eq!(stable_again.replayed_event_count, 0);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn rejects_fabricated_evidence_citations_on_the_direct_write_path() {
         let path = temp_path("rejects_fabricated_evidence_citations_on_the_direct_write_path");
         let _ = fs::remove_file(&path);
