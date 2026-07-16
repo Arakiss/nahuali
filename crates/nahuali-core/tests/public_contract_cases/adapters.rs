@@ -278,6 +278,12 @@ fn public_api_rebuilds_qdrant_semantic_index_and_hybrid_recall() {
         .expect("semantic status reads");
     assert!(status.collection_exists);
     assert_eq!(status.point_count, first_report.indexed_point_count);
+    assert_eq!(status.expected_point_count, first_report.indexed_point_count);
+    assert_eq!(status.indexed_point_count, first_report.indexed_point_count);
+    assert_eq!(status.missing_point_count, 0);
+    assert_eq!(status.orphan_point_count, 0);
+    assert_eq!(status.stale_point_count, 0);
+    assert!(status.is_current);
 
     let hybrid = memory
         .hybrid_recall_with_config("release notes", 10, &config)

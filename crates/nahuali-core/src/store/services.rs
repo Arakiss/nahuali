@@ -64,7 +64,7 @@ impl MemoryEngine {
         &self,
         config: &SemanticConfig,
     ) -> Result<SemanticIndexStatus> {
-        semantic::index_status(config)
+        semantic::index_status(&self.data, config)
     }
 
     /// Recall memory by merging deterministic lexical results with Qdrant semantic matches.

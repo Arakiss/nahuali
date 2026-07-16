@@ -12,7 +12,7 @@ pub(crate) fn rebuild_index(
         client.delete_collection_if_exists(&config.collection_name)?;
     client.create_collection(&config.collection_name, &embedding)?;
 
-    let documents = semantic_documents(data);
+    let documents = semantic_documents(data, &embedding);
     let points = documents
         .iter()
         .map(|document| {
@@ -76,7 +76,7 @@ pub(crate) fn sync_index(data: &MemoryData, config: &SemanticConfig) -> Result<S
         client.create_collection(&config.collection_name, &embedding)?;
     }
 
-    let documents = semantic_documents(data);
+    let documents = semantic_documents(data, &embedding);
     let points = documents
         .iter()
         .map(|document| {
@@ -118,20 +118,89 @@ pub(crate) fn sync_index(data: &MemoryData, config: &SemanticConfig) -> Result<S
     })
 }
 
-pub(crate) fn index_status(config: &SemanticConfig) -> Result<SemanticIndexStatus> {
+pub(crate) fn index_status(
+    data: &MemoryData,
+    config: &SemanticConfig,
+) -> Result<SemanticIndexStatus> {
+    const DRIFT_DETAIL_LIMIT: usize = 20;
+
+    let embedder = config.embedder()?;
+    let embedding = EmbeddingProviderConfig {
+        dimensions: embedder.dimensions(),
+        ..config.embedding.clone()
+    };
+    let expected = semantic_documents(data, &embedding)
+        .into_iter()
+        .map(|document| (document.point_id.to_string(), document.payload))
+        .collect::<BTreeMap<_, _>>();
     let client = QdrantRestClient::new(config);
     let collection_exists = client.collection_exists(&config.collection_name)?;
-    let point_count = if collection_exists {
-        client.count_points(&config.collection_name)?
+    let actual = if collection_exists {
+        client.scroll_point_payloads(&config.collection_name)?
     } else {
-        0
+        BTreeMap::new()
     };
+
+    let missing_point_ids = expected
+        .keys()
+        .filter(|point_id| !actual.contains_key(*point_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let orphan_point_ids = actual
+        .keys()
+        .filter(|point_id| !expected.contains_key(*point_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let stale_point_ids = expected
+        .iter()
+        .filter_map(|(point_id, expected_payload)| {
+            actual
+                .get(point_id)
+                .filter(|actual_payload| actual_payload.as_ref() != Some(expected_payload))
+                .map(|_| point_id.clone())
+        })
+        .collect::<Vec<_>>();
+    let missing_point_count = missing_point_ids.len();
+    let orphan_point_count = orphan_point_ids.len();
+    let stale_point_count = stale_point_ids.len();
+    let indexed_point_count = actual.len();
+    let expected_point_count = expected.len();
+    let is_current = collection_exists
+        && missing_point_count == 0
+        && orphan_point_count == 0
+        && stale_point_count == 0;
+    let drift_details_truncated = [
+        missing_point_count,
+        orphan_point_count,
+        stale_point_count,
+    ]
+    .into_iter()
+    .any(|count| count > DRIFT_DETAIL_LIMIT);
 
     Ok(SemanticIndexStatus {
         collection_name: config.collection_name.clone(),
         qdrant_url: config.qdrant_url.clone(),
         collection_exists,
-        point_count,
+        point_count: indexed_point_count,
+        expected_point_count,
+        indexed_point_count,
+        missing_point_count,
+        orphan_point_count,
+        stale_point_count,
+        is_current,
+        missing_point_ids: missing_point_ids
+            .into_iter()
+            .take(DRIFT_DETAIL_LIMIT)
+            .collect(),
+        orphan_point_ids: orphan_point_ids
+            .into_iter()
+            .take(DRIFT_DETAIL_LIMIT)
+            .collect(),
+        stale_point_ids: stale_point_ids
+            .into_iter()
+            .take(DRIFT_DETAIL_LIMIT)
+            .collect(),
+        drift_details_truncated,
     })
 }
 
@@ -349,7 +418,7 @@ struct SemanticDocument {
     payload: SemanticPayload,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 struct SemanticPayload {
     schema_version: u32,
     projection_version: u32,
@@ -371,6 +440,10 @@ struct SemanticPayload {
     scope_name: Option<String>,
     entity_names: Vec<String>,
     source_ids: Vec<String>,
+    #[serde(default)]
+    embedding_model: String,
+    #[serde(default)]
+    embedding_dimensions: usize,
 }
 
 impl SemanticPayload {
@@ -379,7 +452,10 @@ impl SemanticPayload {
     }
 }
 
-fn semantic_documents(data: &MemoryData) -> Vec<SemanticDocument> {
+fn semantic_documents(
+    data: &MemoryData,
+    embedding: &EmbeddingProviderConfig,
+) -> Vec<SemanticDocument> {
     let mut documents = Vec::new();
 
     for entity in &data.entities {
@@ -401,7 +477,7 @@ fn semantic_documents(data: &MemoryData) -> Vec<SemanticDocument> {
             entity_names: vec![entity.name.clone()],
             source_ids: entity.source_event_ids.clone(),
             health_score: None,
-        }));
+        }, embedding));
     }
 
     for episode in &data.episodes {
@@ -424,7 +500,7 @@ fn semantic_documents(data: &MemoryData) -> Vec<SemanticDocument> {
                 .chain(std::iter::once(episode.id.clone()))
                 .collect(),
             health_score: None,
-        }));
+        }, embedding));
     }
 
     for claim in &data.claims {
@@ -442,7 +518,7 @@ fn semantic_documents(data: &MemoryData) -> Vec<SemanticDocument> {
             entity_names: vec![claim.subject.clone(), claim.object.clone()],
             source_ids: claim.source_episode_id.iter().cloned().collect(),
             health_score: Some(claim.confidence),
-        }));
+        }, embedding));
     }
 
     for link in &data.links {
@@ -460,7 +536,7 @@ fn semantic_documents(data: &MemoryData) -> Vec<SemanticDocument> {
             entity_names: vec![link.from.clone(), link.to.clone()],
             source_ids: link.source_episode_id.iter().cloned().collect(),
             health_score: Some(link.confidence),
-        }));
+        }, embedding));
     }
 
     for procedure in &data.procedures {
@@ -478,7 +554,7 @@ fn semantic_documents(data: &MemoryData) -> Vec<SemanticDocument> {
             entity_names: Vec::new(),
             source_ids: procedure.source_episode_id.iter().cloned().collect(),
             health_score: Some(procedure.confidence),
-        }));
+        }, embedding));
     }
 
     for intention in &data.intentions {
@@ -499,7 +575,7 @@ fn semantic_documents(data: &MemoryData) -> Vec<SemanticDocument> {
             entity_names: Vec::new(),
             source_ids: intention.source_episode_id.iter().cloned().collect(),
             health_score: None,
-        }));
+        }, embedding));
     }
 
     documents
@@ -520,7 +596,7 @@ struct DocumentInput<'a> {
     health_score: Option<f32>,
 }
 
-fn document(input: DocumentInput<'_>) -> SemanticDocument {
+fn document(input: DocumentInput<'_>, embedding: &EmbeddingProviderConfig) -> SemanticDocument {
     let kind_name = memory_kind_name(&input.kind).to_string();
     let point_id = point_id_for(&kind_name, input.id);
     let event_ids = if input.event_id.is_empty() {
@@ -555,6 +631,8 @@ fn document(input: DocumentInput<'_>) -> SemanticDocument {
             scope_name,
             entity_names: input.entity_names,
             source_ids: input.source_ids,
+            embedding_model: embedding.model.clone(),
+            embedding_dimensions: embedding.dimensions,
         },
     }
 }

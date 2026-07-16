@@ -282,6 +282,10 @@ require_pattern "$SEMANTIC_REBUILD_OUTPUT" '"indexed_point_count"' "semantic reb
 SEMANTIC_STATUS_OUTPUT="$WORK_DIR/semantic-status.json"
 "$NAHUALI_BIN" --database "$STORE" semantic-status --json >"$SEMANTIC_STATUS_OUTPUT"
 require_pattern "$SEMANTIC_STATUS_OUTPUT" '"collection_exists"[[:space:]]*:[[:space:]]*true' "semantic status did not find the rebuilt collection"
+require_pattern "$SEMANTIC_STATUS_OUTPUT" '"is_current"[[:space:]]*:[[:space:]]*true' "semantic status did not certify a current derived index"
+require_pattern "$SEMANTIC_STATUS_OUTPUT" '"missing_point_count"[[:space:]]*:[[:space:]]*0' "semantic status found missing points after rebuild"
+require_pattern "$SEMANTIC_STATUS_OUTPUT" '"orphan_point_count"[[:space:]]*:[[:space:]]*0' "semantic status found orphan points after rebuild"
+require_pattern "$SEMANTIC_STATUS_OUTPUT" '"stale_point_count"[[:space:]]*:[[:space:]]*0' "semantic status found stale points after rebuild"
 
 SEMANTIC_RECALL_OUTPUT="$WORK_DIR/semantic-recall.json"
 "$NAHUALI_BIN" --database "$STORE" recall \

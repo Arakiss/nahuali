@@ -746,7 +746,12 @@ pub(crate) fn semantic_status(
         println!("Qdrant: {}", status.qdrant_url);
         println!("Semantic index: derived");
         println!("Collection exists: {}", status.collection_exists);
-        println!("Points: {}", status.point_count);
+        println!("Current: {}", status.is_current);
+        println!("Expected points: {}", status.expected_point_count);
+        println!("Indexed points: {}", status.indexed_point_count);
+        println!("Missing points: {}", status.missing_point_count);
+        println!("Orphan points: {}", status.orphan_point_count);
+        println!("Stale points: {}", status.stale_point_count);
     }
     Ok(())
 }

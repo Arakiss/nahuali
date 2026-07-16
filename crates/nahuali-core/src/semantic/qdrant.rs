@@ -27,8 +27,15 @@ struct ScoredPoint {
 }
 
 #[derive(Debug, Deserialize)]
-struct CountResult {
-    count: usize,
+struct ScrollResult {
+    points: Vec<ScrolledPoint>,
+    next_page_offset: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ScrolledPoint {
+    id: serde_json::Value,
+    payload: Option<serde_json::Value>,
 }
 
 struct QdrantRestClient {
@@ -189,15 +196,54 @@ impl QdrantRestClient {
         Ok(())
     }
 
-    fn count_points(&self, collection_name: &str) -> Result<usize> {
+    fn scroll_point_payloads(
+        &self,
+        collection_name: &str,
+    ) -> Result<BTreeMap<String, Option<SemanticPayload>>> {
         let endpoint = format!(
-            "{}/collections/{collection_name}/points/count",
+            "{}/collections/{collection_name}/points/scroll",
             self.base_url
         );
-        let body = serde_json::json!({ "exact": true });
+        let mut points = BTreeMap::new();
+        let mut offset = None;
+
+        loop {
+            let mut body = serde_json::json!({
+                "limit": 256,
+                "with_payload": true,
+                "with_vector": false
+            });
+            if let Some(value) = offset.take() {
+                body["offset"] = value;
+            }
+            let request = self.with_api_key(self.http.post(&endpoint)).json(&body);
+            let page: ScrollResult = self.send_json(&endpoint, request)?;
+            for point in page.points {
+                let point_id = qdrant_point_id_key(&point.id);
+                let payload = point
+                    .payload
+                    .and_then(|payload| serde_json::from_value(payload).ok());
+                points.insert(point_id, payload);
+            }
+            match page.next_page_offset {
+                Some(next_offset) => offset = Some(next_offset),
+                None => break,
+            }
+        }
+
+        Ok(points)
+    }
+
+    #[cfg(test)]
+    fn delete_points(&self, collection_name: &str, point_ids: &[u64]) -> Result<()> {
+        let endpoint = format!(
+            "{}/collections/{collection_name}/points/delete?wait=true",
+            self.base_url
+        );
+        let body = serde_json::json!({ "points": point_ids });
         let request = self.with_api_key(self.http.post(&endpoint)).json(&body);
-        let result: CountResult = self.send_json(&endpoint, request)?;
-        Ok(result.count)
+        let _: serde_json::Value = self.send_json(&endpoint, request)?;
+        Ok(())
     }
 
     fn send_json<T: DeserializeOwned>(
@@ -252,6 +298,14 @@ impl QdrantRestClient {
     fn collection_url(&self, collection_name: &str) -> String {
         format!("{}/collections/{collection_name}", self.base_url)
     }
+}
+
+fn qdrant_point_id_key(value: &serde_json::Value) -> String {
+    value
+        .as_u64()
+        .map(|id| id.to_string())
+        .or_else(|| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| value.to_string())
 }
 
 fn qdrant_request_timeout() -> Duration {
