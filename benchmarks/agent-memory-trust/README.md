@@ -78,6 +78,7 @@ Run the Nahuali adapter against an installed or locally built CLI:
 ```bash
 python3 benchmarks/agent-memory-trust/adapters/nahuali.py \
   --binary target/release/nahuali \
+  --source-revision "$(git rev-parse HEAD)" \
   --output result.json
 python3 benchmarks/agent-memory-trust/score.py result.json
 ```
@@ -88,9 +89,9 @@ The adapter uses only documented CLI commands and disposable embedded stores.
 
 | System | Version | Runner | Result |
 |---|---|---|---|
-| Nahuali | 0.8.0-beta.0 | First-party | [7 pass, 0 fail, 0 unsupported](results/nahuali-0.8.0-beta.0.json) |
+| Nahuali | 0.8.0-beta.5 | First-party | [7 pass, 0 fail, 0 unsupported](results/nahuali-0.8.0-beta.5.json) |
 
-The published file records the immutable release commit, adapter path,
+The published file records the tested binary SHA-256, release source revision, adapter path,
 environment, native verdicts, and complete per-case output. Reproduce it from
 the release source with:
 
@@ -98,9 +99,10 @@ the release source with:
 cargo build --release -p nahuali-cli
 python3 benchmarks/agent-memory-trust/adapters/nahuali.py \
   --binary target/release/nahuali \
-  --output benchmarks/agent-memory-trust/results/nahuali-0.8.0-beta.0.json
+  --source-revision "$(git rev-parse HEAD)" \
+  --output benchmarks/agent-memory-trust/results/nahuali-0.8.0-beta.5.json
 python3 benchmarks/agent-memory-trust/score.py \
-  benchmarks/agent-memory-trust/results/nahuali-0.8.0-beta.0.json
+  benchmarks/agent-memory-trust/results/nahuali-0.8.0-beta.5.json
 ```
 
 ## Comparison rules

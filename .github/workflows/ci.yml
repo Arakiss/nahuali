@@ -206,6 +206,16 @@ jobs:
         # LIVR/ARP/PCR/CDR/TVS — the numbers the README publishes. Recomputed
         # here so main cannot drift from the published table while CI is green.
         run: bash scripts/verify-governance-benchmarks.sh
+      - name: Run agent memory trust benchmark gate
+        timeout-minutes: 5
+        run: |
+          python3 -m unittest discover -s benchmarks/agent-memory-trust/tests
+          result="$RUNNER_TEMP/agent-memory-trust.json"
+          python3 benchmarks/agent-memory-trust/adapters/nahuali.py \
+            --binary target/release/nahuali \
+            --source-revision "$GITHUB_SHA" \
+            --output "$result"
+          python3 benchmarks/agent-memory-trust/score.py "$result"
       - name: Run security and supply-chain checks
         timeout-minutes: 5
         run: bash scripts/security-supply-chain-check.sh

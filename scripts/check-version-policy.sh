@@ -102,8 +102,18 @@ benchmark_version="${benchmark_link#nahuali-}"
 benchmark_version="${benchmark_version%.json}"
 [[ "$benchmark_version" =~ ^0\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]] \
   || fail "published trust benchmark must remain a pre-1.0 beta result"
+[[ "$benchmark_version" == "$version" ]] \
+  || fail "published trust benchmark $benchmark_version does not match product version $version"
 benchmark_system_version="$(jq -r '.system.version' "$benchmark_result")"
 [[ "$benchmark_system_version" == "nahuali $benchmark_version" ]] \
   || fail "published trust benchmark version disagrees with its linked filename"
+benchmark_digest="$(jq -r '.artifact.sha256 // empty' "$benchmark_result")"
+[[ "$benchmark_digest" =~ ^[0-9a-f]{64}$ ]] \
+  || fail "published trust benchmark must identify the tested binary by SHA-256"
+[[ "$(jq -r '.commit' "$benchmark_result")" == "sha256:$benchmark_digest" ]] \
+  || fail "published trust benchmark commit identity must match the tested binary digest"
+benchmark_source_revision="$(jq -r '.artifact.sourceRevision // empty' "$benchmark_result")"
+[[ "$benchmark_source_revision" =~ ^[0-9a-f]{40}$ ]] \
+  || fail "published trust benchmark must identify the release source revision"
 
 echo "version-policy: $version is one coherent pre-1.0 product release"

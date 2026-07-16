@@ -1,0 +1,86 @@
+{
+  "benchmarkVersion": "1.0.0",
+  "system": {
+    "name": "Nahuali",
+    "version": "nahuali 0.8.0-beta.5"
+  },
+  "commit": "sha256:0f73470c6e07e0d61f72be3f6baffb121599a5f7f87dad612701fe8b55d4d1f5",
+  "artifact": {
+    "name": "nahuali",
+    "sha256": "0f73470c6e07e0d61f72be3f6baffb121599a5f7f87dad612701fe8b55d4d1f5",
+    "sourceRevision": "fb6312e6c8c92937a7d5d1c17d34c7371ada0431"
+  },
+  "runner": {
+    "relationship": "first-party",
+    "adapter": "benchmarks/agent-memory-trust/adapters/nahuali.py"
+  },
+  "environment": {
+    "services": [
+      "embedded SurrealKV"
+    ],
+    "models": [],
+    "operatorActions": []
+  },
+  "cases": [
+    {
+      "id": "evidence-traceability",
+      "status": "pass",
+      "verdict": "certify",
+      "normalizedVerdict": "trusted",
+      "evidenceIds": [
+        "episode_1784206008701_1"
+      ],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "unsupported-memory-abstention",
+      "status": "pass",
+      "verdict": "warn",
+      "normalizedVerdict": "refused",
+      "evidenceIds": [],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "contradiction-detection",
+      "status": "pass",
+      "verdict": "block",
+      "normalizedVerdict": "refused",
+      "evidenceIds": [],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "staleness-signaling",
+      "status": "pass",
+      "verdict": "warn",
+      "normalizedVerdict": "qualified",
+      "evidenceIds": [],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "non-mutating-inspection",
+      "status": "pass",
+      "evidenceIds": [],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "in-place-tamper-detection",
+      "status": "pass",
+      "evidenceIds": [],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "full-rechain-detection",
+      "status": "pass",
+      "evidenceIds": [],
+      "detected": true,
+      "externalCheckpoint": true,
+      "mutated": false
+    }
+  ]
+}
