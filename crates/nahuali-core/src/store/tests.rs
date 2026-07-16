@@ -17,8 +17,8 @@ mod tests {
     };
 
     use super::{
-        MemoryEngine, block_on_database, inject_graph_projection_failure_once, read_records,
-        write_records,
+        MemoryEngine, block_on_database, completed_concurrent_rebuild,
+        inject_graph_projection_failure_once, read_records, write_record, write_records,
     };
 
     #[test]
@@ -525,6 +525,50 @@ mod tests {
         assert_eq!(validation.status.table_counts["mentions"], 2);
         assert_eq!(validation.status.table_counts["relates_to"], 1);
         assert_eq!(validation.status.table_counts["supports"], 1);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn coalesces_only_a_completed_rebuild_at_a_stable_ledger_tip() {
+        let path = temp_path("coalesced_graph_rebuild");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        memory.remember("Projected episode", Vec::new()).unwrap();
+
+        let check_path = path.clone();
+        let report = block_on_database(async move {
+            completed_concurrent_rebuild(&check_path).await
+        })
+        .unwrap()
+        .expect("an in-sync stable projection satisfies the rebuild request");
+        assert!(report.status.in_sync);
+        assert_eq!(report.node_rows_written, 0);
+        assert_eq!(report.relation_rows_written, 0);
+
+        let pending = EventEnvelope::new(
+            2,
+            2,
+            MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                id: "episode_unprojected".to_string(),
+                content: "Ledger-only episode".to_string(),
+                tags: Vec::new(),
+                mentions: Vec::new(),
+                source_id: None,
+                source_position: None,
+                source_role: None,
+                scope: None,
+            }),
+        );
+        let write_path = path.clone();
+        block_on_database(async move { write_record(&write_path, &pending).await }).unwrap();
+
+        let stale_path = path.clone();
+        let stale = block_on_database(async move {
+            completed_concurrent_rebuild(&stale_path).await
+        })
+        .unwrap();
+        assert!(stale.is_none(), "an unprojected ledger tip must not coalesce");
 
         let _ = fs::remove_file(path);
     }
