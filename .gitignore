@@ -24,6 +24,3 @@ html-artifacts/
 
 # Private commercial/strategy docs — never published
 docs/private/
-
-# Operator run artifacts — local only
-.codex-runs/
