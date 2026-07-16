@@ -759,11 +759,7 @@ impl MemoryEngine {
         // batch we rebuild it exactly once at flush time instead.
         if !self.batch_active {
             let graph_path = self.path.clone();
-            let graph_data = self.data.clone();
-            let graph_events = self.events.clone();
-            block_on_database(async move {
-                rebuild_graph_projection(&graph_path, &graph_data, &graph_events).await
-            })?;
+            block_on_database(async move { rebuild_graph_projection(&graph_path).await })?;
         }
 
         Ok(envelope)
@@ -814,11 +810,7 @@ impl MemoryEngine {
         block_on_database(async move { write_records(&write_path, &pending).await })?;
 
         let graph_path = self.path.clone();
-        let graph_data = self.data.clone();
-        let graph_events = self.events.clone();
-        block_on_database(async move {
-            rebuild_graph_projection(&graph_path, &graph_data, &graph_events).await
-        })?;
+        block_on_database(async move { rebuild_graph_projection(&graph_path).await })?;
 
         Ok(())
     }

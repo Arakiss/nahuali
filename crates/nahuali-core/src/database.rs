@@ -366,7 +366,7 @@ impl DatabaseSession {
         for (name, value) in bindings {
             query = query.bind((name.clone(), value.clone()));
         }
-        query.await
+        query.await?.check()
     }
 }
 
@@ -581,7 +581,7 @@ fn normalize_database_name(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ConfigSource, database_name, normalize_database_name, normalize_endpoint,
+        ConfigSource, DatabaseSession, database_name, normalize_database_name, normalize_endpoint,
         resolve_database_name_from, validate_database_name,
     };
     use std::path::Path;
@@ -683,6 +683,29 @@ mod tests {
         assert_eq!(
             normalize_endpoint("surrealkv:///tmp/nahuali"),
             "surrealkv:///tmp/nahuali"
+        );
+    }
+
+    #[test]
+    fn query_execution_surfaces_statement_level_errors() {
+        let path = Path::new("query_statement_errors_are_not_success");
+        let database = DatabaseSession::open(path).expect("test database session opens");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime builds");
+
+        let error = runtime
+            .block_on(database.query_with_retry(
+                path,
+                "THROW 'sentinel statement error'",
+                Vec::new(),
+            ))
+            .expect_err("a rejected SurrealQL statement must fail the query");
+
+        assert!(
+            error.to_string().contains("sentinel statement error"),
+            "unexpected error: {error}"
         );
     }
 }

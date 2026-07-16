@@ -59,6 +59,12 @@ pub enum NahualiError {
         /// Underlying SurrealDB error.
         source: Box<surrealdb::Error>,
     },
+    /// Another process held the graph projection rebuild lease for too long.
+    #[error("timed out after {timeout_ms}ms waiting for the graph projection rebuild lease")]
+    GraphProjectionRebuildBusy {
+        /// Maximum time spent waiting for the active rebuild to finish.
+        timeout_ms: u64,
+    },
     /// The memory database path could not be represented for SurrealDB.
     #[error("memory database path is not valid UTF-8: {path}")]
     InvalidDatabasePath {

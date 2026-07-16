@@ -460,6 +460,72 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_graph_rebuilds_leave_one_complete_projection() {
+        const REBUILDER_COUNT: usize = 8;
+        let path = temp_path("concurrent_graph_rebuilds");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let episode = memory
+            .remember_with_mentions(
+                "Lena owns release notes.",
+                vec!["product".to_string()],
+                vec!["Lena".to_string(), "Release Notes".to_string()],
+            )
+            .unwrap();
+        memory
+            .add_claim(
+                "Lena",
+                "owns",
+                "release notes",
+                Some(episode.id.clone()),
+                0.9,
+            )
+            .unwrap();
+        memory
+            .add_link(
+                "Lena",
+                "owns",
+                "Release Notes",
+                Some(episode.id),
+                0.9,
+            )
+            .unwrap();
+        drop(memory);
+
+        let barrier = Arc::new(Barrier::new(REBUILDER_COUNT));
+        let handles = (0..REBUILDER_COUNT)
+            .map(|_| {
+                let path = path.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    let mut memory = MemoryEngine::open(&path)?;
+                    barrier.wait();
+                    memory.projection_rebuild()
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            let report = handle
+                .join()
+                .expect("projection rebuilder thread completes")
+                .expect("concurrent projection rebuild succeeds");
+            assert!(report.status.in_sync);
+        }
+
+        let memory = MemoryEngine::open(&path).unwrap();
+        let validation = memory.projection_validate().unwrap();
+        assert!(validation.valid, "{:?}", validation.issues);
+        assert_eq!(validation.status.table_counts["claim"], 1);
+        assert_eq!(validation.status.table_counts["mentions"], 2);
+        assert_eq!(validation.status.table_counts["relates_to"], 1);
+        assert_eq!(validation.status.table_counts["supports"], 1);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn scoped_records_project_and_recall_after_reopen() {
         let path = temp_path("scoped_records_project_and_recall_after_reopen");
         let _ = fs::remove_file(&path);

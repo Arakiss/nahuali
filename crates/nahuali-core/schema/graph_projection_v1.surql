@@ -1,6 +1,8 @@
 DEFINE TABLE IF NOT EXISTS projection_checkpoint SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS projection_checkpoint_version_idx ON TABLE projection_checkpoint COLUMNS projection_version UNIQUE;
 
+DEFINE TABLE IF NOT EXISTS projection_rebuild_lock SCHEMALESS;
+
 DEFINE TABLE IF NOT EXISTS projection_error SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS projection_error_sequence_idx ON TABLE projection_error COLUMNS source_sequence;
 

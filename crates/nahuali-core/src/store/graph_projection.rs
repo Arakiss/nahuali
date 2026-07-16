@@ -2,6 +2,10 @@
 pub const GRAPH_PROJECTION_VERSION: u32 = 1;
 
 const GRAPH_PROJECTION_CHECKPOINT_ID: &str = "graph_v1";
+const GRAPH_PROJECTION_REBUILD_LOCK_ID: &str = "graph_v1";
+const GRAPH_PROJECTION_REBUILD_LEASE_MS: u64 = 120_000;
+const GRAPH_PROJECTION_REBUILD_WAIT_MS: u64 = 30_000;
+const GRAPH_PROJECTION_REBUILD_POLL_MS: u64 = 50;
 
 const PROJECTED_NODE_TABLES: &[&str] = &[
     "projection_checkpoint",
@@ -26,6 +30,32 @@ const PROJECTED_RELATION_TABLES: &[&str] = &[
     "supports",
     "relates_to",
     "intention_depends_on",
+];
+
+const PROJECTED_UNIQUE_INDEXES: &[(&str, &str)] = &[
+    ("projection_checkpoint", "projection_checkpoint_version_idx"),
+    ("memory_scope", "memory_scope_key_idx"),
+    ("source_record", "source_record_memory_id_idx"),
+    ("episode", "episode_memory_id_idx"),
+    ("episode", "episode_event_idx"),
+    ("entity", "entity_memory_id_idx"),
+    ("claim", "claim_memory_id_idx"),
+    ("claim", "claim_event_idx"),
+    ("procedure", "procedure_memory_id_idx"),
+    ("procedure", "procedure_event_idx"),
+    ("intention", "intention_memory_id_idx"),
+    ("intention", "intention_event_idx"),
+    ("health_signal", "health_signal_memory_id_idx"),
+    ("review_item", "review_item_memory_id_idx"),
+    ("review_decision", "review_decision_memory_id_idx"),
+    ("review_decision", "review_decision_event_idx"),
+    ("inferred_claim", "inferred_claim_memory_id_idx"),
+    ("contradiction", "contradiction_memory_id_idx"),
+    ("anomaly_alert", "anomaly_alert_memory_id_idx"),
+    ("mentions", "mentions_memory_id_idx"),
+    ("supports", "supports_memory_id_idx"),
+    ("relates_to", "relates_to_memory_id_idx"),
+    ("intention_depends_on", "intention_depends_on_memory_id_idx"),
 ];
 
 /// Table counts and checkpoint state for the SurrealDB graph projection.
@@ -187,9 +217,7 @@ impl MemoryEngine {
     /// Rebuild the SurrealDB graph projection from the authoritative ledger.
     pub fn projection_rebuild(&mut self) -> Result<GraphProjectionRebuildReport> {
         let path = self.path.clone();
-        let data = self.data.clone();
-        let events = self.events.clone();
-        block_on_database(async move { rebuild_graph_projection(&path, &data, &events).await })
+        block_on_database(async move { rebuild_graph_projection(&path).await })
     }
 
     /// Validate the SurrealDB graph projection without mutating it.
@@ -287,12 +315,30 @@ impl MemoryEngine {
     }
 }
 
-async fn rebuild_graph_projection(
+async fn rebuild_graph_projection(path: &Path) -> Result<GraphProjectionRebuildReport> {
+    let db = open_database(path).await?;
+    let lock_token = make_id("projection_rebuild");
+    acquire_graph_projection_rebuild_lock(path, &db, &lock_token).await?;
+    let rebuild = async {
+        let events = read_records(path).await?;
+        let data = projection::project(&events);
+        rebuild_graph_projection_locked(path, &data, &events, db.clone()).await
+    }
+    .await;
+    let release = release_graph_projection_rebuild_lock(path, &db, &lock_token).await;
+    match (rebuild, release) {
+        (Ok(report), Ok(())) => Ok(report),
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+    }
+}
+
+async fn rebuild_graph_projection_locked(
     path: &Path,
     data: &MemoryData,
     events: &[EventEnvelope],
+    db: DatabaseSession,
 ) -> Result<GraphProjectionRebuildReport> {
-    let db = open_database(path).await?;
     clear_graph_projection(path, &db).await?;
 
     let event_meta = event_meta(events);
@@ -820,6 +866,70 @@ async fn rebuild_graph_projection(
     })
 }
 
+async fn acquire_graph_projection_rebuild_lock(
+    path: &Path,
+    db: &DatabaseSession,
+    token: &str,
+) -> Result<()> {
+    let attempts = GRAPH_PROJECTION_REBUILD_WAIT_MS / GRAPH_PROJECTION_REBUILD_POLL_MS;
+    for attempt in 0..=attempts {
+        let now_ms = now_ms();
+        let expires_at_ms = now_ms.saturating_add(GRAPH_PROJECTION_REBUILD_LEASE_MS);
+        let mut response = db
+            .query_with_retry(
+                path,
+                format!(
+                    "UPSERT ONLY projection_rebuild_lock:{GRAPH_PROJECTION_REBUILD_LOCK_ID} \
+                     SET owner_token = $lease_token, expires_at_ms = $expires_at_ms \
+                     WHERE expires_at_ms = NONE OR expires_at_ms < $now_ms OR owner_token = $lease_token \
+                     RETURN AFTER"
+                ),
+                vec![
+                    ("lease_token".to_string(), serde_json::json!(token)),
+                    ("expires_at_ms".to_string(), serde_json::json!(expires_at_ms)),
+                    ("now_ms".to_string(), serde_json::json!(now_ms)),
+                ],
+            )
+            .await?;
+        let lock: Option<serde_json::Value> = response
+            .take(0)
+            .map_err(|source| database_error(path, source))?;
+        if lock
+            .as_ref()
+            .and_then(|lock| lock.get("owner_token"))
+            .and_then(serde_json::Value::as_str)
+            == Some(token)
+        {
+            return Ok(());
+        }
+        if attempt < attempts {
+            tokio::time::sleep(std::time::Duration::from_millis(
+                GRAPH_PROJECTION_REBUILD_POLL_MS,
+            ))
+            .await;
+        }
+    }
+    Err(NahualiError::GraphProjectionRebuildBusy {
+        timeout_ms: GRAPH_PROJECTION_REBUILD_WAIT_MS,
+    })
+}
+
+async fn release_graph_projection_rebuild_lock(
+    path: &Path,
+    db: &DatabaseSession,
+    token: &str,
+) -> Result<()> {
+    db.query_with_retry(
+        path,
+        format!(
+            "DELETE projection_rebuild_lock:{GRAPH_PROJECTION_REBUILD_LOCK_ID} WHERE owner_token = $lease_token"
+        ),
+        vec![("lease_token".to_string(), serde_json::json!(token))],
+    )
+    .await?;
+    Ok(())
+}
+
 async fn graph_projection_status(
     path: &Path,
     data: &MemoryData,
@@ -898,6 +1008,14 @@ async fn clear_graph_projection(path: &Path, db: &DatabaseSession) -> Result<()>
     {
         let query = format!("DELETE {table}");
         db.query_with_retry(path, query, Vec::new()).await?;
+    }
+    for (table, index) in PROJECTED_UNIQUE_INDEXES {
+        db.query_with_retry(
+            path,
+            format!("REBUILD INDEX {index} ON TABLE {table}"),
+            Vec::new(),
+        )
+        .await?;
     }
     Ok(())
 }
