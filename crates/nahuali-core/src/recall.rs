@@ -311,16 +311,84 @@ pub fn recall_projection_with_authority(
         return Err(NahualiError::EmptyQuery);
     }
 
+    let scope = options.scope.clone();
     let mut results = recall_with_options(data, query, options);
-    let health = KnowledgeHealth::inspect(data);
+    let store_health = KnowledgeHealth::inspect(data);
+    let store_authority = AuthorityDecision::evaluate(&store_health);
+    let scoped_data = scope.as_ref().map(|scope| data_for_scope(data, scope));
+    let authority_data = scoped_data.as_ref().unwrap_or(data);
+    let health = KnowledgeHealth::inspect(authority_data);
     let authority = AuthorityDecision::evaluate(&health);
-    attach_result_trust(data, &health, &mut results);
+    attach_result_trust(data, &store_health, &mut results);
 
     Ok(AuthorityRecall {
         results,
         authority,
         health,
+        store_authority,
+        store_health,
     })
+}
+
+fn data_for_scope(data: &MemoryData, scope: &MemoryScope) -> MemoryData {
+    let mut scoped = data.clone();
+    let matches = |item_scope: Option<&MemoryScope>| {
+        item_scope.is_some_and(|item_scope| item_scope.key == scope.key)
+    };
+    scoped.sources.retain(|item| matches(item.scope.as_ref()));
+    scoped.entities.retain(|item| matches(item.scope.as_ref()));
+    scoped.episodes.retain(|item| matches(item.scope.as_ref()));
+    scoped.claims.retain(|item| matches(item.scope.as_ref()));
+    scoped.links.retain(|item| matches(item.scope.as_ref()));
+    scoped
+        .procedures
+        .retain(|item| matches(item.scope.as_ref()));
+    scoped
+        .intentions
+        .retain(|item| matches(item.scope.as_ref()));
+    scoped
+        .review_decisions
+        .retain(|item| matches(item.scope.as_ref()));
+    scoped.repairs.retain(|item| matches(item.scope.as_ref()));
+    scoped.facts.retain(|item| matches(item.scope.as_ref()));
+    scoped.relations.retain(|item| matches(item.scope.as_ref()));
+
+    let mut event_ids = std::collections::BTreeSet::new();
+    for item in &scoped.sources {
+        event_ids.insert(item.event_id.clone());
+    }
+    for item in &scoped.entities {
+        event_ids.extend(item.source_event_ids.iter().cloned());
+    }
+    for item in &scoped.episodes {
+        event_ids.insert(item.event_id.clone());
+    }
+    for item in &scoped.claims {
+        event_ids.insert(item.event_id.clone());
+    }
+    for item in &scoped.links {
+        event_ids.insert(item.event_id.clone());
+    }
+    for item in &scoped.procedures {
+        event_ids.insert(item.event_id.clone());
+    }
+    for item in &scoped.intentions {
+        event_ids.insert(item.event_id.clone());
+        event_ids.insert(item.updated_event_id.clone());
+    }
+    for item in &scoped.review_decisions {
+        event_ids.insert(item.event_id.clone());
+    }
+    for item in &scoped.repairs {
+        event_ids.insert(item.event_id.clone());
+    }
+    scoped.event_count = event_ids.len();
+    scoped.last_event_id = data
+        .last_event_id
+        .as_ref()
+        .filter(|event_id| event_ids.contains(*event_id))
+        .cloned();
+    scoped
 }
 
 /// Whether an item created at `created_at_ms` falls inside the optional
@@ -692,7 +760,9 @@ mod tests {
         Claim, Episode, Link, MemoryData, MemoryKind, MemoryScope, MemoryScopeKind,
     };
 
-    use super::{RecallOptions, recall, recall_scoped, recall_with_options};
+    use super::{
+        RecallOptions, recall, recall_projection_with_authority, recall_scoped, recall_with_options,
+    };
 
     #[test]
     fn returns_episode_matches() {
@@ -987,6 +1057,108 @@ mod tests {
             results[0].scope.as_ref().map(|scope| &scope.key),
             Some(&project_scope.key)
         );
+    }
+
+    #[test]
+    fn scoped_authority_ignores_conflicts_from_another_scope() {
+        use crate::AuthorityMode;
+
+        let project_scope = MemoryScope::new(MemoryScopeKind::Project, "Nahuali").unwrap();
+        let other_scope = MemoryScope::new(MemoryScopeKind::Project, "Other").unwrap();
+        let fresh = u64::MAX / 2;
+        let data = MemoryData {
+            event_count: 6,
+            last_event_id: Some("event_other_claim_2".to_string()),
+            episodes: vec![
+                Episode {
+                    id: "episode_project".to_string(),
+                    event_id: "event_project_episode".to_string(),
+                    content: "Lena owns release notes.".to_string(),
+                    tags: Vec::new(),
+                    mentions: Vec::new(),
+                    source_id: None,
+                    source_position: None,
+                    source_role: None,
+                    scope: Some(project_scope.clone()),
+                    created_at_ms: fresh,
+                },
+                Episode {
+                    id: "episode_other_1".to_string(),
+                    event_id: "event_other_episode_1".to_string(),
+                    content: "Launch is Tuesday.".to_string(),
+                    tags: Vec::new(),
+                    mentions: Vec::new(),
+                    source_id: None,
+                    source_position: None,
+                    source_role: None,
+                    scope: Some(other_scope.clone()),
+                    created_at_ms: fresh,
+                },
+                Episode {
+                    id: "episode_other_2".to_string(),
+                    event_id: "event_other_episode_2".to_string(),
+                    content: "Launch is Friday.".to_string(),
+                    tags: Vec::new(),
+                    mentions: Vec::new(),
+                    source_id: None,
+                    source_position: None,
+                    source_role: None,
+                    scope: Some(other_scope.clone()),
+                    created_at_ms: fresh,
+                },
+            ],
+            claims: vec![
+                Claim {
+                    id: "claim_project".to_string(),
+                    event_id: "event_project_claim".to_string(),
+                    subject: "Lena".to_string(),
+                    predicate: "owns".to_string(),
+                    object: "release notes".to_string(),
+                    source_episode_id: Some("episode_project".to_string()),
+                    confidence: 0.9,
+                    scope: Some(project_scope.clone()),
+                    created_at_ms: fresh,
+                },
+                Claim {
+                    id: "claim_other_1".to_string(),
+                    event_id: "event_other_claim_1".to_string(),
+                    subject: "Launch".to_string(),
+                    predicate: "day".to_string(),
+                    object: "Tuesday".to_string(),
+                    source_episode_id: Some("episode_other_1".to_string()),
+                    confidence: 0.9,
+                    scope: Some(other_scope.clone()),
+                    created_at_ms: fresh,
+                },
+                Claim {
+                    id: "claim_other_2".to_string(),
+                    event_id: "event_other_claim_2".to_string(),
+                    subject: "Launch".to_string(),
+                    predicate: "day".to_string(),
+                    object: "Friday".to_string(),
+                    source_episode_id: Some("episode_other_2".to_string()),
+                    confidence: 0.9,
+                    scope: Some(other_scope),
+                    created_at_ms: fresh,
+                },
+            ],
+            ..MemoryData::default()
+        };
+
+        let report = recall_projection_with_authority(
+            &data,
+            "release notes",
+            RecallOptions {
+                scope: Some(project_scope),
+                ..RecallOptions::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.authority.mode, AuthorityMode::Advisory);
+        assert_eq!(report.store_authority.mode, AuthorityMode::Block);
+        assert_eq!(report.health.conflicting_fact_count, 0);
+        assert_eq!(report.store_health.conflicting_fact_count, 1);
     }
 
     #[test]

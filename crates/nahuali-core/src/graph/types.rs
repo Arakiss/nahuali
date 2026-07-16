@@ -34,6 +34,8 @@ pub struct MemoryGraphReport {
     pub event_count: usize,
     /// Projection-level authority decision.
     pub authority: AuthorityDecision,
+    /// Store-wide authority, independent of the returned graph neighborhood.
+    pub store_authority: AuthorityDecision,
     /// Aggregate graph counts.
     pub summary: MemoryGraphSummary,
     /// Nodes included in the traversed neighborhood.

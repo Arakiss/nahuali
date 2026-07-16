@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 use crate::inspection::{HealthSeverity, HealthSignalKind, KnowledgeHealth};
 use crate::model::RecallResult;
+
+const MAX_AUTHORITY_REASONS: usize = 10;
 
 /// Authority mode assigned to a memory answer.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -65,11 +68,18 @@ impl AuthorityDecision {
         let reasons = if health.signals.is_empty() {
             vec!["No health signals require attention.".to_string()]
         } else {
-            health
-                .signals
-                .iter()
-                .map(|signal| signal.message.clone())
-                .collect()
+            let mut reasons = Vec::new();
+            for signal in &health.signals {
+                if !reasons.contains(&signal.message) {
+                    reasons.push(signal.message.clone());
+                }
+            }
+            if reasons.len() > MAX_AUTHORITY_REASONS {
+                let remaining = reasons.len() - MAX_AUTHORITY_REASONS;
+                reasons.truncate(MAX_AUTHORITY_REASONS);
+                reasons.push(format!("{remaining} additional health reasons omitted."));
+            }
+            reasons
         };
         let mut signal_kinds = Vec::new();
         for signal in &health.signals {
@@ -86,6 +96,29 @@ impl AuthorityDecision {
             signal_kinds,
         }
     }
+
+    /// Evaluate only health signals connected to the evidence returned by one
+    /// query. Store-wide health remains available to callers separately.
+    pub fn evaluate_for_evidence(
+        health: &KnowledgeHealth,
+        evidence_ids: &BTreeSet<String>,
+    ) -> Self {
+        let mut focused = health.clone();
+        focused.signals.retain(|signal| {
+            !signal.evidence_ids.is_empty()
+                && signal
+                    .evidence_ids
+                    .iter()
+                    .any(|id| evidence_ids.contains(id))
+        });
+        focused.signal_count = focused.signals.len();
+        focused.warnings = focused
+            .signals
+            .iter()
+            .map(|signal| signal.message.clone())
+            .collect();
+        Self::evaluate(&focused)
+    }
 }
 
 /// Recall result paired with health and authority context.
@@ -97,10 +130,16 @@ pub struct AuthorityRecall {
     pub authority: AuthorityDecision,
     /// Health report used to produce the authority decision.
     pub health: KnowledgeHealth,
+    /// Store-wide authority, independent of query filters.
+    pub store_authority: AuthorityDecision,
+    /// Store-wide health, independent of query filters.
+    pub store_health: KnowledgeHealth,
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use crate::{HealthDimension, HealthSeverity, HealthSignal, HealthSignalKind, KnowledgeHealth};
 
     use super::{AuthorityDecision, AuthorityMode};
@@ -190,6 +229,45 @@ mod tests {
                 HealthSignalKind::UnsupportedFact,
                 HealthSignalKind::LowConfidenceFact
             ]
+        );
+    }
+
+    #[test]
+    fn evaluates_only_signals_connected_to_query_evidence() {
+        let mut blocking = signal(HealthSignalKind::ConflictingFact, HealthSeverity::High);
+        blocking.evidence_ids = vec!["other".to_string()];
+        let mut local = signal(HealthSignalKind::IsolatedEntity, HealthSeverity::Low);
+        local.evidence_ids = vec!["target".to_string()];
+        let health = health_with_signals(vec![blocking, local]);
+        let evidence = BTreeSet::from(["target".to_string()]);
+
+        let focused = AuthorityDecision::evaluate_for_evidence(&health, &evidence);
+
+        assert_eq!(focused.mode, AuthorityMode::Advisory);
+        assert_eq!(
+            AuthorityDecision::evaluate(&health).mode,
+            AuthorityMode::Block
+        );
+    }
+
+    #[test]
+    fn bounds_unique_authority_reasons() {
+        let signals = (0..12)
+            .map(|index| HealthSignal {
+                kind: HealthSignalKind::UnsupportedFact,
+                dimensions: vec![HealthDimension::UnsupportedMemory],
+                severity: HealthSeverity::Medium,
+                message: format!("reason {index}"),
+                evidence_ids: vec![format!("event_{index}")],
+            })
+            .collect();
+
+        let authority = AuthorityDecision::evaluate(&health_with_signals(signals));
+
+        assert_eq!(authority.reasons.len(), 11);
+        assert_eq!(
+            authority.reasons.last().unwrap(),
+            "2 additional health reasons omitted."
         );
     }
 

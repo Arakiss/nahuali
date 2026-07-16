@@ -327,8 +327,10 @@ pub struct HybridRecallReport {
     pub collection_name: String,
     /// Embedding provider used for the query vector.
     pub embedding: EmbeddingProviderConfig,
-    /// Projection-level authority decision used to contextualize recall.
+    /// Query/scope-level authority decision used to contextualize recall.
     pub authority: AuthorityDecision,
+    /// Store-wide authority, independent of query filters.
+    pub store_authority: AuthorityDecision,
     /// Lexical results considered before merging.
     pub lexical_results: Vec<RecallResult>,
     /// Semantic results returned by Qdrant before merging.

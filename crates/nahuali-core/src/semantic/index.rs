@@ -135,6 +135,7 @@ pub(crate) fn index_status(config: &SemanticConfig) -> Result<SemanticIndexStatu
     })
 }
 
+#[cfg(test)]
 pub(crate) fn hybrid_recall(
     data: &MemoryData,
     query: &str,
@@ -142,7 +143,15 @@ pub(crate) fn hybrid_recall(
     authority: AuthorityDecision,
     config: &SemanticConfig,
 ) -> Result<HybridRecallReport> {
-    hybrid_recall_with_options(data, query, limit, RecallOptions::default(), authority, config)
+    hybrid_recall_with_options(
+        data,
+        query,
+        limit,
+        RecallOptions::default(),
+        authority.clone(),
+        authority,
+        config,
+    )
 }
 
 pub(crate) fn hybrid_recall_with_options(
@@ -151,6 +160,7 @@ pub(crate) fn hybrid_recall_with_options(
     limit: usize,
     options: RecallOptions,
     authority: AuthorityDecision,
+    store_authority: AuthorityDecision,
     config: &SemanticConfig,
 ) -> Result<HybridRecallReport> {
     let embedder = config.embedder()?;
@@ -213,6 +223,7 @@ pub(crate) fn hybrid_recall_with_options(
         collection_name: config.collection_name.clone(),
         embedding,
         authority,
+        store_authority,
         lexical_results,
         semantic_results,
         results,

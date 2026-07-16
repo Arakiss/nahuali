@@ -98,10 +98,31 @@ impl MemoryEngine {
             return Err(NahualiError::EmptyQuery);
         }
 
-        let authority = self.authority();
-        let mut report = semantic::hybrid_recall(&self.data, query, limit.max(1), authority, config)?;
-        let health = self.inspect();
-        recall::attach_hybrid_result_trust(&self.data, &health, &mut report.results);
+        let context = recall::recall_projection_with_authority(
+            &self.data,
+            query,
+            RecallOptions {
+                limit,
+                ..RecallOptions::default()
+            },
+        )?;
+        let mut report = semantic::hybrid_recall_with_options(
+            &self.data,
+            query,
+            limit.max(1),
+            RecallOptions {
+                limit,
+                ..RecallOptions::default()
+            },
+            context.authority,
+            context.store_authority,
+            config,
+        )?;
+        recall::attach_hybrid_result_trust(
+            &self.data,
+            &context.store_health,
+            &mut report.results,
+        );
         Ok(report)
     }
 
@@ -117,12 +138,21 @@ impl MemoryEngine {
         }
 
         let limit = options.limit.max(1);
-        let authority = self.authority();
+        let context = recall::recall_projection_with_authority(&self.data, query, options.clone())?;
         let mut report = semantic::hybrid_recall_with_options(
-            &self.data, query, limit, options, authority, config,
+            &self.data,
+            query,
+            limit,
+            options,
+            context.authority,
+            context.store_authority,
+            config,
         )?;
-        let health = self.inspect();
-        recall::attach_hybrid_result_trust(&self.data, &health, &mut report.results);
+        recall::attach_hybrid_result_trust(
+            &self.data,
+            &context.store_health,
+            &mut report.results,
+        );
         Ok(report)
     }
 
