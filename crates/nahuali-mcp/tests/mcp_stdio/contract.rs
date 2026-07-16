@@ -271,6 +271,16 @@ fn assert_key_output_shapes(tools: &[Value]) {
         has_property(integrity, "verified"),
         "audit integrity view must declare `verified`"
     );
+    assert!(
+        has_property(integrity, "chain_status"),
+        "audit integrity view must declare `chain_status`"
+    );
+    let chain_status = resolve(audit, &integrity["properties"]["chain_status"]);
+    assert_eq!(
+        chain_status["enum"],
+        json!(["empty", "verified", "legacy", "broken"]),
+        "chain_status must remain a closed wire enum"
+    );
     let entry = resolve(audit, &audit["properties"]["entries"]);
     for field in ["sequence", "kind", "summary"] {
         assert!(
@@ -297,6 +307,10 @@ fn assert_key_output_shapes(tools: &[Value]) {
     assert!(
         has_property(trust_integrity, "ledger_verified"),
         "trust_report integrity view must declare `ledger_verified`"
+    );
+    assert!(
+        has_property(trust_integrity, "chain_status"),
+        "trust_report integrity view must declare `chain_status`"
     );
 }
 

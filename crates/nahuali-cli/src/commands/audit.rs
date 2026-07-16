@@ -176,14 +176,7 @@ fn print_human_report(report: &LedgerAudit) {
         }
     );
     #[cfg(feature = "tamper-evidence")]
-    print!(
-        ", chain {}",
-        if report.integrity.chain_intact {
-            "intact"
-        } else {
-            "broken"
-        }
-    );
+    print!(", chain {}", report.integrity.chain_status.as_str());
     println!(")");
     #[cfg(feature = "tamper-evidence")]
     if let Some(root) = &report.integrity.merkle_root {
@@ -250,43 +243,50 @@ fn ok_or_bad(value: bool) -> &'static str {
     if value { "ok" } else { "bad" }
 }
 
-/// Resolve the exclusive lower bound from a signed attestation receipt: verify it
-/// anchors a genuine checkpoint in this ledger's history, then return its
-/// sequence. Exits non-zero when the receipt does not anchor a verified
-/// checkpoint, so an audit can never claim to diff from an unverified point.
+/// Resolve the exclusive lower bound from a signed attestation receipt: verify
+/// its history and require an active signing key in the operator-held keyring,
+/// then return its sequence. An audit can never claim to diff from a checkpoint
+/// whose signer was merely embedded in the supplied receipt.
 #[cfg(feature = "attestation")]
 pub(crate) fn resolve_attestation_anchor(
     memory: &MemoryEngine,
     path: &std::path::Path,
+    keyring_path: &std::path::Path,
     json: bool,
 ) -> anyhow::Result<u64> {
     use anyhow::Context;
-    use nahuali_core::LedgerAttestation;
+    use nahuali_core::{AttestationKeyring, LedgerAttestation};
 
     let raw = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read attestation {}", path.display()))?;
     let attestation: LedgerAttestation = serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse attestation {}", path.display()))?;
-    let verdict = memory.verify_attested_checkpoint(&attestation)?;
+    let keyring_raw = std::fs::read_to_string(keyring_path)
+        .with_context(|| format!("failed to read keyring {}", keyring_path.display()))?;
+    let keyring: AttestationKeyring = serde_json::from_str(&keyring_raw)
+        .with_context(|| format!("failed to parse keyring {}", keyring_path.display()))?;
+    let verdict = memory.verify_attested_checkpoint_with_keyring(&attestation, &keyring)?;
 
     if !json {
         println!(
             "Anchor: signed checkpoint at seq {} ({})",
             verdict.sequence,
-            if verdict.anchored {
-                "verified"
+            if verdict.is_trusted() {
+                "trusted"
             } else {
-                "NOT verified"
+                "NOT trusted"
             }
         );
     }
 
-    if !verdict.anchored {
+    if !verdict.is_trusted() {
         anyhow::bail!(
-            "the attestation does not anchor a verified checkpoint in this ledger \
-             (signature_valid={}, matches_history={})",
+            "the attestation does not anchor a trusted checkpoint in this ledger \
+             (signature_valid={}, matches_history={}, key_trusted={}, key_revoked={})",
             verdict.signature_valid,
-            verdict.matches_history
+            verdict.matches_history,
+            verdict.key_trusted,
+            verdict.key_revoked
         );
     }
     Ok(verdict.sequence)

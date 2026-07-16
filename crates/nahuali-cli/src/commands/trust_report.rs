@@ -1,6 +1,8 @@
 use std::path::Path;
 
 use anyhow::Context;
+#[cfg(feature = "attestation")]
+use nahuali_core::{AttestationKeyring, TrustAttestationEvaluation};
 use nahuali_core::{MemoryEngine, MemoryTrustReport, TrustReportOptions};
 
 use crate::output;
@@ -33,6 +35,16 @@ pub(crate) fn trust_report(
 
     if !report.integrity.ledger_verified {
         anyhow::bail!("memory trust report failed ledger integrity verification");
+    }
+    #[cfg(feature = "attestation")]
+    if report
+        .attestation
+        .as_ref()
+        .is_some_and(|evaluation| !evaluation.trusted)
+    {
+        anyhow::bail!(
+            "supplied attestation is not trusted; verify it with an active operator keyring"
+        );
     }
     Ok(())
 }
@@ -80,14 +92,7 @@ fn print_human(report: &MemoryTrustReport) {
         }
     );
     #[cfg(feature = "tamper-evidence")]
-    print!(
-        ", chain {}",
-        if integrity.chain_intact {
-            "intact"
-        } else {
-            "broken"
-        }
-    );
+    print!(", chain {}", integrity.chain_status.as_str());
     println!(")");
     #[cfg(feature = "tamper-evidence")]
     if let Some(tip) = &integrity.chain_tip {
@@ -107,15 +112,12 @@ fn print_human(report: &MemoryTrustReport) {
     );
 
     #[cfg(feature = "attestation")]
-    if let Some(verdict) = &report.attestation {
+    if let Some(evaluation) = &report.attestation {
         println!(
-            "Attestation: checkpoint at sequence {} {}",
-            verdict.sequence,
-            if verdict.anchored {
-                "anchored"
-            } else {
-                "NOT anchored"
-            }
+            "Attestation: {} at sequence {} · {}",
+            evaluation.format,
+            evaluation.sequence,
+            attestation_label(evaluation)
         );
     }
 
@@ -246,12 +248,13 @@ fn render_html(report: &MemoryTrustReport) -> String {
     #[cfg(feature = "tamper-evidence")]
     trust_rows.push_str(&row(
         "Hash chain",
-        if integrity.chain_intact {
-            "intact"
-        } else {
-            "broken"
+        integrity.chain_status.as_str(),
+        match integrity.chain_status {
+            nahuali_core::LedgerChainStatus::Empty => None,
+            nahuali_core::LedgerChainStatus::Verified => Some(true),
+            nahuali_core::LedgerChainStatus::Legacy => None,
+            nahuali_core::LedgerChainStatus::Broken => Some(false),
         },
-        Some(integrity.chain_intact),
     ));
 
     let mut history_rows = String::new();
@@ -261,15 +264,11 @@ fn render_html(report: &MemoryTrustReport) -> String {
         Some(integrity.ledger_verified),
     ));
     #[cfg(feature = "attestation")]
-    if let Some(verdict) = &report.attestation {
+    if let Some(evaluation) = &report.attestation {
         history_rows.push_str(&row(
             "Signed checkpoint",
-            if verdict.anchored {
-                "anchored"
-            } else {
-                "NOT anchored"
-            },
-            Some(verdict.anchored),
+            attestation_label(evaluation),
+            Some(evaluation.trusted),
         ));
     }
 
@@ -354,4 +353,35 @@ pub(crate) fn read_attestation(
         .with_context(|| format!("failed to read attestation {}", path.display()))?;
     serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse attestation {}", path.display()))
+}
+
+/// Read an operator-held trusted-key ring for fail-closed report evaluation.
+#[cfg(feature = "attestation")]
+pub(crate) fn read_keyring(path: &std::path::Path) -> anyhow::Result<AttestationKeyring> {
+    use anyhow::Context;
+
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read keyring {}", path.display()))?;
+    serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse keyring {}", path.display()))
+}
+
+#[cfg(feature = "attestation")]
+fn attestation_label(evaluation: &TrustAttestationEvaluation) -> &'static str {
+    if evaluation.trusted {
+        "TRUSTED"
+    } else if evaluation.rejection.is_some() {
+        "REJECTED"
+    } else if evaluation.signer_revoked == Some(true) {
+        "REVOKED"
+    } else if evaluation.signer_authorized == Some(false) {
+        "UNAUTHORIZED"
+    } else if evaluation.signer_authorized.is_none()
+        && evaluation.signature_valid
+        && evaluation.matches_history
+    {
+        "SELF-SIGNED · KEY NOT CHECKED"
+    } else {
+        "NOT TRUSTED"
+    }
 }

@@ -45,14 +45,28 @@ pub struct Signal {
     pub color: Rgb,
 }
 
+/// The hash-chain state shown independently from content authority.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LedgerStatus {
+    /// The ledger has no records yet.
+    Empty,
+    /// Every record is chained and every link matches.
+    Verified,
+    /// The ledger contains compatible history from before hash chaining.
+    Legacy,
+    /// A recorded link does not match its predecessor.
+    Broken,
+    /// The binary was built without tamper evidence.
+    Unavailable,
+}
+
 /// The ledger's tamper-evidence posture — Nahuali's core differentiator,
-/// surfaced honestly: `chain_intact` + a `merkle_root` only when the binary was
-/// built with the hash-chain feature; otherwise it is an append-only,
-/// checksummed, replay-verified ledger without the cryptographic chain.
+/// surfaced independently from the content authority verdict.
 pub struct Integrity {
-    pub verified: bool,
     pub records: usize,
-    pub chain_intact: bool,
+    pub checksums_valid: bool,
+    pub sequence_contiguous: bool,
+    pub status: LedgerStatus,
     pub merkle_root: Option<String>,
 }
 
@@ -404,15 +418,10 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(header, area);
 }
 
-/// The integrity line — Nahuali's differentiator, stated honestly: a green
-/// `tamper-evident · merkle …` when the ledger is hash-chained, or an amber
-/// `append-only · hash chain off` when this build lacks the chain feature.
+/// The integrity line keeps a fully chained ledger, legacy unchained history,
+/// a broken chain, and a build without tamper evidence visibly distinct.
 fn integrity_line(integrity: &Integrity) -> Line<'static> {
-    let (verdict, verdict_color) = if integrity.verified {
-        ("\u{2713} verified", theme::GREEN)
-    } else {
-        ("\u{2717} unverified", theme::RED)
-    };
+    let (verdict, verdict_color) = ledger_badge(integrity);
     let mut spans = vec![
         Span::styled(" Ledger ", Style::default().fg(color(theme::INK_FAINT))),
         Span::styled(
@@ -426,18 +435,63 @@ fn integrity_line(integrity: &Integrity) -> Line<'static> {
             Style::default().fg(color(theme::INK_FAINT)),
         ),
     ];
-    match &integrity.merkle_root {
-        Some(root) => {
+    if !integrity.checksums_valid {
+        spans.push(Span::styled(
+            "checksum mismatch",
+            Style::default().fg(color(theme::RED)),
+        ));
+    } else if !integrity.sequence_contiguous {
+        spans.push(Span::styled(
+            "sequence gap or reordering",
+            Style::default().fg(color(theme::RED)),
+        ));
+    } else if integrity.status == LedgerStatus::Verified
+        && integrity.records > 0
+        && integrity.merkle_root.is_none()
+    {
+        spans.push(Span::styled(
+            "Merkle commitment unavailable",
+            Style::default().fg(color(theme::RED)),
+        ));
+    } else {
+        append_integrity_detail(&mut spans, integrity);
+    }
+    Line::from(spans)
+}
+
+fn ledger_badge(integrity: &Integrity) -> (&'static str, Rgb) {
+    if !integrity.checksums_valid
+        || !integrity.sequence_contiguous
+        || (integrity.status == LedgerStatus::Verified
+            && integrity.records > 0
+            && integrity.merkle_root.is_none())
+    {
+        return ("\u{2717} FAILED", theme::RED);
+    }
+
+    match integrity.status {
+        LedgerStatus::Empty => ("o EMPTY", theme::INK_DIM),
+        LedgerStatus::Verified => ("\u{2713} VERIFIED", theme::GREEN),
+        LedgerStatus::Legacy => ("! LEGACY", theme::AMBER),
+        LedgerStatus::Broken => ("\u{2717} BROKEN", theme::RED),
+        LedgerStatus::Unavailable => ("! CHECKSUMMED", theme::AMBER),
+    }
+}
+
+fn append_integrity_detail(spans: &mut Vec<Span<'static>>, integrity: &Integrity) {
+    match (integrity.status, &integrity.merkle_root) {
+        (LedgerStatus::Empty, _) => {
+            spans.push(Span::styled(
+                "no records · hash chain ready",
+                Style::default().fg(color(theme::INK_DIM)),
+            ));
+        }
+        (LedgerStatus::Verified, Some(root)) => {
             let short: String = root.chars().take(10).collect();
-            let chain_color = if integrity.chain_intact {
-                theme::GREEN
-            } else {
-                theme::RED
-            };
             spans.push(Span::styled(
                 "tamper-evident",
                 Style::default()
-                    .fg(color(chain_color))
+                    .fg(color(theme::GREEN))
                     .add_modifier(Modifier::BOLD),
             ));
             spans.push(Span::styled(
@@ -445,9 +499,27 @@ fn integrity_line(integrity: &Integrity) -> Line<'static> {
                 Style::default().fg(color(theme::INK_FAINT)),
             ));
         }
-        None => {
+        (LedgerStatus::Verified, None) => {
             spans.push(Span::styled(
-                "append-only",
+                "empty · hash chain ready",
+                Style::default().fg(color(theme::INK_DIM)),
+            ));
+        }
+        (LedgerStatus::Legacy, _) => {
+            spans.push(Span::styled(
+                "checksummed · unchained history",
+                Style::default().fg(color(theme::AMBER)),
+            ));
+        }
+        (LedgerStatus::Broken, _) => {
+            spans.push(Span::styled(
+                "hash chain mismatch",
+                Style::default().fg(color(theme::RED)),
+            ));
+        }
+        (LedgerStatus::Unavailable, _) => {
+            spans.push(Span::styled(
+                "per-record integrity",
                 Style::default().fg(color(theme::INK_DIM)),
             ));
             spans.push(Span::styled(
@@ -456,7 +528,6 @@ fn integrity_line(integrity: &Integrity) -> Line<'static> {
             ));
         }
     }
-    Line::from(spans)
 }
 
 fn item_list(items: &[&Item], title_width: usize, filter_label: &str) -> List<'static> {
@@ -674,10 +745,15 @@ mod tests {
             store_trust_color: theme::GREEN,
             store_trust_score: 1.0,
             integrity: Integrity {
-                verified: true,
                 records: n,
-                chain_intact: true,
-                merkle_root: None,
+                checksums_valid: true,
+                sequence_contiguous: true,
+                status: if n == 0 {
+                    LedgerStatus::Empty
+                } else {
+                    LedgerStatus::Verified
+                },
+                merkle_root: (n > 0).then(|| "a".repeat(64)),
             },
             items: (0..n).map(|i| item(&format!("episode{i}"))).collect(),
             signals: Vec::new(),
@@ -720,10 +796,11 @@ mod tests {
             store_trust_color: theme::BLUE,
             store_trust_score: 0.75,
             integrity: Integrity {
-                verified: true,
                 records: 4,
-                chain_intact: true,
-                merkle_root: None,
+                checksums_valid: true,
+                sequence_contiguous: true,
+                status: LedgerStatus::Verified,
+                merkle_root: Some("b".repeat(64)),
             },
             items: vec![
                 item("episode"),
@@ -827,6 +904,42 @@ mod tests {
         assert!(!text.contains("calm"));
         assert!(text.contains("nahuali explore"), "header still renders");
         assert!(text.contains("memory"), "list pane still renders");
+    }
+
+    #[test]
+    fn ledger_header_distinguishes_every_ledger_state() {
+        let cases = [
+            (LedgerStatus::Empty, "EMPTY"),
+            (LedgerStatus::Verified, "VERIFIED"),
+            (LedgerStatus::Legacy, "LEGACY"),
+            (LedgerStatus::Broken, "BROKEN"),
+            (LedgerStatus::Unavailable, "CHECKSUMMED"),
+        ];
+
+        for (status, expected) in cases {
+            let mut state = snapshot(1);
+            state.integrity.status = status;
+            let mut app = App::new(state);
+            let text = text_of(&render_cockpit(&mut app, 120, 40));
+            assert!(
+                text.contains(expected),
+                "ledger status {status:?} must render as {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn checksum_or_sequence_failure_dominates_a_legacy_chain_label() {
+        for (checksums_valid, sequence_contiguous) in [(false, true), (true, false)] {
+            let mut state = snapshot(1);
+            state.integrity.status = LedgerStatus::Legacy;
+            state.integrity.checksums_valid = checksums_valid;
+            state.integrity.sequence_contiguous = sequence_contiguous;
+            let mut app = App::new(state);
+            let text = text_of(&render_cockpit(&mut app, 120, 40));
+            assert!(text.contains("FAILED"));
+            assert!(!text.contains("Ledger ! LEGACY"));
+        }
     }
 
     #[test]

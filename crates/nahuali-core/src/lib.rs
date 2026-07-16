@@ -83,9 +83,11 @@ pub use arp::{ARP_REPORT_VERSION, ArpCase, ArpReport, run_arp};
 pub use attestation::{
     AttestationKey, AttestationKeyStatus, AttestationKeyring, AttestationVerdict,
     AttestedCheckpointVerdict, LEDGER_ATTESTATION_ALGORITHM, LEDGER_ATTESTATION_VERSION,
-    LedgerAttestation, TrustedAttestationVerdict, sign_chain_tip, verify_attestation_with_keyring,
-    verify_chain_tip,
+    LedgerAttestation, TrustedAttestationVerdict, TrustedAttestedCheckpointVerdict, sign_chain_tip,
+    verify_attestation_with_keyring, verify_chain_tip,
 };
+#[cfg(feature = "tamper-evidence")]
+pub use audit::LedgerChainStatus;
 pub use audit::{
     LedgerAudit, LedgerAuditCounts, LedgerAuditEntry, LedgerAuditEventKind, LedgerAuditIntegrity,
     LedgerAuditOptions, audit_events,
@@ -227,6 +229,8 @@ pub use trust_report::{
     MEMORY_TRUST_REPORT_VERSION, MemoryTrustReport, TrustIntegrity, TrustKnowledge,
     TrustReportOptions,
 };
+#[cfg(feature = "attestation")]
+pub use trust_report::{TRUST_ATTESTATION_FORMAT_V1, TrustAttestationEvaluation};
 /// Compatibility alias for the initial pre-release memory engine name.
 ///
 /// New Rust callers should use [`MemoryEngine`]. This alias exists so existing

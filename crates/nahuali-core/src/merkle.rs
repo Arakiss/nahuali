@@ -45,7 +45,10 @@ pub struct MerkleSibling {
 pub struct MerkleProof {
     /// Zero-based index of the proven leaf within the committed list.
     pub index: usize,
-    /// Total number of leaves committed under the root.
+    /// Declared total number of leaves used to validate the proof topology.
+    /// `nahuali-merkle-v1` roots do not independently authenticate this
+    /// metadata when two sizes yield the same path; pair the proof with a
+    /// signed checkpoint before treating the size as authoritative.
     pub leaf_count: usize,
     /// Sibling hashes from the leaf up to the root, in bottom-up order.
     pub siblings: Vec<MerkleSibling>,
@@ -116,16 +119,52 @@ pub fn merkle_proof(leaves: &[String], index: usize) -> Option<MerkleProof> {
 }
 
 /// Verify that `leaf` is committed under `root` using `proof`.
+///
+/// This strictly validates index range, path topology, sibling directions and
+/// path length. A bare v1 root still does not authenticate size metadata when
+/// two declared trees share the same topology; a signed checkpoint supplies
+/// that external binding.
 pub fn verify_merkle_proof(leaf: &str, proof: &MerkleProof, root: &str) -> bool {
-    let mut computed = leaf_hash(leaf);
-    for sibling in &proof.siblings {
-        computed = if sibling.on_right {
-            node_hash(&computed, &sibling.hash)
-        } else {
-            node_hash(&sibling.hash, &computed)
-        };
+    if proof.leaf_count == 0
+        || proof.index >= proof.leaf_count
+        || !is_sha256_hex(root)
+        || proof
+            .siblings
+            .iter()
+            .any(|sibling| !is_sha256_hex(&sibling.hash))
+    {
+        return false;
     }
-    computed == root
+
+    let mut computed = leaf_hash(leaf);
+    let mut index = proof.index;
+    let mut level_width = proof.leaf_count;
+    let mut siblings = proof.siblings.iter();
+
+    while level_width > 1 {
+        let is_right_child = index % 2 == 1;
+        let has_right_sibling = !is_right_child && index + 1 < level_width;
+
+        if is_right_child || has_right_sibling {
+            let Some(sibling) = siblings.next() else {
+                return false;
+            };
+            let expected_on_right = has_right_sibling;
+            if sibling.on_right != expected_on_right {
+                return false;
+            }
+            computed = if expected_on_right {
+                node_hash(&computed, &sibling.hash)
+            } else {
+                node_hash(&sibling.hash, &computed)
+            };
+        }
+
+        index /= 2;
+        level_width = level_width.div_ceil(2);
+    }
+
+    siblings.next().is_none() && computed == root
 }
 
 /// Merkle root over a chained ledger's per-event chain hashes.
@@ -245,6 +284,10 @@ fn encode_hex(bytes: &[u8]) -> String {
     hex
 }
 
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -307,6 +350,65 @@ mod tests {
 
         assert!(verify_merkle_proof(&leaves[2], &proof, &root));
         assert!(!verify_merkle_proof("tampered value", &proof, &root));
+    }
+
+    #[test]
+    fn proof_rejects_a_tampered_index_or_tree_shape() {
+        let leaves = leaves(5);
+        let root = merkle_root(&leaves).expect("root");
+        let proof = merkle_proof(&leaves, 4).expect("proof");
+
+        let mut wrong_index = proof.clone();
+        wrong_index.index = 3;
+        assert!(!verify_merkle_proof(&leaves[4], &wrong_index, &root));
+
+        let mut impossible_size = proof.clone();
+        impossible_size.leaf_count = 4;
+        assert!(!verify_merkle_proof(&leaves[4], &impossible_size, &root));
+
+        let mut different_shape = proof.clone();
+        different_shape.leaf_count = 6;
+        assert!(!verify_merkle_proof(&leaves[4], &different_shape, &root));
+    }
+
+    #[test]
+    fn a_bare_v1_root_does_not_authenticate_ambiguous_size_metadata() {
+        let leaves = leaves(3);
+        let root = merkle_root(&leaves).expect("root");
+        let mut proof = merkle_proof(&leaves, 2).expect("proof");
+
+        // The right-most leaf in a three-leaf promoted-odd tree has the same
+        // path shape as index one in a two-leaf tree. The root authenticates
+        // the leaf and path, not this standalone metadata; SignedCheckpoint v2
+        // binds the authoritative size.
+        proof.index = 1;
+        proof.leaf_count = 2;
+        assert!(verify_merkle_proof(&leaves[2], &proof, &root));
+    }
+
+    #[test]
+    fn proof_rejects_a_tampered_path_shape_or_hash() {
+        let leaves = leaves(7);
+        let root = merkle_root(&leaves).expect("root");
+        let proof = merkle_proof(&leaves, 2).expect("proof");
+
+        let mut wrong_direction = proof.clone();
+        wrong_direction.siblings[0].on_right = !wrong_direction.siblings[0].on_right;
+        assert!(!verify_merkle_proof(&leaves[2], &wrong_direction, &root));
+
+        let mut missing_node = proof.clone();
+        missing_node.siblings.pop();
+        assert!(!verify_merkle_proof(&leaves[2], &missing_node, &root));
+
+        let mut extra_node = proof.clone();
+        extra_node.siblings.push(proof.siblings[0].clone());
+        assert!(!verify_merkle_proof(&leaves[2], &extra_node, &root));
+
+        let mut malformed_hash = proof.clone();
+        malformed_hash.siblings[0].hash = "not-a-sha256-hash".to_string();
+        assert!(!verify_merkle_proof(&leaves[2], &malformed_hash, &root));
+
+        assert!(!verify_merkle_proof(&leaves[2], &proof, "not-a-root"));
     }
 
     #[test]

@@ -2,6 +2,8 @@ use nahuali_core::{MemoryTrustReport, TrustIntegrity, TrustKnowledge};
 use rmcp::schemars;
 use serde::Serialize;
 
+#[cfg(feature = "tamper-evidence")]
+use super::LedgerChainStatusView;
 use super::{AuthorityDecisionView, HealthView};
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -66,6 +68,8 @@ pub(crate) struct TrustIntegrityView {
     #[cfg(feature = "tamper-evidence")]
     chain_intact: bool,
     #[cfg(feature = "tamper-evidence")]
+    chain_status: LedgerChainStatusView,
+    #[cfg(feature = "tamper-evidence")]
     #[serde(skip_serializing_if = "Option::is_none")]
     chain_tip: Option<String>,
     #[cfg(feature = "tamper-evidence")]
@@ -81,6 +85,8 @@ impl From<TrustIntegrity> for TrustIntegrityView {
             sequence_contiguous: integrity.sequence_contiguous,
             #[cfg(feature = "tamper-evidence")]
             chain_intact: integrity.chain_intact,
+            #[cfg(feature = "tamper-evidence")]
+            chain_status: integrity.chain_status.into(),
             #[cfg(feature = "tamper-evidence")]
             chain_tip: integrity.chain_tip,
             #[cfg(feature = "tamper-evidence")]

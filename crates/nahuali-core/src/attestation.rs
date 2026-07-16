@@ -116,6 +116,14 @@ pub fn sign_chain_tip(seed_hex: &str, sequence: u64, tip: &str) -> Result<Ledger
 /// public key. A moved tip or a tampered field yields `false`; malformed key,
 /// signature, or algorithm fields are reported as errors.
 pub fn verify_chain_tip(attestation: &LedgerAttestation, sequence: u64, tip: &str) -> Result<bool> {
+    if attestation.version != LEDGER_ATTESTATION_VERSION {
+        return Err(NahualiError::Attestation {
+            message: format!(
+                "unsupported attestation version {}, expected {}",
+                attestation.version, LEDGER_ATTESTATION_VERSION
+            ),
+        });
+    }
     if attestation.algorithm != LEDGER_ATTESTATION_ALGORITHM {
         return Err(NahualiError::Attestation {
             message: format!(
@@ -143,8 +151,9 @@ pub fn verify_chain_tip(attestation: &LedgerAttestation, sequence: u64, tip: &st
         .is_ok())
 }
 
-/// Verdict for whether a signed attestation anchors a point in this ledger's
-/// own history, so an audit can diff changes since a trusted checkpoint.
+/// Verdict for whether a self-signed attestation matches a point in this
+/// ledger's own history. This establishes internal consistency, not signer
+/// authority; authorization boundaries must use an operator-held keyring.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AttestedCheckpointVerdict {
     /// The signature over the attested `(sequence, tip)` pair verifies.
@@ -152,11 +161,36 @@ pub struct AttestedCheckpointVerdict {
     /// This ledger's chain hash at the attested sequence equals the attested tip,
     /// so the checkpoint and the history up to it are unchanged.
     pub matches_history: bool,
-    /// The checkpoint is genuine: the signature verifies and it sits in this
-    /// ledger's unaltered history.
+    /// The self-signed checkpoint is internally consistent: the signature
+    /// verifies and it sits in this ledger's unaltered history. This does not
+    /// authorize the signing key; callers that need an external trust anchor
+    /// must also check an operator-held keyring.
     pub anchored: bool,
     /// The attested sequence the checkpoint anchors.
     pub sequence: u64,
+}
+
+/// Historical-checkpoint verdict that also applies an operator-held root of
+/// trust to the receipt's signing key.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustedAttestedCheckpointVerdict {
+    /// The signature over the attested `(sequence, tip)` pair verifies.
+    pub signature_valid: bool,
+    /// The checkpoint matches this ledger's history at the attested sequence.
+    pub matches_history: bool,
+    /// The signing key is present and active in the operator keyring.
+    pub key_trusted: bool,
+    /// The signing key is explicitly revoked in the operator keyring.
+    pub key_revoked: bool,
+    /// Sequence number of the historical checkpoint.
+    pub sequence: u64,
+}
+
+impl TrustedAttestedCheckpointVerdict {
+    /// Whether history, signature, and external signer authorization all pass.
+    pub fn is_trusted(&self) -> bool {
+        self.signature_valid && self.matches_history && self.key_trusted && !self.key_revoked
+    }
 }
 
 impl MemoryEngine {
@@ -201,11 +235,12 @@ impl MemoryEngine {
         })
     }
 
-    /// Check whether an attestation anchors a verified checkpoint in this
+    /// Check whether a self-signed attestation matches a checkpoint in this
     /// ledger's own history, rather than only the current tip. Unlike
     /// [`Self::verify_chain_tip_attestation`], the attested sequence need not be
-    /// the latest event: the audit path uses this to diff changes appended since
-    /// a past signed checkpoint, only when that checkpoint is genuine.
+    /// the latest event. This does not authorize the embedded key; callers that
+    /// make trust decisions must use
+    /// [`Self::verify_attested_checkpoint_with_keyring`].
     pub fn verify_attested_checkpoint(
         &self,
         attestation: &LedgerAttestation,
@@ -224,6 +259,25 @@ impl MemoryEngine {
             matches_history,
             anchored: signature_valid && matches_history,
             sequence: attestation.sequence,
+        })
+    }
+
+    /// Verify a historical receipt against this ledger and an operator-held
+    /// keyring. Unlike [`Self::verify_attested_checkpoint`], this result can be
+    /// used as an authorization boundary because the receipt's embedded key is
+    /// not allowed to establish trust by itself.
+    pub fn verify_attested_checkpoint_with_keyring(
+        &self,
+        attestation: &LedgerAttestation,
+        keyring: &AttestationKeyring,
+    ) -> Result<TrustedAttestedCheckpointVerdict> {
+        let checkpoint = self.verify_attested_checkpoint(attestation)?;
+        Ok(TrustedAttestedCheckpointVerdict {
+            signature_valid: checkpoint.signature_valid,
+            matches_history: checkpoint.matches_history,
+            key_trusted: keyring.authorizes(&attestation.public_key),
+            key_revoked: keyring.is_revoked(&attestation.public_key),
+            sequence: checkpoint.sequence,
         })
     }
 
@@ -446,6 +500,10 @@ mod tests {
         let mut wrong_algorithm = attestation.clone();
         wrong_algorithm.algorithm = "rsa".to_string();
         assert!(verify_chain_tip(&wrong_algorithm, 1, "abcd").is_err());
+
+        let mut wrong_version = attestation;
+        wrong_version.version += 1;
+        assert!(verify_chain_tip(&wrong_version, 1, "abcd").is_err());
     }
 
     fn rotated_seed() -> String {
@@ -528,5 +586,69 @@ mod tests {
                 .unwrap()
                 .is_trusted()
         );
+    }
+
+    #[test]
+    fn historical_checkpoint_requires_an_active_operator_key() {
+        let path = temp_store("historical_checkpoint_keyring");
+        let _ = std::fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).expect("open test store");
+        memory
+            .remember("Hrafn retains the release decision.", vec![])
+            .expect("record episode");
+        let receipt = memory
+            .attest_chain_tip(&"01".repeat(32))
+            .expect("sign checkpoint")
+            .expect("non-empty ledger");
+
+        let unknown = memory
+            .verify_attested_checkpoint_with_keyring(&receipt, &AttestationKeyring::default())
+            .expect("evaluate unknown key");
+        assert!(unknown.signature_valid);
+        assert!(unknown.matches_history);
+        assert!(!unknown.is_trusted());
+
+        let active = AttestationKeyring {
+            keys: vec![AttestationKey {
+                key_id: Some("primary".to_string()),
+                public_key: receipt.public_key.clone(),
+                status: AttestationKeyStatus::Active,
+            }],
+        };
+        assert!(
+            memory
+                .verify_attested_checkpoint_with_keyring(&receipt, &active)
+                .expect("evaluate active key")
+                .is_trusted()
+        );
+
+        let revoked = AttestationKeyring {
+            keys: vec![AttestationKey {
+                key_id: Some("primary".to_string()),
+                public_key: receipt.public_key.clone(),
+                status: AttestationKeyStatus::Revoked,
+            }],
+        };
+        assert!(
+            !memory
+                .verify_attested_checkpoint_with_keyring(&receipt, &revoked)
+                .expect("evaluate revoked key")
+                .is_trusted()
+        );
+
+        drop(memory);
+        let _ = std::fs::remove_file(path);
+    }
+
+    fn temp_store(label: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock after Unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "nahuali_attestation_{label}_{}_{}",
+            std::process::id(),
+            nanos
+        ))
     }
 }

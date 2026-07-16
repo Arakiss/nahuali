@@ -99,6 +99,34 @@ pub struct LedgerAuditCounts {
 }
 
 /// Restated integrity of the history through the upper bound of the audit.
+#[cfg(feature = "tamper-evidence")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LedgerChainStatus {
+    /// The ledger has no events, so there is no chain to verify yet.
+    Empty,
+    /// Every event is chained and every link matches.
+    Verified,
+    /// At least one event predates the hash chain, with no broken present link.
+    Legacy,
+    /// A recorded hash-chain link does not match its predecessor.
+    Broken,
+}
+
+#[cfg(feature = "tamper-evidence")]
+impl LedgerChainStatus {
+    /// Stable token used by transport and operator interfaces.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Empty => "empty",
+            Self::Verified => "verified",
+            Self::Legacy => "legacy",
+            Self::Broken => "broken",
+        }
+    }
+}
+
+/// Restated integrity of the history through the upper bound of the audit.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerAuditIntegrity {
     /// Every event through the upper bound passes its per-event checksum.
@@ -108,6 +136,9 @@ pub struct LedgerAuditIntegrity {
     /// The tamper-evident hash chain through the upper bound is intact.
     #[cfg(feature = "tamper-evidence")]
     pub chain_intact: bool,
+    /// Whether the ledger is fully chained, legacy-compatible, or broken.
+    #[cfg(feature = "tamper-evidence")]
+    pub chain_status: LedgerChainStatus,
     /// Merkle commitment over the chained prefix through the upper bound: one
     /// root summarizing that these events existed in this order. A commitment
     /// for anchoring and inclusion proofs, not itself a proof and not a trust
@@ -201,7 +232,14 @@ pub fn audit_events(events: &[EventEnvelope], options: &LedgerAuditOptions) -> L
         .iter()
         .take_while(|event| event.sequence <= to_sequence)
         .count();
-    let integrity = audit_integrity(&events[..prefix_len]);
+    let prefix = &events[..prefix_len];
+    let integrity = audit_integrity(prefix);
+    #[cfg(feature = "tamper-evidence")]
+    let (from_tip, to_tip) = if integrity.verified {
+        (tip_at(prefix, from_sequence), tip_at(prefix, to_sequence))
+    } else {
+        (None, None)
+    };
 
     LedgerAudit {
         from_sequence,
@@ -211,9 +249,9 @@ pub fn audit_events(events: &[EventEnvelope], options: &LedgerAuditOptions) -> L
         from_timestamp_ms,
         to_timestamp_ms,
         #[cfg(feature = "tamper-evidence")]
-        from_tip: tip_at(events, from_sequence),
+        from_tip,
         #[cfg(feature = "tamper-evidence")]
-        to_tip: tip_at(events, to_sequence),
+        to_tip,
         integrity,
         counts,
         entries,
@@ -228,9 +266,24 @@ fn audit_integrity(prefix: &[EventEnvelope]) -> LedgerAuditIntegrity {
         .all(|(index, event)| event.sequence == index as u64 + 1);
 
     #[cfg(feature = "tamper-evidence")]
-    let chain_intact = crate::verify_event_chain(prefix).is_none();
+    let chain_status = if prefix.is_empty() {
+        LedgerChainStatus::Empty
+    } else if crate::verify_event_chain(prefix).is_some() {
+        LedgerChainStatus::Broken
+    } else if prefix.iter().all(EventEnvelope::is_chained) {
+        LedgerChainStatus::Verified
+    } else {
+        LedgerChainStatus::Legacy
+    };
     #[cfg(feature = "tamper-evidence")]
-    let merkle_root = crate::ledger_merkle_root(prefix);
+    let chain_intact = matches!(
+        chain_status,
+        LedgerChainStatus::Empty | LedgerChainStatus::Verified
+    );
+    #[cfg(feature = "tamper-evidence")]
+    let merkle_root = (chain_status == LedgerChainStatus::Verified)
+        .then(|| crate::ledger_merkle_root(prefix))
+        .flatten();
 
     #[cfg(feature = "tamper-evidence")]
     let verified = checksums_valid && sequence_contiguous && chain_intact;
@@ -243,6 +296,8 @@ fn audit_integrity(prefix: &[EventEnvelope]) -> LedgerAuditIntegrity {
         #[cfg(feature = "tamper-evidence")]
         chain_intact,
         #[cfg(feature = "tamper-evidence")]
+        chain_status,
+        #[cfg(feature = "tamper-evidence")]
         merkle_root,
         verified,
     }
@@ -252,7 +307,7 @@ fn audit_integrity(prefix: &[EventEnvelope]) -> LedgerAuditIntegrity {
 /// unchained ledger (a default-build or legacy store).
 #[cfg(feature = "tamper-evidence")]
 fn tip_at(events: &[EventEnvelope], sequence: u64) -> Option<String> {
-    if sequence == 0 || !events.iter().any(EventEnvelope::is_chained) {
+    if sequence == 0 || !events.iter().all(EventEnvelope::is_chained) {
         return None;
     }
     events
@@ -406,13 +461,17 @@ mod tests {
     }
 
     fn ledger(payloads: Vec<MemoryEvent>) -> Vec<EventEnvelope> {
-        payloads
-            .into_iter()
-            .enumerate()
-            .map(|(index, payload)| {
-                EventEnvelope::new(index as u64 + 1, (index as u64 + 1) * 1000, payload)
-            })
-            .collect()
+        let mut events: Vec<EventEnvelope> = Vec::new();
+        for (index, payload) in payloads.into_iter().enumerate() {
+            let previous = events.last().map(EventEnvelope::chain_hash);
+            events.push(EventEnvelope::with_chain(
+                index as u64 + 1,
+                (index as u64 + 1) * 1000,
+                payload,
+                previous.as_deref(),
+            ));
+        }
+        events
     }
 
     #[test]
@@ -506,6 +565,7 @@ mod tests {
         let audit = audit_events(&events, &LedgerAuditOptions::default());
 
         assert!(audit.integrity.chain_intact);
+        assert_eq!(audit.integrity.chain_status, LedgerChainStatus::Verified);
         assert!(audit.integrity.verified);
         assert!(audit.from_tip.is_none());
         assert_eq!(audit.to_tip, Some(events[1].chain_hash()));
@@ -515,5 +575,70 @@ mod tests {
             audit.integrity.merkle_root,
             crate::ledger_merkle_root(&events)
         );
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn a_verified_bounded_prefix_keeps_its_tip_despite_later_legacy_history() {
+        let mut events = ledger(vec![episode("first"), fact("Lena"), episode("later")]);
+        events[2].prev_hash = None;
+        let audit = audit_events(
+            &events,
+            &LedgerAuditOptions {
+                to_sequence: Some(2),
+                ..LedgerAuditOptions::default()
+            },
+        );
+
+        assert!(audit.integrity.verified);
+        assert_eq!(audit.integrity.chain_status, LedgerChainStatus::Verified);
+        assert_eq!(audit.to_tip, Some(events[1].chain_hash()));
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn an_empty_ledger_is_explicitly_empty_not_verified_history() {
+        let audit = audit_events(&[], &LedgerAuditOptions::default());
+
+        assert_eq!(audit.integrity.chain_status, LedgerChainStatus::Empty);
+        assert!(audit.integrity.chain_intact);
+        assert!(audit.integrity.verified);
+        assert!(audit.integrity.merkle_root.is_none());
+        assert!(audit.from_tip.is_none());
+        assert!(audit.to_tip.is_none());
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn legacy_unchained_history_is_compatible_but_not_verified() {
+        let events = vec![
+            EventEnvelope::new(1, 1000, episode("legacy first")),
+            EventEnvelope::new(2, 2000, fact("Lena")),
+        ];
+
+        let audit = audit_events(&events, &LedgerAuditOptions::default());
+
+        assert_eq!(audit.integrity.chain_status, LedgerChainStatus::Legacy);
+        assert!(!audit.integrity.chain_intact);
+        assert!(!audit.integrity.verified);
+        assert!(audit.integrity.merkle_root.is_none());
+        assert!(audit.from_tip.is_none());
+        assert!(audit.to_tip.is_none());
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn a_broken_recorded_link_is_distinct_from_legacy_history() {
+        let first = EventEnvelope::with_chain(1, 1000, episode("first"), None);
+        let second = EventEnvelope::with_chain(2, 2000, fact("Lena"), Some("wrong-tip"));
+
+        let audit = audit_events(&[first, second], &LedgerAuditOptions::default());
+
+        assert_eq!(audit.integrity.chain_status, LedgerChainStatus::Broken);
+        assert!(!audit.integrity.chain_intact);
+        assert!(!audit.integrity.verified);
+        assert!(audit.integrity.merkle_root.is_none());
+        assert!(audit.from_tip.is_none());
+        assert!(audit.to_tip.is_none());
     }
 }

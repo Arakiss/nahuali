@@ -294,10 +294,12 @@ and exits non-zero when that history fails verification.
 `trust-report` composes the trust primitives into one non-mutating verdict:
 knowledge counts, authority, restated ledger integrity (with the chain tip under
 `tamper-evidence`), knowledge health, an overall `trustworthy` flag, and the
-reasons behind it. Under the `attestation` feature, `--attestation <PATH>` folds
-in a verified signed checkpoint. `--html <PATH>` also writes a self-contained
-HTML dossier (inline styles, no network calls) that renders offline. It exits
-non-zero only when the recorded history fails ledger integrity verification.
+reasons behind it. Under the `attestation` feature, `--attestation <PATH>` keeps
+the legacy self-signed receipt visible but does not trust its embedded key.
+Add `--keyring <PATH>` to require an active operator-authorized key. `--html
+<PATH>` also writes a self-contained HTML dossier (inline styles, no network
+calls) that renders offline. It exits non-zero when ledger integrity fails or a
+supplied attestation is not trusted under the operator keyring.
 
 `maintenance` reports the non-destructive local maintenance state. `snapshot`
 writes an optional projection artifact or previews it with `--dry-run`.
@@ -356,8 +358,9 @@ unchained compatibility surface. Extra features remain opt-in.
   chain tip into a portable receipt; `attest-verify tip.json` checks it against
   the live ledger and exits non-zero when the tip has moved or the signature is
   invalid. Supply a 32-byte Ed25519 seed as hex (`openssl rand -hex 32`). It also
-  adds `audit --from-attestation tip.json`, which anchors the audit's lower bound
-  on a verified checkpoint and diffs only what was appended since it.
+  adds `audit --from-attestation tip.json --keyring keys.json`, which anchors the
+  audit's lower bound only when the checkpoint matches history and its signing
+  key is active in the operator-held keyring.
 
 `attest-verify` proves the live ledger matches the receipt you provide; it does
 not prove you selected the newest receipt ever issued. To detect rollback to an

@@ -529,13 +529,22 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             until,
             #[cfg(feature = "attestation")]
             from_attestation,
+            #[cfg(feature = "attestation")]
+            keyring,
             #[cfg(feature = "tamper-evidence")]
             inclusion_proof,
             json,
         } => {
             #[cfg(feature = "attestation")]
             let from = match from_attestation {
-                Some(path) => Some(audit::resolve_attestation_anchor(&memory, &path, json)?),
+                Some(path) => Some(audit::resolve_attestation_anchor(
+                    &memory,
+                    &path,
+                    keyring
+                        .as_deref()
+                        .expect("clap requires --keyring with --from-attestation"),
+                    json,
+                )?),
                 None => from,
             };
             audit::audit(
@@ -554,6 +563,8 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
         Command::TrustReport {
             #[cfg(feature = "attestation")]
             attestation,
+            #[cfg(feature = "attestation")]
+            keyring,
             html,
             json,
         } => {
@@ -562,6 +573,9 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
                 let mut options = TrustReportOptions::default();
                 if let Some(path) = attestation.as_deref() {
                     options.attestation = Some(trust_report::read_attestation(path)?);
+                }
+                if let Some(path) = keyring.as_deref() {
+                    options.keyring = Some(trust_report::read_keyring(path)?);
                 }
                 options
             };

@@ -2,7 +2,31 @@
 //! derives `schemars::JsonSchema` so MCP tool outputs carry a precise output
 //! schema, while staying a 1:1 mirror of the corresponding `nahuali-core` type.
 
+#[cfg(feature = "tamper-evidence")]
+use rmcp::schemars;
 use serde::Serialize;
+
+#[cfg(feature = "tamper-evidence")]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum LedgerChainStatusView {
+    Empty,
+    Verified,
+    Legacy,
+    Broken,
+}
+
+#[cfg(feature = "tamper-evidence")]
+impl From<nahuali_core::LedgerChainStatus> for LedgerChainStatusView {
+    fn from(status: nahuali_core::LedgerChainStatus) -> Self {
+        match status {
+            nahuali_core::LedgerChainStatus::Empty => Self::Empty,
+            nahuali_core::LedgerChainStatus::Verified => Self::Verified,
+            nahuali_core::LedgerChainStatus::Legacy => Self::Legacy,
+            nahuali_core::LedgerChainStatus::Broken => Self::Broken,
+        }
+    }
+}
 
 mod audit;
 mod briefing;

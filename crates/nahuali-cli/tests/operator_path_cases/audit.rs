@@ -90,3 +90,110 @@ fn audit_reports_changes_and_integrity_for_a_range() {
 
     let _ = fs::remove_file(store);
 }
+
+#[cfg(feature = "attestation")]
+#[test]
+fn audit_from_attestation_requires_an_authorized_operator_key() {
+    let store = temp_database("audit-attestation-keyring");
+    let seed_path = temp_store("audit-attestation-seed");
+    let receipt_path = temp_store("audit-attestation-receipt");
+    let keyring_path = temp_store("audit-attestation-keyring-file");
+
+    run_ok(&store, &["remember", "Hrafn retains the release decision"]);
+    fs::write(&seed_path, "01".repeat(32)).expect("write signing seed");
+    let signed = run_ok(
+        &store,
+        &[
+            "attest-sign",
+            "--key-file",
+            seed_path.to_str().expect("seed path is UTF-8"),
+            "--output",
+            receipt_path.to_str().expect("receipt path is UTF-8"),
+            "--json",
+        ],
+    );
+    let receipt: Value = serde_json::from_str(&signed).expect("receipt is JSON");
+
+    let missing_keyring = run(
+        &store,
+        &[
+            "audit",
+            "--from-attestation",
+            receipt_path.to_str().expect("receipt path is UTF-8"),
+            "--json",
+        ],
+    );
+    assert!(!missing_keyring.status.success());
+    assert!(String::from_utf8_lossy(&missing_keyring.stderr).contains("--keyring"));
+
+    fs::write(&keyring_path, r#"{"keys":[]}"#).expect("write empty keyring");
+    let unknown = run(
+        &store,
+        &[
+            "audit",
+            "--from-attestation",
+            receipt_path.to_str().expect("receipt path is UTF-8"),
+            "--keyring",
+            keyring_path.to_str().expect("keyring path is UTF-8"),
+            "--json",
+        ],
+    );
+    assert!(!unknown.status.success());
+
+    fs::write(
+        &keyring_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "keys": [{
+                "key_id": "audit-primary",
+                "public_key": receipt["public_key"],
+                "status": "active"
+            }]
+        }))
+        .expect("serialize active keyring"),
+    )
+    .expect("write active keyring");
+    let trusted = run_ok(
+        &store,
+        &[
+            "audit",
+            "--from-attestation",
+            receipt_path.to_str().expect("receipt path is UTF-8"),
+            "--keyring",
+            keyring_path.to_str().expect("keyring path is UTF-8"),
+            "--json",
+        ],
+    );
+    let report: Value = serde_json::from_str(&trusted).expect("audit output is JSON");
+    assert_eq!(report["from_sequence"], 1);
+    assert_eq!(report["range_event_count"], 0);
+
+    fs::write(
+        &keyring_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "keys": [{
+                "key_id": "audit-primary",
+                "public_key": receipt["public_key"],
+                "status": "revoked"
+            }]
+        }))
+        .expect("serialize revoked keyring"),
+    )
+    .expect("write revoked keyring");
+    let revoked = run(
+        &store,
+        &[
+            "audit",
+            "--from-attestation",
+            receipt_path.to_str().expect("receipt path is UTF-8"),
+            "--keyring",
+            keyring_path.to_str().expect("keyring path is UTF-8"),
+            "--json",
+        ],
+    );
+    assert!(!revoked.status.success());
+
+    let _ = fs::remove_file(seed_path);
+    let _ = fs::remove_file(receipt_path);
+    let _ = fs::remove_file(keyring_path);
+    let _ = fs::remove_file(store);
+}

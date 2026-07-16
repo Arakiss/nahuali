@@ -36,6 +36,10 @@ pub(crate) fn reconcile(
                 serde_json::json!(audit.integrity.chain_intact),
             );
             object.insert(
+                "chain_status".to_string(),
+                serde_json::json!(audit.integrity.chain_status),
+            );
+            object.insert(
                 "merkle_root".to_string(),
                 serde_json::json!(audit.integrity.merkle_root),
             );
@@ -73,7 +77,9 @@ pub(crate) fn reconcile(
     );
 
     // Ledger — the authoritative tier.
-    let ledger_value = if audit.integrity.verified {
+    let ledger_value = if audit.integrity.verified
+        && audit.integrity.chain_status == nahuali_core::LedgerChainStatus::Verified
+    {
         #[cfg(feature = "tamper-evidence")]
         let chain = match &audit.integrity.merkle_root {
             Some(root) => {
@@ -89,8 +95,16 @@ pub(crate) fn reconcile(
             style::badge("verified", theme::GREEN),
             style::dim(&chain)
         )
+    } else if audit.integrity.verified
+        && audit.integrity.chain_status == nahuali_core::LedgerChainStatus::Empty
+    {
+        style::badge("EMPTY — no records to verify", theme::INK_DIM)
+    } else if !audit.integrity.checksums_valid || !audit.integrity.sequence_contiguous {
+        style::badge("FAILED — checksum or sequence violation", theme::RED)
+    } else if audit.integrity.chain_status == nahuali_core::LedgerChainStatus::Legacy {
+        style::badge("LEGACY — hash chain incomplete", theme::AMBER)
     } else {
-        style::badge("UNVERIFIED — investigate before trusting", theme::RED)
+        style::badge("BROKEN — investigate before trusting", theme::RED)
     };
     println!(
         "  {}{ledger_value}",

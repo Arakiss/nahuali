@@ -835,11 +835,15 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         /// Inclusive upper timestamp bound in milliseconds since the Unix epoch.
         #[arg(long, value_name = "MS")]
         until: Option<u64>,
-        /// Anchor the lower bound on a signed attestation receipt and diff
-        /// changes since that verified checkpoint. Overrides `--from`.
+        /// Anchor the lower bound on a signed receipt authorized by `--keyring`
+        /// and diff changes since that trusted checkpoint. Overrides `--from`.
         #[cfg(feature = "attestation")]
-        #[arg(long = "from-attestation", value_name = "PATH")]
+        #[arg(long = "from-attestation", value_name = "PATH", requires = "keyring")]
         from_attestation: Option<PathBuf>,
+        /// Operator-held keys allowed to authorize `--from-attestation`.
+        #[cfg(feature = "attestation")]
+        #[arg(long, value_name = "PATH", requires = "from_attestation")]
+        keyring: Option<PathBuf>,
         /// Emit a Merkle inclusion proof for the event at this sequence under
         /// the audited upper-bound root.
         #[cfg(feature = "tamper-evidence")]
@@ -855,6 +859,11 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         #[cfg(feature = "attestation")]
         #[arg(long = "attestation", value_name = "PATH")]
         attestation: Option<PathBuf>,
+        /// Operator-held trusted keys. A legacy receipt without this keyring is
+        /// reported as self-signed and cannot establish an external anchor.
+        #[cfg(feature = "attestation")]
+        #[arg(long, value_name = "PATH", requires = "attestation")]
+        keyring: Option<PathBuf>,
         /// Also write a self-contained HTML dossier of the report to this path.
         #[arg(long, value_name = "PATH")]
         html: Option<PathBuf>,

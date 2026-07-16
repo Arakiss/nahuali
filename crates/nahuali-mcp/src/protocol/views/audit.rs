@@ -2,6 +2,8 @@ use nahuali_core::{LedgerAudit, LedgerAuditCounts, LedgerAuditEntry, LedgerAudit
 use rmcp::schemars;
 use serde::Serialize;
 
+#[cfg(feature = "tamper-evidence")]
+use super::LedgerChainStatusView;
 use super::{ScopeView, json_string};
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -56,6 +58,8 @@ pub(crate) struct LedgerAuditIntegrityView {
     #[cfg(feature = "tamper-evidence")]
     chain_intact: bool,
     #[cfg(feature = "tamper-evidence")]
+    chain_status: LedgerChainStatusView,
+    #[cfg(feature = "tamper-evidence")]
     #[serde(skip_serializing_if = "Option::is_none")]
     merkle_root: Option<String>,
     verified: bool,
@@ -68,6 +72,8 @@ impl From<LedgerAuditIntegrity> for LedgerAuditIntegrityView {
             sequence_contiguous: integrity.sequence_contiguous,
             #[cfg(feature = "tamper-evidence")]
             chain_intact: integrity.chain_intact,
+            #[cfg(feature = "tamper-evidence")]
+            chain_status: integrity.chain_status.into(),
             #[cfg(feature = "tamper-evidence")]
             merkle_root: integrity.merkle_root,
             verified: integrity.verified,
