@@ -1,0 +1,739 @@
+{
+  "resultVersion": "1.0.0",
+  "benchmarkVersion": "1.0.0",
+  "corpus": {
+    "path": "benchmarks/agent-memory-retrieval/cases.json",
+    "sha256": "2c7b9aa1f6ebac4dd5d7d5c5a09107d68bf0b5bfdaece6aa206174890c6e434c",
+    "memoryCount": 24,
+    "queryCount": 12
+  },
+  "system": {
+    "name": "Nahuali",
+    "version": "nahuali 0.8.0-beta.6"
+  },
+  "artifact": {
+    "name": "nahuali",
+    "sha256": "63b0dc90914a464347a6371b1842dd3458fe9b6d48585f2199a8e74da115a56f",
+    "sourceRevision": "d8c1af20b631a1b9150523605decf33b8473aaa3"
+  },
+  "runner": {
+    "relationship": "first-party",
+    "adapter": "benchmarks/agent-memory-retrieval/adapters/nahuali.py"
+  },
+  "configuration": {
+    "maxK": 10,
+    "kValues": [
+      1,
+      3,
+      5
+    ],
+    "warmupRuns": 1,
+    "measuredRuns": 3
+  },
+  "modes": {
+    "lexical": {
+      "status": "complete",
+      "embedding": null,
+      "queryCount": 12,
+      "metrics": {
+        "recallAt1": 1.0,
+        "recallAt3": 1.0,
+        "recallAt5": 1.0,
+        "mrr": 1.0,
+        "ndcgAt10": 1.0,
+        "latencyMs": {
+          "sampleCount": 36,
+          "median": 33.820395500000004,
+          "p95": 54.982708,
+          "maximum": 58.839833
+        }
+      },
+      "queries": [
+        {
+          "id": "q-release-notes",
+          "query": "Who maintains the changelog and release notes?",
+          "relevant": [
+            "release-notes"
+          ],
+          "resultIds": [
+            "release-notes",
+            "release-calendar"
+          ],
+          "latencyMs": [
+            47.912583,
+            45.819458,
+            34.163375
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-database-backup",
+          "query": "What is the tested recovery routine for database backups?",
+          "relevant": [
+            "database-backup"
+          ],
+          "resultIds": [
+            "database-backup",
+            "database-migration"
+          ],
+          "latencyMs": [
+            37.790584,
+            58.839833,
+            33.833875
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-invoice-followup",
+          "query": "When are overdue customer invoices followed up?",
+          "relevant": [
+            "invoice-followup"
+          ],
+          "resultIds": [
+            "invoice-followup",
+            "customer-interviews",
+            "customer-churn"
+          ],
+          "latencyMs": [
+            35.2365,
+            32.844625,
+            34.121917
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-production-alerts",
+          "query": "How are critical production incidents escalated?",
+          "relevant": [
+            "production-alerts"
+          ],
+          "resultIds": [
+            "production-alerts",
+            "database-migration"
+          ],
+          "latencyMs": [
+            37.308625,
+            33.6995,
+            34.119584
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-privacy-deletion",
+          "query": "Who completes user data erasure requests?",
+          "relevant": [
+            "privacy-deletion"
+          ],
+          "resultIds": [
+            "privacy-deletion",
+            "api-rate-limits"
+          ],
+          "latencyMs": [
+            32.702375,
+            32.711084,
+            34.304
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-roadmap-workshop",
+          "query": "What happens in the quarterly product planning workshop?",
+          "relevant": [
+            "roadmap-workshop"
+          ],
+          "resultIds": [
+            "roadmap-workshop",
+            "release-notes"
+          ],
+          "latencyMs": [
+            48.134084,
+            31.926666,
+            31.909834
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-api-token-rotation",
+          "query": "How often are API credentials rotated?",
+          "relevant": [
+            "api-token-rotation"
+          ],
+          "resultIds": [
+            "api-token-rotation",
+            "api-rate-limits"
+          ],
+          "latencyMs": [
+            34.543166,
+            33.860959,
+            34.076041
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-mobile-onboarding",
+          "query": "Which experiment improves the first mobile session?",
+          "relevant": [
+            "mobile-onboarding"
+          ],
+          "resultIds": [
+            "mobile-onboarding",
+            "mobile-crash",
+            "roadmap-metrics",
+            "security-training"
+          ],
+          "latencyMs": [
+            38.281667,
+            33.072542,
+            34.048209
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-inventory-forecast",
+          "query": "How is seasonal stock demand predicted?",
+          "relevant": [
+            "inventory-forecast"
+          ],
+          "resultIds": [
+            "inventory-forecast"
+          ],
+          "latencyMs": [
+            33.212417,
+            33.806916,
+            32.931625
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-security-audit",
+          "query": "What evidence is collected for the annual security review?",
+          "relevant": [
+            "security-audit"
+          ],
+          "resultIds": [
+            "security-audit",
+            "privacy-policy",
+            "security-training",
+            "privacy-deletion",
+            "database-migration",
+            "api-token-rotation"
+          ],
+          "latencyMs": [
+            32.669708,
+            32.148167,
+            54.982708
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-customer-churn",
+          "query": "What signals warn that customer accounts may cancel?",
+          "relevant": [
+            "customer-churn"
+          ],
+          "resultIds": [
+            "customer-churn",
+            "customer-interviews",
+            "invoice-followup"
+          ],
+          "latencyMs": [
+            33.777542,
+            33.25275,
+            33.700666
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-support-handoff",
+          "query": "How does support transfer urgent tickets to engineering?",
+          "relevant": [
+            "support-handoff"
+          ],
+          "resultIds": [
+            "support-handoff",
+            "support-hours",
+            "customer-churn"
+          ],
+          "latencyMs": [
+            31.948917,
+            31.851375,
+            32.968541
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        }
+      ]
+    },
+    "deterministicHybrid": {
+      "status": "complete",
+      "embedding": {
+        "dimensions": 64,
+        "kind": "deterministic_local",
+        "model": "nahuali/deterministic-ngram-v1"
+      },
+      "queryCount": 12,
+      "metrics": {
+        "recallAt1": 1.0,
+        "recallAt3": 1.0,
+        "recallAt5": 1.0,
+        "mrr": 1.0,
+        "ndcgAt10": 1.0,
+        "latencyMs": {
+          "sampleCount": 36,
+          "median": 38.9791455,
+          "p95": 40.944459,
+          "maximum": 41.162583
+        }
+      },
+      "queries": [
+        {
+          "id": "q-release-notes",
+          "query": "Who maintains the changelog and release notes?",
+          "relevant": [
+            "release-notes"
+          ],
+          "resultIds": [
+            "release-notes",
+            "release-calendar",
+            "privacy-deletion",
+            "security-training",
+            "support-handoff",
+            "api-token-rotation",
+            "alert-design",
+            "database-backup",
+            "security-audit",
+            "inventory-audit"
+          ],
+          "latencyMs": [
+            38.963958,
+            39.728709,
+            36.827125
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-database-backup",
+          "query": "What is the tested recovery routine for database backups?",
+          "relevant": [
+            "database-backup"
+          ],
+          "resultIds": [
+            "database-backup",
+            "database-migration",
+            "release-calendar",
+            "privacy-deletion",
+            "invoice-template",
+            "privacy-policy",
+            "customer-interviews",
+            "inventory-audit",
+            "alert-design",
+            "release-notes"
+          ],
+          "latencyMs": [
+            38.853292,
+            37.1885,
+            37.939917
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-invoice-followup",
+          "query": "When are overdue customer invoices followed up?",
+          "relevant": [
+            "invoice-followup"
+          ],
+          "resultIds": [
+            "invoice-followup",
+            "customer-interviews",
+            "customer-churn",
+            "inventory-forecast",
+            "database-backup",
+            "invoice-template",
+            "privacy-deletion",
+            "alert-design",
+            "privacy-policy",
+            "production-alerts"
+          ],
+          "latencyMs": [
+            38.085542,
+            37.987584,
+            37.520459
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-production-alerts",
+          "query": "How are critical production incidents escalated?",
+          "relevant": [
+            "production-alerts"
+          ],
+          "resultIds": [
+            "production-alerts",
+            "database-migration",
+            "mobile-crash",
+            "inventory-forecast",
+            "inventory-audit",
+            "alert-design",
+            "support-hours",
+            "customer-interviews",
+            "customer-churn",
+            "roadmap-metrics"
+          ],
+          "latencyMs": [
+            38.007875,
+            37.23925,
+            39.157
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-privacy-deletion",
+          "query": "Who completes user data erasure requests?",
+          "relevant": [
+            "privacy-deletion"
+          ],
+          "resultIds": [
+            "privacy-deletion",
+            "api-rate-limits",
+            "alert-design",
+            "roadmap-workshop",
+            "support-handoff",
+            "database-backup",
+            "api-token-rotation",
+            "database-migration",
+            "release-notes",
+            "security-audit"
+          ],
+          "latencyMs": [
+            41.162583,
+            40.944459,
+            39.400875
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-roadmap-workshop",
+          "query": "What happens in the quarterly product planning workshop?",
+          "relevant": [
+            "roadmap-workshop"
+          ],
+          "resultIds": [
+            "roadmap-workshop",
+            "release-notes",
+            "inventory-audit",
+            "database-backup",
+            "privacy-deletion",
+            "mobile-crash",
+            "invoice-template",
+            "mobile-onboarding",
+            "support-handoff",
+            "security-audit"
+          ],
+          "latencyMs": [
+            39.093541,
+            39.610708,
+            39.735875
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-api-token-rotation",
+          "query": "How often are API credentials rotated?",
+          "relevant": [
+            "api-token-rotation"
+          ],
+          "resultIds": [
+            "api-token-rotation",
+            "api-rate-limits",
+            "database-migration",
+            "customer-interviews",
+            "production-alerts",
+            "roadmap-metrics",
+            "privacy-policy",
+            "inventory-forecast",
+            "customer-churn",
+            "mobile-crash"
+          ],
+          "latencyMs": [
+            39.95025,
+            38.958166,
+            38.651292
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-mobile-onboarding",
+          "query": "Which experiment improves the first mobile session?",
+          "relevant": [
+            "mobile-onboarding"
+          ],
+          "resultIds": [
+            "mobile-onboarding",
+            "mobile-crash",
+            "roadmap-metrics",
+            "security-training",
+            "inventory-audit",
+            "security-audit",
+            "customer-churn",
+            "invoice-followup",
+            "release-notes",
+            "inventory-forecast"
+          ],
+          "latencyMs": [
+            39.153542,
+            36.093542,
+            37.77275
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-inventory-forecast",
+          "query": "How is seasonal stock demand predicted?",
+          "relevant": [
+            "inventory-forecast"
+          ],
+          "resultIds": [
+            "inventory-forecast",
+            "customer-churn",
+            "api-rate-limits",
+            "customer-interviews",
+            "invoice-followup",
+            "privacy-policy",
+            "mobile-crash",
+            "database-migration",
+            "api-token-rotation",
+            "inventory-audit"
+          ],
+          "latencyMs": [
+            39.309125,
+            38.994333,
+            39.080625
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-security-audit",
+          "query": "What evidence is collected for the annual security review?",
+          "relevant": [
+            "security-audit"
+          ],
+          "resultIds": [
+            "security-audit",
+            "privacy-policy",
+            "privacy-deletion",
+            "security-training",
+            "api-token-rotation",
+            "database-migration",
+            "release-calendar",
+            "release-notes",
+            "database-backup",
+            "invoice-template"
+          ],
+          "latencyMs": [
+            39.0175,
+            40.274167,
+            37.87625
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-customer-churn",
+          "query": "What signals warn that customer accounts may cancel?",
+          "relevant": [
+            "customer-churn"
+          ],
+          "resultIds": [
+            "customer-churn",
+            "customer-interviews",
+            "invoice-followup",
+            "security-audit",
+            "security-training",
+            "release-calendar",
+            "alert-design",
+            "database-backup",
+            "database-migration",
+            "release-notes"
+          ],
+          "latencyMs": [
+            40.480458,
+            40.939167,
+            39.010417
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        },
+        {
+          "id": "q-support-handoff",
+          "query": "How does support transfer urgent tickets to engineering?",
+          "relevant": [
+            "support-handoff"
+          ],
+          "resultIds": [
+            "support-handoff",
+            "customer-churn",
+            "support-hours",
+            "inventory-forecast",
+            "production-alerts",
+            "roadmap-workshop",
+            "release-calendar",
+            "security-training",
+            "api-rate-limits",
+            "database-migration"
+          ],
+          "latencyMs": [
+            38.272709,
+            37.654833,
+            37.377958
+          ],
+          "metrics": {
+            "recallAt1": 1.0,
+            "recallAt3": 1.0,
+            "recallAt5": 1.0,
+            "reciprocalRank": 1.0,
+            "ndcgAt10": 1.0
+          }
+        }
+      ]
+    },
+    "localModelHybrid": {
+      "status": "not_configured",
+      "reason": "NAHUALI_LOCAL_EMBEDDING_MODEL_PATH is not set; no model result was measured."
+    }
+  }
+}
