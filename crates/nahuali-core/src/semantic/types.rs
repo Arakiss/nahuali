@@ -1,5 +1,5 @@
 /// Semantic index schema version stored in Qdrant payloads.
-pub const SEMANTIC_INDEX_SCHEMA_VERSION: u32 = 3;
+pub const SEMANTIC_INDEX_SCHEMA_VERSION: u32 = 4;
 /// Default local Qdrant REST endpoint for the OSS Docker stack.
 pub const DEFAULT_QDRANT_URL: &str = "http://localhost:16333";
 /// Default collection used for memory-item vectors.
@@ -235,6 +235,26 @@ pub struct SemanticIndexStatus {
     pub collection_exists: bool,
     /// Exact point count when the collection exists.
     pub point_count: usize,
+    /// Number of points the current deterministic projection requires.
+    pub expected_point_count: usize,
+    /// Exact number of points currently stored in Qdrant.
+    pub indexed_point_count: usize,
+    /// Number of projected points absent from Qdrant.
+    pub missing_point_count: usize,
+    /// Number of Qdrant points that no longer belong to the projection.
+    pub orphan_point_count: usize,
+    /// Number of points whose payload or embedding identity is outdated.
+    pub stale_point_count: usize,
+    /// Whether the collection exactly matches the current projection and embedding identity.
+    pub is_current: bool,
+    /// Bounded examples of missing point identifiers.
+    pub missing_point_ids: Vec<String>,
+    /// Bounded examples of orphan point identifiers.
+    pub orphan_point_ids: Vec<String>,
+    /// Bounded examples of stale point identifiers.
+    pub stale_point_ids: Vec<String>,
+    /// Whether any drift identifier list was truncated.
+    pub drift_details_truncated: bool,
 }
 
 /// Compact metadata for one indexed semantic point.
@@ -327,8 +347,10 @@ pub struct HybridRecallReport {
     pub collection_name: String,
     /// Embedding provider used for the query vector.
     pub embedding: EmbeddingProviderConfig,
-    /// Projection-level authority decision used to contextualize recall.
+    /// Query/scope-level authority decision used to contextualize recall.
     pub authority: AuthorityDecision,
+    /// Store-wide authority, independent of query filters.
+    pub store_authority: AuthorityDecision,
     /// Lexical results considered before merging.
     pub lexical_results: Vec<RecallResult>,
     /// Semantic results returned by Qdrant before merging.

@@ -75,6 +75,10 @@ fn semantic_index_operator_path_is_scriptable() {
         run_ok_with_semantic_collection(&store, &["semantic-status", "--json"], collection);
     let status: Value = serde_json::from_str(&status_output).expect("status output is JSON");
     assert_eq!(status["status"]["collection_exists"], true);
+    assert_eq!(status["status"]["is_current"], true);
+    assert_eq!(status["status"]["missing_point_count"], 0);
+    assert_eq!(status["status"]["orphan_point_count"], 0);
+    assert_eq!(status["status"]["stale_point_count"], 0);
     assert_eq!(
         status["status"]["point_count"],
         rebuild["report"]["indexed_point_count"]

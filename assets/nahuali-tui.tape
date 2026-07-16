@@ -2,7 +2,7 @@ Output assets/nahuali-tui.gif
 
 Set Shell "bash"
 Set Width 1400
-Set Height 860
+Set Height 900
 Set FontSize 18
 Set FontFamily "Menlo"
 Set Padding 20
@@ -21,11 +21,13 @@ Type "export COLORTERM=truecolor"
 Enter
 Type "unset NO_COLOR"
 Enter
-Type "target/debug/nahuali --database readme remember 'Maya owns the release notes' --mention Maya --tag release"
+Type "target/debug/nahuali --database readme remember 'Hrafn recalls the signed release decision and its evidence.' --mention Hrafn --tag release --scope project:Nahuali"
 Enter
-Type "target/debug/nahuali --database readme claim Maya owns 'release notes' --source-last --confidence 0.94"
+Type "target/debug/nahuali --database readme claim Hrafn retrieves 'the signed release decision' --source-last --confidence 0.97 --scope project:Nahuali"
 Enter
-Type "target/debug/nahuali --database readme intention 'Verify the next release on its exact commit' --kind task --priority high"
+Type "target/debug/nahuali --database readme link Hrafn retrieves 'the signed release decision' --source-last --confidence 0.96 --scope project:Nahuali"
+Enter
+Type "target/debug/nahuali --database readme intention 'Verify the next release on its exact commit' --kind task --priority high --source-last --scope project:Nahuali"
 Enter
 Type "clear"
 Enter
@@ -33,11 +35,7 @@ Type "target/debug/nahuali --database readme explore"
 Enter
 Sleep 1s
 Show
-Sleep 3s
-Type "j"
 Sleep 2s
 Type "j"
-Sleep 2s
-Type "Tab"
-Sleep 2s
+Sleep 5s
 Type "q"

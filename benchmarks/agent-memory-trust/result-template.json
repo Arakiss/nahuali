@@ -1,7 +1,12 @@
 {
   "benchmarkVersion": "1.0.0",
   "system": { "name": "Your memory system", "version": "0.0.0" },
-  "commit": "replace-with-an-immutable-revision",
+  "commit": "sha256:replace-with-the-tested-artifact-digest",
+  "artifact": {
+    "name": "tested-artifact-name",
+    "sha256": "replace-with-the-tested-artifact-digest",
+    "sourceRevision": "optional-source-revision"
+  },
   "runner": {
     "relationship": "first-party",
     "adapter": "path or URL to the adapter source"

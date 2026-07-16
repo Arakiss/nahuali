@@ -2,12 +2,15 @@
 """Run the Agent Memory Trust Benchmark through Nahuali's public CLI."""
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import tempfile
 import time
+from typing import Optional
 
 
 def command(binary: str, home: pathlib.Path, *args: str, json_output: bool = True):
@@ -38,7 +41,42 @@ def write_interchange(path: pathlib.Path, episodes, claims) -> pathlib.Path:
     return document
 
 
-def run(binary: str) -> dict:
+def resolve_binary(binary: str) -> pathlib.Path:
+    candidate = pathlib.Path(binary).expanduser()
+    if candidate.is_file():
+        return candidate.resolve()
+    resolved = shutil.which(binary)
+    if resolved is None:
+        raise SystemExit(f"benchmark binary not found: {binary}")
+    return pathlib.Path(resolved).resolve()
+
+
+def sha256_file(path: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def normalize_verdict(mode: str, can_trust: Optional[bool] = None) -> str:
+    if can_trust is False:
+        return "refused"
+    if mode == "certify":
+        return "trusted"
+    if mode == "block":
+        return "refused"
+    return "qualified"
+
+
+def observed_case(case_id: str, passed: bool, **observation) -> dict:
+    return {"id": case_id, "status": "pass" if passed else "fail", **observation}
+
+
+def run(binary: str, source_revision: Optional[str] = None) -> dict:
+    binary_path = resolve_binary(binary)
+    binary = str(binary_path)
+    binary_sha256 = sha256_file(binary_path)
     root = pathlib.Path(tempfile.mkdtemp(prefix="nahuali-trust-benchmark-"))
     supported_home = root / "supported"
     command(binary, supported_home, "remember", "Lena owns release notes", "--json")
@@ -132,14 +170,35 @@ def run(binary: str) -> dict:
 
     demo = command(binary, root / "demo", "demo", "--json")
     version = command(binary, root / "version", "--version", json_output=False).strip()
-    commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
-    ).stdout.strip()
+    supported_mode = supported_claim["trust"]["mode"]
+    supported_verdict = normalize_verdict(supported_mode)
+    supported_evidence = [supported_claim["evidence_id"]] if supported_claim.get("evidence_id") else []
+    unsupported_mode = unsupported_claim["trust"]["mode"]
+    unsupported_detected = not unsupported_claim["trust"]["can_trust"]
+    unsupported_verdict = normalize_verdict(
+        unsupported_mode, unsupported_claim["trust"]["can_trust"]
+    )
+    contradiction_mode = contradiction["authority"]["mode"]
+    contradiction_verdict = normalize_verdict(contradiction_mode)
+    contradiction_detected = contradiction["summary"]["contradiction_count"] > 0
+    stale_mode = stale["authority"]["mode"]
+    stale_verdict = normalize_verdict(stale_mode)
+    stale_detected = stale["summary"]["stale_memory_count"] > 0
+    inspection_detected = len(contradiction["findings"]) > 0
+    inspection_mutated = before != after
+    rewrite_detected = demo["history_integrity"]["in_place_rewrite_detected"]
+    rechain_detected = demo["history_integrity"]["checkpoint_rejects_rechain"]
+    external_checkpoint = demo["history_integrity"]["external_checkpoint"]
 
     return {
         "benchmarkVersion": "1.0.0",
         "system": {"name": "Nahuali", "version": version},
-        "commit": commit,
+        "commit": f"sha256:{binary_sha256}",
+        "artifact": {
+            "name": binary_path.name,
+            "sha256": binary_sha256,
+            "sourceRevision": source_revision,
+        },
         "runner": {
             "relationship": "first-party",
             "adapter": "benchmarks/agent-memory-trust/adapters/nahuali.py",
@@ -150,76 +209,82 @@ def run(binary: str) -> dict:
             "operatorActions": [],
         },
         "cases": [
-            {
-                "id": "evidence-traceability",
-                "status": "pass",
-                "verdict": supported_claim["trust"]["mode"],
-                "normalizedVerdict": "trusted",
-                "evidenceIds": [supported_claim["evidence_id"]],
-                "detected": True,
-                "mutated": False,
-            },
-            {
-                "id": "unsupported-memory-abstention",
-                "status": "pass",
-                "verdict": unsupported_claim["trust"]["mode"],
-                "normalizedVerdict": "refused",
-                "evidenceIds": [],
-                "detected": not unsupported_claim["trust"]["can_trust"],
-                "mutated": False,
-            },
-            {
-                "id": "contradiction-detection",
-                "status": "pass",
-                "verdict": contradiction["authority"]["mode"],
-                "normalizedVerdict": "refused",
-                "evidenceIds": [],
-                "detected": contradiction["summary"]["contradiction_count"] > 0,
-                "mutated": False,
-            },
-            {
-                "id": "staleness-signaling",
-                "status": "pass",
-                "verdict": stale["authority"]["mode"],
-                "normalizedVerdict": "qualified" if stale["authority"]["mode"] != "block" else "refused",
-                "evidenceIds": [],
-                "detected": stale["summary"]["stale_memory_count"] > 0,
-                "mutated": False,
-            },
-            {
-                "id": "non-mutating-inspection",
-                "status": "pass",
-                "evidenceIds": [],
-                "detected": len(contradiction["findings"]) > 0,
-                "mutated": before != after,
-            },
-            {
-                "id": "in-place-tamper-detection",
-                "status": "pass",
-                "evidenceIds": [],
-                "detected": demo["history_integrity"]["in_place_rewrite_detected"],
-                "mutated": False,
-            },
-            {
-                "id": "full-rechain-detection",
-                "status": "pass",
-                "evidenceIds": [],
-                "detected": demo["history_integrity"]["checkpoint_rejects_rechain"],
-                "externalCheckpoint": demo["history_integrity"]["external_checkpoint"],
-                "mutated": False,
-            },
+            observed_case(
+                "evidence-traceability",
+                bool(supported_evidence) and supported_verdict == "trusted",
+                verdict=supported_mode,
+                normalizedVerdict=supported_verdict,
+                evidenceIds=supported_evidence,
+                detected=True,
+                mutated=False,
+            ),
+            observed_case(
+                "unsupported-memory-abstention",
+                unsupported_detected and unsupported_verdict == "refused",
+                verdict=unsupported_mode,
+                normalizedVerdict=unsupported_verdict,
+                evidenceIds=[],
+                detected=unsupported_detected,
+                mutated=False,
+            ),
+            observed_case(
+                "contradiction-detection",
+                contradiction_detected and contradiction_verdict == "refused",
+                verdict=contradiction_mode,
+                normalizedVerdict=contradiction_verdict,
+                evidenceIds=[],
+                detected=contradiction_detected,
+                mutated=False,
+            ),
+            observed_case(
+                "staleness-signaling",
+                stale_detected and stale_verdict in {"qualified", "refused"},
+                verdict=stale_mode,
+                normalizedVerdict=stale_verdict,
+                evidenceIds=[],
+                detected=stale_detected,
+                mutated=False,
+            ),
+            observed_case(
+                "non-mutating-inspection",
+                inspection_detected and not inspection_mutated,
+                evidenceIds=[],
+                detected=inspection_detected,
+                mutated=inspection_mutated,
+            ),
+            observed_case(
+                "in-place-tamper-detection",
+                rewrite_detected,
+                evidenceIds=[],
+                detected=rewrite_detected,
+                mutated=False,
+            ),
+            observed_case(
+                "full-rechain-detection",
+                rechain_detected and external_checkpoint,
+                evidenceIds=[],
+                detected=rechain_detected,
+                externalCheckpoint=external_checkpoint,
+                mutated=False,
+            ),
         ],
     }
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--binary", default="nahuali")
-parser.add_argument("--output", type=pathlib.Path)
-arguments = parser.parse_args()
-report = run(arguments.binary)
-encoded = json.dumps(report, indent=2) + "\n"
-if arguments.output:
-    arguments.output.parent.mkdir(parents=True, exist_ok=True)
-    arguments.output.write_text(encoded, encoding="utf-8")
-else:
-    print(encoded, end="")
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--binary", default="nahuali")
+    parser.add_argument("--source-revision")
+    parser.add_argument("--output", type=pathlib.Path)
+    arguments = parser.parse_args()
+    report = run(arguments.binary, arguments.source_revision)
+    encoded = json.dumps(report, indent=2) + "\n"
+    if arguments.output:
+        arguments.output.parent.mkdir(parents=True, exist_ok=True)
+        arguments.output.write_text(encoded, encoding="utf-8")
+    else:
+        print(encoded, end="")
+
+
+if __name__ == "__main__":
+    main()

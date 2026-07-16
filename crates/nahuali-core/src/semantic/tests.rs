@@ -3,9 +3,12 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::{
-        AuthorityDecision, AuthorityMode, EmbeddingProviderKind, MemoryData, SemanticConfig,
-        SemanticIndexStatus,
-        semantic::{DeterministicEmbedder, Embedder, hybrid_recall, index_status, rebuild_index},
+        AuthorityDecision, AuthorityMode, EmbeddingProviderKind, Episode, MemoryData,
+        SemanticConfig, SemanticIndexStatus,
+        semantic::{
+            DeterministicEmbedder, Embedder, QdrantPoint, QdrantRestClient, hybrid_recall,
+            index_status, rebuild_index, semantic_documents,
+        },
     };
 
     #[test]
@@ -110,7 +113,7 @@ mod tests {
             return;
         };
 
-        let status = index_status(&config).expect("status checks qdrant");
+        let status = index_status(&MemoryData::default(), &config).expect("status checks qdrant");
 
         assert_eq!(
             status,
@@ -119,8 +122,113 @@ mod tests {
                 qdrant_url: config.qdrant_url,
                 collection_exists: false,
                 point_count: 0,
+                expected_point_count: 0,
+                indexed_point_count: 0,
+                missing_point_count: 0,
+                orphan_point_count: 0,
+                stale_point_count: 0,
+                is_current: false,
+                missing_point_ids: Vec::new(),
+                orphan_point_ids: Vec::new(),
+                stale_point_ids: Vec::new(),
+                drift_details_truncated: false,
             }
         );
+    }
+
+    #[test]
+    fn status_detects_equal_count_missing_orphan_and_stale_drift() {
+        let Some(config) = qdrant_test_config("drift") else {
+            return;
+        };
+        let mut data = MemoryData {
+            event_count: 2,
+            last_event_id: Some("event-2".to_string()),
+            ..MemoryData::default()
+        };
+        data.episodes = vec![
+            Episode {
+                id: "episode-1".to_string(),
+                event_id: "event-1".to_string(),
+                content: "Lena owns release notes".to_string(),
+                tags: vec!["release".to_string()],
+                mentions: vec!["Lena".to_string()],
+                source_id: None,
+                source_position: None,
+                source_role: None,
+                scope: None,
+                created_at_ms: 1,
+            },
+            Episode {
+                id: "episode-2".to_string(),
+                event_id: "event-2".to_string(),
+                content: "Hrafn verifies the release".to_string(),
+                tags: vec!["verification".to_string()],
+                mentions: vec!["Hrafn".to_string()],
+                source_id: None,
+                source_position: None,
+                source_role: None,
+                scope: None,
+                created_at_ms: 2,
+            },
+        ];
+
+        let report = rebuild_index(&data, &config).expect("initial index rebuilds");
+        let documents = semantic_documents(&data, &report.embedding);
+        assert_eq!(documents.len(), 2);
+        let client = QdrantRestClient::new(&config);
+        client
+            .delete_points(&config.collection_name, &[documents[0].point_id])
+            .expect("one expected point deletes");
+
+        let mut stale_payload = documents[1].payload.clone();
+        stale_payload.schema_version = 0;
+        let mut orphan_payload = documents[0].payload.clone();
+        orphan_payload.id = "orphan".to_string();
+        let orphan_id = documents
+            .iter()
+            .map(|document| document.point_id)
+            .max()
+            .expect("documents exist")
+            .saturating_add(1);
+        client
+            .upsert_points(
+                &config.collection_name,
+                &[
+                    QdrantPoint {
+                        id: documents[1].point_id,
+                        vector: vec![0.0; report.embedding.dimensions],
+                        payload: stale_payload,
+                    },
+                    QdrantPoint {
+                        id: orphan_id,
+                        vector: vec![0.0; report.embedding.dimensions],
+                        payload: orphan_payload,
+                    },
+                ],
+            )
+            .expect("stale and orphan points upsert");
+
+        let drifted = index_status(&data, &config).expect("drift status reads");
+        assert_eq!(drifted.expected_point_count, 2);
+        assert_eq!(drifted.indexed_point_count, 2);
+        assert_eq!(drifted.missing_point_count, 1);
+        assert_eq!(drifted.orphan_point_count, 1);
+        assert_eq!(drifted.stale_point_count, 1);
+        assert!(!drifted.is_current);
+
+        rebuild_index(&data, &config).expect("reconciliation rebuilds index");
+        let reconciled = index_status(&data, &config).expect("reconciled status reads");
+        assert_eq!(reconciled.expected_point_count, 2);
+        assert_eq!(reconciled.indexed_point_count, 2);
+        assert_eq!(reconciled.missing_point_count, 0);
+        assert_eq!(reconciled.orphan_point_count, 0);
+        assert_eq!(reconciled.stale_point_count, 0);
+        assert!(reconciled.is_current);
+
+        client
+            .delete_collection_if_exists(&config.collection_name)
+            .expect("test collection deletes");
     }
 
     #[test]
@@ -264,7 +372,7 @@ mod tests {
                 .as_nanos()
         ))
         .expect("test collection name is valid");
-        let status = index_status(&config).ok()?;
+        let status = index_status(&MemoryData::default(), &config).ok()?;
         if status.collection_exists {
             return None;
         }

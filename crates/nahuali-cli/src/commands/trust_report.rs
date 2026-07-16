@@ -129,7 +129,7 @@ fn yes_no(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
 }
 
-const HTML_STYLE: &str = r#":root{--bg:#16130f;--panel:#1f1a14;--line:#2e2820;--ink:#ece4d6;--mut:#9b9078;--accent:#d9885a;--ok:#86a86b;--bad:#cf6b48}
+const HTML_STYLE: &str = r#":root{--bg:#16130f;--panel:#1f1a14;--line:#2e2820;--ink:#ece4d6;--ink-dim:#746b5b;--mut:#9b9078;--accent:#d9885a;--ok:#86a86b;--bad:#cf6b48}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:48px 20px}
 .wrap{max-width:820px;margin:0 auto}
@@ -157,7 +157,7 @@ ul.reasons{list-style:none;padding:0;margin:0;background:var(--panel);border:1px
 ul.reasons li{padding:9px 16px 9px 30px;position:relative;border-bottom:1px solid var(--line);font-size:14px}
 ul.reasons li:before{content:"";position:absolute;left:16px;top:16px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
 ul.reasons li:last-child{border-bottom:none}
-footer{margin-top:40px;color:var(--mut);font:11px/1.6 ui-monospace,monospace;letter-spacing:.04em}"#;
+footer{margin-top:40px;color:var(--ink-dim);font:11px/1.6 ui-monospace,monospace;letter-spacing:.04em}"#;
 
 /// Render the trust report as a self-contained HTML dossier: a single file with
 /// inline styles, system fonts, and no network calls, so it renders offline.

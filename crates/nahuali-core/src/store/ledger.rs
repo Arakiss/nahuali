@@ -4,6 +4,12 @@ struct MemoryRecord {
     envelope: EventEnvelope,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MemoryRecordTip {
+    sequence: u64,
+    event_id: String,
+}
+
 async fn read_records(path: &Path) -> Result<Vec<EventEnvelope>> {
     let db = open_database(path).await?;
     let mut response = db
@@ -38,6 +44,38 @@ async fn read_records(path: &Path) -> Result<Vec<EventEnvelope>> {
     Ok(events)
 }
 
+async fn read_record_tip(path: &Path) -> Result<Option<MemoryRecordTip>> {
+    let db = open_database(path).await?;
+    let mut response = db
+        .query_with_retry(
+            path,
+            "SELECT sequence, envelope FROM memory_record ORDER BY sequence DESC LIMIT 1",
+            Vec::new(),
+        )
+        .await?;
+    let rows: Vec<serde_json::Value> = response
+        .take(0)
+        .map_err(|source| database_error(path, source))?;
+    let Some(row) = rows.into_iter().next() else {
+        return Ok(None);
+    };
+    let record = decode_record(path, 1, row)?;
+    if record.sequence != record.envelope.sequence {
+        return Err(NahualiError::InvalidRecordLedger {
+            path: path.to_path_buf(),
+            record: 1,
+            message: format!(
+                "record sequence {} does not match envelope sequence {}",
+                record.sequence, record.envelope.sequence
+            ),
+        });
+    }
+    Ok(Some(MemoryRecordTip {
+        sequence: record.sequence,
+        event_id: record.envelope.id,
+    }))
+}
+
 async fn write_record(path: &Path, event: &EventEnvelope) -> Result<()> {
     let db = open_database(path).await?;
     let envelope = serde_json::to_value(event).map_err(NahualiError::EncodeRecord)?;
@@ -55,21 +93,60 @@ async fn write_record(path: &Path, event: &EventEnvelope) -> Result<()> {
 }
 
 async fn write_records(path: &Path, events: &[EventEnvelope]) -> Result<()> {
-    let db = open_database(path).await?;
-    for event in events {
-        let envelope = serde_json::to_value(event).map_err(NahualiError::EncodeRecord)?;
-        let record = serde_json::json!({
-            "sequence": event.sequence,
-            "envelope": envelope,
-        });
-        db.query_with_retry(
-            path,
-            "CREATE memory_record CONTENT $record",
-            vec![("record".to_string(), record)],
-        )
-        .await?;
+    if events.is_empty() {
+        return Ok(());
     }
+    let db = open_database(path).await?;
+    let records = events
+        .iter()
+        .map(|event| {
+            let envelope = serde_json::to_value(event).map_err(NahualiError::EncodeRecord)?;
+            Ok(serde_json::json!({
+                "sequence": event.sequence,
+                "envelope": envelope,
+            }))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    // A SurrealQL statement is one transaction. Bulk INSERT therefore commits
+    // every record together or leaves the ledger untouched on any error.
+    db.query_with_retry(
+        path,
+        "INSERT INTO memory_record $records",
+        vec![("records".to_string(), serde_json::Value::Array(records))],
+    )
+    .await?;
     Ok(())
+}
+
+fn is_record_sequence_conflict(error: &NahualiError) -> bool {
+    match error {
+        NahualiError::Database { source, .. } => {
+            let message = source.to_string();
+            message.contains("memory_record_sequence_idx")
+                && (message.contains("already contains") || message.contains("unique"))
+        }
+        _ => false,
+    }
+}
+
+fn committed_projection_error(
+    events: &[EventEnvelope],
+    source: NahualiError,
+) -> NahualiError {
+    let first = events
+        .first()
+        .expect("a committed projection error always has at least one event");
+    let last = events
+        .last()
+        .expect("a committed projection error always has at least one event");
+    NahualiError::LedgerCommittedProjectionFailed {
+        first_event_id: first.id.clone(),
+        last_event_id: last.id.clone(),
+        first_sequence: first.sequence,
+        last_sequence: last.sequence,
+        event_count: events.len(),
+        source: Box::new(source),
+    }
 }
 
 fn decode_record(path: &Path, record: usize, row: serde_json::Value) -> Result<MemoryRecord> {

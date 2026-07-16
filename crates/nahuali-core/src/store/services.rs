@@ -64,7 +64,7 @@ impl MemoryEngine {
         &self,
         config: &SemanticConfig,
     ) -> Result<SemanticIndexStatus> {
-        semantic::index_status(config)
+        semantic::index_status(&self.data, config)
     }
 
     /// Recall memory by merging deterministic lexical results with Qdrant semantic matches.
@@ -98,10 +98,31 @@ impl MemoryEngine {
             return Err(NahualiError::EmptyQuery);
         }
 
-        let authority = self.authority();
-        let mut report = semantic::hybrid_recall(&self.data, query, limit.max(1), authority, config)?;
-        let health = self.inspect();
-        recall::attach_hybrid_result_trust(&self.data, &health, &mut report.results);
+        let context = recall::recall_projection_with_authority(
+            &self.data,
+            query,
+            RecallOptions {
+                limit,
+                ..RecallOptions::default()
+            },
+        )?;
+        let mut report = semantic::hybrid_recall_with_options(
+            &self.data,
+            query,
+            limit.max(1),
+            RecallOptions {
+                limit,
+                ..RecallOptions::default()
+            },
+            context.authority,
+            context.store_authority,
+            config,
+        )?;
+        recall::attach_hybrid_result_trust(
+            &self.data,
+            &context.store_health,
+            &mut report.results,
+        );
         Ok(report)
     }
 
@@ -117,12 +138,21 @@ impl MemoryEngine {
         }
 
         let limit = options.limit.max(1);
-        let authority = self.authority();
+        let context = recall::recall_projection_with_authority(&self.data, query, options.clone())?;
         let mut report = semantic::hybrid_recall_with_options(
-            &self.data, query, limit, options, authority, config,
+            &self.data,
+            query,
+            limit,
+            options,
+            context.authority,
+            context.store_authority,
+            config,
         )?;
-        let health = self.inspect();
-        recall::attach_hybrid_result_trust(&self.data, &health, &mut report.results);
+        recall::attach_hybrid_result_trust(
+            &self.data,
+            &context.store_health,
+            &mut report.results,
+        );
         Ok(report)
     }
 
@@ -572,6 +602,22 @@ impl MemoryEngine {
         target_database: impl AsRef<Path>,
         dry_run: bool,
     ) -> Result<BackupRestoreReport> {
+        Self::restore_backup_with_options(
+            path,
+            target_database,
+            &BackupRestoreOptions {
+                dry_run,
+                rebuild_semantic_index: false,
+            },
+        )
+    }
+
+    /// Restore a backup with explicit derived-state reconstruction options.
+    pub fn restore_backup_with_options(
+        path: impl AsRef<Path>,
+        target_database: impl AsRef<Path>,
+        options: &BackupRestoreOptions,
+    ) -> Result<BackupRestoreReport> {
         let path = path.as_ref();
         let target_database = target_database.as_ref();
         let validation = backup::validate_backup_file(path)?;
@@ -596,7 +642,7 @@ impl MemoryEngine {
         let appendable_event_count = validation.backup_record_count.unwrap_or_default();
         let mut report = BackupRestoreReport {
             valid: validation.valid && target_was_empty,
-            dry_run,
+            dry_run: options.dry_run,
             backup_path: path.display().to_string(),
             target_database: target_database.display().to_string(),
             appendable_event_count,
@@ -604,10 +650,16 @@ impl MemoryEngine {
             target_was_empty,
             record_ledger_checksum: validation.backup_record_ledger_checksum.clone(),
             semantic_restore_policy,
+            graph_projection_rebuilt: false,
+            graph_projection_valid: false,
+            semantic_rebuild_required: true,
+            semantic_rebuild_completed: false,
+            semantic_index_current: None,
+            operationally_ready: false,
             issues,
         };
 
-        if dry_run || !report.valid {
+        if options.dry_run || !report.valid {
             return Ok(report);
         }
 
@@ -625,7 +677,72 @@ impl MemoryEngine {
         if restored_events.len() != backup.records.len() || restored_checksum != expected_checksum {
             report.valid = false;
             report.issues.push(backup::restore_verification_issue());
+            return Ok(report);
         }
+
+        let graph_path = target_database.to_path_buf();
+        match block_on_database(async move { rebuild_graph_projection(&graph_path).await }) {
+            Ok(graph) => {
+                report.graph_projection_rebuilt = true;
+                report.graph_projection_valid = graph.status.in_sync;
+                if !graph.status.in_sync {
+                    report.valid = false;
+                    report
+                        .issues
+                        .push(backup::graph_projection_restore_issue(
+                            crate::BackupIssueKind::GraphProjectionValidationFailed,
+                            "rebuilt graph projection did not match the restored ledger"
+                                .to_string(),
+                        ));
+                }
+            }
+            Err(error) => {
+                report.valid = false;
+                report
+                    .issues
+                    .push(backup::graph_projection_restore_issue(
+                        crate::BackupIssueKind::GraphProjectionRebuildFailed,
+                        format!("failed to rebuild graph projection after ledger restore: {error}"),
+                    ));
+            }
+        }
+
+        if options.rebuild_semantic_index && report.valid {
+            match MemoryEngine::open(target_database)
+                .and_then(|memory| memory.rebuild_semantic_index().map(|_| memory))
+                .and_then(|memory| memory.semantic_index_status())
+            {
+                Ok(status) => {
+                    report.semantic_index_current = Some(status.is_current);
+                    report.semantic_rebuild_completed = status.is_current;
+                    report.semantic_rebuild_required = !status.is_current;
+                    if !status.is_current {
+                        report.valid = false;
+                        report.issues.push(backup::semantic_restore_issue(format!(
+                            "semantic index remained stale after rebuild: expected {}, indexed {}, missing {}, orphan {}, stale {}",
+                            status.expected_point_count,
+                            status.indexed_point_count,
+                            status.missing_point_count,
+                            status.orphan_point_count,
+                            status.stale_point_count
+                        )));
+                    }
+                }
+                Err(error) => {
+                    report.valid = false;
+                    report
+                        .issues
+                        .push(backup::semantic_restore_issue(format!(
+                            "failed to rebuild semantic index after ledger restore: {error}"
+                        )));
+                }
+            }
+        }
+
+        report.operationally_ready = report.valid
+            && report.graph_projection_valid
+            && report.semantic_rebuild_completed
+            && report.semantic_index_current == Some(true);
 
         Ok(report)
     }
@@ -718,37 +835,48 @@ impl MemoryEngine {
         timestamp_ms: u64,
         payload: MemoryEvent,
     ) -> Result<EventEnvelope> {
-        // FEATURE OFF (default): plain self-contained envelope, `prev_hash` stays
-        // `None` and is skipped on serialization — byte-identical to before.
-        #[cfg(not(feature = "tamper-evidence"))]
-        let envelope = EventEnvelope::new(self.next_sequence, timestamp_ms, payload);
-        // FEATURE ON: bind the previous event's chained hash so any later rewrite
-        // of this or an earlier event breaks the chain at the next event. The
-        // chain is computed against `self.events.last()` whether or not we are in
-        // a batch, so a buffered batch produces exactly the same chain as
-        // appending the same events one at a time. A full suffix re-chain (which
-        // changes the tip) is caught externally by signing `chain_tip()` — see
-        // the `attestation` feature.
-        #[cfg(feature = "tamper-evidence")]
-        let envelope = {
-            let previous_chain_hash = self.events.last().map(EventEnvelope::chain_hash);
-            EventEnvelope::with_chain(
-                self.next_sequence,
-                timestamp_ms,
-                payload,
-                previous_chain_hash.as_deref(),
-            )
-        };
+        const MAX_SEQUENCE_CONFLICT_RETRIES: u32 = 16;
+        let mut attempt = 0;
+        let envelope = loop {
+            // FEATURE OFF (default): plain self-contained envelope, `prev_hash`
+            // stays `None` and is skipped on serialization.
+            #[cfg(not(feature = "tamper-evidence"))]
+            let candidate =
+                EventEnvelope::new(self.next_sequence, timestamp_ms, payload.clone());
+            // FEATURE ON: every retry rebuilds the envelope against the latest
+            // committed chain tip after refreshing a colliding writer.
+            #[cfg(feature = "tamper-evidence")]
+            let candidate = {
+                let previous_chain_hash = self.events.last().map(EventEnvelope::chain_hash);
+                EventEnvelope::with_chain(
+                    self.next_sequence,
+                    timestamp_ms,
+                    payload.clone(),
+                    previous_chain_hash.as_deref(),
+                )
+            };
 
-        // Outside a batch, persist this single record first so a write failure
-        // leaves the in-memory projection untouched (unchanged single-mutation
-        // semantics). Inside a batch, defer the write to the one-shot flush in
-        // `flush_import_batch`.
-        if !self.batch_active {
+            if self.batch_active {
+                break candidate;
+            }
+
             let write_path = self.path.clone();
-            let write_envelope = envelope.clone();
-            block_on_database(async move { write_record(&write_path, &write_envelope).await })?;
-        }
+            let write_candidate = candidate.clone();
+            match block_on_database(async move {
+                write_record(&write_path, &write_candidate).await
+            }) {
+                Ok(()) => break candidate,
+                Err(error)
+                    if is_record_sequence_conflict(&error)
+                        && attempt < MAX_SEQUENCE_CONFLICT_RETRIES =>
+                {
+                    attempt += 1;
+                    append_retry_backoff(attempt);
+                    self.refresh()?;
+                }
+                Err(error) => return Err(error),
+            }
+        };
 
         self.events.push(envelope.clone());
         projection::project_event(&mut self.data, &envelope);
@@ -759,7 +887,14 @@ impl MemoryEngine {
         // batch we rebuild it exactly once at flush time instead.
         if !self.batch_active {
             let graph_path = self.path.clone();
-            block_on_database(async move { rebuild_graph_projection(&graph_path).await })?;
+            if let Err(source) =
+                block_on_database(async move { rebuild_graph_projection(&graph_path).await })
+            {
+                return Err(committed_projection_error(
+                    std::slice::from_ref(&envelope),
+                    source,
+                ));
+            }
         }
 
         Ok(envelope)
@@ -776,24 +911,42 @@ impl MemoryEngine {
     /// pre-batch snapshot so the engine stays consistent with the database.
     fn run_import_batch<T>(
         &mut self,
-        body: impl FnOnce(&mut Self) -> Result<T>,
+        mut body: impl FnMut(&mut Self) -> Result<T>,
     ) -> Result<T> {
         debug_assert!(!self.batch_active, "import batches must not be nested");
-        let restore_len = self.events.len();
-        let restore_sequence = self.next_sequence;
-        let restore_data = self.data.clone();
+        const MAX_SEQUENCE_CONFLICT_RETRIES: u32 = 16;
+        let mut attempt = 0;
 
-        self.batch_active = true;
-        let outcome = body(self);
-        self.batch_active = false;
+        loop {
+            let restore_len = self.events.len();
+            let restore_sequence = self.next_sequence;
+            let restore_data = self.data.clone();
 
-        match outcome.and_then(|value| self.flush_import_batch(restore_len).map(|()| value)) {
-            Ok(value) => Ok(value),
-            Err(error) => {
-                self.events.truncate(restore_len);
-                self.next_sequence = restore_sequence;
-                self.data = restore_data;
+            self.batch_active = true;
+            let outcome = body(self);
+            self.batch_active = false;
+
+            match outcome.and_then(|value| self.flush_import_batch(restore_len).map(|()| value)) {
+                Ok(value) => return Ok(value),
                 Err(error)
+                    if is_record_sequence_conflict(&error)
+                        && attempt < MAX_SEQUENCE_CONFLICT_RETRIES =>
+                {
+                    self.events.truncate(restore_len);
+                    self.next_sequence = restore_sequence;
+                    self.data = restore_data;
+                    attempt += 1;
+                    append_retry_backoff(attempt);
+                    self.refresh()?;
+                }
+                Err(error) => {
+                    if !error.ledger_commit_confirmed() {
+                        self.events.truncate(restore_len);
+                        self.next_sequence = restore_sequence;
+                        self.data = restore_data;
+                    }
+                    return Err(error);
+                }
             }
         }
     }
@@ -807,11 +960,28 @@ impl MemoryEngine {
 
         let write_path = self.path.clone();
         let pending = self.events[persisted_len..].to_vec();
-        block_on_database(async move { write_records(&write_path, &pending).await })?;
+        let write_pending = pending.clone();
+        block_on_database(async move { write_records(&write_path, &write_pending).await })?;
 
         let graph_path = self.path.clone();
-        block_on_database(async move { rebuild_graph_projection(&graph_path).await })?;
+        if let Err(source) =
+            block_on_database(async move { rebuild_graph_projection(&graph_path).await })
+        {
+            return Err(committed_projection_error(&pending, source));
+        }
 
         Ok(())
     }
+}
+
+fn append_retry_backoff(attempt: u32) {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    std::process::id().hash(&mut hasher);
+    std::thread::current().id().hash(&mut hasher);
+    attempt.hash(&mut hasher);
+    let jitter_ms = hasher.finish() % 11;
+    let base_ms = 2_u64.saturating_pow(attempt.min(6)).saturating_mul(2);
+    std::thread::sleep(std::time::Duration::from_millis(base_ms + jitter_ms));
 }

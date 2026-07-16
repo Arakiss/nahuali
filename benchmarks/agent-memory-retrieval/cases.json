@@ -1,0 +1,62 @@
+{
+  "benchmarkVersion": "1.0.0",
+  "description": "Deterministic first-party retrieval evaluation for the public Nahuali CLI.",
+  "maxK": 10,
+  "kValues": [1, 3, 5],
+  "warmupRuns": 1,
+  "measuredRuns": 3,
+  "modes": {
+    "lexical": {
+      "required": true,
+      "minimum": {"recallAt1": 0.75, "recallAt3": 0.95, "mrr": 0.82, "ndcgAt10": 0.82}
+    },
+    "deterministicHybrid": {
+      "required": true,
+      "minimum": {"recallAt1": 0.75, "recallAt3": 0.95, "mrr": 0.82, "ndcgAt10": 0.82}
+    },
+    "localModelHybrid": {
+      "required": false,
+      "minimum": {"recallAt1": 0.75, "recallAt3": 0.95, "mrr": 0.82, "ndcgAt10": 0.82}
+    }
+  },
+  "memories": [
+    {"id": "release-notes", "content": "Lena maintains the release notes and keeps the product changelog concise.", "tags": ["release", "documentation"], "mentions": ["Lena"]},
+    {"id": "release-calendar", "content": "The release calendar reserves Tuesday mornings for staging deployments.", "tags": ["release", "calendar"], "mentions": []},
+    {"id": "database-backup", "content": "Mateo runs nightly database backups and verifies recovery with a restore drill every Monday.", "tags": ["database", "recovery"], "mentions": ["Mateo"]},
+    {"id": "database-migration", "content": "Database migrations require an online lock review before production rollout.", "tags": ["database", "migration"], "mentions": []},
+    {"id": "invoice-followup", "content": "Iris follows up on overdue customer invoices every Friday afternoon.", "tags": ["billing", "customers"], "mentions": ["Iris"]},
+    {"id": "invoice-template", "content": "The invoice template displays tax identifiers below the billing address.", "tags": ["billing", "template"], "mentions": []},
+    {"id": "production-alerts", "content": "Sora escalates critical production incidents to the on-call engineer within five minutes.", "tags": ["production", "alerts"], "mentions": ["Sora"]},
+    {"id": "alert-design", "content": "The dashboard uses amber alerts for warnings and red alerts for service outages.", "tags": ["design", "alerts"], "mentions": []},
+    {"id": "privacy-deletion", "content": "Nadia completes user data erasure requests within thirty days and records the evidence.", "tags": ["privacy", "deletion"], "mentions": ["Nadia"]},
+    {"id": "privacy-policy", "content": "The privacy policy is reviewed by counsel before each annual publication.", "tags": ["privacy", "policy"], "mentions": []},
+    {"id": "roadmap-workshop", "content": "The quarterly product planning workshop ranks roadmap bets by retention impact and effort.", "tags": ["roadmap", "planning"], "mentions": []},
+    {"id": "roadmap-metrics", "content": "Roadmap metrics are refreshed on the first business day of each month.", "tags": ["roadmap", "metrics"], "mentions": []},
+    {"id": "api-token-rotation", "content": "API authentication tokens rotate every ninety days and revoked credentials stop working immediately.", "tags": ["api", "security"], "mentions": []},
+    {"id": "api-rate-limits", "content": "API rate limits allow sixty write requests per minute for standard clients.", "tags": ["api", "limits"], "mentions": []},
+    {"id": "mobile-onboarding", "content": "The mobile onboarding experiment shortens the first session to three guided steps.", "tags": ["mobile", "experiment"], "mentions": []},
+    {"id": "mobile-crash", "content": "Mobile crash reports include the application version and device model.", "tags": ["mobile", "reliability"], "mentions": []},
+    {"id": "inventory-forecast", "content": "Seasonal warehouse demand is predicted from twelve months of stock movement.", "tags": ["inventory", "forecast"], "mentions": []},
+    {"id": "inventory-audit", "content": "The warehouse inventory audit samples high-value items every Wednesday.", "tags": ["inventory", "audit"], "mentions": []},
+    {"id": "security-audit", "content": "The annual security review collects access logs, dependency attestations, and incident evidence.", "tags": ["security", "audit"], "mentions": []},
+    {"id": "security-training", "content": "Security awareness training is assigned to every new employee in their first week.", "tags": ["security", "training"], "mentions": []},
+    {"id": "customer-churn", "content": "Falling weekly activity and unresolved support tickets are early customer cancellation signals.", "tags": ["customers", "retention"], "mentions": []},
+    {"id": "customer-interviews", "content": "Customer interviews are summarized after each discovery call.", "tags": ["customers", "research"], "mentions": []},
+    {"id": "support-handoff", "content": "Support transfers urgent technical tickets to engineering with reproduction steps and logs.", "tags": ["support", "engineering"], "mentions": []},
+    {"id": "support-hours", "content": "Standard support hours run from eight to eighteen Central European Time.", "tags": ["support", "hours"], "mentions": []}
+  ],
+  "queries": [
+    {"id": "q-release-notes", "query": "Who maintains the changelog and release notes?", "relevant": ["release-notes"]},
+    {"id": "q-database-backup", "query": "What is the tested recovery routine for database backups?", "relevant": ["database-backup"]},
+    {"id": "q-invoice-followup", "query": "When are overdue customer invoices followed up?", "relevant": ["invoice-followup"]},
+    {"id": "q-production-alerts", "query": "How are critical production incidents escalated?", "relevant": ["production-alerts"]},
+    {"id": "q-privacy-deletion", "query": "Who completes user data erasure requests?", "relevant": ["privacy-deletion"]},
+    {"id": "q-roadmap-workshop", "query": "What happens in the quarterly product planning workshop?", "relevant": ["roadmap-workshop"]},
+    {"id": "q-api-token-rotation", "query": "How often are API credentials rotated?", "relevant": ["api-token-rotation"]},
+    {"id": "q-mobile-onboarding", "query": "Which experiment improves the first mobile session?", "relevant": ["mobile-onboarding"]},
+    {"id": "q-inventory-forecast", "query": "How is seasonal stock demand predicted?", "relevant": ["inventory-forecast"]},
+    {"id": "q-security-audit", "query": "What evidence is collected for the annual security review?", "relevant": ["security-audit"]},
+    {"id": "q-customer-churn", "query": "What signals warn that customer accounts may cancel?", "relevant": ["customer-churn"]},
+    {"id": "q-support-handoff", "query": "How does support transfer urgent tickets to engineering?", "relevant": ["support-handoff"]}
+  ]
+}

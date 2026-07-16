@@ -6,6 +6,12 @@ const GRAPH_PROJECTION_REBUILD_LOCK_ID: &str = "graph_v1";
 const GRAPH_PROJECTION_REBUILD_LEASE_MS: u64 = 120_000;
 const GRAPH_PROJECTION_REBUILD_WAIT_MS: u64 = 30_000;
 const GRAPH_PROJECTION_REBUILD_POLL_MS: u64 = 50;
+const GRAPH_PROJECTION_COMPLETION_POLL_ATTEMPTS: u64 = 10;
+
+#[cfg(test)]
+static INJECTED_GRAPH_PROJECTION_FAILURES: std::sync::OnceLock<
+    std::sync::Mutex<BTreeSet<PathBuf>>,
+> = std::sync::OnceLock::new();
 
 const PROJECTED_NODE_TABLES: &[&str] = &[
     "projection_checkpoint",
@@ -316,9 +322,15 @@ impl MemoryEngine {
 }
 
 async fn rebuild_graph_projection(path: &Path) -> Result<GraphProjectionRebuildReport> {
+    #[cfg(test)]
+    if consume_injected_graph_projection_failure(path) {
+        return Err(NahualiError::GraphProjectionRebuildBusy { timeout_ms: 0 });
+    }
     let db = open_database(path).await?;
     let lock_token = make_id("projection_rebuild");
-    acquire_graph_projection_rebuild_lock(path, &db, &lock_token).await?;
+    if let Some(report) = acquire_graph_projection_rebuild_lock(path, &db, &lock_token).await? {
+        return Ok(report);
+    }
     let rebuild = async {
         let events = read_records(path).await?;
         let data = projection::project(&events);
@@ -331,6 +343,54 @@ async fn rebuild_graph_projection(path: &Path) -> Result<GraphProjectionRebuildR
         (Err(error), _) => Err(error),
         (Ok(_), Err(error)) => Err(error),
     }
+}
+
+async fn completed_concurrent_rebuild(
+    path: &Path,
+) -> Result<Option<GraphProjectionRebuildReport>> {
+    let events_before = read_records(path).await?;
+    let data = projection::project(&events_before);
+    let status = graph_projection_status(path, &data, &events_before).await?;
+    if !status.in_sync {
+        return Ok(None);
+    }
+
+    // A writer may append after the first read. Only coalesce when the ledger
+    // tip stays stable across the projection check.
+    let events_after = read_records(path).await?;
+    let before_tip = events_before
+        .last()
+        .map(|event| (event.sequence, event.id.as_str()));
+    let after_tip = events_after
+        .last()
+        .map(|event| (event.sequence, event.id.as_str()));
+    if events_before.len() != events_after.len() || before_tip != after_tip {
+        return Ok(None);
+    }
+
+    Ok(Some(GraphProjectionRebuildReport {
+        status,
+        node_rows_written: 0,
+        relation_rows_written: 0,
+    }))
+}
+
+#[cfg(test)]
+fn inject_graph_projection_failure_once(path: &Path) {
+    INJECTED_GRAPH_PROJECTION_FAILURES
+        .get_or_init(|| std::sync::Mutex::new(BTreeSet::new()))
+        .lock()
+        .expect("projection failure registry lock")
+        .insert(path.to_path_buf());
+}
+
+#[cfg(test)]
+fn consume_injected_graph_projection_failure(path: &Path) -> bool {
+    INJECTED_GRAPH_PROJECTION_FAILURES
+        .get_or_init(|| std::sync::Mutex::new(BTreeSet::new()))
+        .lock()
+        .expect("projection failure registry lock")
+        .remove(path)
 }
 
 async fn rebuild_graph_projection_locked(
@@ -870,7 +930,7 @@ async fn acquire_graph_projection_rebuild_lock(
     path: &Path,
     db: &DatabaseSession,
     token: &str,
-) -> Result<()> {
+) -> Result<Option<GraphProjectionRebuildReport>> {
     let attempts = GRAPH_PROJECTION_REBUILD_WAIT_MS / GRAPH_PROJECTION_REBUILD_POLL_MS;
     for attempt in 0..=attempts {
         let now_ms = now_ms();
@@ -900,7 +960,12 @@ async fn acquire_graph_projection_rebuild_lock(
             .and_then(serde_json::Value::as_str)
             == Some(token)
         {
-            return Ok(());
+            return Ok(None);
+        }
+        if attempt % GRAPH_PROJECTION_COMPLETION_POLL_ATTEMPTS == 0
+            && let Some(report) = completed_concurrent_rebuild(path).await?
+        {
+            return Ok(Some(report));
         }
         if attempt < attempts {
             tokio::time::sleep(std::time::Duration::from_millis(
@@ -909,9 +974,13 @@ async fn acquire_graph_projection_rebuild_lock(
             .await;
         }
     }
-    Err(NahualiError::GraphProjectionRebuildBusy {
-        timeout_ms: GRAPH_PROJECTION_REBUILD_WAIT_MS,
-    })
+    if let Some(report) = completed_concurrent_rebuild(path).await? {
+        Ok(Some(report))
+    } else {
+        Err(NahualiError::GraphProjectionRebuildBusy {
+            timeout_ms: GRAPH_PROJECTION_REBUILD_WAIT_MS,
+        })
+    }
 }
 
 async fn release_graph_projection_rebuild_lock(

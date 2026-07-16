@@ -65,6 +65,16 @@ pub(crate) struct SemanticIndexStatusView {
     qdrant_url: String,
     collection_exists: bool,
     point_count: usize,
+    expected_point_count: usize,
+    indexed_point_count: usize,
+    missing_point_count: usize,
+    orphan_point_count: usize,
+    stale_point_count: usize,
+    is_current: bool,
+    missing_point_ids: Vec<String>,
+    orphan_point_ids: Vec<String>,
+    stale_point_ids: Vec<String>,
+    drift_details_truncated: bool,
 }
 
 impl From<SemanticIndexStatus> for SemanticIndexStatusView {
@@ -74,6 +84,16 @@ impl From<SemanticIndexStatus> for SemanticIndexStatusView {
             qdrant_url: status.qdrant_url,
             collection_exists: status.collection_exists,
             point_count: status.point_count,
+            expected_point_count: status.expected_point_count,
+            indexed_point_count: status.indexed_point_count,
+            missing_point_count: status.missing_point_count,
+            orphan_point_count: status.orphan_point_count,
+            stale_point_count: status.stale_point_count,
+            is_current: status.is_current,
+            missing_point_ids: status.missing_point_ids,
+            orphan_point_ids: status.orphan_point_ids,
+            stale_point_ids: status.stale_point_ids,
+            drift_details_truncated: status.drift_details_truncated,
         }
     }
 }

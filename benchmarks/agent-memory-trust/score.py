@@ -21,8 +21,11 @@ if result.get("benchmarkVersion") != cases_document["benchmarkVersion"]:
     fail("result benchmarkVersion does not match cases.json")
 if not result.get("system", {}).get("name") or not result.get("system", {}).get("version"):
     fail("result must identify the system name and version")
-if not result.get("commit"):
-    fail("result must include an immutable source revision or image digest")
+artifact_digest = result.get("artifact", {}).get("sha256")
+if not artifact_digest or len(artifact_digest) != 64:
+    fail("result must include the tested artifact SHA-256")
+if result.get("commit") != f"sha256:{artifact_digest}":
+    fail("result commit identity must match the tested artifact SHA-256")
 if result.get("runner", {}).get("relationship") not in {"first-party", "independent"}:
     fail("result must identify the runner as first-party or independent")
 
@@ -72,6 +75,7 @@ output = {
     "benchmarkVersion": result["benchmarkVersion"],
     "system": result.get("system"),
     "commit": result.get("commit"),
+    "sourceRevision": result.get("artifact", {}).get("sourceRevision"),
     "summary": summary,
     "capabilities": capabilities,
 }

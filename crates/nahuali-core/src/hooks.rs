@@ -253,6 +253,8 @@ fn recall_for_hook(
         results,
         authority: authority.clone(),
         health: health.clone(),
+        store_authority: authority.clone(),
+        store_health: health.clone(),
     })
 }
 

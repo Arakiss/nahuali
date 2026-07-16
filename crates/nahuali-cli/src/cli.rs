@@ -945,6 +945,11 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         target_database: PathBuf,
         #[arg(long)]
         dry_run: bool,
+        #[arg(
+            long,
+            help = "Rebuild and verify the derived semantic index before reporting operational readiness."
+        )]
+        rebuild_semantic: bool,
         #[arg(long)]
         json: bool,
     },

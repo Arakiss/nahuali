@@ -4,8 +4,8 @@ use anyhow::{Context, bail};
 use clap::CommandFactory;
 use clap_complete::generate;
 use nahuali_core::{
-    BackupValidationOptions, MemoryEngine, RecordLedgerValidationOptions, project_validated_events,
-    validate_record_ledger_events_with_options,
+    BackupRestoreOptions, BackupValidationOptions, MemoryEngine, RecordLedgerValidationOptions,
+    project_validated_events, validate_record_ledger_events_with_options,
 };
 
 use crate::{
@@ -64,8 +64,9 @@ pub(crate) fn handle(command: &Command, database: &Path) -> anyhow::Result<bool>
             path,
             target_database,
             dry_run,
+            rebuild_semantic,
             json,
-        } => restore(path, target_database, *dry_run, *json),
+        } => restore(path, target_database, *dry_run, *rebuild_semantic, *json),
         Command::ConvertProjectionExport {
             path,
             output,
@@ -277,15 +278,28 @@ fn backup_drill(path: &Path, target_database: &Path, json: bool) -> anyhow::Resu
     bail!("backup drill failed validation");
 }
 
-fn restore(path: &Path, target_database: &Path, dry_run: bool, json: bool) -> anyhow::Result<bool> {
-    let report =
-        MemoryEngine::restore_backup(path, target_database, dry_run).with_context(|| {
-            format!(
-                "failed to restore backup {} into {}",
-                path.display(),
-                target_database.display()
-            )
-        })?;
+fn restore(
+    path: &Path,
+    target_database: &Path,
+    dry_run: bool,
+    rebuild_semantic: bool,
+    json: bool,
+) -> anyhow::Result<bool> {
+    let report = MemoryEngine::restore_backup_with_options(
+        path,
+        target_database,
+        &BackupRestoreOptions {
+            dry_run,
+            rebuild_semantic_index: rebuild_semantic,
+        },
+    )
+    .with_context(|| {
+        format!(
+            "failed to restore backup {} into {}",
+            path.display(),
+            target_database.display()
+        )
+    })?;
     if json {
         output::print_json(&report)?;
     } else {
@@ -308,6 +322,20 @@ fn restore(path: &Path, target_database: &Path, dry_run: bool, json: bool) -> an
         if let Some(policy) = &report.semantic_restore_policy {
             println!("Semantic restore policy: {policy:?}");
         }
+        println!(
+            "Graph projection rebuilt: {}",
+            report.graph_projection_rebuilt
+        );
+        println!("Graph projection valid: {}", report.graph_projection_valid);
+        println!(
+            "Semantic rebuild required: {}",
+            report.semantic_rebuild_required
+        );
+        println!(
+            "Semantic rebuild completed: {}",
+            report.semantic_rebuild_completed
+        );
+        println!("Operationally ready: {}", report.operationally_ready);
         print_backup_issues("Issues", &report.issues);
     }
 

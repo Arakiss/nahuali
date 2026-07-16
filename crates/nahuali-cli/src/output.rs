@@ -49,6 +49,9 @@ pub(crate) fn backup_issue_kind_name(kind: &BackupIssueKind) -> &'static str {
         BackupIssueKind::RecordHashChainMissing => "record_hash_chain_missing",
         BackupIssueKind::TargetNotEmpty => "target_not_empty",
         BackupIssueKind::RestoreVerificationMismatch => "restore_verification_mismatch",
+        BackupIssueKind::GraphProjectionRebuildFailed => "graph_projection_rebuild_failed",
+        BackupIssueKind::GraphProjectionValidationFailed => "graph_projection_validation_failed",
+        BackupIssueKind::SemanticIndexRebuildFailed => "semantic_index_rebuild_failed",
     }
 }
 

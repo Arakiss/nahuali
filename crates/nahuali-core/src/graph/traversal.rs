@@ -49,7 +49,17 @@ pub(crate) fn graph_neighborhood(
     });
 
     let health = KnowledgeHealth::inspect(data);
-    let authority = AuthorityDecision::evaluate(&health);
+    let store_authority = AuthorityDecision::evaluate(&health);
+    let evidence_ids = nodes
+        .iter()
+        .flat_map(|node| {
+            node.evidence_ids
+                .iter()
+                .chain(node.source_event_ids.iter())
+                .cloned()
+        })
+        .collect::<BTreeSet<_>>();
+    let authority = AuthorityDecision::evaluate_for_evidence(&health, &evidence_ids);
     let summary = summarize(&nodes, &edges);
 
     Ok(MemoryGraphReport {
@@ -59,6 +69,7 @@ pub(crate) fn graph_neighborhood(
         limit,
         event_count: data.event_count,
         authority,
+        store_authority,
         summary,
         nodes,
         edges,

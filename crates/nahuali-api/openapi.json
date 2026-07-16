@@ -16,6 +16,17 @@
         }
       }
     },
+    "/v1/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "summary": "Verify ledger access, graph parity, and required semantic freshness.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ReadinessResponse" },
+          "503": { "$ref": "#/components/responses/ReadinessResponse" },
+          "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
     "/v1/openapi.json": {
       "get": {
         "operationId": "getOpenapi",
@@ -473,6 +484,10 @@
         "description": "Memory counts, store-level authority, knowledge health, and graph projection validation.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } }
       },
+      "ReadinessResponse": {
+        "description": "Serving readiness across the authoritative ledger and configured derived tiers.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadinessResponse" } } }
+      },
       "RecallResponse": {
         "description": "Lexical recall results with per-result trust, store-level authority, and knowledge health.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecallResponse" } } }
@@ -856,6 +871,44 @@
           "active_intentions": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
           "review_items": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
           "graph_seeds": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+        }
+      },
+      "ReadinessCheck": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ready", "status"],
+        "properties": {
+          "ready": { "type": "boolean" },
+          "status": { "type": "string" }
+        }
+      },
+      "SemanticReadiness": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["required", "ready", "status"],
+        "properties": {
+          "required": { "type": "boolean" },
+          "ready": { "type": "boolean" },
+          "status": { "type": "string", "enum": ["current", "stale", "unavailable", "not_required", "not_checked"] },
+          "collection_exists": { "type": "boolean" },
+          "expected_point_count": { "type": "integer", "minimum": 0 },
+          "indexed_point_count": { "type": "integer", "minimum": 0 },
+          "missing_point_count": { "type": "integer", "minimum": 0 },
+          "orphan_point_count": { "type": "integer", "minimum": 0 },
+          "stale_point_count": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "ReadinessResponse": {
+        "type": "object",
+        "description": "Readiness is true only when the ledger is available, the graph projection is current, and a required semantic index is current.",
+        "additionalProperties": false,
+        "required": ["ready", "database", "ledger", "graph", "semantic"],
+        "properties": {
+          "ready": { "type": "boolean" },
+          "database": { "type": "string" },
+          "ledger": { "$ref": "#/components/schemas/ReadinessCheck" },
+          "graph": { "$ref": "#/components/schemas/ReadinessCheck" },
+          "semantic": { "$ref": "#/components/schemas/SemanticReadiness" }
         }
       },
       "StatusResponse": {

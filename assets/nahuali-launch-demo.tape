@@ -1,12 +1,12 @@
 Output "assets/nahuali-demo.gif"
 
 Set Shell "bash"
-Set Width 880
-Set Height 1000
-Set FontSize 22
+Set Width 1280
+Set Height 760
+Set FontSize 18
 Set FontFamily "Menlo"
-Set Padding 20
-Set Margin 24
+Set Padding 22
+Set Margin 20
 Set MarginFill "#120f0e"
 Set WindowBar Rings
 Set BorderRadius 10
@@ -26,42 +26,28 @@ Type "unset NO_COLOR"
 Enter
 Type "clear"
 Enter
-Show
 
 Type "scripts/run-launch-demo.sh seed"
 Enter
-Sleep 3s
+Sleep 2s
 Type "scripts/run-launch-demo.sh recall"
 Enter
 Sleep 3s
-
-Type "scripts/run-launch-demo.sh explore"
-Enter
-Sleep 2s
-Type "j"
+Show
 Sleep 3s
-Type "q"
 
+Hide
 Type "clear"
 Enter
 Type "scripts/run-launch-demo.sh contradict"
 Enter
-Sleep 3s
+Sleep 2s
 Type "scripts/run-launch-demo.sh mcp-recall"
 Enter
-Sleep 4s
-
-Type "scripts/run-launch-demo.sh explore"
-Enter
-Sleep 2s
-Type "j"
-Sleep 2s
-Type "j"
 Sleep 3s
-Type "q"
 
-Type "clear"
-Enter
 Type "scripts/run-launch-demo.sh inspect"
 Enter
+Sleep 2s
+Show
 Sleep 4s
