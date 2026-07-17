@@ -467,6 +467,7 @@ mod tests {
         })
     }
 
+    #[cfg(feature = "tamper-evidence")]
     fn ledger(payloads: Vec<MemoryEvent>) -> Vec<EventEnvelope> {
         let mut events: Vec<EventEnvelope> = Vec::new();
         for (index, payload) in payloads.into_iter().enumerate() {
@@ -479,6 +480,17 @@ mod tests {
             ));
         }
         events
+    }
+
+    #[cfg(not(feature = "tamper-evidence"))]
+    fn ledger(payloads: Vec<MemoryEvent>) -> Vec<EventEnvelope> {
+        payloads
+            .into_iter()
+            .enumerate()
+            .map(|(index, payload)| {
+                EventEnvelope::new(index as u64 + 1, (index as u64 + 1) * 1000, payload)
+            })
+            .collect()
     }
 
     #[test]
