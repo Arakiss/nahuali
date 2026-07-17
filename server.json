@@ -11,7 +11,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/arakiss/nahuali-mcp:0.8.0-beta.6",
+      "identifier": "ghcr.io/arakiss/nahuali-mcp:0.8.0-beta.7",
       "transport": {
         "type": "stdio"
       }
