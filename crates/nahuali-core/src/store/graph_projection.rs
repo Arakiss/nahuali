@@ -1,12 +1,17 @@
-/// Current SurrealDB graph projection schema version.
-pub const GRAPH_PROJECTION_VERSION: u32 = 1;
+use sha2::{Digest, Sha256};
 
-const GRAPH_PROJECTION_CHECKPOINT_ID: &str = "graph_v1";
-const GRAPH_PROJECTION_REBUILD_LOCK_ID: &str = "graph_v1";
+/// Current SurrealDB graph projection schema version.
+pub const GRAPH_PROJECTION_VERSION: u32 = 2;
+
+const GRAPH_PROJECTION_CHECKPOINT_ID: &str = "graph_v2";
+const GRAPH_PROJECTION_REBUILD_LOCK_ID: &str = "graph_v2";
+const GRAPH_PROJECTION_FENCING_SEQUENCE: &str = "projection_rebuild_fencing";
+const GRAPH_PROJECTION_MUTATION_GUARD_SEQUENCE: &str = "projection_rebuild_mutation_guard";
 const GRAPH_PROJECTION_REBUILD_LEASE_MS: u64 = 120_000;
 const GRAPH_PROJECTION_REBUILD_WAIT_MS: u64 = 30_000;
 const GRAPH_PROJECTION_REBUILD_POLL_MS: u64 = 50;
-const GRAPH_PROJECTION_COMPLETION_POLL_ATTEMPTS: u64 = 10;
+const GRAPH_PROJECTION_MANIFEST_ALGORITHM: &str = "sha256-canonical-json-v1";
+const GRAPH_PROJECTION_MUTATION_BATCH_SIZE: usize = 128;
 
 #[cfg(test)]
 static INJECTED_GRAPH_PROJECTION_FAILURES: std::sync::OnceLock<
@@ -38,30 +43,24 @@ const PROJECTED_RELATION_TABLES: &[&str] = &[
     "intention_depends_on",
 ];
 
-const PROJECTED_UNIQUE_INDEXES: &[(&str, &str)] = &[
-    ("projection_checkpoint", "projection_checkpoint_version_idx"),
-    ("memory_scope", "memory_scope_key_idx"),
-    ("source_record", "source_record_memory_id_idx"),
-    ("episode", "episode_memory_id_idx"),
-    ("episode", "episode_event_idx"),
-    ("entity", "entity_memory_id_idx"),
-    ("claim", "claim_memory_id_idx"),
-    ("claim", "claim_event_idx"),
-    ("procedure", "procedure_memory_id_idx"),
-    ("procedure", "procedure_event_idx"),
-    ("intention", "intention_memory_id_idx"),
-    ("intention", "intention_event_idx"),
-    ("health_signal", "health_signal_memory_id_idx"),
-    ("review_item", "review_item_memory_id_idx"),
-    ("review_decision", "review_decision_memory_id_idx"),
-    ("review_decision", "review_decision_event_idx"),
-    ("inferred_claim", "inferred_claim_memory_id_idx"),
-    ("contradiction", "contradiction_memory_id_idx"),
-    ("anomaly_alert", "anomaly_alert_memory_id_idx"),
-    ("mentions", "mentions_memory_id_idx"),
-    ("supports", "supports_memory_id_idx"),
-    ("relates_to", "relates_to_memory_id_idx"),
-    ("intention_depends_on", "intention_depends_on_memory_id_idx"),
+// Checkpoint, error, and lease rows are control-plane state rather than the
+// ledger-derived graph. Checkpoint/error counts and checkpoint versions remain
+// validated; the lease is governed by owner+fence checks. All three are
+// deliberately excluded from the self-referential content manifest.
+const MANIFEST_NODE_TABLES: &[&str] = &[
+    "memory_scope",
+    "source_record",
+    "episode",
+    "entity",
+    "claim",
+    "procedure",
+    "intention",
+    "health_signal",
+    "review_item",
+    "review_decision",
+    "inferred_claim",
+    "contradiction",
+    "anomaly_alert",
 ];
 
 /// Table counts and checkpoint state for the SurrealDB graph projection.
@@ -69,6 +68,22 @@ const PROJECTED_UNIQUE_INDEXES: &[(&str, &str)] = &[
 pub struct GraphProjectionStatus {
     /// Projection schema version expected by this runtime.
     pub projection_version: u32,
+    /// In-memory projection model version expected by this runtime.
+    pub memory_data_version: u32,
+    /// Projection schema version persisted in the active checkpoint.
+    pub checkpoint_projection_version: Option<u32>,
+    /// Projection model version persisted in the active checkpoint.
+    pub checkpoint_memory_data_version: Option<u32>,
+    /// Manifest algorithm persisted in the active checkpoint.
+    pub checkpoint_manifest_algorithm: Option<String>,
+    /// Expected content digest persisted in the active checkpoint.
+    pub checkpoint_manifest_digest: Option<String>,
+    /// Per-table expected content digests persisted in the checkpoint.
+    pub checkpoint_manifest_table_digests: BTreeMap<String, String>,
+    /// Digest recomputed from the currently stored projected rows.
+    pub actual_manifest_digest: String,
+    /// Per-table digests recomputed from the currently stored projected rows.
+    pub actual_manifest_table_digests: BTreeMap<String, String>,
     /// Number of ledger events included in the in-memory projection.
     pub ledger_event_count: usize,
     /// Latest ledger sequence in the in-memory projection.
@@ -198,8 +213,49 @@ struct EventMeta {
 
 #[derive(Clone, Debug, serde::Deserialize)]
 struct ProjectionCheckpointRow {
+    projection_version: Option<u32>,
+    memory_data_version: Option<u32>,
     latest_sequence: Option<u64>,
     latest_event_id: Option<String>,
+    manifest_algorithm: Option<String>,
+    manifest_digest: Option<String>,
+    #[serde(default)]
+    manifest_table_digests: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct ProjectionLeaseRow {
+    owner_token: Option<String>,
+    #[serde(default)]
+    fencing_token: u64,
+    #[serde(default)]
+    expires_at_ms: u64,
+}
+
+#[derive(Debug)]
+struct GraphProjectionLease {
+    owner_token: String,
+    fencing_token: u64,
+    expires_at_ms: AtomicU64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ProjectionManifest {
+    digest: String,
+    table_digests: BTreeMap<String, String>,
+}
+
+struct ProjectionManifestBuilder {
+    row_digests: BTreeMap<String, Vec<[u8; 32]>>,
+}
+
+struct ProjectionMutationBatch {
+    statements: Vec<String>,
+    relation_rows: Vec<String>,
+    relation_table: Option<String>,
+    bindings: Vec<(String, serde_json::Value)>,
+    manifest_entries: Vec<(String, serde_json::Value)>,
+    next_binding_index: usize,
 }
 
 struct ProjectedRelationInput<'a> {
@@ -230,6 +286,44 @@ impl MemoryEngine {
     pub fn projection_validate(&self) -> Result<GraphProjectionValidation> {
         let status = self.projection_status()?;
         let mut issues = Vec::new();
+        if status.checkpoint_projection_version != Some(GRAPH_PROJECTION_VERSION) {
+            issues.push(format!(
+                "checkpoint projection version {:?} does not match runtime version {}",
+                status.checkpoint_projection_version, GRAPH_PROJECTION_VERSION
+            ));
+        }
+        if status.checkpoint_memory_data_version != Some(MEMORY_DATA_VERSION) {
+            issues.push(format!(
+                "checkpoint memory data version {:?} does not match runtime version {}",
+                status.checkpoint_memory_data_version, MEMORY_DATA_VERSION
+            ));
+        }
+        if status.checkpoint_manifest_algorithm.as_deref()
+            != Some(GRAPH_PROJECTION_MANIFEST_ALGORITHM)
+        {
+            issues.push(format!(
+                "checkpoint manifest algorithm {:?} does not match runtime algorithm {}",
+                status.checkpoint_manifest_algorithm, GRAPH_PROJECTION_MANIFEST_ALGORITHM
+            ));
+        }
+        if status.checkpoint_manifest_digest.as_deref()
+            != Some(status.actual_manifest_digest.as_str())
+        {
+            issues.push(format!(
+                "checkpoint manifest digest {:?} does not match projected content digest {}",
+                status.checkpoint_manifest_digest, status.actual_manifest_digest
+            ));
+        }
+        if status.checkpoint_manifest_table_digests != status.actual_manifest_table_digests {
+            let mismatched = manifest_mismatched_tables(
+                &status.checkpoint_manifest_table_digests,
+                &status.actual_manifest_table_digests,
+            );
+            issues.push(format!(
+                "checkpoint manifest table digests do not match projected content for: {}",
+                mismatched.join(", ")
+            ));
+        }
         if status.checkpoint_sequence != status.latest_sequence {
             issues.push(format!(
                 "checkpoint sequence {:?} does not match ledger sequence {:?}",
@@ -263,9 +357,11 @@ impl MemoryEngine {
         query: Option<&str>,
         limit: usize,
     ) -> Result<Vec<GraphProjectionEntity>> {
+        let read_fence = self.graph_projection_read_fence()?;
+        self.ensure_graph_projection_readable()?;
         let path = self.path.clone();
         let query = query.map(str::to_string);
-        block_on_database(async move {
+        let entities = block_on_database(async move {
             let db = open_database(&path).await?;
             let mut entities: Vec<GraphProjectionEntity> =
                 select_projected_rows(&path, &db, "SELECT memory_id, name, mention_count, scope_key, source_event_ids, last_seen_at_ms FROM entity ORDER BY last_seen_at_ms DESC").await?;
@@ -275,19 +371,25 @@ impl MemoryEngine {
             }
             entities.truncate(limit.max(1));
             Ok(entities)
-        })
+        })?;
+        self.ensure_graph_projection_read_fence(read_fence)?;
+        Ok(entities)
     }
 
     /// Read recent projected episodes directly from SurrealDB graph projection tables.
     pub fn projection_timeline(&self, limit: usize) -> Result<Vec<GraphProjectionEpisode>> {
+        let read_fence = self.graph_projection_read_fence()?;
+        self.ensure_graph_projection_readable()?;
         let path = self.path.clone();
-        block_on_database(async move {
+        let episodes = block_on_database(async move {
             let db = open_database(&path).await?;
             let mut episodes: Vec<GraphProjectionEpisode> =
                 select_projected_rows(&path, &db, "SELECT memory_id, event_id, content, tags, mentions, source_id, scope_key, created_at_ms FROM episode ORDER BY created_at_ms DESC").await?;
             episodes.truncate(limit.max(1));
             Ok(episodes)
-        })
+        })?;
+        self.ensure_graph_projection_read_fence(read_fence)?;
+        Ok(episodes)
     }
 
     /// Read active pending intentions directly from SurrealDB graph projection tables.
@@ -295,14 +397,18 @@ impl MemoryEngine {
         &self,
         limit: usize,
     ) -> Result<Vec<GraphProjectionPendingIntention>> {
+        let read_fence = self.graph_projection_read_fence()?;
+        self.ensure_graph_projection_readable()?;
         let path = self.path.clone();
-        block_on_database(async move {
+        let intentions = block_on_database(async move {
             let db = open_database(&path).await?;
             let mut intentions: Vec<GraphProjectionPendingIntention> =
                 select_projected_rows(&path, &db, "SELECT memory_id, event_id, intention_kind, status, priority, description, source_episode_id, deadline_at_ms, depends_on, goal_id, progress_percent, scope_key, created_at_ms, updated_at_ms FROM intention WHERE status = 'active' ORDER BY updated_at_ms DESC").await?;
             intentions.truncate(limit.max(1));
             Ok(intentions)
-        })
+        })?;
+        self.ensure_graph_projection_read_fence(read_fence)?;
+        Ok(intentions)
     }
 
     /// Read projected health signals directly from SurrealDB graph projection tables.
@@ -310,14 +416,50 @@ impl MemoryEngine {
         &self,
         limit: usize,
     ) -> Result<Vec<GraphProjectionHealthSignal>> {
+        let read_fence = self.graph_projection_read_fence()?;
+        self.ensure_graph_projection_readable()?;
         let path = self.path.clone();
-        block_on_database(async move {
+        let signals = block_on_database(async move {
             let db = open_database(&path).await?;
             let mut signals: Vec<GraphProjectionHealthSignal> =
                 select_projected_rows(&path, &db, "SELECT memory_id, signal_kind, severity, message, evidence_ids FROM health_signal").await?;
             signals.truncate(limit.max(1));
             Ok(signals)
+        })?;
+        self.ensure_graph_projection_read_fence(read_fence)?;
+        Ok(signals)
+    }
+
+    fn ensure_graph_projection_readable(&self) -> Result<()> {
+        let validation = self.projection_validate()?;
+        if validation.valid {
+            Ok(())
+        } else {
+            Err(NahualiError::GraphProjectionInvalid {
+                issues: validation.issues.join("; "),
+            })
+        }
+    }
+
+    fn graph_projection_read_fence(&self) -> Result<u64> {
+        let path = self.path.clone();
+        block_on_database(async move {
+            let db = open_database(&path).await?;
+            read_idle_graph_projection_fence(&path, &db).await
         })
+    }
+
+    fn ensure_graph_projection_read_fence(&self, expected_fence: u64) -> Result<()> {
+        let observed_fence = self.graph_projection_read_fence()?;
+        if observed_fence == expected_fence {
+            Ok(())
+        } else {
+            Err(NahualiError::GraphProjectionInvalid {
+                issues: format!(
+                    "projection rebuild fence changed during read from {expected_fence} to {observed_fence}"
+                ),
+            })
+        }
     }
 }
 
@@ -328,16 +470,20 @@ async fn rebuild_graph_projection(path: &Path) -> Result<GraphProjectionRebuildR
     }
     let db = open_database(path).await?;
     let lock_token = make_id("projection_rebuild");
-    if let Some(report) = acquire_graph_projection_rebuild_lock(path, &db, &lock_token).await? {
-        return Ok(report);
-    }
+    let lease = acquire_graph_projection_rebuild_lock(path, &db, &lock_token).await?;
     let rebuild = async {
+        // Coalesce only while holding our own fenced lease. Observing an
+        // in-sync checkpoint while another owner can still clear it is not a
+        // safe completion condition.
+        if let Some(report) = completed_concurrent_rebuild(path).await? {
+            return Ok(report);
+        }
         let events = read_records(path).await?;
         let data = projection::project(&events);
-        rebuild_graph_projection_locked(path, &data, &events, db.clone()).await
+        rebuild_graph_projection_locked(path, &data, &events, db.clone(), &lease).await
     }
     .await;
-    let release = release_graph_projection_rebuild_lock(path, &db, &lock_token).await;
+    let release = release_graph_projection_rebuild_lock(path, &db, &lease).await;
     match (rebuild, release) {
         (Ok(report), Ok(())) => Ok(report),
         (Err(error), _) => Err(error),
@@ -398,12 +544,16 @@ async fn rebuild_graph_projection_locked(
     data: &MemoryData,
     events: &[EventEnvelope],
     db: DatabaseSession,
+    lease: &GraphProjectionLease,
 ) -> Result<GraphProjectionRebuildReport> {
-    clear_graph_projection(path, &db).await?;
+    verify_graph_projection_lease(path, &db, lease).await?;
+    clear_graph_projection(path, &db, lease).await?;
 
     let event_meta = event_meta(events);
     let entity_ids = entity_id_lookup(data);
     let intention_ids = intention_id_lookup(data);
+    let mut manifest = ProjectionManifestBuilder::new();
+    let mut mutation_batch = ProjectionMutationBatch::new();
     let mut node_rows_written = 0;
     let mut relation_rows_written = 0;
 
@@ -411,8 +561,10 @@ async fn rebuild_graph_projection_locked(
         create_projected_record(
             path,
             &db,
-            "memory_scope",
-            &scope.key,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
+            ("memory_scope", &scope.key),
             serde_json::json!({
                 "memory_id": scope.key,
                 "scope_key": scope.key,
@@ -430,8 +582,10 @@ async fn rebuild_graph_projection_locked(
         create_projected_record(
             path,
             &db,
-            "source_record",
-            &source.id,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
+            ("source_record", &source.id),
             with_scope(
                 serde_json::json!({
                     "memory_id": source.id,
@@ -458,8 +612,10 @@ async fn rebuild_graph_projection_locked(
         create_projected_record(
             path,
             &db,
-            "episode",
-            &episode.id,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
+            ("episode", &episode.id),
             with_scope(
                 serde_json::json!({
                     "memory_id": episode.id,
@@ -490,8 +646,10 @@ async fn rebuild_graph_projection_locked(
         create_projected_record(
             path,
             &db,
-            "entity",
-            &entity.id,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
+            ("entity", &entity.id),
             with_scope(
                 serde_json::json!({
                     "memory_id": entity.id,
@@ -515,8 +673,10 @@ async fn rebuild_graph_projection_locked(
         create_projected_record(
             path,
             &db,
-            "claim",
-            &claim.id,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
+            ("claim", &claim.id),
             with_scope(
                 serde_json::json!({
                     "memory_id": claim.id,
@@ -542,8 +702,10 @@ async fn rebuild_graph_projection_locked(
         create_projected_record(
             path,
             &db,
-            "procedure",
-            &procedure.id,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
+            ("procedure", &procedure.id),
             with_scope(
                 serde_json::json!({
                     "memory_id": procedure.id,
@@ -569,8 +731,10 @@ async fn rebuild_graph_projection_locked(
         create_projected_record(
             path,
             &db,
-            "intention",
-            &intention.id,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
+            ("intention", &intention.id),
             with_scope(
                 serde_json::json!({
                     "memory_id": intention.id,
@@ -610,8 +774,10 @@ async fn rebuild_graph_projection_locked(
         create_projected_record(
             path,
             &db,
-            "health_signal",
-            &memory_id,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
+            ("health_signal", &memory_id),
             serde_json::json!({
                 "memory_id": memory_id,
                 "signal_kind": signal.kind,
@@ -630,8 +796,10 @@ async fn rebuild_graph_projection_locked(
         create_projected_record(
             path,
             &db,
-            "review_item",
-            &item.id,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
+            ("review_item", &item.id),
             serde_json::json!({
                 "memory_id": item.id,
                 "finding_id": item.finding_id,
@@ -658,8 +826,10 @@ async fn rebuild_graph_projection_locked(
         create_projected_record(
             path,
             &db,
-            "review_decision",
-            &review.id,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
+            ("review_decision", &review.id),
             with_scope(
                 serde_json::json!({
                     "memory_id": review.id,
@@ -686,8 +856,10 @@ async fn rebuild_graph_projection_locked(
         create_projected_record(
             path,
             &db,
-            "anomaly_alert",
-            &alert_id,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
+            ("anomaly_alert", &alert_id),
             serde_json::json!({
                 "memory_id": alert.id,
                 "alert_kind": alert.kind,
@@ -705,6 +877,14 @@ async fn rebuild_graph_projection_locked(
         node_rows_written += 1;
     }
 
+    // Commit node rows before relation batches. Besides keeping each batch
+    // semantically uniform, this preserves SurrealDB 3.0.x compatibility: its
+    // remote engine can reject a transaction that creates indexed nodes and
+    // relates those freshly created records in the same commit.
+    mutation_batch
+        .flush(path, &db, lease, &mut manifest)
+        .await?;
+
     for episode in &data.episodes {
         for mention in &episode.mentions {
             let Some(entity_id) = entity_ids.get(&entity_lookup_key(mention, episode.scope.as_ref()))
@@ -715,6 +895,9 @@ async fn rebuild_graph_projection_locked(
             relate_projected_records(
                 path,
                 &db,
+                lease,
+                &mut mutation_batch,
+                &mut manifest,
                 ProjectedRelationInput {
                     in_table: "episode",
                     in_id: &episode.id,
@@ -744,6 +927,9 @@ async fn rebuild_graph_projection_locked(
             relate_projected_records(
                 path,
                 &db,
+                lease,
+                &mut mutation_batch,
+                &mut manifest,
                 ProjectedRelationInput {
                     in_table: "claim",
                     in_id: &claim.id,
@@ -773,6 +959,9 @@ async fn rebuild_graph_projection_locked(
             relate_projected_records(
                 path,
                 &db,
+                lease,
+                &mut mutation_batch,
+                &mut manifest,
                 ProjectedRelationInput {
                     in_table: "procedure",
                     in_id: &procedure.id,
@@ -802,6 +991,9 @@ async fn rebuild_graph_projection_locked(
             relate_projected_records(
                 path,
                 &db,
+                lease,
+                &mut mutation_batch,
+                &mut manifest,
                 ProjectedRelationInput {
                     in_table: "intention",
                     in_id: &intention.id,
@@ -835,6 +1027,9 @@ async fn rebuild_graph_projection_locked(
             relate_projected_records(
                 path,
                 &db,
+                lease,
+                &mut mutation_batch,
+                &mut manifest,
                 ProjectedRelationInput {
                     in_table: "intention",
                     in_id: &intention.id,
@@ -869,6 +1064,9 @@ async fn rebuild_graph_projection_locked(
         relate_projected_records(
             path,
             &db,
+            lease,
+            &mut mutation_batch,
+            &mut manifest,
             ProjectedRelationInput {
                 in_table: "entity",
                 in_id: from_id,
@@ -897,10 +1095,15 @@ async fn rebuild_graph_projection_locked(
         relation_rows_written += 1;
     }
 
+    mutation_batch
+        .flush(path, &db, lease, &mut manifest)
+        .await?;
+    let expected_manifest = manifest.finish();
     let status_counts = expected_graph_projection_counts(data);
-    create_projected_record(
+    create_single_projected_record(
         path,
         &db,
+        lease,
         "projection_checkpoint",
         GRAPH_PROJECTION_CHECKPOINT_ID,
         serde_json::json!({
@@ -913,13 +1116,18 @@ async fn rebuild_graph_projection_locked(
             "latest_event_id": data.last_event_id,
             "projected_at_ms": events.last().map(|event| event.timestamp_ms).unwrap_or(0),
             "table_counts": status_counts,
+            "manifest_algorithm": GRAPH_PROJECTION_MANIFEST_ALGORITHM,
+            "manifest_digest": expected_manifest.digest,
+            "manifest_table_digests": expected_manifest.table_digests,
         }),
     )
     .await?;
     node_rows_written += 1;
 
+    verify_graph_projection_lease(path, &db, lease).await?;
     let status = graph_projection_status_with_db(path, &db, data, events).await?;
-    Ok(GraphProjectionRebuildReport {
+    verify_graph_projection_lease(path, &db, lease).await?;
+    ensure_graph_projection_rebuild_postcondition(GraphProjectionRebuildReport {
         status,
         node_rows_written,
         relation_rows_written,
@@ -930,7 +1138,8 @@ async fn acquire_graph_projection_rebuild_lock(
     path: &Path,
     db: &DatabaseSession,
     token: &str,
-) -> Result<Option<GraphProjectionRebuildReport>> {
+) -> Result<GraphProjectionLease> {
+    initialize_graph_projection_rebuild_lock(path, db).await?;
     let attempts = GRAPH_PROJECTION_REBUILD_WAIT_MS / GRAPH_PROJECTION_REBUILD_POLL_MS;
     for attempt in 0..=attempts {
         let now_ms = now_ms();
@@ -939,9 +1148,10 @@ async fn acquire_graph_projection_rebuild_lock(
             .query_with_retry(
                 path,
                 format!(
-                    "UPSERT ONLY projection_rebuild_lock:{GRAPH_PROJECTION_REBUILD_LOCK_ID} \
-                     SET owner_token = $lease_token, expires_at_ms = $expires_at_ms \
-                     WHERE expires_at_ms = NONE OR expires_at_ms < $now_ms OR owner_token = $lease_token \
+                    "UPDATE ONLY projection_rebuild_lock:{GRAPH_PROJECTION_REBUILD_LOCK_ID} \
+                     SET owner_token = $lease_token, expires_at_ms = $expires_at_ms, \
+                         fencing_token = sequence::nextval('{GRAPH_PROJECTION_FENCING_SEQUENCE}') \
+                     WHERE owner_token = NONE OR expires_at_ms < $now_ms \
                      RETURN AFTER"
                 ),
                 vec![
@@ -954,18 +1164,17 @@ async fn acquire_graph_projection_rebuild_lock(
         let lock: Option<serde_json::Value> = response
             .take(0)
             .map_err(|source| database_error(path, source))?;
-        if lock
-            .as_ref()
-            .and_then(|lock| lock.get("owner_token"))
-            .and_then(serde_json::Value::as_str)
-            == Some(token)
+        let lock = decode_projection_lease_row(path, lock)?;
+        if let Some(lock) = lock
+            && lock.owner_token.as_deref() == Some(token)
         {
-            return Ok(None);
-        }
-        if attempt % GRAPH_PROJECTION_COMPLETION_POLL_ATTEMPTS == 0
-            && let Some(report) = completed_concurrent_rebuild(path).await?
-        {
-            return Ok(Some(report));
+            let lease = GraphProjectionLease {
+                owner_token: token.to_string(),
+                fencing_token: lock.fencing_token,
+                expires_at_ms: AtomicU64::new(lock.expires_at_ms),
+            };
+            verify_graph_projection_lease(path, db, &lease).await?;
+            return Ok(lease);
         }
         if attempt < attempts {
             tokio::time::sleep(std::time::Duration::from_millis(
@@ -974,11 +1183,56 @@ async fn acquire_graph_projection_rebuild_lock(
             .await;
         }
     }
-    if let Some(report) = completed_concurrent_rebuild(path).await? {
-        Ok(Some(report))
+    Err(NahualiError::GraphProjectionRebuildBusy {
+        timeout_ms: GRAPH_PROJECTION_REBUILD_WAIT_MS,
+    })
+}
+
+async fn initialize_graph_projection_rebuild_lock(
+    path: &Path,
+    db: &DatabaseSession,
+) -> Result<()> {
+    db.query_with_retry(
+        path,
+        format!(
+            "INSERT IGNORE INTO projection_rebuild_lock {{ \
+                 id: projection_rebuild_lock:{GRAPH_PROJECTION_REBUILD_LOCK_ID}, \
+                 owner_token: NONE, expires_at_ms: 0, fencing_token: 0 \
+             }}"
+        ),
+        Vec::new(),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn verify_graph_projection_lease(
+    path: &Path,
+    db: &DatabaseSession,
+    lease: &GraphProjectionLease,
+) -> Result<()> {
+    let mut response = db
+        .query_with_retry(
+            path,
+            format!(
+                "SELECT owner_token, fencing_token FROM ONLY \
+                 projection_rebuild_lock:{GRAPH_PROJECTION_REBUILD_LOCK_ID}"
+            ),
+            Vec::new(),
+        )
+        .await?;
+    let observed: Option<serde_json::Value> = response
+        .take(0)
+        .map_err(|source| database_error(path, source))?;
+    let observed = decode_projection_lease_row(path, observed)?;
+    if observed.as_ref().is_some_and(|observed| {
+        observed.owner_token.as_deref() == Some(lease.owner_token.as_str())
+            && observed.fencing_token == lease.fencing_token
+    }) {
+        Ok(())
     } else {
-        Err(NahualiError::GraphProjectionRebuildBusy {
-            timeout_ms: GRAPH_PROJECTION_REBUILD_WAIT_MS,
+        Err(NahualiError::GraphProjectionLeaseLost {
+            fencing_token: lease.fencing_token,
         })
     }
 }
@@ -986,17 +1240,86 @@ async fn acquire_graph_projection_rebuild_lock(
 async fn release_graph_projection_rebuild_lock(
     path: &Path,
     db: &DatabaseSession,
-    token: &str,
+    lease: &GraphProjectionLease,
 ) -> Result<()> {
-    db.query_with_retry(
-        path,
-        format!(
-            "DELETE projection_rebuild_lock:{GRAPH_PROJECTION_REBUILD_LOCK_ID} WHERE owner_token = $lease_token"
-        ),
-        vec![("lease_token".to_string(), serde_json::json!(token))],
-    )
-    .await?;
-    Ok(())
+    let mut response = db
+        .query_with_retry(
+            path,
+            format!(
+                "UPDATE ONLY projection_rebuild_lock:{GRAPH_PROJECTION_REBUILD_LOCK_ID} \
+                 SET owner_token = NONE, expires_at_ms = 0 \
+                 WHERE owner_token = $lease_token AND fencing_token = $fencing_token \
+                 RETURN AFTER"
+            ),
+            vec![
+                (
+                    "lease_token".to_string(),
+                    serde_json::json!(lease.owner_token.as_str()),
+                ),
+                (
+                    "fencing_token".to_string(),
+                    serde_json::json!(lease.fencing_token),
+                ),
+            ],
+        )
+        .await?;
+    let released: Option<serde_json::Value> = response
+        .take(0)
+        .map_err(|source| database_error(path, source))?;
+    let released = decode_projection_lease_row(path, released)?;
+    if released
+        .as_ref()
+        .is_some_and(|released| released.fencing_token == lease.fencing_token)
+    {
+        Ok(())
+    } else {
+        Err(NahualiError::GraphProjectionLeaseLost {
+            fencing_token: lease.fencing_token,
+        })
+    }
+}
+
+fn decode_projection_lease_row(
+    path: &Path,
+    row: Option<serde_json::Value>,
+) -> Result<Option<ProjectionLeaseRow>> {
+    row.map(|row| {
+        serde_json::from_value(row).map_err(|source| NahualiError::DecodeRecord {
+            path: path.to_path_buf(),
+            record: 1,
+            source,
+        })
+    })
+    .transpose()
+}
+
+async fn read_idle_graph_projection_fence(
+    path: &Path,
+    db: &DatabaseSession,
+) -> Result<u64> {
+    let mut response = db
+        .query_with_retry(
+            path,
+            format!(
+                "SELECT owner_token, fencing_token FROM ONLY \
+                 projection_rebuild_lock:{GRAPH_PROJECTION_REBUILD_LOCK_ID}"
+            ),
+            Vec::new(),
+        )
+        .await?;
+    let row: Option<serde_json::Value> = response
+        .take(0)
+        .map_err(|source| database_error(path, source))?;
+    let row = decode_projection_lease_row(path, row)?;
+    match row {
+        Some(row) if row.owner_token.is_none() => Ok(row.fencing_token),
+        Some(_) => Err(NahualiError::GraphProjectionInvalid {
+            issues: "a graph projection rebuild is active".to_string(),
+        }),
+        None => Err(NahualiError::GraphProjectionInvalid {
+            issues: "the graph projection rebuild fence is missing".to_string(),
+        }),
+    }
 }
 
 async fn graph_projection_status(
@@ -1015,14 +1338,16 @@ async fn graph_projection_status_with_db(
     events: &[EventEnvelope],
 ) -> Result<GraphProjectionStatus> {
     let mut table_counts = BTreeMap::new();
-    for table in projected_tables() {
+    for table in ["projection_checkpoint", "projection_error"] {
         table_counts.insert(table.to_string(), count_projected_rows(path, db, table).await?);
     }
 
     let mut response = db
         .query_with_retry(
             path,
-            "SELECT latest_sequence, latest_event_id FROM projection_checkpoint WHERE checkpoint_id = $checkpoint_id",
+            "SELECT projection_version, memory_data_version, latest_sequence, latest_event_id, \
+                    manifest_algorithm, manifest_digest, manifest_table_digests \
+             FROM projection_checkpoint WHERE checkpoint_id = $checkpoint_id",
             vec![(
                 "checkpoint_id".to_string(),
                 serde_json::Value::String(GRAPH_PROJECTION_CHECKPOINT_ID.to_string()),
@@ -1045,10 +1370,29 @@ async fn graph_projection_status_with_db(
         })
         .collect::<Result<Vec<ProjectionCheckpointRow>>>()?;
     let checkpoint = checkpoints.into_iter().next();
+    let checkpoint_projection_version = checkpoint
+        .as_ref()
+        .and_then(|checkpoint| checkpoint.projection_version);
+    let checkpoint_memory_data_version = checkpoint
+        .as_ref()
+        .and_then(|checkpoint| checkpoint.memory_data_version);
     let checkpoint_sequence = checkpoint
         .as_ref()
         .and_then(|checkpoint| checkpoint.latest_sequence);
-    let checkpoint_event_id = checkpoint.and_then(|checkpoint| checkpoint.latest_event_id);
+    let checkpoint_event_id = checkpoint
+        .as_ref()
+        .and_then(|checkpoint| checkpoint.latest_event_id.clone());
+    let checkpoint_manifest_algorithm = checkpoint
+        .as_ref()
+        .and_then(|checkpoint| checkpoint.manifest_algorithm.clone());
+    let checkpoint_manifest_digest = checkpoint
+        .as_ref()
+        .and_then(|checkpoint| checkpoint.manifest_digest.clone());
+    let checkpoint_manifest_table_digests = checkpoint
+        .map(|checkpoint| checkpoint.manifest_table_digests)
+        .unwrap_or_default();
+    let (actual_manifest, manifest_table_counts) = read_projection_manifest(path, db).await?;
+    table_counts.extend(manifest_table_counts);
     let latest_sequence = events.last().map(|event| event.sequence);
     let latest_event_id = data.last_event_id.clone();
     let expected_counts = expected_graph_projection_counts(data);
@@ -1058,6 +1402,14 @@ async fn graph_projection_status_with_db(
 
     Ok(GraphProjectionStatus {
         projection_version: GRAPH_PROJECTION_VERSION,
+        memory_data_version: MEMORY_DATA_VERSION,
+        checkpoint_projection_version,
+        checkpoint_memory_data_version,
+        checkpoint_manifest_algorithm: checkpoint_manifest_algorithm.clone(),
+        checkpoint_manifest_digest: checkpoint_manifest_digest.clone(),
+        checkpoint_manifest_table_digests: checkpoint_manifest_table_digests.clone(),
+        actual_manifest_digest: actual_manifest.digest.clone(),
+        actual_manifest_table_digests: actual_manifest.table_digests.clone(),
         ledger_event_count: data.event_count,
         latest_sequence,
         latest_event_id: latest_event_id.clone(),
@@ -1065,39 +1417,62 @@ async fn graph_projection_status_with_db(
         checkpoint_event_id: checkpoint_event_id.clone(),
         table_counts,
         in_sync: counts_match
+            && checkpoint_projection_version == Some(GRAPH_PROJECTION_VERSION)
+            && checkpoint_memory_data_version == Some(MEMORY_DATA_VERSION)
+            && checkpoint_manifest_algorithm.as_deref()
+                == Some(GRAPH_PROJECTION_MANIFEST_ALGORITHM)
+            && checkpoint_manifest_digest.as_deref() == Some(actual_manifest.digest.as_str())
+            && checkpoint_manifest_table_digests == actual_manifest.table_digests
             && checkpoint_sequence == latest_sequence
             && checkpoint_event_id == latest_event_id,
     })
 }
 
-async fn clear_graph_projection(path: &Path, db: &DatabaseSession) -> Result<()> {
-    for table in PROJECTED_RELATION_TABLES
+async fn clear_graph_projection(
+    path: &Path,
+    db: &DatabaseSession,
+    lease: &GraphProjectionLease,
+) -> Result<()> {
+    let statement = PROJECTED_RELATION_TABLES
         .iter()
         .chain(PROJECTED_NODE_TABLES.iter())
-    {
-        let query = format!("DELETE {table}");
-        db.query_with_retry(path, query, Vec::new()).await?;
-    }
-    for (table, index) in PROJECTED_UNIQUE_INDEXES {
-        db.query_with_retry(
-            path,
-            format!("REBUILD INDEX {index} ON TABLE {table}"),
-            Vec::new(),
-        )
-        .await?;
-    }
-    Ok(())
+        .map(|table| format!("DELETE {table}"))
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    // DELETE maintains SurrealDB indexes transactionally. The lock-row write
+    // and all projection deletes commit or roll back as one fenced unit.
+    query_graph_projection_mutation(path, db, lease, statement, Vec::new()).await
 }
 
 async fn create_projected_record(
     path: &Path,
     db: &DatabaseSession,
+    lease: &GraphProjectionLease,
+    batch: &mut ProjectionMutationBatch,
+    manifest: &mut ProjectionManifestBuilder,
+    record: (&str, &str),
+    content: serde_json::Value,
+) -> Result<()> {
+    batch.queue_record(record.0, record.1, content);
+    if batch.is_full() {
+        batch.flush(path, db, lease, manifest).await?;
+    }
+    Ok(())
+}
+
+async fn create_single_projected_record(
+    path: &Path,
+    db: &DatabaseSession,
+    lease: &GraphProjectionLease,
     table: &str,
     id: &str,
     content: serde_json::Value,
 ) -> Result<()> {
-    db.query_with_retry(
+    query_graph_projection_mutation(
         path,
+        db,
+        lease,
         "CREATE type::record($table, $id) CONTENT $content",
         vec![
             ("table".to_string(), serde_json::Value::String(table.to_string())),
@@ -1105,32 +1480,393 @@ async fn create_projected_record(
             ("content".to_string(), content),
         ],
     )
-    .await?;
-    Ok(())
+    .await
 }
 
 async fn relate_projected_records(
     path: &Path,
     db: &DatabaseSession,
+    lease: &GraphProjectionLease,
+    batch: &mut ProjectionMutationBatch,
+    manifest: &mut ProjectionManifestBuilder,
     input: ProjectedRelationInput<'_>,
 ) -> Result<()> {
-    let query = format!(
-        "LET $in_record = type::record($in_table, $in_id); LET $out_record = type::record($out_table, $out_id); RELATE $in_record->{}->$out_record CONTENT $content;",
-        input.relation_table
-    );
-    db.query_with_retry(
-        path,
-        query,
-        vec![
-            ("in_table".to_string(), serde_json::Value::String(input.in_table.to_string())),
-            ("in_id".to_string(), serde_json::Value::String(input.in_id.to_string())),
-            ("out_table".to_string(), serde_json::Value::String(input.out_table.to_string())),
-            ("out_id".to_string(), serde_json::Value::String(input.out_id.to_string())),
-            ("content".to_string(), input.content),
-        ],
-    )
-    .await?;
+    if batch.requires_relation_flush(input.relation_table) {
+        batch.flush(path, db, lease, manifest).await?;
+    }
+    batch.queue_relation(input);
+    if batch.is_full() {
+        batch.flush(path, db, lease, manifest).await?;
+    }
     Ok(())
+}
+
+impl ProjectionMutationBatch {
+    fn new() -> Self {
+        Self {
+            statements: Vec::with_capacity(GRAPH_PROJECTION_MUTATION_BATCH_SIZE),
+            relation_rows: Vec::with_capacity(GRAPH_PROJECTION_MUTATION_BATCH_SIZE),
+            relation_table: None,
+            bindings: Vec::with_capacity(GRAPH_PROJECTION_MUTATION_BATCH_SIZE * 5),
+            manifest_entries: Vec::with_capacity(GRAPH_PROJECTION_MUTATION_BATCH_SIZE),
+            next_binding_index: 0,
+        }
+    }
+
+    fn queue_record(&mut self, table: &str, id: &str, content: serde_json::Value) {
+        debug_assert!(self.relation_table.is_none());
+        let prefix = format!("projection_record_{}", self.next_binding_index);
+        self.next_binding_index += 1;
+        self.statements.push(format!(
+            "CREATE type::record(${prefix}_table, ${prefix}_id) CONTENT ${prefix}_content"
+        ));
+        self.bindings.extend([
+            (
+                format!("{prefix}_table"),
+                serde_json::Value::String(table.to_string()),
+            ),
+            (
+                format!("{prefix}_id"),
+                serde_json::Value::String(id.to_string()),
+            ),
+            (format!("{prefix}_content"), content.clone()),
+        ]);
+        self.manifest_entries.push((table.to_string(), content));
+    }
+
+    fn queue_relation(&mut self, input: ProjectedRelationInput<'_>) {
+        debug_assert!(self.statements.is_empty());
+        let relation_table = PROJECTED_RELATION_TABLES
+            .iter()
+            .copied()
+            .find(|table| *table == input.relation_table)
+            .expect("projected relation tables are registered constants");
+        self.relation_table
+            .get_or_insert_with(|| relation_table.to_string());
+        let prefix = format!("projection_relation_{}", self.next_binding_index);
+        self.next_binding_index += 1;
+        self.relation_rows.push(format!(
+            "object::extend(${prefix}_content, {{ \
+                 in: type::record(${prefix}_in_table, ${prefix}_in_id), \
+                 out: type::record(${prefix}_out_table, ${prefix}_out_id) \
+             }})"
+        ));
+        self.bindings.extend([
+            (
+                format!("{prefix}_in_table"),
+                serde_json::Value::String(input.in_table.to_string()),
+            ),
+            (
+                format!("{prefix}_in_id"),
+                serde_json::Value::String(input.in_id.to_string()),
+            ),
+            (
+                format!("{prefix}_out_table"),
+                serde_json::Value::String(input.out_table.to_string()),
+            ),
+            (
+                format!("{prefix}_out_id"),
+                serde_json::Value::String(input.out_id.to_string()),
+            ),
+            (format!("{prefix}_content"), input.content.clone()),
+        ]);
+        self.manifest_entries
+            .push((input.relation_table.to_string(), input.content));
+    }
+
+    fn requires_relation_flush(&self, relation_table: &str) -> bool {
+        self.relation_table
+            .as_deref()
+            .is_some_and(|active| active != relation_table)
+    }
+
+    fn is_full(&self) -> bool {
+        self.statements.len() + self.relation_rows.len()
+            >= GRAPH_PROJECTION_MUTATION_BATCH_SIZE
+    }
+
+    async fn flush(
+        &mut self,
+        path: &Path,
+        db: &DatabaseSession,
+        lease: &GraphProjectionLease,
+        manifest: &mut ProjectionManifestBuilder,
+    ) -> Result<()> {
+        if self.statements.is_empty() && self.relation_rows.is_empty() {
+            return Ok(());
+        }
+
+        let relation_table = self.relation_table.take();
+        let relation_rows = std::mem::take(&mut self.relation_rows);
+        let statement = if let Some(relation_table) = relation_table {
+            debug_assert!(self.statements.is_empty());
+            format!(
+                "INSERT RELATION INTO {relation_table} [{}]",
+                relation_rows.join(", ")
+            )
+        } else {
+            debug_assert!(relation_rows.is_empty());
+            std::mem::take(&mut self.statements).join("; ")
+        };
+        let bindings = std::mem::take(&mut self.bindings);
+        let manifest_entries = std::mem::take(&mut self.manifest_entries);
+        self.next_binding_index = 0;
+
+        query_graph_projection_mutation(path, db, lease, statement, bindings).await?;
+        for (table, content) in manifest_entries {
+            manifest.record(&table, &content);
+        }
+        Ok(())
+    }
+}
+
+async fn query_graph_projection_mutation(
+    path: &Path,
+    db: &DatabaseSession,
+    lease: &GraphProjectionLease,
+    statement: impl AsRef<str>,
+    mut bindings: Vec<(String, serde_json::Value)>,
+) -> Result<()> {
+    let guard_expires_at_ms = now_ms().saturating_add(GRAPH_PROJECTION_REBUILD_LEASE_MS);
+    bindings.extend([
+        (
+            "projection_lease_token".to_string(),
+            serde_json::json!(lease.owner_token.as_str()),
+        ),
+        (
+            "projection_fencing_token".to_string(),
+            serde_json::json!(lease.fencing_token),
+        ),
+        (
+            "projection_guard_expires_at_ms".to_string(),
+            serde_json::json!(guard_expires_at_ms),
+        ),
+    ]);
+    // Every projection mutation first writes the permanent lock row inside the
+    // same explicit transaction. A replacement owner must write that same row,
+    // so SurrealKV produces a write-write conflict instead of permitting write
+    // skew. Direct conflicts are retried by the database layer; commit-time
+    // conflicts roll back the whole batch and are mapped to a typed lease loss
+    // after the fresh fence read below.
+    let query = format!(
+        "BEGIN TRANSACTION; \
+         LET $projection_lease = UPDATE ONLY \
+             projection_rebuild_lock:{GRAPH_PROJECTION_REBUILD_LOCK_ID} \
+             SET expires_at_ms = $projection_guard_expires_at_ms, \
+                 mutation_guard_token = sequence::nextval('{GRAPH_PROJECTION_MUTATION_GUARD_SEQUENCE}') \
+             WHERE owner_token = $projection_lease_token \
+                 AND fencing_token = $projection_fencing_token \
+             RETURN AFTER; \
+         IF $projection_lease != NONE \
+             AND $projection_lease.owner_token = $projection_lease_token \
+             AND $projection_lease.fencing_token = $projection_fencing_token {{ \
+             {}; \
+             true \
+         }} ELSE {{ \
+             false \
+         }}; \
+         COMMIT TRANSACTION;",
+        statement.as_ref()
+    );
+    let mut response = match db.query_with_retry(path, query, bindings).await {
+        Ok(response) => response,
+        Err(error) if is_failed_projection_transaction(&error) => {
+            // SurrealDB 3.x reports an explicit transaction's commit conflict
+            // as QueryError::NotExecuted. The transaction has rolled back; a
+            // fresh lease read distinguishes a replacement-owner conflict and
+            // preserves the projection API's typed fencing error.
+            if let Err(lease_error @ NahualiError::GraphProjectionLeaseLost { .. }) =
+                verify_graph_projection_lease(path, db, lease).await
+            {
+                return Err(lease_error);
+            }
+            return Err(error);
+        }
+        Err(error) => return Err(error),
+    };
+    let authorized: Option<serde_json::Value> = response
+        .take(2)
+        .map_err(|source| database_error(path, source))?;
+    if authorized.as_ref().and_then(serde_json::Value::as_bool) == Some(true) {
+        lease
+            .expires_at_ms
+            .store(guard_expires_at_ms, Ordering::Release);
+        Ok(())
+    } else {
+        Err(NahualiError::GraphProjectionLeaseLost {
+            fencing_token: lease.fencing_token,
+        })
+    }
+}
+
+fn is_failed_projection_transaction(error: &NahualiError) -> bool {
+    matches!(
+        error,
+        NahualiError::Database { source, .. }
+            if matches!(
+                source.query_details(),
+                Some(surrealdb::types::QueryError::NotExecuted)
+            )
+    )
+}
+
+impl ProjectionManifestBuilder {
+    fn new() -> Self {
+        let row_digests = MANIFEST_NODE_TABLES
+            .iter()
+            .chain(PROJECTED_RELATION_TABLES.iter())
+            .map(|table| ((*table).to_string(), Vec::new()))
+            .collect();
+        Self { row_digests }
+    }
+
+    fn record(&mut self, table: &str, content: &serde_json::Value) {
+        self.row_digests
+            .get_mut(table)
+            .expect("manifest tables are registered at construction")
+            .push(canonical_json_digest(content));
+    }
+
+    fn finish(self) -> ProjectionManifest {
+        projection_manifest(self.row_digests)
+    }
+}
+
+async fn read_projection_manifest(
+    path: &Path,
+    db: &DatabaseSession,
+) -> Result<(ProjectionManifest, BTreeMap<String, usize>)> {
+    let mut manifest = ProjectionManifestBuilder::new();
+    let mut table_counts = BTreeMap::new();
+    for table in MANIFEST_NODE_TABLES
+        .iter()
+        .chain(PROJECTED_RELATION_TABLES.iter())
+    {
+        let mut response = db
+            .query_with_retry(path, format!("SELECT * FROM {table}"), Vec::new())
+            .await?;
+        let rows: Vec<serde_json::Value> = response
+            .take(0)
+            .map_err(|source| database_error(path, source))?;
+        table_counts.insert((*table).to_string(), rows.len());
+        for mut row in rows {
+            // SurrealDB injects physical record identity and relation endpoints.
+            // The projected `memory_id` and all domain fields remain in the
+            // digest, so row identity and content mutations are still detected.
+            if let serde_json::Value::Object(object) = &mut row {
+                object.remove("id");
+                object.remove("in");
+                object.remove("out");
+            }
+            manifest.record(table, &row);
+        }
+    }
+    Ok((manifest.finish(), table_counts))
+}
+
+fn canonical_json_digest(value: &serde_json::Value) -> [u8; 32] {
+    let canonical = canonicalize_json(value);
+    let encoded = serde_json::to_vec(&canonical)
+        .expect("serializing an in-memory JSON value cannot fail");
+    Sha256::digest(encoded).into()
+}
+
+fn canonicalize_json(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Array(values) => {
+            serde_json::Value::Array(values.iter().map(canonicalize_json).collect())
+        }
+        serde_json::Value::Object(object) => {
+            let sorted = object
+                .iter()
+                .map(|(key, value)| (key.clone(), canonicalize_json(value)))
+                .collect::<BTreeMap<_, _>>();
+            serde_json::Value::Object(sorted.into_iter().collect())
+        }
+        other => other.clone(),
+    }
+}
+
+fn projection_manifest(
+    row_digests: BTreeMap<String, Vec<[u8; 32]>>,
+) -> ProjectionManifest {
+    let mut global_hasher = Sha256::new();
+    digest_part(&mut global_hasher, b"nahuali-graph-projection-manifest-v1");
+    let mut table_digests = BTreeMap::new();
+
+    for (table, mut rows) in row_digests {
+        rows.sort_unstable();
+        let mut table_hasher = Sha256::new();
+        digest_part(
+            &mut table_hasher,
+            b"nahuali-graph-projection-table-manifest-v1",
+        );
+        digest_part(&mut table_hasher, table.as_bytes());
+        digest_part(&mut table_hasher, &(rows.len() as u64).to_be_bytes());
+        for row in rows {
+            digest_part(&mut table_hasher, &row);
+        }
+        let table_digest: [u8; 32] = table_hasher.finalize().into();
+        digest_part(&mut global_hasher, table.as_bytes());
+        digest_part(&mut global_hasher, &table_digest);
+        table_digests.insert(table, hex_digest(&table_digest));
+    }
+
+    let digest: [u8; 32] = global_hasher.finalize().into();
+    ProjectionManifest {
+        digest: hex_digest(&digest),
+        table_digests,
+    }
+}
+
+fn digest_part(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_be_bytes());
+    hasher.update(bytes);
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
+}
+
+fn manifest_mismatched_tables(
+    expected: &BTreeMap<String, String>,
+    actual: &BTreeMap<String, String>,
+) -> Vec<String> {
+    expected
+        .keys()
+        .chain(actual.keys())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .filter(|table| expected.get(*table) != actual.get(*table))
+        .cloned()
+        .collect()
+}
+
+fn ensure_graph_projection_rebuild_postcondition(
+    report: GraphProjectionRebuildReport,
+) -> Result<GraphProjectionRebuildReport> {
+    if report.status.in_sync {
+        return Ok(report);
+    }
+
+    let mismatched_tables = manifest_mismatched_tables(
+        &report.status.checkpoint_manifest_table_digests,
+        &report.status.actual_manifest_table_digests,
+    );
+    Err(NahualiError::GraphProjectionPostconditionFailed {
+        issues: format!(
+            "status.in_sync=false; checkpoint projection version {:?}; checkpoint memory data version {:?}; manifest tables [{}]",
+            report.status.checkpoint_projection_version,
+            report.status.checkpoint_memory_data_version,
+            mismatched_tables.join(", ")
+        ),
+    })
 }
 
 async fn count_projected_rows(path: &Path, db: &DatabaseSession, table: &str) -> Result<usize> {

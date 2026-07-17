@@ -65,6 +65,27 @@ pub enum NahualiError {
         /// Maximum time spent waiting for the active rebuild to finish.
         timeout_ms: u64,
     },
+    /// The graph projection rebuild lease was replaced or released while a
+    /// writer still held stale local state.
+    #[error("lost graph projection rebuild lease with fencing token {fencing_token}")]
+    GraphProjectionLeaseLost {
+        /// Monotonic fencing token held by the rejected writer.
+        fencing_token: u64,
+    },
+    /// A graph rebuild completed its writes but failed its strict validation
+    /// postcondition, so callers must not treat it as successful.
+    #[error("graph projection rebuild failed its postcondition: {issues}")]
+    GraphProjectionPostconditionFailed {
+        /// Concise description of the failed validation invariant.
+        issues: String,
+    },
+    /// A graph navigation read was refused because the derived projection no
+    /// longer matched its ledger checkpoint and content manifest.
+    #[error("graph projection is invalid: {issues}")]
+    GraphProjectionInvalid {
+        /// Validation issues that made derived graph reads unsafe.
+        issues: String,
+    },
     /// The authoritative ledger commit succeeded, but rebuilding its derived
     /// graph projection failed afterwards.
     #[error(

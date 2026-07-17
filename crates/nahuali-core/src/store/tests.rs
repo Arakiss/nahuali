@@ -2,9 +2,9 @@
 mod tests {
     use std::{
         fs,
-        path::PathBuf,
-        sync::{Arc, Barrier},
-        time::{SystemTime, UNIX_EPOCH},
+        path::{Path, PathBuf},
+        sync::{Arc, Barrier, mpsc},
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
 
     use crate::{
@@ -17,8 +17,12 @@ mod tests {
     };
 
     use super::{
-        MemoryEngine, block_on_database, completed_concurrent_rebuild,
-        inject_graph_projection_failure_once, read_records, write_record, write_records,
+        DatabaseSession, MemoryEngine, acquire_graph_projection_rebuild_lock, block_on_database,
+        clear_graph_projection, completed_concurrent_rebuild, create_single_projected_record,
+        ensure_graph_projection_rebuild_postcondition, inject_graph_projection_failure_once,
+        open_database, query_graph_projection_mutation, read_records, rebuild_graph_projection,
+        rebuild_graph_projection_locked, release_graph_projection_rebuild_lock,
+        verify_graph_projection_lease, write_record, write_records,
     };
 
     #[test]
@@ -498,6 +502,68 @@ mod tests {
     }
 
     #[test]
+    fn rebuilds_1500_event_projection_in_fenced_batches() {
+        const EVENT_COUNT: u64 = 1_500;
+        const ENTITY_COUNT: u64 = 357;
+
+        let path = temp_path("projection_scale_1500_events");
+        let _ = fs::remove_file(&path);
+        drop(MemoryEngine::open(&path).unwrap());
+
+        let events = (1..=EVENT_COUNT)
+            .map(|sequence| {
+                let entity = format!("Entity {}", sequence % ENTITY_COUNT);
+                EventEnvelope::new(
+                    sequence,
+                    sequence,
+                    MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                        id: format!("episode_scale_{sequence}"),
+                        content: format!("Representative memory {sequence} mentions {entity}."),
+                        tags: vec!["scale".to_string()],
+                        mentions: vec![entity],
+                        source_id: None,
+                        source_position: None,
+                        source_role: None,
+                        scope: None,
+                    }),
+                )
+            })
+            .collect::<Vec<_>>();
+        let write_path = path.clone();
+        block_on_database(async move { write_records(&write_path, &events).await }).unwrap();
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let started_at = Instant::now();
+        let report = memory.projection_rebuild().unwrap();
+        let elapsed = started_at.elapsed();
+
+        assert!(report.status.in_sync);
+        assert_eq!(report.status.ledger_event_count, EVENT_COUNT as usize);
+        assert_eq!(report.status.table_counts["episode"], EVENT_COUNT as usize);
+        assert_eq!(report.status.table_counts["entity"], ENTITY_COUNT as usize);
+        assert_eq!(report.status.table_counts["mentions"], EVENT_COUNT as usize);
+        assert!(
+            report.node_rows_written > super::GRAPH_PROJECTION_MUTATION_BATCH_SIZE,
+            "scale fixture must cross at least one mutation batch"
+        );
+        assert!(
+            report.relation_rows_written > super::GRAPH_PROJECTION_MUTATION_BATCH_SIZE,
+            "scale fixture must cross at least one relation batch"
+        );
+        eprintln!(
+            "projection-scale: events={EVENT_COUNT} nodes={} relations={} elapsed_ms={}",
+            report.node_rows_written,
+            report.relation_rows_written,
+            elapsed.as_millis()
+        );
+
+        let validation = memory.projection_validate().unwrap();
+        assert!(validation.valid, "{:?}", validation.issues);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn concurrent_graph_rebuilds_leave_one_complete_projection() {
         const REBUILDER_COUNT: usize = 8;
         let path = temp_path("concurrent_graph_rebuilds");
@@ -559,6 +625,554 @@ mod tests {
         assert_eq!(validation.status.table_counts["mentions"], 2);
         assert_eq!(validation.status.table_counts["relates_to"], 1);
         assert_eq!(validation.status.table_counts["supports"], 1);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn rebuild_never_returns_success_for_a_failed_projection_postcondition() {
+        let path = temp_path("projection_postcondition_failure");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let mut report = memory.projection_rebuild().unwrap();
+        report.status.in_sync = false;
+
+        let error = ensure_graph_projection_rebuild_postcondition(report)
+            .expect_err("an out-of-sync rebuild report must be rejected");
+        assert!(matches!(
+            error,
+            NahualiError::GraphProjectionPostconditionFailed { .. }
+        ));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn projection_manifest_detects_mutated_content_with_unchanged_row_identity_and_count() {
+        let path = temp_path("projection_manifest_content_mutation");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let episode = memory
+            .remember("Lena owns release notes.", Vec::new())
+            .unwrap();
+        let claim = memory
+            .add_claim(
+                "Lena",
+                "owns",
+                "release notes",
+                Some(episode.id),
+                0.9,
+            )
+            .unwrap();
+        assert!(memory.projection_validate().unwrap().valid);
+
+        let query_path = path.clone();
+        let claim_id = claim.id.clone();
+        block_on_database(async move {
+            let db = open_database(&query_path).await?;
+            db.query_with_retry(
+                &query_path,
+                "UPDATE claim SET object = $object WHERE memory_id = $memory_id",
+                vec![
+                    (
+                        "object".to_string(),
+                        serde_json::json!("tampered release notes"),
+                    ),
+                    ("memory_id".to_string(), serde_json::json!(claim_id)),
+                ],
+            )
+            .await?;
+            Ok(())
+        })
+        .unwrap();
+
+        let validation = memory.projection_validate().unwrap();
+        assert!(!validation.valid);
+        assert_eq!(validation.status.table_counts["claim"], 1);
+        assert!(validation.issues.iter().any(|issue| {
+            issue.contains("manifest table digests") && issue.contains("claim")
+        }));
+        let read_error = memory
+            .projection_entities(None, 10)
+            .expect_err("graph navigation must fail closed on manifest drift");
+        assert!(matches!(
+            read_error,
+            NahualiError::GraphProjectionInvalid { .. }
+        ));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn projection_validation_rejects_a_stored_projection_version_mismatch() {
+        let path = temp_path("projection_checkpoint_version_mismatch");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        memory.remember("Versioned projection", Vec::new()).unwrap();
+        assert!(memory.projection_validate().unwrap().valid);
+
+        let query_path = path.clone();
+        block_on_database(async move {
+            let db = open_database(&query_path).await?;
+            db.query_with_retry(
+                &query_path,
+                "UPDATE projection_checkpoint SET projection_version = 999 \
+                 WHERE checkpoint_id = $checkpoint_id",
+                vec![(
+                    "checkpoint_id".to_string(),
+                    serde_json::json!(super::GRAPH_PROJECTION_CHECKPOINT_ID),
+                )],
+            )
+            .await?;
+            Ok(())
+        })
+        .unwrap();
+
+        let validation = memory.projection_validate().unwrap();
+        assert!(!validation.valid);
+        assert!(validation
+            .issues
+            .iter()
+            .any(|issue| issue.contains("checkpoint projection version Some(999)")));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn graph_projection_lease_fences_a_replaced_owner() {
+        let path = temp_path("projection_lease_fencing");
+        let _ = fs::remove_file(&path);
+        let async_path = path.clone();
+        let (first_fence, second_fence, stale_error) = block_on_database(async move {
+            let db = open_database(&async_path).await?;
+            let first =
+                acquire_graph_projection_rebuild_lock(&async_path, &db, "first-owner").await?;
+            release_graph_projection_rebuild_lock(&async_path, &db, &first).await?;
+            let second =
+                acquire_graph_projection_rebuild_lock(&async_path, &db, "second-owner").await?;
+            let stale_error = verify_graph_projection_lease(&async_path, &db, &first)
+                .await
+                .expect_err("the replaced owner must be fenced");
+            let result = (first.fencing_token, second.fencing_token, stale_error);
+            release_graph_projection_rebuild_lock(&async_path, &db, &second).await?;
+            Ok(result)
+        })
+        .unwrap();
+
+        assert!(second_fence > first_fence);
+        assert!(matches!(
+            stale_error,
+            NahualiError::GraphProjectionLeaseLost { fencing_token }
+                if fencing_token == first_fence
+        ));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn stale_projection_owner_cannot_mutate_after_replacement_completes() {
+        let path = temp_path("stale_projection_owner_mutation");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let episode = memory
+            .remember("Lena owns release notes.", Vec::new())
+            .unwrap();
+        memory
+            .add_claim(
+                "Lena",
+                "owns",
+                "release notes",
+                Some(episode.id),
+                0.9,
+            )
+            .unwrap();
+        assert!(memory.projection_validate().unwrap().valid);
+        drop(memory);
+
+        let async_path = path.clone();
+        let (first_fence, second_fence, stale_delete, stale_create) =
+            block_on_database(async move {
+                let db = open_database(&async_path).await?;
+                let first = acquire_graph_projection_rebuild_lock(
+                    &async_path,
+                    &db,
+                    "paused-first-owner",
+                )
+                .await?;
+                verify_graph_projection_lease(&async_path, &db, &first).await?;
+
+                // Deterministically model A pausing after verification while
+                // its database lease expires and a replacement rebuilds.
+                db.query_with_retry(
+                    &async_path,
+                    format!(
+                        "UPDATE ONLY projection_rebuild_lock:{} \
+                         SET expires_at_ms = 0 \
+                         WHERE owner_token = $lease_token AND fencing_token = $fencing_token",
+                        super::GRAPH_PROJECTION_REBUILD_LOCK_ID
+                    ),
+                    vec![
+                        (
+                            "lease_token".to_string(),
+                            serde_json::json!(first.owner_token.as_str()),
+                        ),
+                        (
+                            "fencing_token".to_string(),
+                            serde_json::json!(first.fencing_token),
+                        ),
+                    ],
+                )
+                .await?;
+
+                let second = acquire_graph_projection_rebuild_lock(
+                    &async_path,
+                    &db,
+                    "replacement-owner",
+                )
+                .await?;
+                let events = read_records(&async_path).await?;
+                let data = projection::project(&events);
+                let report = rebuild_graph_projection_locked(
+                    &async_path,
+                    &data,
+                    &events,
+                    db.clone(),
+                    &second,
+                )
+                .await?;
+                assert!(report.status.in_sync);
+                release_graph_projection_rebuild_lock(&async_path, &db, &second).await?;
+
+                let stale_delete = query_graph_projection_mutation(
+                    &async_path,
+                    &db,
+                    &first,
+                    "DELETE claim",
+                    Vec::new(),
+                )
+                .await;
+                let stale_create = create_single_projected_record(
+                    &async_path,
+                    &db,
+                    &first,
+                    "claim",
+                    "claim_stale_owner",
+                    serde_json::json!({
+                        "memory_id": "claim_stale_owner",
+                        "object": "stale mutation",
+                    }),
+                )
+                .await;
+
+                Ok((
+                    first.fencing_token,
+                    second.fencing_token,
+                    stale_delete,
+                    stale_create,
+                ))
+            })
+            .unwrap();
+
+        assert!(second_fence > first_fence);
+        for error in [stale_delete, stale_create] {
+            assert!(matches!(
+                &error,
+                Err(NahualiError::GraphProjectionLeaseLost { fencing_token })
+                    if *fencing_token == first_fence
+            ), "unexpected stale mutation result: {error:?}");
+        }
+
+        let validation = MemoryEngine::open(&path)
+            .unwrap()
+            .projection_validate()
+            .unwrap();
+        assert!(validation.valid, "{:?}", validation.issues);
+        assert_eq!(validation.status.table_counts["claim"], 1);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn overlapping_multi_row_projection_batches_serialize_on_the_lock_row() {
+        async fn next_mutation_guard_value(
+            path: &Path,
+            db: &DatabaseSession,
+        ) -> crate::Result<u64> {
+            let mut response = db
+                .query_with_retry(
+                    path,
+                    format!(
+                        "RETURN sequence::nextval('{}')",
+                        super::GRAPH_PROJECTION_MUTATION_GUARD_SEQUENCE
+                    ),
+                    Vec::new(),
+                )
+                .await?;
+            let value: Option<serde_json::Value> = response
+                .take(0)
+                .map_err(|source| super::database_error(path, source))?;
+            Ok(value
+                .and_then(|value| value.as_u64())
+                .expect("the projection mutation guard sequence returns an integer"))
+        }
+
+        let path = temp_path("overlapping_projection_batches");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let episode = memory
+            .remember("Lena owns release notes.", Vec::new())
+            .unwrap();
+        memory
+            .add_claim(
+                "Lena",
+                "owns",
+                "release notes",
+                Some(episode.id),
+                0.9,
+            )
+            .unwrap();
+        assert!(memory.projection_validate().unwrap().valid);
+        drop(memory);
+
+        let first_path = path.clone();
+        let (first_db, replacement_db, first, baseline_guard_value) =
+            block_on_database(async move {
+            let first_db = open_database(&first_path).await?;
+            let replacement_db = open_database(&first_path).await?;
+            let lease = acquire_graph_projection_rebuild_lock(
+                &first_path,
+                &first_db,
+                "overlapping-first-owner",
+            )
+            .await?;
+            first_db.query_with_retry(
+                &first_path,
+                format!(
+                    "UPDATE ONLY projection_rebuild_lock:{} \
+                     SET expires_at_ms = 0 \
+                     WHERE owner_token = $lease_token AND fencing_token = $fencing_token",
+                    super::GRAPH_PROJECTION_REBUILD_LOCK_ID
+                ),
+                vec![
+                    (
+                        "lease_token".to_string(),
+                        serde_json::json!(lease.owner_token.as_str()),
+                    ),
+                    (
+                        "fencing_token".to_string(),
+                        serde_json::json!(lease.fencing_token),
+                    ),
+                ],
+            )
+            .await?;
+            let guard_value = next_mutation_guard_value(&first_path, &first_db).await?;
+            Ok((first_db, replacement_db, lease, guard_value))
+        })
+        .unwrap();
+        let first_fence = first.fencing_token;
+
+        let (started_sender, started_receiver) = mpsc::channel();
+        let stale_path = path.clone();
+        let stale_writer = std::thread::spawn(move || {
+            block_on_database(async move {
+                started_sender
+                    .send(())
+                    .expect("overlap test starter still receives");
+                let mutation = query_graph_projection_mutation(
+                    &stale_path,
+                    &first_db,
+                    &first,
+                    "SLEEP 5s; \
+                     DELETE claim; \
+                     CREATE claim:claim_overlap_stale_1 CONTENT { \
+                         memory_id: 'claim_overlap_stale_1', \
+                         projection_version: 2 \
+                     }; \
+                     CREATE claim:claim_overlap_stale_2 CONTENT { \
+                         memory_id: 'claim_overlap_stale_2', \
+                         projection_version: 2 \
+                     }",
+                    Vec::new(),
+                )
+                .await;
+                if mutation.is_ok() {
+                    release_graph_projection_rebuild_lock(&stale_path, &first_db, &first).await?;
+                }
+                Ok(mutation)
+            })
+        });
+
+        started_receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("stale writer starts its guarded transaction");
+
+        // SurrealDB sequences are never rolled back. Polling the same BATCH 1
+        // sequence until this thread observes a gap proves that A consumed a
+        // value inside its open transaction and has reached the guarded sleep.
+        // This is an ordering handshake, not an elapsed-time race.
+        let guard_deadline = Instant::now() + Duration::from_secs(10);
+        let mut previous_guard_value = baseline_guard_value;
+        loop {
+            let guard_path = path.clone();
+            let guard_db = replacement_db.clone();
+            let guard_value = block_on_database(async move {
+                next_mutation_guard_value(&guard_path, &guard_db).await
+            })
+            .unwrap();
+            if guard_value > previous_guard_value + 1 {
+                break;
+            }
+            previous_guard_value = guard_value;
+            assert!(
+                Instant::now() < guard_deadline,
+                "stale writer never entered its fenced transaction"
+            );
+            std::thread::yield_now();
+        }
+        assert!(
+            !stale_writer.is_finished(),
+            "stale writer must still be sleeping after the sequence handshake"
+        );
+
+        let replacement_path = path.clone();
+        let acquire_db = replacement_db.clone();
+        let replacement = block_on_database(async move {
+            let lease = acquire_graph_projection_rebuild_lock(
+                &replacement_path,
+                &acquire_db,
+                "overlapping-replacement-owner",
+            )
+            .await?;
+            Ok(lease)
+        })
+        .unwrap();
+        let stale_finished_when_replacement_acquired = stale_writer.is_finished();
+        let second_fence = replacement.fencing_token;
+
+        let stale_mutation = stale_writer
+            .join()
+            .expect("stale writer thread completes")
+            .unwrap();
+        let error = stale_mutation.expect_err(
+            "the replacement must win the lock-row conflict while the stale batch sleeps",
+        );
+        assert!(
+            !stale_finished_when_replacement_acquired,
+            "the stale transaction must still be running when its commit loses the lock-row conflict"
+        );
+        assert!(matches!(
+            error,
+            NahualiError::GraphProjectionLeaseLost { fencing_token }
+                if fencing_token == first_fence
+        ), "unexpected stale batch result: {error:?}");
+        let stale_path = path.clone();
+        let (db, stale_row_count) = block_on_database(async move {
+            let mut response = replacement_db
+                .query_with_retry(
+                    &stale_path,
+                    "SELECT memory_id FROM claim \
+                     WHERE memory_id IN ['claim_overlap_stale_1', 'claim_overlap_stale_2']",
+                    Vec::new(),
+                )
+                .await?;
+            let rows: Vec<serde_json::Value> = response
+                .take(0)
+                .map_err(|source| super::database_error(&stale_path, source))?;
+            Ok((replacement_db, rows.len()))
+        })
+        .unwrap();
+        assert_eq!(
+            stale_row_count, 0,
+            "a conflicted stale batch must roll back every row"
+        );
+
+        let rebuild_path = path.clone();
+        block_on_database(async move {
+            let events = read_records(&rebuild_path).await?;
+            let data = projection::project(&events);
+            let report = rebuild_graph_projection_locked(
+                &rebuild_path,
+                &data,
+                &events,
+                db.clone(),
+                &replacement,
+            )
+            .await?;
+            release_graph_projection_rebuild_lock(&rebuild_path, &db, &replacement).await?;
+            Ok(report)
+        })
+        .unwrap();
+
+        assert!(second_fence > first_fence);
+        let validation = MemoryEngine::open(&path)
+            .unwrap()
+            .projection_validate()
+            .unwrap();
+        assert!(validation.valid, "{:?}", validation.issues);
+        assert_eq!(validation.status.table_counts["claim"], 1);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn rebuild_waiter_cannot_coalesce_while_an_active_owner_can_clear_projection() {
+        let path = temp_path("projection_waiter_active_owner");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        memory.remember("Projected episode", Vec::new()).unwrap();
+        assert!(memory.projection_validate().unwrap().valid);
+
+        let owner_path = path.clone();
+        let (owner_db, owner_lease) = block_on_database(async move {
+            let db = open_database(&owner_path).await?;
+            let lease =
+                acquire_graph_projection_rebuild_lock(&owner_path, &db, "active-owner").await?;
+            Ok((db, lease))
+        })
+        .unwrap();
+
+        let active_read_error = memory
+            .projection_entities(None, 10)
+            .expect_err("graph navigation must refuse an active rebuild");
+        assert!(matches!(
+            active_read_error,
+            NahualiError::GraphProjectionInvalid { .. }
+        ));
+
+        let waiter_path = path.clone();
+        let (sender, receiver) = mpsc::channel();
+        let waiter = std::thread::spawn(move || {
+            let result = block_on_database(async move {
+                rebuild_graph_projection(&waiter_path).await
+            });
+            sender.send(result).expect("waiter result receiver exists");
+        });
+
+        assert!(matches!(
+            receiver.recv_timeout(Duration::from_millis(250)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+
+        let clear_path = path.clone();
+        block_on_database(async move {
+            clear_graph_projection(&clear_path, &owner_db, &owner_lease).await?;
+            release_graph_projection_rebuild_lock(&clear_path, &owner_db, &owner_lease).await
+        })
+        .unwrap();
+
+        let report = receiver
+            .recv_timeout(Duration::from_secs(15))
+            .expect("waiter completes after the owner releases")
+            .expect("waiter rebuild succeeds");
+        assert!(report.status.in_sync);
+        assert!(report.node_rows_written > 0);
+        waiter.join().expect("waiter thread completes");
+
+        let validation = MemoryEngine::open(&path)
+            .unwrap()
+            .projection_validate()
+            .unwrap();
+        assert!(validation.valid, "{:?}", validation.issues);
 
         let _ = fs::remove_file(path);
     }

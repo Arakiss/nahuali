@@ -96,6 +96,29 @@ fn source_last_operator_path_produces_supported_memory() {
     assert_eq!(projection["projection_role"], "derived_from_memory_record");
     assert_eq!(projection["validation"]["valid"], true);
     assert_eq!(projection["validation"]["status"]["in_sync"], true);
+    assert_eq!(
+        projection["validation"]["status"]["projection_version"],
+        2
+    );
+    assert_eq!(
+        projection["validation"]["status"]["checkpoint_projection_version"],
+        2
+    );
+    assert_eq!(
+        projection["validation"]["status"]["checkpoint_manifest_algorithm"],
+        "sha256-canonical-json-v1"
+    );
+    assert_eq!(
+        projection["validation"]["status"]["actual_manifest_digest"]
+            .as_str()
+            .expect("manifest digest is a string")
+            .len(),
+        64
+    );
+    assert_eq!(
+        projection["validation"]["status"]["checkpoint_manifest_digest"],
+        projection["validation"]["status"]["actual_manifest_digest"]
+    );
     assert_eq!(projection["validation"]["status"]["table_counts"]["episode"], 1);
     assert_eq!(projection["validation"]["status"]["table_counts"]["claim"], 1);
     assert_eq!(

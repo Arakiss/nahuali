@@ -794,6 +794,9 @@ pub(crate) fn projection_rebuild(
     json: bool,
 ) -> anyhow::Result<()> {
     let report = memory.projection_rebuild()?;
+    if !report.status.in_sync {
+        anyhow::bail!("graph projection rebuild completed out of sync");
+    }
     if json {
         println!(
             "{}",
@@ -820,6 +823,8 @@ pub(crate) fn projection_validate(
     json: bool,
 ) -> anyhow::Result<()> {
     let validation = memory.projection_validate()?;
+    let valid = validation.valid;
+    let issues = validation.issues.clone();
     if json {
         println!(
             "{}",
@@ -839,12 +844,16 @@ pub(crate) fn projection_validate(
             println!("Issues: none");
         } else {
             println!("Issues:");
-            for issue in validation.issues {
+            for issue in &validation.issues {
                 println!("- {issue}");
             }
         }
     }
-    Ok(())
+    if valid {
+        Ok(())
+    } else {
+        anyhow::bail!("graph projection validation failed: {}", issues.join("; "))
+    }
 }
 
 pub(crate) fn projection_entities(

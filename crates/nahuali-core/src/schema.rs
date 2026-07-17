@@ -3,12 +3,16 @@
 /// Authoritative SurrealDB schema for the v1 append-only record ledger.
 pub const MEMORY_RECORD_SCHEMA: &str = include_str!("../schema/memory_record.surql");
 
+/// Historical v1 graph projection schema retained for compatibility evidence.
+#[cfg(test)]
+pub const GRAPH_PROJECTION_SCHEMA_V1: &str = include_str!("../schema/graph_projection_v1.surql");
+
 /// Rebuildable SurrealDB graph projection schema for the beta memory substrate.
-pub const GRAPH_PROJECTION_SCHEMA: &str = include_str!("../schema/graph_projection_v1.surql");
+pub const GRAPH_PROJECTION_SCHEMA: &str = include_str!("../schema/graph_projection_v2.surql");
 
 #[cfg(test)]
 mod tests {
-    use super::{GRAPH_PROJECTION_SCHEMA, MEMORY_RECORD_SCHEMA};
+    use super::{GRAPH_PROJECTION_SCHEMA, GRAPH_PROJECTION_SCHEMA_V1, MEMORY_RECORD_SCHEMA};
 
     #[test]
     fn memory_record_schema_defines_only_the_v1_ledger_contract() {
@@ -28,6 +32,17 @@ mod tests {
     #[test]
     fn graph_projection_schema_defines_the_beta_cognitive_graph_contract() {
         let schema = GRAPH_PROJECTION_SCHEMA.trim();
+
+        assert_ne!(schema, GRAPH_PROJECTION_SCHEMA_V1.trim());
+        assert!(schema.contains("Graph projection v2"));
+        assert!(
+            schema.contains(
+                "DEFINE SEQUENCE IF NOT EXISTS projection_rebuild_fencing BATCH 1 START 1;"
+            )
+        );
+        assert!(schema.contains(
+            "DEFINE SEQUENCE IF NOT EXISTS projection_rebuild_mutation_guard BATCH 1 START 1;"
+        ));
 
         for table in [
             "projection_checkpoint",
