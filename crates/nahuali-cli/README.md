@@ -89,7 +89,7 @@ nahuali --database memory ingest-text examples/source-note.md --kind note --titl
 nahuali --database memory ingest-dir examples --recursive --extension md --extension txt --chunking paragraphs --dry-run --json
 nahuali --database memory ingest examples/ingest-conversation.json --dry-run --json
 nahuali --database memory ingest examples/ingest-conversation.json --json
-nahuali --database memory claim Lena owns "release notes" --confidence 0.92 --source-last
+CLAIM_ID="$(nahuali --database memory claim Lena owns "release notes" --confidence 0.92 --source-last --json | jq -r '.id')"
 nahuali --database memory link Lena owns "release notes" --confidence 0.9 --source-last
 nahuali --database memory remember "Release notes belong to the Nahuali project" --scope project:Nahuali
 nahuali --database memory recall "release notes" --scope project:Nahuali --authority --json
@@ -114,6 +114,7 @@ nahuali --database memory project "Lena" --json
 nahuali --database memory semantic-rebuild
 nahuali --database memory semantic-status --json
 nahuali --database memory recall "Lena release" --semantic --json
+nahuali --database memory explore
 nahuali --database memory inspect
 nahuali --database memory self-inspect --json
 nahuali --database memory reflect --json
@@ -136,6 +137,45 @@ nahuali --database imported_memory import ./memory.interchange.json --dry-run --
 nahuali --database memory data --json
 ```
 
+Create an independently authorized checkpoint, show its state in the TUI, and
+export one evidence-backed claim for offline verification:
+
+```bash
+CLAIM_ID="$(nahuali --database memory data --json | jq -r '.claims[-1].id')"
+umask 077
+openssl rand -hex 32 > ./operator.key
+nahuali --database memory checkpoint-policy-init \
+  --origin workstation-1 \
+  --key-id operator-1 \
+  --key-file ./operator.key \
+  --minimum-signatures 1 \
+  --output ./memory.policy.json
+nahuali --database memory checkpoint-sign \
+  --policy ./memory.policy.json \
+  --key-id operator-1 \
+  --key-file ./operator.key \
+  --output ./memory.checkpoint.json
+nahuali --database memory checkpoint-verify ./memory.checkpoint.json \
+  --policy ./memory.policy.json \
+  --mode current
+nahuali --database memory explore \
+  --checkpoint ./memory.checkpoint.json \
+  --policy ./memory.policy.json \
+  --checkpoint-mode current
+nahuali --database memory receipt-export \
+  --claim-id "$CLAIM_ID" \
+  --checkpoint ./memory.checkpoint.json \
+  --policy ./memory.policy.json \
+  --output ./claim.receipt.json
+NAHUALI_DB_URL=unreachable://offline \
+  nahuali receipt-verify ./claim.receipt.json \
+  --policy ./memory.policy.json
+```
+
+Keep the key and policy outside the database. `receipt-verify` reads only the
+receipt and external policy; it deliberately runs without opening a memory
+store.
+
 Use `--json` on primary commands when scripts or agents need structured output
 without human prose.
 
@@ -154,11 +194,13 @@ command family instead of a universal envelope:
   `anomalies`, `goal-progress`, `reconcile-intentions`, `sleep`,
   `consolidation-plan`, and `hook`).
 - Status, validation, projection, import/export, backup, snapshot, migration,
-  and attestation commands expose named top-level payload keys for their
-  command-specific metadata.
+  and legacy attestation commands expose named top-level payload keys for their
+  command-specific metadata. Checkpoint policy/signing and receipt export write
+  bounded documents to disk instead of emitting JSON reports.
 - Direct read models whose Rust type is the public payload remain direct JSON
   values (`recall`, `graph`, `inspect`, `self-inspect`, `reflect`, `review`,
-  `audit`, `trust-report`, `data`, and `export --json` without `--output`).
+  `audit`, `trust-report`, `data`, `checkpoint-verify`, `receipt-verify`, and
+  `export --json` without `--output`).
 
 Consumers should parse by command contract rather than assuming every command
 has a `report` wrapper.
@@ -257,7 +299,15 @@ context, evidence IDs, and explanations.
 
 `projection-status --json`, `projection-rebuild --json`, and
 `projection-validate --json` inspect, repair, and verify the SurrealDB graph
-projection derived from the authoritative `memory_record` ledger.
+projection derived from the authoritative `memory_record` ledger. Projection v2
+serializes competing rebuilds with transactional fencing, writes nodes and
+relations in bounded batches, and checkpoints a canonical content manifest for
+every ledger-derived projected table. Validation compares schema versions,
+exact ledger tip, row counts, and content digests; `projection-validate` exits
+non-zero when any check fails. SurrealDB projection-backed entity, timeline,
+pending-work, and health reads also refuse an invalid or actively rebuilding
+projection instead of returning partial results. `graph` continues to traverse
+the independently replayed Rust `MemoryData` projection.
 
 `self-inspect --json` returns a non-mutating consolidation report with
 knowledge health, authority, findings, proposed review items, and an explicit
@@ -278,11 +328,11 @@ or recording follow-up evidence.
 review work. It appends an audit decision only after an operator supplies a note;
 `--dry-run --json` previews the decision without mutating the record ledger.
 
-`validate --json` is non-destructive. It reports record-ledger compatibility issues
-as structured JSON before exiting non-zero, includes `database`, and lets
-automation inspect invalid logs without projecting them. Default validation stays
-compatible with pre-chain records; add `--require-chained` when automation must
-fail closed if any record lacks a hash-chain link.
+`validate --json` is non-destructive. It reports record-ledger compatibility
+issues as structured JSON before exiting non-zero, includes `database`, and lets
+automation inspect invalid logs without projecting them. Default builds fail
+closed when any record lacks a hash-chain link. `--allow-unchained` is the loud,
+explicit compatibility escape hatch for inspecting a legacy ledger.
 
 `audit` is a non-mutating diff of what the ledger recorded between two points. It
 bounds the range with `--from`/`--to` (exclusive then inclusive sequence) and
@@ -301,6 +351,39 @@ Add `--keyring <PATH>` to require an active operator-authorized key. `--html
 calls) that renders offline. It exits non-zero when ledger integrity fails or a
 supplied attestation is not trusted under the operator keyring.
 
+`explore` opens the interactive memory cockpit. It keeps `MEMORY`, `HISTORY`,
+and `PROOF` on separate lines so the default view explains what is usable, what
+changed, and what has been independently verified. `/` enters local search;
+filters and search combine without mutating memory. Supplying both `--checkpoint`
+and `--policy` adds the optional independent proof.
+`--checkpoint-mode current` requires the checkpoint to cover the live tip,
+while `historical` accepts a fully verified prefix and reports later events as
+uncovered.
+
+`checkpoint-policy-init`, `checkpoint-sign`, and `checkpoint-verify` implement
+the version 2 checkpoint contract. The signed document binds ledger lineage,
+tree algorithm, tree size, Merkle root, chain tip, origin, and signer time. A
+checkpoint never authorizes its own public key: verification requires a
+separately held policy and supports an active-key threshold. Malformed or
+duplicate documents and invalid signatures for active keys are rejected.
+Well-formed signatures from unknown or revoked keys are reported, ignored, and
+never count toward the threshold. Signer time is checked against the verifier's
+clock; it is not an external timestamp or proof that the supplied checkpoint is
+the newest one ever issued.
+
+`receipt-export` writes the exact claim event, its evidence episode, an optional
+source event, strict Merkle inclusion proofs, and one authorized checkpoint.
+`receipt-verify` checks that compact bundle offline and returns separate
+`receipt_integrity` and `content_authority` verdicts. A verified receipt proves
+that those selected envelopes were committed under the authorized ledger
+checkpoint and form the stated provenance path. It does not prove factual
+truth, authorship, external source authenticity, or external source bytes.
+Offline verification does not replay the full ledger prefix: it trusts the
+authorized signers' commitment to the root and checks only the selected
+envelopes and paths. Use `checkpoint-verify` with the ledger to validate the
+complete prefix. Receipt v1 exports direct `FactAsserted` claims only, and the
+result contains selected memory verbatim; treat it as sensitive data.
+
 `maintenance` reports the non-destructive local maintenance state. `snapshot`
 writes an optional projection artifact or previews it with `--dry-run`.
 `snapshot-validate` checks that artifact against a fresh replay of the current
@@ -308,8 +391,8 @@ record ledger.
 
 `backup` writes an authoritative record-ledger manifest or previews it with
 `--dry-run`. `backup-validate` checks the manifest and all included records;
-with `--require-chained`, it also rejects backups where a valid checksum hides
-stripped hash-chain links.
+default builds reject backups where a valid checksum hides stripped hash-chain
+links. `--allow-unchained` opts explicitly into legacy-permissive validation.
 `backup-drill` validates the backup and dry-runs restore into a target database
 without writing records. `restore` writes backup records only into an empty
 target database and reports that Qdrant vectors must be rebuilt from the
@@ -349,24 +432,26 @@ unchained compatibility surface. Extra features remain opt-in.
 
 - `--features tamper-evidence` (default in `nahuali-cli`): recorded events are chained by hash, so
   `validate` detects an in-place rewrite of any historical record even when its
-  checksum was recomputed. `validate --require-chained` and
-  `backup-validate --require-chained` reject ledgers or backups that are missing
-  chain links. `audit --inclusion-proof <sequence> --json` emits a Merkle
+  checksum was recomputed. `validate` and `backup-validate` reject missing chain
+  links by default; `--allow-unchained` is the explicit legacy exception.
+  `audit --inclusion-proof <sequence> --json` emits a Merkle
   inclusion proof for one event under the audited root.
-- `--features attestation` (default; implies `tamper-evidence`): adds `attest-sign` and
-  `attest-verify`. `attest-sign --key-file <seed> -o tip.json` signs the current
-  chain tip into a portable receipt; `attest-verify tip.json` checks it against
-  the live ledger and exits non-zero when the tip has moved or the signature is
-  invalid. Supply a 32-byte Ed25519 seed as hex (`openssl rand -hex 32`). It also
-  adds `audit --from-attestation tip.json --keyring keys.json`, which anchors the
-  audit's lower bound only when the checkpoint matches history and its signing
-  key is active in the operator-held keyring.
+- `--features attestation` (default; implies `tamper-evidence`): adds the current
+  `checkpoint-*` and `receipt-*` commands plus the compatibility `attest-*`
+  commands. Version 2 checkpoints use an external policy, an explicit ledger
+  lineage, canonical signed bytes, and an optional multi-key threshold.
+  Portable claim receipts reuse that checkpoint as their trust anchor and can
+  be verified without a database. The older `attest-sign` and `attest-verify`
+  format signs only a chain tip; treat it as version 1 compatibility data and
+  require an external keyring when it influences an audit or trust report.
+  Supply each signing key as a file containing a 32-byte Ed25519 seed encoded as
+  hex (`openssl rand -hex 32`).
 
-`attest-verify` proves the live ledger matches the receipt you provide; it does
-not prove you selected the newest receipt ever issued. To detect rollback to an
-older signed checkpoint, keep the latest receipt or another monotonic sequence
-floor outside the store and make automation verify against that external
-freshness reference.
+No checkpoint format can prove freshness by itself. To detect rollback to an
+older but valid checkpoint, keep the latest accepted checkpoint, tree size, or
+another monotonic floor outside the store and make automation verify against
+that external freshness reference. Independent witnesses and gossip are not
+part of this beta.
 
 - `--features local-embeddings`: lets `semantic-rebuild` and `recall --semantic`
   use a static model2vec model instead of the deterministic embedder. Set

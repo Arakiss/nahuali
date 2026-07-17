@@ -1,205 +1,219 @@
 # Nahuali
 
-**Memory an agent can inspect before it trusts.** Nahuali stores observations,
-claims, relationships, procedures, and intentions with their evidence, then
-returns a deterministic trust verdict with every recall.
+**Memory an agent can inspect before it trusts.**
+
+<p align="center">
+  <img src="assets/nahuali-tui.gif" alt="Nahuali exploring an evidence-backed decision and holding an unsupported update for review" width="100%">
+</p>
+
+<p align="center"><sub>From an empty memory to evidence-backed recall: Nahuali shows what is ready to use and pauses what still needs review.</sub></p>
 
 <p align="center">
   <a href="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml"><img src="https://github.com/Arakiss/nahuali/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="Tests"></a>
-  <a href="https://codecov.io/gh/Arakiss/nahuali"><img src="https://codecov.io/gh/Arakiss/nahuali/branch/main/graph/badge.svg" alt="Coverage"></a>
   <a href="https://github.com/Arakiss/nahuali/releases"><img src="https://img.shields.io/badge/release-0.8_beta-blue.svg" alt="Latest release train: 0.8 beta"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--MIT-yellow.svg" alt="FSL-1.1-MIT license"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-2024_edition-orange.svg" alt="Rust 2024 edition"></a>
-  <img src="https://img.shields.io/badge/platform-macOS_%7C_Linux-5d6d7e.svg" alt="macOS and Linux">
-  <a href="https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Arakiss%2Fnahuali"><img src="https://img.shields.io/badge/MCP_Registry-published-6f5bd3.svg" alt="Published in the official MCP Registry"></a>
   <a href="RELEASE_VERIFICATION.md"><img src="https://img.shields.io/badge/releases-Sigstore_signed-2f6f4e.svg" alt="Sigstore-signed release artifacts"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--MIT-yellow.svg" alt="FSL-1.1-MIT license"></a>
 </p>
 
-<p align="center">
-  <img src="assets/nahuali-tui.gif" alt="Nahuali explore: the axolotl mascot mirrors store trust, an evidence-backed claim reaches Certify, and an unsourced competing claim changes the verdict to Block" width="100%">
-</p>
+Most memory systems answer *what context looks relevant?* Nahuali also answers:
 
-<p align="center"><sub>A real disposable-store run of <code>nahuali explore</code>: the nahual appears in the empty state, a sourced claim reaches <code>CERTIFY</code>, and a competing claim with no source changes the store to <code>BLOCK</code>. Rebuild the capture with <code>scripts/render-readme-tui-gif.sh</code>.</sub></p>
+- What observation supports this memory?
+- What conflicts with it or makes it stale?
+- Has the recorded history changed?
+- Is this safe for an agent to use now?
 
-Most memory systems answer: *what context looks relevant?* Nahuali also asks:
-*what supports it, what conflicts with it, and is it safe for an agent to use?*
-The authoritative ledger is local-first, append-only, hash chained, and usable
-without a model, account, API key, Docker, or hosted service.
+The result is a local-first memory engine with deterministic trust verdicts,
+protected history, and portable evidence. Its core does not need a
+model, account, API key, hosted service, or Docker.
 
-## Quickstart
+## A 60-second tour
 
-Install the signed macOS or Linux binaries:
+Install the signed macOS or Linux binary:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
 export PATH="$HOME/.nahuali/bin:$PATH"
 ```
 
-Create an observation, derive a claim from it, and recall it with evidence:
+Record an observation, derive a claim from it, and require evidence at recall:
 
 ```bash
 nahuali remember "Lena owns the release notes" --mention Lena --tag product
-nahuali claim Lena owns "release notes" --source-last --confidence 0.92
+CLAIM_ID="$(
+  nahuali claim Lena owns "release notes" \
+    --source-last --confidence 0.92 --json | jq -r '.id'
+)"
 nahuali recall "Who owns the release notes?" --authority --require-evidence
 nahuali explore
 ```
 
-Run `nahuali demo` for a narrated, non-mutating explanation of the hash chain
-and signed checkpoint.
+`nahuali explore` is not just a record browser. It keeps three independent
+questions visible:
 
-The default store lives under `~/.nahuali/data` and survives process restarts.
-After upgrading, restart applications that keep `nahuali-mcp` running so every
-process opens the embedded store with the same engine version.
+| Axis | What it answers |
+|---|---|
+| `MEMORY` | Is this memory supported enough to use? |
+| `HISTORY` | Has the recorded memory changed unexpectedly? |
+| `PROOF` | Has this exact memory state been independently verified? |
 
-## What Nahuali gives an agent
+Press `/` to search every displayed memory-item field, `Tab` to filter by memory kind, and
+`j`/`k` to inspect the evidence behind a result. The axolotl watches over the
+memory and changes with its status. Rebuild the GIF above from real Ghostty
+windows on macOS with `scripts/render-readme-tui-gif.sh`; the canonical README
+asset is never replaced by the lower-fidelity text fallback.
 
-- **Evidence-backed memory.** Claims and relationships can point to the episode
-  that supports them; recall can require that evidence.
-- **A verdict per result.** `certify`, `advisory`, `warn`, and `block` are derived
-  from evidence, freshness, conflicts, scope, and ledger integrity.
-- **History that resists silent rewriting.** The ledger uses checksums, a hash
-  chain, Merkle roots, and optional Ed25519 signed checkpoints.
-- **Review instead of hidden mutation.** Self-inspection finds unsupported,
-  stale, contradictory, and isolated memory without rewriting it.
-- **Rebuildable derived data.** The graph and optional semantic vectors are
-  checked against the ledger and can be rebuilt after drift or restore.
-- **Interfaces for humans and agents.** The same engine powers the CLI, TUI,
-  stdio MCP server, local HTTP API, and Rust crate.
+Run `nahuali demo` for a narrated, non-mutating explanation of how Nahuali
+detects an unexpected rewrite and keeps unsupported memory from driving action.
 
-## Trust is explicit
+## Why this is different
+
+### Evidence is part of memory
+
+Observations are first-class episodes. Claims, relationships, procedures, and
+intentions can point back to the episode that supports them. Recall can refuse
+results without that path instead of filling the gap with confidence language.
+
+### Trust fails closed
+
+Authority-aware recall carries one of four deterministic verdicts:
 
 | Verdict | Meaning |
 |---|---|
-| `certify` | Available checks support using the result with its evidence. |
+| `certify` | Available checks support use with the attached evidence. |
 | `advisory` | Useful as a lead, but not safe to repeat without qualification. |
-| `warn` | Evidence or health problems require verification. |
-| `block` | The result must not drive action until the conflict is resolved. |
+| `warn` | Evidence, freshness, or store-health problems require verification. |
+| `block` | The memory must not drive action until the conflict is resolved. |
 
-A verdict does not prove that remembered content is true. It makes the reason
-for trust inspectable and refuses to hide contradictory or unsupported memory.
-See the full [trust model](TRUST_MODEL.md).
+A `certify` verdict proves neither truth nor authorship. It means the available
+evidence and content-health checks passed; inspect `HISTORY` and `PROOF`
+separately for recorded changes and independent verification. Nahuali keeps
+those limits machine-readable instead of hiding them in documentation.
 
-```mermaid
-flowchart LR
-    A[Observed episode] -->|evidence| B[Claim or relationship]
-    B --> C[Authority-aware recall]
-    C --> D{Trust verdict}
-    D -->|certify| E[Use with evidence]
-    D -->|advisory, warn, block| F[Inspect and review]
-    F --> G[Explicit repair or resolution]
-    G --> H[Append-only audit event]
-    H --> C
+### History is inspectable
+
+The authoritative ledger is append-only and hash chained. Merkle inclusion and
+consistency proofs make verification compact; Ed25519 checkpoints bind a tree
+size, root, chain tip, origin, and ledger lineage to an external operator policy.
+
+Nahuali is not a blockchain. It applies the transparency-log primitives
+standardized in [RFC 9162](https://www.rfc-editor.org/rfc/rfc9162.html) without
+publishing private memory to a public network or requiring consensus. Independent
+witness co-signing is a future step, not a capability claimed today.
+
+### One claim can travel with its proof
+
+Portable claim receipts contain only the selected claim, its evidence episode,
+an optional source envelope, their Merkle inclusion paths, and one signed
+checkpoint. Verification is offline and requires a policy held separately from
+the receipt:
+
+```bash
+CLAIM_ID="$(nahuali data --json | jq -r '.claims[-1].id')"
+nahuali receipt-export \
+  --claim-id "$CLAIM_ID" \
+  --checkpoint checkpoint.json \
+  --policy policy.json \
+  --output claim-receipt.json
+
+nahuali receipt-verify claim-receipt.json --policy policy.json
 ```
 
-The deterministic core never calls an LLM. A model may propose a repair, but
-Nahuali validates the evidence, applies the governance rules, and records the
-decision as a new event.
+The verifier reports `receipt_integrity` separately from `content_authority`.
+Ledger commitment never becomes a claim that the remembered statement is true,
+that its author is authentic, or that an external source still contains the
+same bytes.
 
-## Use it from an agent
+Offline receipt verification checks only the selected envelopes, their Merkle
+paths, provenance links, and checkpoint authorization. It trusts the authorized
+signers' commitment to that root; it does not replay or validate the complete
+ledger prefix. Use `checkpoint-verify` with the ledger for that stronger check.
+Receipts contain the selected memory verbatim and should be handled as sensitive
+data, not published by default.
 
-Run `nahuali init` to install the bundled skill where supported and print a
-native-binary MCP configuration. The server is also published as
-`io.github.Arakiss/nahuali` in the official MCP Registry and as an OCI image:
+## Built for agents, operable by humans
 
-```json
-{
-  "mcpServers": {
-    "nahuali": {
-      "command": "docker",
-      "args": [
-        "run", "--rm", "-i",
-        "-v", "nahuali-data:/data",
-        "ghcr.io/arakiss/nahuali-mcp:latest"
-      ]
-    }
-  }
-}
-```
-
-The named volume preserves memory across container restarts. See
-[MCP onboarding](crates/nahuali-mcp/ONBOARDING.md) for native and container
-configurations.
+The CLI is canonical. The TUI, stdio MCP server, local HTTP API, and Rust crate
+all use the same deterministic engine:
 
 | Interface | Use it for | Reference |
 |---|---|---|
-| `nahuali` | Capture, recall, inspection, review, backup, migration, and the TUI | [CLI](crates/nahuali-cli/README.md) |
+| `nahuali` | Capture, recall, inspection, review, recovery, receipts, and the TUI | [CLI](crates/nahuali-cli/README.md) |
 | `nahuali-mcp` | Structured tools and resources for MCP clients | [MCP](crates/nahuali-mcp/README.md) |
 | `nahuali-api` | Local HTTP integrations with an OpenAPI contract | [HTTP API](crates/nahuali-api/README.md) |
-| `nahuali-core` | Embedding the deterministic Rust engine | [Core](crates/nahuali-core/README.md) |
+| `nahuali-core` | Embedding the engine in Rust | [Core](crates/nahuali-core/README.md) |
 
-The HTTP API is unauthenticated and must not be exposed to an untrusted
-network. `/v1/health` reports process liveness; `/v1/ready` verifies the ledger
-and graph and can require an exact, current semantic index.
+Run `nahuali init` to install the bundled agent skill where supported and print
+a native MCP configuration. Nahuali is also published as
+`io.github.Arakiss/nahuali` in the official MCP Registry. See
+[MCP onboarding](crates/nahuali-mcp/ONBOARDING.md) for native and container
+configurations.
+
+The HTTP API is unauthenticated by design and must not be exposed to an
+untrusted network.
 
 ## Storage and recovery
 
-SurrealDB's `memory_record` table is the source of truth. The current-memory
-view, graph tables, snapshots, and semantic vectors are derived and rebuildable.
+`memory_record` in SurrealDB is the source of truth. The current-memory view,
+graph tables, snapshots, and semantic vectors are derived and rebuildable.
 
 - Embedded SurrealKV is the zero-service default.
-- A remote SurrealDB endpoint supports shared deployments.
-- Qdrant is optional and used only for semantic recall.
+- Remote SurrealDB supports deliberately shared deployments.
 - Lexical recall works without Qdrant or an embedding model.
-- `projection-validate` and `semantic-status` detect derived-data drift.
-- Restore rebuilds and validates the graph; `--rebuild-semantic` can also return
-  the semantic tier ready to serve.
+- Qdrant and local embeddings are optional semantic tiers.
+- Graph projection v2 fences concurrent rebuilds and validates a canonical
+  content manifest for every ledger-derived projected table, not only row
+  counts. SurrealDB projection-backed entity, timeline, pending-work, and health
+  reads fail closed while a rebuild is active or when the manifest, schema
+  version, or ledger tip drifts.
+- Semantic validators detect vector-index drift before that derived tier is trusted.
+- Backup restore replays the ledger and rebuilds derived state.
 
-The embedded store has one process owner. A second local process fails clearly
-instead of waiting or risking concurrent writes. Use remote SurrealDB when
-independent processes must share the same memory.
+The embedded store has one process owner. A second process fails clearly rather
+than waiting indefinitely or risking concurrent writes.
 
-## Reproducible evidence
+## Evidence, without the marketing shortcut
 
-The checked-in [governance benchmark suite](GOVERNANCE_BENCHMARKS.md) covers
-provenance, contradiction and staleness detection, verdict calibration, ledger
-tampering, and signed-checkpoint recovery. The vendor-neutral
-[Agent Memory Trust Benchmark](benchmarks/agent-memory-trust/README.md) keeps
-unsupported controls and failures visible instead of collapsing them into one
-marketing score.
+The vendor-neutral
+[Agent Memory Trust Benchmark](benchmarks/agent-memory-trust/README.md) reports
+provenance, abstention, contradiction, staleness, non-mutating inspection, and
+tamper detection as separate cases. The
+[retrieval benchmark](benchmarks/agent-memory-retrieval/README.md) publishes
+every ranked item and latency sample for a versioned 24-memory, 12-query corpus.
 
-The first-party [retrieval benchmark](benchmarks/agent-memory-retrieval/README.md)
-runs the released CLI against a versioned 24-memory, 12-query corpus:
+The checked-in 0.8.0-beta.6 results are **first-party, version-matched source
+builds**. They are bound to a binary SHA-256 and source revision, but they are
+not claimed to be the published release archives. New published-release results
+must additionally match the release tag, target, archive name, archive digest,
+and exact binary through `scripts/verify-benchmark-artifact-identity.py`.
 
-| Mode | Recall@1 | Recall@3 | MRR | nDCG@10 | Median | p95 |
-|---|---:|---:|---:|---:|---:|---:|
-| Lexical | 1.000 | 1.000 | 1.000 | 1.000 | 33.8 ms | 55.0 ms |
-| Deterministic hybrid | 1.000 | 1.000 | 1.000 | 1.000 | 39.0 ms | 40.9 ms |
-
-This small corpus is a regression gate, not a state-of-the-art claim or a
-substitute for LoCoMo or LongMemEval. The published
-[result](benchmarks/agent-memory-retrieval/results/nahuali-0.8.0-beta.6.json)
-is bound to the corpus digest, binary SHA-256, and source revision and includes
-every ranked item and latency sample.
-
-Release validation also exercises exact semantic freshness, 1,000- and
-10,000-event refresh budgets, restore readiness, signed installation, and a
-real N-1 binary writing a ledger that the current release must open, extend,
-back up, and restore. Generate a self-contained audit receipt with:
+The small retrieval corpus is a regression gate, not a state-of-the-art claim
+and not a substitute for LoCoMo or LongMemEval. The broader checked-in
+[governance suite](GOVERNANCE_BENCHMARKS.md) exercises trust-specific failure
+classes. Run the controlled-beta gate with:
 
 ```bash
-nahuali trust-report --attestation --output trust-report.html
+bash scripts/verify-controlled-beta.sh
 ```
 
-The checked-in [sample receipt](examples/sample-trust-report.html) is generated
-from synthetic data and can be inspected offline.
+Maintainers can verify the required GitHub repository settings separately:
 
-Run the complete release gate with `bash scripts/verify-controlled-beta.sh`.
-Maintainers can also verify the required GitHub repository settings with
-`NAHUALI_VERIFY_GITHUB_SETTINGS=1 bash scripts/security-supply-chain-check.sh`.
+```bash
+NAHUALI_VERIFY_GITHUB_SETTINGS=1 bash scripts/security-supply-chain-check.sh
+```
 
-## Beta limits
+## Beta boundaries
 
-- APIs and storage behavior may still change before 1.0.
-- Self-inspection proposes work but never writes automatically.
 - Evidence proves traceability, not factual truth.
-- Detecting rollback or a fully re-chained history requires retaining a trusted
-  signed checkpoint.
-- Scope labels separate memory contexts but are not access-control boundaries.
-- Semantic recall requires optional Qdrant; the default lexical path does not.
-- Nahuali does not yet provide accounts, hosted sync, billing, or a managed
-  control plane.
+- A trusted checkpoint proves a committed ledger state, not an independent time.
+- Detecting rollback or a fully re-chained history requires retaining an external checkpoint and policy.
+- Scope labels organize contexts; they are not access-control boundaries.
+- Self-inspection proposes work but never rewrites memory autonomously.
+- Accounts, hosted sync, billing, and a managed control plane are not included.
+- APIs and storage behavior may still change before 1.0.
 
-Read [BETA.md](BETA.md) before using irreplaceable data.
+Read [BETA.md](BETA.md) before using irreplaceable data and the full
+[trust model](TRUST_MODEL.md) before treating a verdict as an authorization
+boundary.
 
 ## Build from source
 
@@ -207,17 +221,11 @@ Read [BETA.md](BETA.md) before using irreplaceable data.
 cargo build --workspace
 cargo test --workspace
 cargo install --path crates/nahuali-cli --locked
-cargo install --path crates/nahuali-mcp --locked
-cargo install --path crates/nahuali-api --locked
 ```
 
-Docker is only needed for the optional remote development stack and Qdrant:
+Docker is needed only for the optional remote development stack and Qdrant.
 
-```bash
-docker compose up -d
-```
-
-## Documentation
+## Go deeper
 
 - [Trust model](TRUST_MODEL.md)
 - [Release verification](RELEASE_VERIFICATION.md)
@@ -228,7 +236,8 @@ docker compose up -d
 
 Questions and design feedback belong in
 [GitHub Discussions](https://github.com/Arakiss/nahuali/discussions). Bugs and
-benchmark contributions have structured [issue templates](https://github.com/Arakiss/nahuali/issues/new/choose).
+benchmark contributions have structured
+[issue templates](https://github.com/Arakiss/nahuali/issues/new/choose).
 
 ## License
 

@@ -3,14 +3,16 @@
 Nahuali makes the basis for trusting agent memory inspectable. It does not
 claim that a stored sentence is true merely because it was recorded.
 
-The trust model has three separate questions:
+The trust model has four separate questions:
 
 1. **Can this result be used?** Authority-aware recall evaluates the result's
    evidence, confidence, freshness, contradictions, and review state.
 2. **Does the store need attention?** Self-inspection reports unsupported,
    stale, contradictory, or isolated memory without changing it.
-3. **Was recorded history rewritten?** Ledger checksums, a default hash chain,
-   and operator-held signed checkpoints cover different tampering classes.
+3. **Is the ledger internally intact?** Event checksums, sequence validation, a
+   default hash chain, and Merkle proofs detect different structural failures.
+4. **Is that exact ledger state independently authorized?** Version 2 signed
+   checkpoints are accepted only under a separately held operator policy.
 
 Keeping these questions separate matters. One supported result may still
 receive `certify` while an unrelated contradiction makes the store's overall
@@ -66,32 +68,104 @@ chain. The tiers deliberately make different guarantees:
 |---|---|---|
 | Event checksum | Accidental or direct modification of one event | An attacker who edits the event and recomputes its checksum |
 | Hash chain | In-place history edits, even with recomputed event checksums | A full rewrite followed by re-chaining every later event |
-| Signed chain-tip checkpoint | A full re-chain or rollback relative to the retained receipt | Compromise of the signing key or replacement of both store and receipt |
+| Merkle root and strict inclusion proof | Whether one selected chain hash is committed under one root | Who authorized the root, factual truth, or freshness |
+| Version 2 signed checkpoint plus external policy | Full re-chaining, wrong lineage, unauthorized signers, and rollback relative to the checkpoint supplied | A newer valid checkpoint being withheld, key compromise, or external truth |
+| Portable claim receipt | Commitment and provenance linkage for one claim, its episode, and optional source | Claim truth, authorship, source authenticity, source bytes, or an external timestamp |
 
-The chain is automatic in default binaries. Signing is an explicit operator
-action because the private key and trusted receipt must remain under operator
-control:
+The chain and Merkle root are automatic in default binaries. Signing is an
+explicit operator action because the private key, policy, and accepted
+checkpoint must remain under operator control:
 
 ```bash
-nahuali --database memory attest-sign \
+nahuali --database memory checkpoint-policy-init \
+  --origin workstation-1 \
+  --key-id operator-1 \
+  --key-file /secure/path/nahuali-signing-seed.hex \
+  --minimum-signatures 1 \
+  --output /separate/path/memory-policy.json
+
+nahuali --database memory checkpoint-sign \
+  --policy /separate/path/memory-policy.json \
+  --key-id operator-1 \
   --key-file /secure/path/nahuali-signing-seed.hex \
   --output /separate/path/memory-checkpoint.json
 
-nahuali --database memory attest-verify \
-  /separate/path/memory-checkpoint.json
+nahuali --database memory checkpoint-verify \
+  /separate/path/memory-checkpoint.json \
+  --policy /separate/path/memory-policy.json \
+  --mode current
 ```
 
-The checkpoint is useful only if the operator retains a trusted copy outside
-the memory store. A current valid receipt does not by itself prove freshness;
-the operator or deployment must know which checkpoint is the latest accepted
-one.
+The policy is the trust root; the checkpoint never authorizes its own key.
+Current mode requires an exact live-tip match. Historical mode verifies the
+checkpointed prefix and reports later, uncovered events instead of pretending
+the old checkpoint covers them.
+
+The earlier `attest-sign`/`attest-verify` chain-tip format remains available for
+compatibility. A supplied version 1 attestation does not become trusted merely
+because its embedded key verifies the signature. Trust reports and anchored
+audits require an external keyring before treating that signer as authorized.
+
+The checkpoint is useful only if the operator retains its policy and accepted
+state outside the memory store. A cryptographically valid checkpoint does not
+by itself prove freshness: the verifier must know which checkpoint or monotonic
+tree-size floor is the latest one it accepted.
+
+### Portable claim receipts
+
+One claim and its provenance path can be detached from the database without
+copying the rest of the memory store:
+
+```bash
+CLAIM_ID="$(nahuali --database memory data --json | jq -r '.claims[-1].id')"
+nahuali --database memory receipt-export \
+  --claim-id "$CLAIM_ID" \
+  --checkpoint /separate/path/memory-checkpoint.json \
+  --policy /separate/path/memory-policy.json \
+  --output /separate/path/claim.receipt.json
+
+nahuali receipt-verify /separate/path/claim.receipt.json \
+  --policy /separate/path/memory-policy.json
+```
+
+The verifier checks strict JSON shape, supported event versions, event
+checksums and identities, Merkle proof topology, checkpoint authorization, and
+the exact claim-to-episode-to-source linkage. Its output deliberately separates
+`receipt_integrity` from `content_authority`: integrity can be verified while
+truth and external source authenticity remain unestablished.
+
+Offline verification does not replay the complete ledger prefix behind the
+signed root. It trusts the authorized signers' commitment to that root and
+checks only the selected envelopes and inclusion paths. Use `checkpoint-verify`
+with the ledger when complete-prefix integrity matters. Receipt v1 exports only
+direct `FactAsserted` claims. Because a receipt contains the selected claim,
+episode, and optional source metadata verbatim, protect it as memory data rather
+than treating it as a public proof by default.
+
+### Why this is not a blockchain
+
+Nahuali uses transparency-log primitives inside a single-owner append-only
+ledger: a hash chain, Merkle commitments, compact consistency proofs, and signed
+checkpoints. It has no peer-to-peer consensus, mining, token, replicated public
+state, or automatic global ordering. Calling it a blockchain would overstate
+both the implementation and its guarantees.
 
 ## Recovery and derived data
 
 Current projections, graph tables, optional snapshots, and Qdrant vectors are
-derived state. They are not authoritative memory. `reconcile` verifies the
-ledger and rebuilds the derived tiers. Backup and restore preserve the record
-ledger, while semantic vectors should be rebuilt.
+derived state. They are not authoritative memory. Graph projection v2 uses a
+permanent lock row with monotonically increasing fencing tokens: every mutation
+batch conditionally updates that row in the same transaction as the projected
+rows. A replaced owner therefore loses with a typed error and its whole batch is
+rolled back. Successful rebuilds finish with a canonical SHA-256 content
+manifest for every ledger-derived projected table plus the exact ledger tip and
+schema version.
+
+SurrealDB projection-backed entity, timeline, pending-work, and health reads
+validate that checkpoint and refuse to serve while a rebuild is active or if
+counts, content, schema version, or ledger tip no longer match.
+`reconcile` verifies the ledger and rebuilds the derived tiers. Backup and
+restore preserve the record ledger, while semantic vectors should be rebuilt.
 
 ## Security boundaries
 
@@ -106,6 +180,9 @@ ledger, while semantic vectors should be rebuilt.
   default attestation and hash-chain guarantees.
 - Key compromise, malicious source observations, host compromise, and loss of
   the latest trusted checkpoint remain outside what a ledger can solve alone.
+- Independent checkpoint witnesses and gossip are not implemented in this
+  beta. Without them, two verifiers do not automatically learn that they were
+  shown inconsistent checkpoints.
 
 ## Reproduce the contract
 

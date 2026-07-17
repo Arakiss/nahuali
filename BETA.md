@@ -19,6 +19,13 @@ The controlled beta gate verifies that a checkout can:
   reports without implicit memory writes
 - create, validate, drill, restore, and re-validate a local backup
 - rebuild and query the derived semantic index
+- race 16 graph-projection rebuilds against SurrealDB 3.0.5, require every
+  successful result to match the ledger content manifest, detect same-count
+  row tampering, and repair the projection back to a validated state
+- create and verify a version 2 signed checkpoint under an external policy
+- distinguish current checkpoints from verified historical prefixes
+- export and verify a compact evidence-backed claim receipt without opening a
+  database
 - avoid changing any globally installed `nahuali` command
 - pass the public security and supply-chain hygiene checks
 
@@ -47,6 +54,9 @@ Use Nahuali only with data you can recreate.
 - Do not rely on automatic repair. Review, consolidation, and sleep reports are
   non-mutating unless a separate explicit write command is run.
 - Keep local backups before experimenting with data you care about.
+- Keep checkpoint keys, policies, and the latest accepted checkpoint outside the
+  memory database. A valid old checkpoint is not proof that no newer checkpoint
+  exists.
 
 ## First Commands
 
@@ -87,6 +97,12 @@ Do not ask another person to test the beta when any of these are true:
 - scoped recall returns unsupported memory when evidence is required
 - self-inspection, sleep, reflection, or consolidation writes memory implicitly
 - backup validation, backup drill, restore dry-run, or restore validation fails
+- a supplied checkpoint is not authorized by the external policy, does not
+  match the expected lineage, or fails the requested current/historical mode
+- a claim receipt cannot verify every selected envelope, Merkle proof, and
+  provenance link under its checkpoint
+- graph projection validation reports an active rebuild, a version mismatch, a
+  ledger-tip mismatch, or any count or content-manifest mismatch
 - security and supply-chain checks fail
 - CI is red for the commit being shared
 
@@ -99,6 +115,8 @@ The controlled beta does not include:
 - stable 1.0 API guarantees
 - automatic memory repair
 - a promise that remembered content is true
+- independent checkpoint witnesses, gossip, public anchoring, or blockchain
+  consensus
 - safe handling of secrets or irreplaceable personal data
 
 Nahuali should expose why memory can or cannot be trusted. The operator still

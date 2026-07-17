@@ -135,7 +135,7 @@ detect_target() {
     *)
       fail "unsupported operating system: ${_os}." \
         "Nahuali ships prebuilt binaries for macOS and Linux only." \
-        "On other systems, build from source: https://github.com/${REPO}#install-from-source"
+        "On other systems, build from source: https://github.com/${REPO}#build-from-source"
       ;;
   esac
   case "$_arch" in
@@ -144,7 +144,7 @@ detect_target() {
     *)
       fail "unsupported CPU architecture: ${_arch}." \
         "Nahuali ships prebuilt binaries for x86_64 and aarch64 only." \
-        "On other architectures, build from source: https://github.com/${REPO}#install-from-source"
+        "On other architectures, build from source: https://github.com/${REPO}#build-from-source"
       ;;
   esac
   printf '%s-%s' "$_arch_part" "$_os_part"
@@ -379,7 +379,7 @@ else
   fail "the installed 'nahuali' binary did not run on this machine." \
     "Path: ${NAHUALI_BIN}" \
     "This usually means an OS/arch mismatch. Detected target: ${TARGET}." \
-    "If wrong, report it; otherwise build from source: https://github.com/${REPO}#install-from-source"
+    "If wrong, report it; otherwise build from source: https://github.com/${REPO}#build-from-source"
 fi
 
 # ---------------------------------------------------------------------------

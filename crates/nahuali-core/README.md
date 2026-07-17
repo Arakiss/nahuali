@@ -36,18 +36,49 @@ private during pre-release development.
 - Default builds enable `attestation`, which implies the `tamper-evidence` hash
   chain. Each event binds the previous event's hash, so an in-place rewrite of
   any historical record breaks the chain at the next record even when the
-  per-record checksum was recomputed. `--no-default-features` is the explicit
-  legacy opt-out for an unchained build.
-- The default attestation surface signs the chain tip with a detached Ed25519 signature.
-  A full re-chain of history repairs every internal link but changes the tip, so
-  a previously signed receipt no longer verifies and forging a new one needs the
-  private key. Keys are operator-supplied seeds; the core never generates
-  randomness or touches the network.
+  per-record checksum was recomputed. Empty, verified, legacy unchained, and
+  broken ledgers are represented explicitly; legacy never counts as verified.
+  `--no-default-features` is the explicit legacy opt-out for an unchained build.
+- Merkle roots commit to the per-event chain hashes. Inclusion verification is
+  strict about tree size, index, path topology, sibling direction, hash shape,
+  and unused proof nodes. Compact consistency proofs show that one non-empty
+  root is an append-only prefix of a later root. Their proof algorithm follows
+  the RFC 9162 shape while retaining Nahuali's domain-separated v1 hashes, so it
+  is not byte-compatible with Certificate Transparency.
+- Version 2 signed checkpoints bind origin, ledger lineage, tree algorithm,
+  tree size, Merkle root, chain tip, and signer time into canonical binary
+  bytes. Authorization comes only from a separately held policy with explicit
+  active or revoked Ed25519 keys and a signature threshold; a public key carried
+  by a signed document never establishes trust by itself. Current mode requires
+  the live tip, while historical mode verifies a prefix and reports appended
+  events separately.
+- Portable claim receipts contain only one claim envelope, its evidence episode,
+  an optional source envelope, strict inclusion proofs, and one version 2
+  checkpoint. Offline verification separates cryptographic receipt integrity
+  from content authority. It proves ledger commitment and provenance linkage,
+  not factual truth, authorship, source authenticity, source bytes, or an
+  externally witnessed timestamp. Receipt v1 supports direct `FactAsserted`
+  claims, not claims materialized inside a repair event. It verifies only the
+  selected envelopes and paths under the signers' root commitment; full-prefix
+  integrity still requires the ledger.
+- The version 1 detached chain-tip attestation remains a compatibility surface.
+  A supplied v1 attestation is not trusted merely because it embeds a valid
+  public key; trust-sensitive use requires an external operator keyring. Keys
+  are operator-supplied seeds; the core never generates randomness or touches
+  the network.
 - Sources, entities, episodes, claims, links, procedures, intentions, health
   signals, and review/audit state are projected in Rust from the same validated
   ledger and materialized into rebuildable SurrealDB graph tables.
 - The graph projection can be inspected, rebuilt, and validated without making
   it authoritative memory.
+- Projection v2 uses a permanent lock row and monotonic fencing tokens. Every
+  bounded mutation batch updates that row inside the same transaction, so a
+  replaced rebuild owner cannot commit stale or partial rows.
+- Its final checkpoint binds the projection and memory-data schema versions,
+  exact ledger tip, row counts, and canonical SHA-256 content digests for every
+  ledger-derived projected table. SurrealDB projection-backed entity, timeline,
+  pending-work, and health reads fail closed during rebuilds or on any checkpoint
+  or manifest mismatch.
 - Optional scopes label personal, project, organization, or custom context
   boundaries. Scoped projection keeps entities separate from unscoped entities
   with the same display name, and scoped recall is an exact filter.
@@ -184,6 +215,10 @@ fn main() -> nahuali_core::Result<()> {
   controlled tests or advanced operators.
 - Shared server deployments belong outside this crate and should remain thin
   layers over the same record-ledger contract.
+- Checkpoint freshness is an operator or deployment responsibility. The core
+  verifies the checkpoint it receives but cannot know whether a newer valid
+  checkpoint was withheld. Independent witnesses, gossip, and public anchoring
+  are not implemented in this beta.
 - The crate is pre-1.0. Public APIs are documented and tested, but semver
   stability is still intentionally conservative until the OSS release candidate
   hardens further.

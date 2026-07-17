@@ -61,6 +61,17 @@ if [[ ! -x "$NAHUALI_BIN" ]]; then
   exit 1
 fi
 
+run_step "External-policy signed checkpoint operator path" \
+  cargo test -p nahuali-cli --test operator_paths \
+    checkpoint_v2_operator_path_enforces_external_threshold_policy_and_match_modes -- --exact
+
+run_step "Private portable claim receipt operator path" \
+  cargo test -p nahuali-cli --test operator_paths \
+    claim_receipt_exports_privately_and_verifies_without_opening_a_store -- --exact
+
+run_step "Cross-process graph projection fencing and manifest" \
+  env NAHUALI_BIN="$NAHUALI_BIN" bash scripts/verify-projection-concurrency.sh
+
 run_step "Embedded persistence, process ownership, and MCP handshake" \
   env NAHUALI_VERIFY_BIN_DIR="$TARGET_DIR/debug" bash scripts/verify-embedded-store.sh
 
