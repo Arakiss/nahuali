@@ -29,6 +29,7 @@ const NODE_DOMAIN: &[u8] = b"nahuali.ledger.merkle.node.v1";
 
 /// One sibling on the path from a proven leaf up to the Merkle root.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MerkleSibling {
     /// The sibling node's hash (hex).
     pub hash: String,
@@ -42,6 +43,7 @@ pub struct MerkleSibling {
 /// It is portable -- a holder can keep it next to a record and later prove, to
 /// anyone who knows only the root, that the record was committed.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MerkleProof {
     /// Zero-based index of the proven leaf within the committed list.
     pub index: usize,

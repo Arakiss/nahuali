@@ -14,6 +14,8 @@ mod migration_legacy;
 mod migration_timestamps;
 mod migration_values;
 mod preopen;
+#[cfg(feature = "attestation")]
+mod receipt;
 mod reconcile;
 mod record;
 mod repair;
@@ -39,6 +41,26 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
         return config::config(database_flag, *json);
     }
 
+    // Receipt verification is deliberately store-free: the portable document,
+    // its inclusion proofs, and an independently held policy are sufficient.
+    #[cfg(feature = "attestation")]
+    if let Command::ReceiptVerify {
+        receipt: path,
+        policy,
+        verification_time_ms,
+        max_future_skew_ms,
+        json,
+    } = &cli.command
+    {
+        return receipt::verify(
+            path,
+            policy,
+            *verification_time_ms,
+            *max_future_skew_ms,
+            *json,
+        );
+    }
+
     // One resolution point: flag > env > default, refusing a path-like name
     // rather than silently mangling it into a different database.
     let resolved = nahuali_core::resolve_database_name(database_flag)?;
@@ -56,7 +78,25 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         Command::Status { json } => reports::status(&mut memory, &database, json)?,
         #[cfg(feature = "tui")]
-        Command::Explore => explore::explore(&mut memory, &database)?,
+        Command::Explore {
+            #[cfg(feature = "attestation")]
+            checkpoint,
+            #[cfg(feature = "attestation")]
+            policy,
+            #[cfg(feature = "attestation")]
+            checkpoint_mode,
+        } => explore::explore(
+            &mut memory,
+            &database,
+            explore::ExploreOptions {
+                #[cfg(feature = "attestation")]
+                checkpoint,
+                #[cfg(feature = "attestation")]
+                policy,
+                #[cfg(feature = "attestation")]
+                checkpoint_mode: checkpoint_mode.map(Into::into),
+            },
+        )?,
         Command::Reconcile { json } => reconcile::reconcile(&mut memory, &database, json)?,
         Command::Remember {
             content,
@@ -553,6 +593,13 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             mode,
             json,
         } => checkpoint::verify(&mut memory, &path, &policy, mode.into(), json)?,
+        #[cfg(feature = "attestation")]
+        Command::ReceiptExport {
+            claim_id,
+            checkpoint,
+            policy,
+            output,
+        } => receipt::export(&mut memory, &claim_id, &checkpoint, &policy, &output)?,
         Command::Audit {
             from,
             to,
@@ -706,6 +753,10 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             json,
         )?,
         Command::Data { json } => reports::data(&mut memory, json)?,
+        #[cfg(feature = "attestation")]
+        Command::ReceiptVerify { .. } => {
+            unreachable!("receipt verification returns before opening memory")
+        }
         Command::Config { .. }
         | Command::Demo { .. }
         | Command::Init { .. }

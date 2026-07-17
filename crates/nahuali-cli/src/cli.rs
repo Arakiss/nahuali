@@ -118,6 +118,8 @@ fn grouped_commands() -> String {
   checkpoint-policy-init  Create an external trust policy for signed ledger checkpoints
   checkpoint-sign       Sign the current ledger checkpoint under an external policy
   checkpoint-verify     Verify a signed checkpoint against the ledger and external policy
+  receipt-export        Export one claim and its evidence as a portable offline receipt
+  receipt-verify        Verify a claim receipt without opening a memory store
 ";
     #[cfg(not(feature = "attestation"))]
     let attest = "";
@@ -206,7 +208,20 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         about = "Open the interactive governance cockpit to browse memory and trust.",
         visible_alias = "tui"
     )]
-    Explore,
+    Explore {
+        /// Signed checkpoint to evaluate as an independent ledger anchor.
+        #[cfg(feature = "attestation")]
+        #[arg(long, value_name = "PATH", requires = "policy")]
+        checkpoint: Option<PathBuf>,
+        /// External policy authorizing the supplied checkpoint.
+        #[cfg(feature = "attestation")]
+        #[arg(long, value_name = "PATH", requires = "checkpoint")]
+        policy: Option<PathBuf>,
+        /// Require the current ledger tip or accept a verified historical prefix.
+        #[cfg(feature = "attestation")]
+        #[arg(long, value_enum, requires = "checkpoint")]
+        checkpoint_mode: Option<CliCheckpointMode>,
+    },
     #[command(
         about = "Re-verify the ledger and rebuild the derived tiers (graph + semantic) from it."
     )]
@@ -946,6 +961,43 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         #[arg(long)]
         json: bool,
     },
+    #[cfg(feature = "attestation")]
+    #[command(about = "Export one claim and its evidence as a portable offline receipt.")]
+    ReceiptExport {
+        /// Stable claim id to export from the checkpointed ledger prefix.
+        #[arg(long, value_name = "CLAIM_ID")]
+        claim_id: String,
+        /// Signed checkpoint covering the claim and its evidence.
+        #[arg(long, value_name = "PATH")]
+        checkpoint: PathBuf,
+        /// External operator policy authorizing the signed checkpoint.
+        #[arg(long, value_name = "PATH")]
+        policy: PathBuf,
+        /// New receipt file to create with private permissions; never overwritten.
+        #[arg(long, short = 'o', value_name = "PATH")]
+        output: PathBuf,
+    },
+    #[cfg(feature = "attestation")]
+    #[command(about = "Verify a claim receipt offline under an external policy.")]
+    ReceiptVerify {
+        #[arg(value_name = "RECEIPT")]
+        receipt: PathBuf,
+        /// External operator policy. The receipt never supplies its own trust root.
+        #[arg(long, value_name = "PATH")]
+        policy: PathBuf,
+        /// Explicit verifier time for deterministic/offline verification.
+        #[arg(long, value_name = "MS")]
+        verification_time_ms: Option<u64>,
+        /// Maximum signer-clock lead accepted over verifier time.
+        #[arg(
+            long,
+            value_name = "MS",
+            default_value_t = nahuali_core::DEFAULT_CHECKPOINT_FUTURE_SKEW_MS
+        )]
+        max_future_skew_ms: u64,
+        #[arg(long)]
+        json: bool,
+    },
     #[command(about = "Print a non-destructive maintenance report.")]
     Maintenance {
         #[arg(long)]
@@ -1365,7 +1417,7 @@ impl From<CliSourceKind> for SourceKind {
 
 #[cfg(test)]
 mod tests {
-    use clap::CommandFactory;
+    use clap::{CommandFactory, Parser};
 
     use super::Cli;
 
@@ -1409,6 +1461,14 @@ mod tests {
                 assert!(help.contains("checkpoint-policy-init"));
                 assert!(help.contains("checkpoint-sign"));
                 assert!(help.contains("checkpoint-verify"));
+                assert!(help.contains("receipt-export"));
+                assert!(help.contains("receipt-verify"));
+            }
+            #[cfg(not(feature = "attestation"))]
+            {
+                assert!(!help.contains("checkpoint-policy-init"));
+                assert!(!help.contains("receipt-export"));
+                assert!(!help.contains("receipt-verify"));
             }
         });
     }
@@ -1448,6 +1508,74 @@ mod tests {
             assert!(verify_help.contains("current"));
             assert!(verify_help.contains("historical"));
             assert!(verify_help.contains("--json"));
+        });
+    }
+
+    #[cfg(feature = "attestation")]
+    #[test]
+    fn receipt_help_requires_external_policy_and_exposes_offline_verifier_time() {
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let export = command
+                .find_subcommand_mut("receipt-export")
+                .expect("receipt-export subcommand exists");
+            let export_help = export.render_long_help().to_string();
+            assert!(export_help.contains("--claim-id"));
+            assert!(export_help.contains("--checkpoint"));
+            assert!(export_help.contains("--policy"));
+            assert!(export_help.contains("--output"));
+
+            let mut command = Cli::command();
+            let verify = command
+                .find_subcommand_mut("receipt-verify")
+                .expect("receipt-verify subcommand exists");
+            let verify_help = verify.render_long_help().to_string();
+            assert!(verify_help.contains("--policy"));
+            assert!(verify_help.contains("--verification-time-ms"));
+            assert!(verify_help.contains("--max-future-skew-ms"));
+            assert!(verify_help.contains("--json"));
+        });
+    }
+
+    #[cfg(all(feature = "tui", feature = "attestation"))]
+    #[test]
+    fn explore_checkpoint_options_require_one_external_pair() {
+        on_wide_stack(|| {
+            assert!(
+                Cli::try_parse_from(["nahuali", "explore", "--checkpoint", "checkpoint.json"])
+                    .is_err()
+            );
+            assert!(
+                Cli::try_parse_from(["nahuali", "explore", "--policy", "policy.json"]).is_err()
+            );
+            assert!(
+                Cli::try_parse_from(["nahuali", "explore", "--checkpoint-mode", "historical"])
+                    .is_err()
+            );
+            assert!(
+                Cli::try_parse_from([
+                    "nahuali",
+                    "explore",
+                    "--checkpoint",
+                    "checkpoint.json",
+                    "--policy",
+                    "policy.json"
+                ])
+                .is_ok()
+            );
+            assert!(
+                Cli::try_parse_from([
+                    "nahuali",
+                    "explore",
+                    "--checkpoint",
+                    "checkpoint.json",
+                    "--policy",
+                    "policy.json",
+                    "--checkpoint-mode",
+                    "historical"
+                ])
+                .is_ok()
+            );
         });
     }
 

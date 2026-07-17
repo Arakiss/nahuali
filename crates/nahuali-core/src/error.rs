@@ -231,6 +231,13 @@ pub enum NahualiError {
         /// Human-readable signing or verification failure.
         message: String,
     },
+    /// A portable claim receipt could not be produced, parsed, or verified.
+    #[cfg(feature = "attestation")]
+    #[error("claim receipt error: {message}")]
+    ClaimReceipt {
+        /// Human-readable receipt validation failure.
+        message: String,
+    },
 }
 
 /// Result alias used by `nahuali-core`.

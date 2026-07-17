@@ -4,8 +4,8 @@ mod operator_path_support;
 use std::fs;
 
 use operator_path_support::{
-    QdrantCollectionGuard, run, run_ok, run_ok_at_endpoint, run_ok_with_semantic_collection,
-    run_with_semantic_collection, temp_database, temp_store,
+    QdrantCollectionGuard, run, run_at_endpoint, run_ok, run_ok_at_endpoint,
+    run_ok_with_semantic_collection, run_with_semantic_collection, temp_database, temp_store,
 };
 use serde_json::Value;
 
@@ -23,6 +23,8 @@ fn assert_pretty_json(output: &str) {
 include!("operator_path_cases/audit.rs");
 #[cfg(feature = "attestation")]
 include!("operator_path_cases/checkpoint.rs");
+#[cfg(feature = "attestation")]
+include!("operator_path_cases/receipt.rs");
 include!("operator_path_cases/trust_report.rs");
 include!("operator_path_cases/memory.rs");
 include!("operator_path_cases/scopes.rs");

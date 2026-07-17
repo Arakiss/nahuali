@@ -23,13 +23,14 @@ use crate::theme::{self, Rgb};
 
 /// The full nahual takes over the detail pane only when the pane can fit the
 /// image, its verdict caption, and the explanatory hint without clipping.
-pub const EMPTY_STATE_MIN_COLS: u16 = 34;
-pub const EMPTY_STATE_MIN_ROWS: u16 = 21;
+pub const EMPTY_STATE_MIN_COLS: u16 = 48;
+pub const EMPTY_STATE_MIN_ROWS: u16 = 27;
 
 /// Target size for the empty-state mascot. With the half-block picker's 1:2
-/// cell ratio, 28×15 cells matches the source frame's near-square proportions.
-pub const EMPTY_WIDTH: u16 = 28;
-pub const EMPTY_HEIGHT: u16 = 15;
+/// cell ratio, 42×22 cells preserve the source frame's near-square proportions
+/// while retaining enough samples for README-scale terminal captures.
+pub const EMPTY_WIDTH: u16 = 42;
+pub const EMPTY_HEIGHT: u16 = 22;
 
 /// Width of the always-visible corner mascot in terminal cells.
 pub const MINI_WIDTH: u16 = 10;
@@ -52,6 +53,7 @@ const GILL: Rgb = Rgb(232, 128, 118);
 /// trust label so this module stays decoupled from `nahuali-core`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verdict {
+    Empty,
     Certify,
     Advisory,
     Warn,
@@ -67,6 +69,7 @@ impl Verdict {
             .find(|s| !s.is_empty())
             .unwrap_or("");
         match token.to_ascii_uppercase().as_str() {
+            "EMPTY" => Self::Empty,
             "CERTIFY" => Self::Certify,
             "WARN" => Self::Warn,
             "BLOCK" => Self::Block,
@@ -77,6 +80,7 @@ impl Verdict {
     /// The verdict accent color, matching the cockpit's severity coding.
     pub fn accent(self) -> Rgb {
         match self {
+            Self::Empty => theme::INK_DIM,
             Self::Certify => theme::GREEN,
             Self::Advisory => theme::BLUE,
             Self::Warn => theme::AMBER,
@@ -95,16 +99,17 @@ impl Verdict {
     /// The one-line caption shown under the empty-state mascot.
     pub fn caption(self) -> &'static str {
         match self {
-            Self::Certify => "calm · certified",
-            Self::Advisory => "curious · advisory",
-            Self::Warn => "alert · warn",
-            Self::Block => "guarded · blocked",
+            Self::Empty => "waiting · ready",
+            Self::Certify => "ready · evidence checked",
+            Self::Advisory => "use with care",
+            Self::Warn => "needs review",
+            Self::Block => "paused · needs evidence",
         }
     }
 
     fn compact_expression(self) -> &'static str {
         match self {
-            Self::Certify => "•ᴗ•",
+            Self::Empty | Self::Certify => "•ᴗ•",
             Self::Advisory => "•o•",
             Self::Warn => "•△•",
             Self::Block => "—_—",
@@ -259,7 +264,7 @@ impl TransparentHalfblocks {
             .resize_exact(
                 u32::from(size.width),
                 u32::from(size.height) * 2,
-                FilterType::Triangle,
+                FilterType::Lanczos3,
             )
             .to_rgba8();
         let mut cells = Vec::with_capacity(usize::from(size.width * size.height));
@@ -350,7 +355,7 @@ fn split_frames(sheet: &DynamicImage) -> Vec<DynamicImage> {
 
 fn pose_frame(verdict: Verdict) -> usize {
     match verdict {
-        Verdict::Certify | Verdict::Advisory => 0,
+        Verdict::Empty | Verdict::Certify | Verdict::Advisory => 0,
         Verdict::Warn | Verdict::Block => 4,
     }
 }
@@ -401,6 +406,10 @@ mod tests {
     #[test]
     fn verdict_parses_from_store_labels() {
         assert_eq!(
+            Verdict::from_label("EMPTY · ready for the first memory"),
+            Verdict::Empty
+        );
+        assert_eq!(
             Verdict::from_label("CERTIFY · trustworthy"),
             Verdict::Certify
         );
@@ -424,6 +433,7 @@ mod tests {
                 .map(|span| span.content.into_owned())
                 .collect::<String>()
         };
+        assert_eq!(text(Verdict::Empty), "≋(•ᴗ•)≋");
         assert_eq!(text(Verdict::Certify), "≋(•ᴗ•)≋");
         assert_eq!(text(Verdict::Advisory), "≋(•o•)≋");
         assert_eq!(text(Verdict::Warn), "≋(•△•)≋");
@@ -450,7 +460,10 @@ mod tests {
         let size = images.empty().size();
         let source_ratio = 429.0 / 458.0;
         let rendered_ratio = f32::from(size.width) / (f32::from(size.height) * 2.0);
-        assert!((source_ratio - rendered_ratio).abs() < 0.08);
+        assert!(size.width >= 42);
+        assert!(size.height >= 22);
+        assert!(u32::from(size.width) * u32::from(size.height) * 2 >= 1_800);
+        assert!((source_ratio - rendered_ratio).abs() < 0.03);
         assert!(images.corner().is_none());
     }
 

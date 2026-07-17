@@ -9,37 +9,72 @@
 
 use std::path::Path;
 
-use nahuali_core::{
-    BriefingOptions, LedgerAuditOptions, LedgerChainStatus, MemoryEngine, MemoryScope,
-};
-use nahuali_ui::theme::{self, Rgb};
-use nahuali_ui::tui::{Integrity, Item, LedgerStatus, Signal, Snapshot};
+#[cfg(feature = "attestation")]
+use std::path::PathBuf;
 
-pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Result<()> {
+#[cfg(feature = "attestation")]
+use nahuali_core::CheckpointMatchMode;
+#[cfg(feature = "tamper-evidence")]
+use nahuali_core::LedgerChainStatus;
+use nahuali_core::{BriefingOptions, LedgerAuditOptions, MemoryEngine, MemoryScope};
+use nahuali_ui::theme::{self, Rgb};
+use nahuali_ui::tui::{Anchor, AnchorStatus, Integrity, Item, LedgerStatus, Signal, Snapshot};
+
+pub(crate) struct ExploreOptions {
+    #[cfg(feature = "attestation")]
+    pub(crate) checkpoint: Option<PathBuf>,
+    #[cfg(feature = "attestation")]
+    pub(crate) policy: Option<PathBuf>,
+    #[cfg(feature = "attestation")]
+    pub(crate) checkpoint_mode: Option<CheckpointMatchMode>,
+}
+
+pub(crate) fn explore(
+    memory: &mut MemoryEngine,
+    _database: &Path,
+    options: ExploreOptions,
+) -> anyhow::Result<()> {
     let briefing = memory.briefing_with_options(BriefingOptions {
         episode_limit: 0,
         intention_limit: 0,
         review_limit: 0,
         graph_seed_limit: 0,
     });
-    let store_label = crate::style::authority_label(&briefing.authority.mode).to_string();
-    let store_color = crate::style::authority_color(&briefing.authority.mode);
-    let store_score = briefing.authority.score;
+    let (store_label, store_color) = if briefing.event_count == 0 {
+        (
+            "EMPTY · ready for the first memory".to_string(),
+            theme::INK_DIM,
+        )
+    } else {
+        (
+            crate::style::authority_label(&briefing.authority.mode).to_string(),
+            crate::style::authority_color(&briefing.authority.mode),
+        )
+    };
 
     // The tamper-evidence posture is kept separate from content authority.
     let audit = memory.audit_ledger(&LedgerAuditOptions::default());
+    #[cfg(feature = "tamper-evidence")]
+    let ledger_status = match audit.integrity.chain_status {
+        LedgerChainStatus::Empty => LedgerStatus::Empty,
+        LedgerChainStatus::Verified => LedgerStatus::Verified,
+        LedgerChainStatus::Legacy => LedgerStatus::Legacy,
+        LedgerChainStatus::Broken => LedgerStatus::Broken,
+    };
+    #[cfg(not(feature = "tamper-evidence"))]
+    let ledger_status = LedgerStatus::Unavailable;
+    #[cfg(feature = "tamper-evidence")]
+    let merkle_root = audit.integrity.merkle_root.clone();
+    #[cfg(not(feature = "tamper-evidence"))]
+    let merkle_root = None;
     let integrity = Integrity {
         records: briefing.event_count,
         checksums_valid: audit.integrity.checksums_valid,
         sequence_contiguous: audit.integrity.sequence_contiguous,
-        status: match audit.integrity.chain_status {
-            LedgerChainStatus::Empty => LedgerStatus::Empty,
-            LedgerChainStatus::Verified => LedgerStatus::Verified,
-            LedgerChainStatus::Legacy => LedgerStatus::Legacy,
-            LedgerChainStatus::Broken => LedgerStatus::Broken,
-        },
-        merkle_root: audit.integrity.merkle_root.clone(),
+        status: ledger_status,
+        merkle_root,
     };
+    let anchor = checkpoint_anchor(memory, &options);
 
     let data = memory.data();
     let mut items = Vec::new();
@@ -65,6 +100,13 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
         ));
     }
     for fact in &data.facts {
+        if data.claims.iter().any(|claim| {
+            claim.subject == fact.subject
+                && claim.predicate == fact.predicate
+                && claim.object == fact.object
+        }) {
+            continue;
+        }
         items.push(triple(
             "fact",
             &fact.subject,
@@ -85,6 +127,13 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
         ));
     }
     for relation in &data.relations {
+        if data.links.iter().any(|link| {
+            link.from == relation.from
+                && link.relation == relation.relation
+                && link.to == relation.to
+        }) {
+            continue;
+        }
         items.push(triple(
             "relation",
             &relation.from,
@@ -126,19 +175,15 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
             detail: format!("Entity, mentioned {} time(s).", entity.mention_count),
             trust: None,
             evidence: None,
-            meta: vec![
-                ("mentions".to_string(), entity.mention_count.to_string()),
-                ("id".to_string(), entity.id.clone()),
-            ],
+            meta: vec![("mentions".to_string(), entity.mention_count.to_string())],
         });
     }
 
     let snapshot = Snapshot {
-        database: database.display().to_string(),
         store_trust_label: store_label,
         store_trust_color: store_color,
-        store_trust_score: store_score,
         integrity,
+        anchor,
         signals: signals(memory, &briefing),
         items,
     };
@@ -147,35 +192,86 @@ pub(crate) fn explore(memory: &mut MemoryEngine, database: &Path) -> anyhow::Res
     Ok(())
 }
 
+#[cfg(feature = "attestation")]
+fn checkpoint_anchor(memory: &mut MemoryEngine, options: &ExploreOptions) -> Anchor {
+    let (Some(checkpoint), Some(policy)) =
+        (options.checkpoint.as_deref(), options.policy.as_deref())
+    else {
+        return Anchor {
+            status: AnchorStatus::NotChecked,
+            newer_updates: 0,
+        };
+    };
+    let mode = options
+        .checkpoint_mode
+        .unwrap_or(CheckpointMatchMode::Current);
+    match super::checkpoint::verification_verdict(memory, checkpoint, policy, mode) {
+        Ok(verdict) if verdict.trusted && mode == CheckpointMatchMode::Current => Anchor {
+            status: AnchorStatus::TrustedCurrent,
+            newer_updates: 0,
+        },
+        Ok(verdict) if verdict.trusted => Anchor {
+            status: AnchorStatus::TrustedHistorical,
+            newer_updates: verdict.appended_event_count,
+        },
+        Ok(_) => Anchor {
+            status: AnchorStatus::Untrusted,
+            newer_updates: 0,
+        },
+        Err(_) => Anchor {
+            status: AnchorStatus::Invalid,
+            newer_updates: 0,
+        },
+    }
+}
+
+#[cfg(not(feature = "attestation"))]
+fn checkpoint_anchor(_memory: &mut MemoryEngine, _options: &ExploreOptions) -> Anchor {
+    Anchor {
+        status: AnchorStatus::Unavailable,
+        newer_updates: 0,
+    }
+}
+
 /// Store-level governance signals — what a human supervisor watches.
 fn signals(memory: &MemoryEngine, briefing: &nahuali_core::MemoryBriefingReport) -> Vec<Signal> {
     let data = memory.data();
-    // Provenance coverage: derived items (claims/facts/links/relations/procedures)
-    // that cite a source episode, over the total.
+    // Provenance coverage follows the rows a person actually sees. Compatibility
+    // facts and relations that duplicate a claim or link count only once.
+    let visible_facts = data.facts.iter().filter(|fact| {
+        !data.claims.iter().any(|claim| {
+            claim.subject == fact.subject
+                && claim.predicate == fact.predicate
+                && claim.object == fact.object
+        })
+    });
+    let visible_relations = data.relations.iter().filter(|relation| {
+        !data.links.iter().any(|link| {
+            link.from == relation.from
+                && link.relation == relation.relation
+                && link.to == relation.to
+        })
+    });
     let total = data.claims.len()
-        + data.facts.len()
+        + visible_facts.clone().count()
         + data.links.len()
-        + data.relations.len()
+        + visible_relations.clone().count()
         + data.procedures.len();
     let evidenced = data
         .claims
         .iter()
         .filter(|c| c.source_episode_id.is_some())
         .count()
-        + data
-            .facts
-            .iter()
-            .filter(|f| f.source_episode_id.is_some())
+        + visible_facts
+            .filter(|fact| fact.source_episode_id.is_some())
             .count()
         + data
             .links
             .iter()
             .filter(|l| l.source_episode_id.is_some())
             .count()
-        + data
-            .relations
-            .iter()
-            .filter(|r| r.source_episode_id.is_some())
+        + visible_relations
+            .filter(|relation| relation.source_episode_id.is_some())
             .count()
         + data
             .procedures
@@ -190,17 +286,26 @@ fn signals(memory: &MemoryEngine, briefing: &nahuali_core::MemoryBriefingReport)
         theme::RED
     };
 
-    let health = briefing.health.signal_count;
-    let review = briefing.summary.high_priority_review_count;
+    let empty = briefing.event_count == 0;
+    let health = if empty {
+        0
+    } else {
+        briefing.health.signal_count
+    };
+    let review = if empty {
+        0
+    } else {
+        briefing.summary.high_priority_review_count
+    };
 
     vec![
         Signal {
-            label: "events".to_string(),
+            label: "updates".to_string(),
             value: briefing.event_count.to_string(),
             color: theme::INK_DIM,
         },
         Signal {
-            label: "health signals".to_string(),
+            label: "needs attention".to_string(),
             value: health.to_string(),
             color: if health == 0 {
                 theme::GREEN
@@ -209,7 +314,7 @@ fn signals(memory: &MemoryEngine, briefing: &nahuali_core::MemoryBriefingReport)
             },
         },
         Signal {
-            label: "review".to_string(),
+            label: "to review".to_string(),
             value: review.to_string(),
             color: if review == 0 {
                 theme::GREEN
@@ -218,37 +323,39 @@ fn signals(memory: &MemoryEngine, briefing: &nahuali_core::MemoryBriefingReport)
             },
         },
         Signal {
-            label: "active intentions".to_string(),
+            label: "open tasks".to_string(),
             value: briefing.summary.active_intention_count.to_string(),
             color: theme::BLUE,
         },
         Signal {
-            label: "evidenced".to_string(),
+            label: "with evidence".to_string(),
             value: format!("{evidenced}/{total}"),
             color: provenance_color,
         },
     ]
 }
 
-/// Common detail fields for an item: confidence (if any), scope (if any), id.
-fn meta(confidence: Option<f32>, scope: &Option<MemoryScope>, id: &str) -> Vec<(String, String)> {
+/// Human-readable detail fields for an item. Internal ids stay out of the TUI.
+fn meta(confidence: Option<f32>, scope: &Option<MemoryScope>, _id: &str) -> Vec<(String, String)> {
     let mut fields = Vec::new();
     if let Some(confidence) = confidence {
-        fields.push(("conf".to_string(), format!("{confidence:.2}")));
+        fields.push((
+            "confidence".to_string(),
+            format!("{:.0}%", confidence * 100.0),
+        ));
     }
     if let Some(scope) = scope {
-        fields.push(("scope".to_string(), format!("{scope:?}")));
+        fields.push(("context".to_string(), scope.name.clone()));
     }
-    fields.push(("id".to_string(), id.to_string()));
     fields
 }
 
 /// Provenance signal: evidenced (sourced) in green, no-source in amber.
 fn provenance(sourced: bool) -> (String, Rgb) {
     if sourced {
-        ("evidenced".to_string(), theme::GREEN)
+        ("with evidence".to_string(), theme::GREEN)
     } else {
-        ("no source".to_string(), theme::AMBER)
+        ("needs evidence".to_string(), theme::AMBER)
     }
 }
 

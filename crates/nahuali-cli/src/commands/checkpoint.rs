@@ -5,11 +5,14 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+
 use anyhow::{Context, bail, ensure};
 use nahuali_core::{
-    CheckpointMatchMode, CheckpointTrustPolicyV2, CheckpointVerificationOptionsV2, MemoryEngine,
-    SignedLedgerCheckpointV2, add_checkpoint_signature_v2, checkpoint_policy_key_v2,
-    sign_checkpoint_v2,
+    CheckpointMatchMode, CheckpointTrustPolicyV2, CheckpointVerificationOptionsV2,
+    CheckpointVerificationV2, MemoryEngine, SignedLedgerCheckpointV2, add_checkpoint_signature_v2,
+    checkpoint_policy_key_v2, sign_checkpoint_v2,
 };
 
 const MAX_INPUT_BYTES: u64 = 64 * 1024;
@@ -131,19 +134,7 @@ pub(crate) fn verify(
     mode: CheckpointMatchMode,
     json: bool,
 ) -> anyhow::Result<()> {
-    let signed: SignedLedgerCheckpointV2 =
-        read_json_bounded(checkpoint_path, "signed ledger checkpoint")?;
-    let policy: CheckpointTrustPolicyV2 = read_json_bounded(policy_path, "checkpoint policy")?;
-    policy
-        .validate()
-        .context("validate external checkpoint policy")?;
-    let options = match mode {
-        CheckpointMatchMode::Current => CheckpointVerificationOptionsV2::current(now_ms()?),
-        CheckpointMatchMode::Historical => CheckpointVerificationOptionsV2::historical(now_ms()?),
-    };
-    let verdict = memory
-        .verify_checkpoint_v2(&signed, &policy, options)
-        .context("verify signed ledger checkpoint")?;
+    let verdict = verification_verdict(memory, checkpoint_path, policy_path, mode)?;
 
     if json {
         println!(
@@ -190,6 +181,27 @@ pub(crate) fn verify(
     Ok(())
 }
 
+pub(crate) fn verification_verdict(
+    memory: &mut MemoryEngine,
+    checkpoint_path: &Path,
+    policy_path: &Path,
+    mode: CheckpointMatchMode,
+) -> anyhow::Result<CheckpointVerificationV2> {
+    let signed: SignedLedgerCheckpointV2 =
+        read_json_bounded(checkpoint_path, "signed ledger checkpoint")?;
+    let policy: CheckpointTrustPolicyV2 = read_json_bounded(policy_path, "checkpoint policy")?;
+    policy
+        .validate()
+        .context("validate external checkpoint policy")?;
+    let options = match mode {
+        CheckpointMatchMode::Current => CheckpointVerificationOptionsV2::current(now_ms()?),
+        CheckpointMatchMode::Historical => CheckpointVerificationOptionsV2::historical(now_ms()?),
+    };
+    memory
+        .verify_checkpoint_v2(&signed, &policy, options)
+        .context("verify signed ledger checkpoint")
+}
+
 fn validate_key_pairs(key_ids: &[String], key_files: &[PathBuf]) -> anyhow::Result<()> {
     ensure!(
         !key_ids.is_empty(),
@@ -204,7 +216,7 @@ fn validate_key_pairs(key_ids: &[String], key_files: &[PathBuf]) -> anyhow::Resu
     Ok(())
 }
 
-fn read_json_bounded<T: serde::de::DeserializeOwned>(
+pub(crate) fn read_json_bounded<T: serde::de::DeserializeOwned>(
     path: &Path,
     label: &str,
 ) -> anyhow::Result<T> {
@@ -227,7 +239,7 @@ fn read_bounded_text(path: &Path, label: &str) -> anyhow::Result<String> {
         .with_context(|| format!("{label} at '{}' is not valid UTF-8", path.display()))
 }
 
-fn write_json_new<T: serde::Serialize>(
+pub(crate) fn write_json_new<T: serde::Serialize>(
     output: &Path,
     value: &T,
     label: &str,
@@ -266,11 +278,11 @@ fn write_atomic_new(output: &Path, bytes: &[u8], label: &str) -> anyhow::Result<
             now_nanos()?
         );
         let temp_path = parent.join(temp_name);
-        let mut temp = match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp_path)
-        {
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let mut temp = match options.open(&temp_path) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 last_collision = Some(error);
@@ -330,7 +342,7 @@ fn write_atomic_new(output: &Path, bytes: &[u8], label: &str) -> anyhow::Result<
     )
 }
 
-fn now_ms() -> anyhow::Result<u64> {
+pub(crate) fn now_ms() -> anyhow::Result<u64> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .context("system clock is before the Unix epoch")?

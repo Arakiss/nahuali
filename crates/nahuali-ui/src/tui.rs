@@ -70,16 +70,53 @@ pub struct Integrity {
     pub merkle_root: Option<String>,
 }
 
+/// External checkpoint posture, kept independent from both content authority
+/// and the live ledger integrity verdict.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnchorStatus {
+    /// No checkpoint and external policy were supplied to the cockpit.
+    NotChecked,
+    /// The checkpoint authenticates the complete current ledger.
+    TrustedCurrent,
+    /// The checkpoint authenticates a historical prefix; later appends remain
+    /// outside that checkpoint's coverage.
+    TrustedHistorical,
+    /// Verification completed and rejected the checkpoint under the policy.
+    Untrusted,
+    /// The checkpoint or policy could not be parsed or validated.
+    Invalid,
+    /// This build does not include external checkpoint verification.
+    Unavailable,
+}
+
+/// Display-ready external checkpoint result prepared by the CLI layer.
+pub struct Anchor {
+    pub status: AnchorStatus,
+    /// Number of later updates when the supplied proof covers an earlier state.
+    pub newer_updates: u64,
+}
+
 /// A point-in-time view of a store for the cockpit.
 pub struct Snapshot {
-    pub database: String,
     pub store_trust_label: String,
     pub store_trust_color: Rgb,
-    pub store_trust_score: f32,
     pub integrity: Integrity,
+    pub anchor: Anchor,
     pub items: Vec<Item>,
     /// Store-level governance signals (health, review queue, provenance, …).
     pub signals: Vec<Signal>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InputMode {
+    Browse,
+    Search,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AppAction {
+    Continue,
+    Quit,
 }
 
 fn color(c: Rgb) -> Color {
@@ -95,6 +132,8 @@ struct App {
     /// Indices into `snapshot.items` matching the active filter.
     visible: Vec<usize>,
     list: ListState,
+    input_mode: InputMode,
+    search_query: String,
     mascot_images: Option<mascot::MascotImages>,
     mascot_tick: usize,
 }
@@ -114,6 +153,8 @@ impl App {
             filter: 0,
             visible: Vec::new(),
             list: ListState::default(),
+            input_mode: InputMode::Browse,
+            search_query: String::new(),
             mascot_images: mascot::MascotImages::halfblocks(verdict).ok(),
             mascot_tick: 0,
         };
@@ -123,12 +164,16 @@ impl App {
 
     /// Rebuild the visible index set for the active filter and reset selection.
     fn recompute_visible(&mut self) {
+        let query = self.search_query.to_lowercase();
         self.visible = self
             .snapshot
             .items
             .iter()
             .enumerate()
-            .filter(|(_, item)| self.filter == 0 || item.kind == self.kinds[self.filter - 1])
+            .filter(|(_, item)| {
+                (self.filter == 0 || item.kind == self.kinds[self.filter - 1])
+                    && item_matches_search(item, &query)
+            })
             .map(|(index, _)| index)
             .collect();
         self.list.select((!self.visible.is_empty()).then_some(0));
@@ -174,9 +219,84 @@ impl App {
         }
     }
 
+    fn list_label(&self) -> String {
+        let filter = self.filter_label();
+        if self.search_query.is_empty() {
+            filter
+        } else {
+            format!("{filter} · /{}", self.search_query)
+        }
+    }
+
+    fn handle_key(&mut self, code: KeyCode) -> AppAction {
+        if self.input_mode == InputMode::Search {
+            match code {
+                KeyCode::Esc | KeyCode::Enter => self.input_mode = InputMode::Browse,
+                KeyCode::Backspace => {
+                    self.search_query.pop();
+                    self.recompute_visible();
+                }
+                KeyCode::Char(character) => {
+                    self.search_query.push(character);
+                    self.recompute_visible();
+                }
+                _ => {}
+            }
+            return AppAction::Continue;
+        }
+
+        match code {
+            KeyCode::Char('q') | KeyCode::Esc => AppAction::Quit,
+            KeyCode::Char('/') => {
+                self.input_mode = InputMode::Search;
+                AppAction::Continue
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.step(1);
+                AppAction::Continue
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.step(-1);
+                AppAction::Continue
+            }
+            KeyCode::Tab => {
+                self.cycle_filter(1);
+                AppAction::Continue
+            }
+            KeyCode::BackTab => {
+                self.cycle_filter(-1);
+                AppAction::Continue
+            }
+            KeyCode::Home => {
+                self.list.select((!self.visible.is_empty()).then_some(0));
+                AppAction::Continue
+            }
+            _ => AppAction::Continue,
+        }
+    }
+
     fn on_tick(&mut self) {
         self.mascot_tick = self.mascot_tick.wrapping_add(1);
     }
+}
+
+fn item_matches_search(item: &Item, query: &str) -> bool {
+    query.is_empty()
+        || item.kind.to_lowercase().contains(query)
+        || item.title.to_lowercase().contains(query)
+        || item.detail.to_lowercase().contains(query)
+        || (item.evidence.is_some() && "evidence linked".contains(query))
+        || item.meta.iter().any(|(key, value)| {
+            !is_internal_meta_key(key)
+                && (key.to_lowercase().contains(query) || value.to_lowercase().contains(query))
+        })
+}
+
+fn is_internal_meta_key(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase();
+    normalized == "id"
+        || normalized.ends_with("_id")
+        || matches!(normalized.as_str(), "conf" | "scope")
 }
 
 const MASCOT_TICK_RATE: Duration = Duration::from_millis(240);
@@ -214,16 +334,9 @@ fn event_loop(
         if event::poll(timeout)?
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
+            && app.handle_key(key.code) == AppAction::Quit
         {
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
-                KeyCode::Down | KeyCode::Char('j') => app.step(1),
-                KeyCode::Up | KeyCode::Char('k') => app.step(-1),
-                KeyCode::Tab => app.cycle_filter(1),
-                KeyCode::BackTab => app.cycle_filter(-1),
-                KeyCode::Home => app.list.select(Some(0)),
-                _ => {}
-            }
+            return Ok(());
         }
         if last_tick.elapsed() >= MASCOT_TICK_RATE {
             app.on_tick();
@@ -245,7 +358,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(4),
+            Constraint::Length(5),
             Constraint::Min(0),
             Constraint::Length(3),
             Constraint::Length(footer_height),
@@ -268,14 +381,22 @@ fn draw(frame: &mut Frame, app: &mut App) {
     // kind column) so they end in an ellipsis instead of a raw terminal cut.
     let title_width = (body[0].width as usize).saturating_sub(16);
     let visible = app.visible_items();
-    let list = item_list(&visible, title_width, &app.filter_label());
+    let list = item_list(&visible, title_width, &app.list_label());
 
     frame.render_stateful_widget(list, body[0], &mut app.list);
     draw_detail(frame, app, body[1]);
 
     draw_signals(frame, &app.snapshot.signals, rows[2]);
     let verdict = Verdict::from_label(&app.snapshot.store_trust_label);
-    draw_footer(frame, rows[3], verdict, corner_mascot, app.mascot_tick);
+    draw_footer(
+        frame,
+        rows[3],
+        verdict,
+        corner_mascot,
+        app.mascot_tick,
+        app.input_mode,
+        &app.search_query,
+    );
 }
 
 /// Draw the right-hand detail pane. With an item selected it shows that item's
@@ -345,7 +466,7 @@ fn draw_empty_detail(
         );
     }
 
-    let hint = "the nahual mirrors store trust";
+    let hint = "the nahual watches over your memory";
     let hint_y = caption_y + 1;
     if hint_y < inner.bottom() {
         let hint_w = (hint.chars().count() as u16).min(inner.width);
@@ -382,7 +503,7 @@ fn draw_signals(frame: &mut Frame, signals: &[Signal], area: Rect) {
             .borders(Borders::ALL)
             .border_style(Style::default().fg(color(theme::INK_FAINT)))
             .title(Span::styled(
-                " signals ",
+                " at a glance ",
                 Style::default()
                     .fg(color(theme::CLAY))
                     .add_modifier(Modifier::BOLD),
@@ -393,19 +514,16 @@ fn draw_signals(frame: &mut Frame, signals: &[Signal], area: Rect) {
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     let trust = Line::from(vec![
+        Span::styled(" MEMORY ", Style::default().fg(color(theme::INK_FAINT))),
         Span::styled(
-            format!(" {} ", app.snapshot.store_trust_label),
+            format!("{} ", app.snapshot.store_trust_label),
             Style::default()
                 .fg(color(app.snapshot.store_trust_color))
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            format!("· score {:.2}", app.snapshot.store_trust_score),
-            Style::default().fg(color(theme::INK_FAINT)),
-        ),
     ]);
     let title = vec![Span::styled(
-        format!(" nahuali explore · {} ", app.snapshot.database),
+        " Nahuali · Memory Explorer ",
         Style::default()
             .fg(color(theme::CLAY))
             .add_modifier(Modifier::BOLD),
@@ -414,16 +532,68 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(color(theme::INK_FAINT)))
         .title(Line::from(title));
-    let header = Paragraph::new(vec![trust, integrity_line(&app.snapshot.integrity)]).block(block);
+    let header = Paragraph::new(vec![
+        trust,
+        history_line(&app.snapshot.integrity),
+        proof_line(&app.snapshot.anchor),
+    ])
+    .block(block);
     frame.render_widget(header, area);
+}
+
+fn proof_line(anchor: &Anchor) -> Line<'static> {
+    let (label, label_color) = proof_badge(anchor.status);
+    Line::from(vec![
+        Span::styled(" PROOF ", Style::default().fg(color(theme::INK_FAINT))),
+        Span::styled(
+            label,
+            Style::default()
+                .fg(color(label_color))
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" · {}", proof_detail(anchor)),
+            Style::default().fg(color(theme::INK_FAINT)),
+        ),
+    ])
+}
+
+fn proof_detail(anchor: &Anchor) -> String {
+    match anchor.status {
+        AnchorStatus::NotChecked => "optional independent check not provided".to_string(),
+        AnchorStatus::TrustedCurrent => "covers the memory shown now".to_string(),
+        AnchorStatus::TrustedHistorical => format!(
+            "{} newer {} not covered",
+            anchor.newer_updates,
+            if anchor.newer_updates == 1 {
+                "update is"
+            } else {
+                "updates are"
+            }
+        ),
+        AnchorStatus::Untrusted => "independent proof was rejected".to_string(),
+        AnchorStatus::Invalid => "independent proof could not be checked".to_string(),
+        AnchorStatus::Unavailable => "independent checks are unavailable in this build".to_string(),
+    }
+}
+
+fn proof_badge(status: AnchorStatus) -> (&'static str, Rgb) {
+    match status {
+        AnchorStatus::NotChecked => ("o NOT PROVIDED", theme::INK_DIM),
+        AnchorStatus::TrustedCurrent => ("\u{2713} CURRENT", theme::GREEN),
+        AnchorStatus::TrustedHistorical => ("! EARLIER STATE", theme::AMBER),
+        AnchorStatus::Untrusted => ("\u{2717} NOT ACCEPTED", theme::RED),
+        AnchorStatus::Invalid => ("\u{2717} COULD NOT VERIFY", theme::RED),
+        AnchorStatus::Unavailable => ("! UNAVAILABLE", theme::AMBER),
+    }
 }
 
 /// The integrity line keeps a fully chained ledger, legacy unchained history,
 /// a broken chain, and a build without tamper evidence visibly distinct.
-fn integrity_line(integrity: &Integrity) -> Line<'static> {
-    let (verdict, verdict_color) = ledger_badge(integrity);
+fn history_line(integrity: &Integrity) -> Line<'static> {
+    let (verdict, verdict_color) = history_badge(integrity);
     let mut spans = vec![
-        Span::styled(" Ledger ", Style::default().fg(color(theme::INK_FAINT))),
+        Span::styled(" HISTORY ", Style::default().fg(color(theme::INK_FAINT))),
         Span::styled(
             verdict,
             Style::default()
@@ -431,100 +601,83 @@ fn integrity_line(integrity: &Integrity) -> Line<'static> {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            format!(" · {} records · ", integrity.records),
+            format!(" · {} updates · ", integrity.records),
             Style::default().fg(color(theme::INK_FAINT)),
         ),
     ];
-    if !integrity.checksums_valid {
-        spans.push(Span::styled(
-            "checksum mismatch",
-            Style::default().fg(color(theme::RED)),
-        ));
-    } else if !integrity.sequence_contiguous {
-        spans.push(Span::styled(
-            "sequence gap or reordering",
-            Style::default().fg(color(theme::RED)),
-        ));
-    } else if integrity.status == LedgerStatus::Verified
-        && integrity.records > 0
-        && integrity.merkle_root.is_none()
-    {
-        spans.push(Span::styled(
-            "Merkle commitment unavailable",
-            Style::default().fg(color(theme::RED)),
-        ));
-    } else {
-        append_integrity_detail(&mut spans, integrity);
-    }
-    Line::from(spans)
-}
-
-fn ledger_badge(integrity: &Integrity) -> (&'static str, Rgb) {
     if !integrity.checksums_valid
         || !integrity.sequence_contiguous
         || (integrity.status == LedgerStatus::Verified
             && integrity.records > 0
             && integrity.merkle_root.is_none())
     {
-        return ("\u{2717} FAILED", theme::RED);
+        spans.push(Span::styled(
+            "recorded history changed unexpectedly",
+            Style::default().fg(color(theme::RED)),
+        ));
+    } else {
+        append_history_detail(&mut spans, integrity);
+    }
+    Line::from(spans)
+}
+
+fn history_badge(integrity: &Integrity) -> (&'static str, Rgb) {
+    if !integrity.checksums_valid
+        || !integrity.sequence_contiguous
+        || (integrity.status == LedgerStatus::Verified
+            && integrity.records > 0
+            && integrity.merkle_root.is_none())
+    {
+        return ("\u{2717} PROBLEM", theme::RED);
     }
 
     match integrity.status {
         LedgerStatus::Empty => ("o EMPTY", theme::INK_DIM),
-        LedgerStatus::Verified => ("\u{2713} VERIFIED", theme::GREEN),
-        LedgerStatus::Legacy => ("! LEGACY", theme::AMBER),
-        LedgerStatus::Broken => ("\u{2717} BROKEN", theme::RED),
-        LedgerStatus::Unavailable => ("! CHECKSUMMED", theme::AMBER),
+        LedgerStatus::Verified => ("\u{2713} INTACT", theme::GREEN),
+        LedgerStatus::Legacy => ("! LIMITED", theme::AMBER),
+        LedgerStatus::Broken => ("\u{2717} PROBLEM", theme::RED),
+        LedgerStatus::Unavailable => ("! PARTIAL", theme::AMBER),
     }
 }
 
-fn append_integrity_detail(spans: &mut Vec<Span<'static>>, integrity: &Integrity) {
+fn append_history_detail(spans: &mut Vec<Span<'static>>, integrity: &Integrity) {
     match (integrity.status, &integrity.merkle_root) {
         (LedgerStatus::Empty, _) => {
             spans.push(Span::styled(
-                "no records · hash chain ready",
+                "ready for the first memory",
                 Style::default().fg(color(theme::INK_DIM)),
             ));
         }
-        (LedgerStatus::Verified, Some(root)) => {
-            let short: String = root.chars().take(10).collect();
+        (LedgerStatus::Verified, Some(_)) => {
             spans.push(Span::styled(
-                "tamper-evident",
+                "no unexpected changes",
                 Style::default()
                     .fg(color(theme::GREEN))
                     .add_modifier(Modifier::BOLD),
             ));
-            spans.push(Span::styled(
-                format!(" · merkle {short}\u{2026}"),
-                Style::default().fg(color(theme::INK_FAINT)),
-            ));
         }
         (LedgerStatus::Verified, None) => {
             spans.push(Span::styled(
-                "empty · hash chain ready",
-                Style::default().fg(color(theme::INK_DIM)),
+                "full history verification is unavailable",
+                Style::default().fg(color(theme::RED)),
             ));
         }
         (LedgerStatus::Legacy, _) => {
             spans.push(Span::styled(
-                "checksummed · unchained history",
+                "older history has limited protection",
                 Style::default().fg(color(theme::AMBER)),
             ));
         }
         (LedgerStatus::Broken, _) => {
             spans.push(Span::styled(
-                "hash chain mismatch",
+                "recorded history changed unexpectedly",
                 Style::default().fg(color(theme::RED)),
             ));
         }
         (LedgerStatus::Unavailable, _) => {
             spans.push(Span::styled(
-                "per-record integrity",
+                "some history checks are unavailable",
                 Style::default().fg(color(theme::INK_DIM)),
-            ));
-            spans.push(Span::styled(
-                " · hash chain off",
-                Style::default().fg(color(theme::AMBER)),
             ));
         }
     }
@@ -580,14 +733,14 @@ fn clip(text: &str, max: usize) -> String {
     format!("{}\u{2026}", head.trim_end())
 }
 
-/// The bordered `detail` pane block, shared by the item view and the empty
+/// The bordered memory-detail pane, shared by the item view and the empty
 /// state so both frame the pane identically.
 fn detail_block() -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(color(theme::INK_FAINT)))
         .title(Span::styled(
-            " detail ",
+            " memory details ",
             Style::default()
                 .fg(color(theme::CLAY))
                 .add_modifier(Modifier::BOLD),
@@ -603,17 +756,19 @@ fn detail_paragraph(item: &Item) -> Paragraph<'static> {
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::raw(item.title.clone()));
-    lines.push(Line::raw(""));
-    for chunk in item.detail.lines() {
-        lines.push(Line::styled(
-            chunk.to_string(),
-            Style::default().fg(color(theme::INK_DIM)),
-        ));
+    if item.detail.trim() != item.title.trim() {
+        lines.push(Line::raw(""));
+        for chunk in item.detail.lines() {
+            lines.push(Line::styled(
+                chunk.to_string(),
+                Style::default().fg(color(theme::INK_DIM)),
+            ));
+        }
     }
     if let Some((label, trust_color)) = &item.trust {
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
-            Span::styled("trust  ", Style::default().fg(color(theme::INK_FAINT))),
+            Span::styled("status  ", Style::default().fg(color(theme::INK_FAINT))),
             Span::styled(
                 label.clone(),
                 Style::default()
@@ -622,19 +777,24 @@ fn detail_paragraph(item: &Item) -> Paragraph<'static> {
             ),
         ]));
     }
-    if let Some(evidence) = &item.evidence {
+    if item.evidence.is_some() {
         lines.push(Line::from(vec![
-            Span::styled("source ", Style::default().fg(color(theme::INK_FAINT))),
+            Span::styled("evidence ", Style::default().fg(color(theme::INK_FAINT))),
             Span::styled(
-                evidence.clone(),
-                Style::default().fg(color(theme::INK_FAINT)),
+                "linked",
+                Style::default()
+                    .fg(color(theme::GREEN))
+                    .add_modifier(Modifier::BOLD),
             ),
         ]));
     }
     for (key, value) in &item.meta {
+        if is_internal_meta_key(key) {
+            continue;
+        }
         lines.push(Line::from(vec![
             Span::styled(
-                format!("{key:<7}"),
+                format!("{key:<12}"),
                 Style::default().fg(color(theme::INK_FAINT)),
             ),
             Span::styled(value.clone(), Style::default().fg(color(theme::INK_DIM))),
@@ -652,15 +812,13 @@ fn draw_footer(
     verdict: Verdict,
     corner_mascot: Option<&mascot::RasterMascot>,
     mascot_tick: usize,
+    input_mode: InputMode,
+    search_query: &str,
 ) {
-    let footer = Paragraph::new(Line::from(vec![
-        Span::styled("  ↑↓/jk ", Style::default().fg(color(theme::CLAY))),
-        Span::styled("move   ", Style::default().fg(color(theme::INK_FAINT))),
-        Span::styled("tab ", Style::default().fg(color(theme::CLAY))),
-        Span::styled("filter   ", Style::default().fg(color(theme::INK_FAINT))),
-        Span::styled("q/Esc ", Style::default().fg(color(theme::CLAY))),
-        Span::styled("quit", Style::default().fg(color(theme::INK_FAINT))),
-    ]));
+    let footer_width = area
+        .width
+        .saturating_sub(if corner_mascot.is_some() { 9 } else { 0 });
+    let footer = Paragraph::new(footer_line(input_mode, search_query, footer_width));
     if corner_mascot.is_none()
         || area.height < mascot::MINI_SLOT_HEIGHT
         || area.width < mascot::MINI_WIDTH + 20
@@ -694,6 +852,43 @@ fn draw_footer(
             .frame(),
         image_area,
     );
+}
+
+fn footer_line(input_mode: InputMode, search_query: &str, width: u16) -> Line<'static> {
+    if input_mode == InputMode::Search {
+        let query_width = usize::from(width.saturating_sub(15));
+        let query = clip(search_query, query_width);
+        return Line::from(vec![
+            Span::styled("  search ", Style::default().fg(color(theme::CLAY))),
+            Span::styled(
+                format!("{query}_ "),
+                Style::default().fg(color(theme::INK_DIM)),
+            ),
+            Span::styled("Esc", Style::default().fg(color(theme::CLAY))),
+        ]);
+    }
+
+    if width < 70 {
+        return Line::from(vec![
+            Span::styled("  ↑↓ ", Style::default().fg(color(theme::CLAY))),
+            Span::styled("move  ", Style::default().fg(color(theme::INK_FAINT))),
+            Span::styled("/ ", Style::default().fg(color(theme::CLAY))),
+            Span::styled("search  ", Style::default().fg(color(theme::INK_FAINT))),
+            Span::styled("q ", Style::default().fg(color(theme::CLAY))),
+            Span::styled("quit", Style::default().fg(color(theme::INK_FAINT))),
+        ]);
+    }
+
+    Line::from(vec![
+        Span::styled("  ↑↓/jk ", Style::default().fg(color(theme::CLAY))),
+        Span::styled("move   ", Style::default().fg(color(theme::INK_FAINT))),
+        Span::styled("tab ", Style::default().fg(color(theme::CLAY))),
+        Span::styled("filter   ", Style::default().fg(color(theme::INK_FAINT))),
+        Span::styled("/ ", Style::default().fg(color(theme::CLAY))),
+        Span::styled("search   ", Style::default().fg(color(theme::INK_FAINT))),
+        Span::styled("q/Esc ", Style::default().fg(color(theme::CLAY))),
+        Span::styled("quit", Style::default().fg(color(theme::INK_FAINT))),
+    ])
 }
 
 #[cfg(test)]
@@ -738,12 +933,24 @@ mod tests {
         }
     }
 
+    fn type_search(app: &mut App, query: &str) {
+        assert_eq!(app.handle_key(KeyCode::Char('/')), AppAction::Continue);
+        for character in query.chars() {
+            assert_eq!(
+                app.handle_key(KeyCode::Char(character)),
+                AppAction::Continue
+            );
+        }
+    }
+
     fn snapshot(n: usize) -> Snapshot {
         Snapshot {
-            database: "memory".to_string(),
-            store_trust_label: "CERTIFY".to_string(),
-            store_trust_color: theme::GREEN,
-            store_trust_score: 1.0,
+            store_trust_label: if n == 0 {
+                "EMPTY · ready for the first memory".to_string()
+            } else {
+                "CERTIFY · trustworthy".to_string()
+            },
+            store_trust_color: if n == 0 { theme::INK_DIM } else { theme::GREEN },
             integrity: Integrity {
                 records: n,
                 checksums_valid: true,
@@ -754,6 +961,10 @@ mod tests {
                     LedgerStatus::Verified
                 },
                 merkle_root: (n > 0).then(|| "a".repeat(64)),
+            },
+            anchor: Anchor {
+                status: AnchorStatus::NotChecked,
+                newer_updates: 0,
             },
             items: (0..n).map(|i| item(&format!("episode{i}"))).collect(),
             signals: Vec::new(),
@@ -791,16 +1002,18 @@ mod tests {
 
     fn mixed() -> Snapshot {
         Snapshot {
-            database: "memory".to_string(),
-            store_trust_label: "ADVISORY".to_string(),
+            store_trust_label: "ADVISORY · use with judgment".to_string(),
             store_trust_color: theme::BLUE,
-            store_trust_score: 0.75,
             integrity: Integrity {
                 records: 4,
                 checksums_valid: true,
                 sequence_contiguous: true,
                 status: LedgerStatus::Verified,
                 merkle_root: Some("b".repeat(64)),
+            },
+            anchor: Anchor {
+                status: AnchorStatus::NotChecked,
+                newer_updates: 0,
             },
             items: vec![
                 item("episode"),
@@ -846,14 +1059,305 @@ mod tests {
     }
 
     #[test]
+    fn search_mode_treats_q_as_input_and_escape_as_a_mode_boundary() {
+        let mut app = App::new(mixed());
+        assert_eq!(app.input_mode, InputMode::Browse);
+
+        assert_eq!(app.handle_key(KeyCode::Char('/')), AppAction::Continue);
+        assert_eq!(app.input_mode, InputMode::Search);
+        assert_eq!(app.handle_key(KeyCode::Char('q')), AppAction::Continue);
+        assert_eq!(app.search_query, "q");
+
+        assert_eq!(app.handle_key(KeyCode::Esc), AppAction::Continue);
+        assert_eq!(app.input_mode, InputMode::Browse);
+        assert_eq!(app.search_query, "q");
+        assert_eq!(app.handle_key(KeyCode::Esc), AppAction::Quit);
+    }
+
+    #[test]
+    fn search_and_kind_filter_are_combined_and_selection_remains_safe() {
+        let mut app = App::new(mixed());
+        type_search(&mut app, "episode");
+        assert_eq!(app.visible.len(), 2);
+        assert_eq!(app.list.selected(), Some(0));
+
+        app.cycle_filter(2); // all -> episode -> claim
+        assert_eq!(app.filter_label(), "claim");
+        assert!(app.visible.is_empty());
+        assert_eq!(app.list.selected(), None);
+        assert!(app.selected_item().is_none());
+
+        app.cycle_filter(-1);
+        assert_eq!(app.filter_label(), "episode");
+        assert_eq!(app.visible.len(), 2);
+        assert_eq!(app.list.selected(), Some(0));
+    }
+
+    #[test]
+    fn search_matches_every_local_item_field_case_insensitively() {
+        let mut state = snapshot(0);
+        state.items = vec![
+            Item {
+                kind: "claim".to_string(),
+                title: "TitleNeedle".to_string(),
+                detail: "DetailNeedle".to_string(),
+                trust: None,
+                evidence: Some("EvidenceNeedle".to_string()),
+                meta: vec![("MetaKey".to_string(), "MetaValue".to_string())],
+            },
+            item("unrelated"),
+        ];
+
+        for query in [
+            "CLAIM",
+            "titleneedle",
+            "detailneedle",
+            "evidence",
+            "metakey",
+            "metavalue",
+        ] {
+            let mut app = App::new(Snapshot {
+                store_trust_label: state.store_trust_label.clone(),
+                store_trust_color: state.store_trust_color,
+                integrity: Integrity {
+                    records: state.integrity.records,
+                    checksums_valid: state.integrity.checksums_valid,
+                    sequence_contiguous: state.integrity.sequence_contiguous,
+                    status: state.integrity.status,
+                    merkle_root: state.integrity.merkle_root.clone(),
+                },
+                anchor: Anchor {
+                    status: state.anchor.status,
+                    newer_updates: state.anchor.newer_updates,
+                },
+                items: vec![
+                    Item {
+                        kind: "claim".to_string(),
+                        title: "TitleNeedle".to_string(),
+                        detail: "DetailNeedle".to_string(),
+                        trust: None,
+                        evidence: Some("EvidenceNeedle".to_string()),
+                        meta: vec![("MetaKey".to_string(), "MetaValue".to_string())],
+                    },
+                    item("unrelated"),
+                ],
+                signals: Vec::new(),
+            });
+            type_search(&mut app, query);
+            assert_eq!(app.visible, vec![0], "query {query} should match item 0");
+        }
+    }
+
+    #[test]
+    fn backspace_recovers_results_after_an_empty_search() {
+        let mut app = App::new(mixed());
+        type_search(&mut app, "episodex");
+        assert!(app.visible.is_empty());
+        assert_eq!(app.list.selected(), None);
+
+        assert_eq!(app.handle_key(KeyCode::Backspace), AppAction::Continue);
+        assert_eq!(app.search_query, "episode");
+        assert_eq!(app.visible.len(), 2);
+        assert_eq!(app.list.selected(), Some(0));
+        assert_eq!(app.handle_key(KeyCode::Enter), AppAction::Continue);
+        assert_eq!(app.input_mode, InputMode::Browse);
+        assert_eq!(app.visible.len(), 2);
+    }
+
+    #[test]
+    fn header_renders_memory_history_and_proof_as_independent_states() {
+        let mut state = snapshot(3);
+        state.anchor = Anchor {
+            status: AnchorStatus::TrustedCurrent,
+            newer_updates: 0,
+        };
+        let mut app = App::new(state);
+        let text = text_of(&render_cockpit(&mut app, 120, 40));
+
+        assert!(text.contains("MEMORY"));
+        assert!(text.contains("CERTIFY"));
+        assert!(text.contains("HISTORY"));
+        assert!(text.contains("INTACT"));
+        assert!(text.contains("PROOF"));
+        assert!(text.contains("CURRENT"));
+        assert!(text.contains("covers the memory shown now"));
+    }
+
+    #[test]
+    fn default_tui_copy_hides_implementation_vocabulary() {
+        let history_states = [
+            LedgerStatus::Empty,
+            LedgerStatus::Verified,
+            LedgerStatus::Legacy,
+            LedgerStatus::Broken,
+            LedgerStatus::Unavailable,
+        ];
+        let proof_states = [
+            AnchorStatus::NotChecked,
+            AnchorStatus::TrustedCurrent,
+            AnchorStatus::TrustedHistorical,
+            AnchorStatus::Untrusted,
+            AnchorStatus::Invalid,
+            AnchorStatus::Unavailable,
+        ];
+        let forbidden = [
+            "merkle",
+            "ledger",
+            "checksum",
+            "sequence",
+            "hash",
+            "checkpoint",
+            "policy",
+            "signature",
+            "tree size",
+            "anchor",
+            "score",
+        ];
+
+        for history_status in history_states {
+            for proof_status in proof_states {
+                let mut state = snapshot(3);
+                state.integrity.status = history_status;
+                state.anchor = Anchor {
+                    status: proof_status,
+                    newer_updates: 1,
+                };
+                let mut app = App::new(state);
+                let text = text_of(&render_cockpit(&mut app, 120, 40)).to_lowercase();
+                for term in forbidden {
+                    assert!(
+                        !text.contains(term),
+                        "default TUI exposed implementation term {term:?}: {text}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn proof_copy_explains_every_coverage_state() {
+        let cases = [
+            (
+                AnchorStatus::NotChecked,
+                0,
+                "optional independent check not provided",
+            ),
+            (
+                AnchorStatus::TrustedCurrent,
+                0,
+                "covers the memory shown now",
+            ),
+            (
+                AnchorStatus::TrustedHistorical,
+                1,
+                "1 newer update is not covered",
+            ),
+            (AnchorStatus::Untrusted, 0, "independent proof was rejected"),
+            (
+                AnchorStatus::Invalid,
+                0,
+                "independent proof could not be checked",
+            ),
+            (
+                AnchorStatus::Unavailable,
+                0,
+                "independent checks are unavailable in this build",
+            ),
+        ];
+
+        for (status, newer_updates, expected) in cases {
+            let anchor = Anchor {
+                status,
+                newer_updates,
+            };
+            assert_eq!(proof_detail(&anchor), expected);
+        }
+    }
+
+    #[test]
+    fn default_item_details_hide_internal_identifiers() {
+        let mut state = snapshot(1);
+        state.items = vec![Item {
+            kind: "claim".to_string(),
+            title: "A supported decision".to_string(),
+            detail: "The release owner is Lena.".to_string(),
+            trust: Some(("with evidence".to_string(), theme::GREEN)),
+            evidence: Some("episode_private_123".to_string()),
+            meta: vec![
+                ("id".to_string(), "claim_private_456".to_string()),
+                (
+                    "source_episode_id".to_string(),
+                    "episode_private_123".to_string(),
+                ),
+                ("scope".to_string(), "Project(Private)".to_string()),
+                ("conf".to_string(), "0.95".to_string()),
+                ("context".to_string(), "Project(Nahuali)".to_string()),
+            ],
+        }];
+        let mut app = App::new(state);
+        let text = text_of(&render_cockpit(&mut app, 120, 40));
+
+        assert!(text.contains("evidence linked"));
+        assert!(text.contains("context"));
+        assert!(!text.contains("episode_private_123"));
+        assert!(!text.contains("claim_private_456"));
+        assert!(!text.contains("Project(Private)"));
+
+        type_search(&mut app, "private");
+        assert!(app.visible.is_empty());
+    }
+
+    #[test]
+    fn earlier_and_rejected_proof_badges_have_non_green_risk_colors() {
+        let (historical_label, historical_color) = proof_badge(AnchorStatus::TrustedHistorical);
+        assert_eq!(historical_label, "! EARLIER STATE");
+        assert_eq!(historical_color, theme::AMBER);
+        assert_ne!(historical_color, theme::GREEN);
+
+        let (untrusted_label, untrusted_color) = proof_badge(AnchorStatus::Untrusted);
+        assert_eq!(untrusted_label, "\u{2717} NOT ACCEPTED");
+        assert_eq!(untrusted_color, theme::RED);
+        assert_ne!(untrusted_color, theme::GREEN);
+
+        let mut state = snapshot(3);
+        state.anchor = Anchor {
+            status: AnchorStatus::TrustedHistorical,
+            newer_updates: 2,
+        };
+        let mut app = App::new(state);
+        let text = text_of(&render_cockpit(&mut app, 120, 40));
+        assert!(text.contains("EARLIER STATE"));
+        assert!(text.contains("2 newer updates are not covered"));
+    }
+
+    #[test]
+    fn narrow_search_render_keeps_all_governance_labels_and_compact_controls() {
+        let mut state = snapshot(3);
+        state.anchor = Anchor {
+            status: AnchorStatus::Untrusted,
+            newer_updates: 0,
+        };
+        let mut app = App::new(state);
+        type_search(&mut app, "episode");
+        let text = text_of(&render_cockpit(&mut app, 42, 30));
+
+        assert!(text.contains("MEMORY"));
+        assert!(text.contains("HISTORY"));
+        assert!(text.contains("PROOF"));
+        assert!(text.contains("search"));
+        assert!(text.contains("Esc"));
+        assert!(text.contains("≋(•ᴗ•)≋"));
+    }
+
+    #[test]
     fn empty_store_shows_the_full_mascot_in_a_roomy_detail_pane() {
         // With nothing selected and room to spare, the nahual takes over the
-        // detail pane: its CERTIFY caption ("calm") and a dense sprite appear.
+        // detail pane: its EMPTY caption ("waiting") and a dense sprite appear.
         let mut app = App::new(snapshot(0));
         let buf = render_cockpit(&mut app, 120, 40);
         assert!(
-            text_of(&buf).contains("calm"),
-            "CERTIFY caption missing from the empty detail pane"
+            text_of(&buf).contains("waiting"),
+            "EMPTY caption missing from the empty detail pane"
         );
         assert!(
             block_glyphs(&buf) > 40,
@@ -869,7 +1373,7 @@ mod tests {
         let buf = render_cockpit(&mut app, 40, 24);
         let text = text_of(&buf);
         assert!(
-            !text.contains("calm"),
+            !text.contains("waiting"),
             "no mascot caption should appear on a tiny terminal"
         );
         assert_eq!(block_glyphs(&buf), 0);
@@ -889,7 +1393,7 @@ mod tests {
         let text = text_of(&buf);
         assert_eq!(block_glyphs(&buf), 0);
         assert!(text.contains("≋(•ᴗ•)≋"));
-        assert!(!text.contains("calm"));
+        assert!(!text.contains("ready · evidence checked"));
     }
 
     #[test]
@@ -901,19 +1405,19 @@ mod tests {
         let text = text_of(&buf);
         assert_eq!(block_glyphs(&buf), 0);
         assert!(text.contains("≋(•ᴗ•)≋"));
-        assert!(!text.contains("calm"));
-        assert!(text.contains("nahuali explore"), "header still renders");
+        assert!(!text.contains("ready · evidence checked"));
+        assert!(text.contains("Memory Explorer"), "header still renders");
         assert!(text.contains("memory"), "list pane still renders");
     }
 
     #[test]
-    fn ledger_header_distinguishes_every_ledger_state() {
+    fn history_header_distinguishes_every_integrity_state() {
         let cases = [
             (LedgerStatus::Empty, "EMPTY"),
-            (LedgerStatus::Verified, "VERIFIED"),
-            (LedgerStatus::Legacy, "LEGACY"),
-            (LedgerStatus::Broken, "BROKEN"),
-            (LedgerStatus::Unavailable, "CHECKSUMMED"),
+            (LedgerStatus::Verified, "INTACT"),
+            (LedgerStatus::Legacy, "LIMITED"),
+            (LedgerStatus::Broken, "PROBLEM"),
+            (LedgerStatus::Unavailable, "PARTIAL"),
         ];
 
         for (status, expected) in cases {
@@ -923,7 +1427,7 @@ mod tests {
             let text = text_of(&render_cockpit(&mut app, 120, 40));
             assert!(
                 text.contains(expected),
-                "ledger status {status:?} must render as {expected}"
+                "history status {status:?} must render as {expected}"
             );
         }
     }
@@ -937,27 +1441,27 @@ mod tests {
             state.integrity.sequence_contiguous = sequence_contiguous;
             let mut app = App::new(state);
             let text = text_of(&render_cockpit(&mut app, 120, 40));
-            assert!(text.contains("FAILED"));
-            assert!(!text.contains("Ledger ! LEGACY"));
+            assert!(text.contains("PROBLEM"));
+            assert!(!text.contains("HISTORY ! LIMITED"));
         }
     }
 
     #[test]
     fn pose_tracks_the_verdict_in_both_the_mark_and_the_empty_state() {
-        // Empty BLOCK store: the full mascot wears the guarded pose, never the
-        // CERTIFY one — the empty-state art is bound to the live verdict.
+        // Empty BLOCK store: the full mascot wears the paused pose, never the
+        // ready one — the empty-state art is bound to the live verdict.
         let mut empty = snapshot(0);
         empty.store_trust_label = "BLOCK · not yet trustworthy".to_string();
         empty.store_trust_color = theme::RED;
         let mut app = App::new(empty);
         let text = text_of(&render_cockpit(&mut app, 120, 40));
         assert!(
-            text.contains("guarded"),
-            "empty BLOCK store shows the guarded pose"
+            text.contains("paused"),
+            "empty BLOCK store shows the paused pose"
         );
         assert!(
-            !text.contains("calm"),
-            "must not show the CERTIFY caption for a BLOCK store"
+            !text.contains("ready · evidence checked"),
+            "must not show the ready caption for a BLOCK store"
         );
 
         // Non-empty BLOCK store without terminal graphics: the compact fallback

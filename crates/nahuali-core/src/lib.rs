@@ -64,6 +64,8 @@ mod proactive;
 mod project;
 mod projection;
 mod recall;
+#[cfg(feature = "attestation")]
+mod receipt;
 mod reflection;
 mod review_writeback;
 mod schema;
@@ -107,13 +109,14 @@ pub use briefing::{
 };
 #[cfg(feature = "attestation")]
 pub use checkpoint::{
-    CHECKPOINT_TRUST_POLICY_VERSION, CheckpointHashAlgorithm, CheckpointMatchMode,
-    CheckpointPolicyKey, CheckpointSignatureAlgorithm, CheckpointSignatureEvaluationV2,
-    CheckpointSignatureV2, CheckpointTreeAlgorithm, CheckpointTrustPolicyV2,
-    CheckpointVerificationOptionsV2, CheckpointVerificationV2, DEFAULT_CHECKPOINT_FUTURE_SKEW_MS,
-    LEDGER_CHECKPOINT_VERSION, LedgerCheckpointV2, MAX_CHECKPOINT_SIGNATURES,
-    SignedLedgerCheckpointV2, add_checkpoint_signature_v2, checkpoint_policy_key_v2,
-    checkpoint_signing_message_v2, sign_checkpoint_v2,
+    CHECKPOINT_TRUST_POLICY_VERSION, CheckpointAuthorizationV2, CheckpointHashAlgorithm,
+    CheckpointMatchMode, CheckpointPolicyKey, CheckpointSignatureAlgorithm,
+    CheckpointSignatureEvaluationV2, CheckpointSignatureV2, CheckpointTreeAlgorithm,
+    CheckpointTrustPolicyV2, CheckpointVerificationOptionsV2, CheckpointVerificationV2,
+    DEFAULT_CHECKPOINT_FUTURE_SKEW_MS, LEDGER_CHECKPOINT_VERSION, LedgerCheckpointV2,
+    MAX_CHECKPOINT_SIGNATURES, SignedLedgerCheckpointV2, add_checkpoint_signature_v2,
+    checkpoint_policy_key_v2, checkpoint_signing_message_v2, sign_checkpoint_v2,
+    verify_checkpoint_authorization_v2,
 };
 pub use consolidation_plan::{
     ConsolidationBlockedItem, ConsolidationGate, ConsolidationOperation,
@@ -203,6 +206,14 @@ pub use project::{
 };
 pub use projection::project_validated_events;
 pub use recall::{RecallOptions, recall_projection_with_authority};
+#[cfg(feature = "attestation")]
+pub use receipt::{
+    MAX_CLAIM_RECEIPT_BYTES, MAX_RECEIPT_MERKLE_SIBLINGS, MEMORY_CLAIM_RECEIPT_FORMAT,
+    MEMORY_CLAIM_RECEIPT_VERSION, MemoryClaimReceiptV1, MemoryClaimReceiptVerificationV1,
+    ReceiptContentAuthorityClassV1, ReceiptContentAuthorityV1, ReceiptEventProofV1,
+    ReceiptIntegrityV1, ReceiptVerificationOptionsV1, create_claim_receipt_v1,
+    parse_claim_receipt_v1, verify_claim_receipt_v1,
+};
 pub use reflection::{
     MEMORY_REFLECTION_VERSION, MemoryReflectionReport, ReflectionCycle, ReflectionFinding,
     ReflectionOptions, ReflectionSourceCoverage, ReflectionSummary,

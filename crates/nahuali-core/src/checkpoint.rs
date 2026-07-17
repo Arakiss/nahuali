@@ -266,6 +266,38 @@ pub struct CheckpointVerificationV2 {
     pub reasons: Vec<String>,
 }
 
+/// Offline authorization of a checkpoint document against an external policy.
+///
+/// This verdict proves that the signed checkpoint is well formed, names the
+/// policy's ledger lineage, satisfies its active-key threshold, and is not too
+/// far ahead of the verifier's clock. It deliberately does not claim that the
+/// verifier replayed the ledger, matched the Merkle root, or established the
+/// checkpoint timestamp through an independent time authority.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CheckpointAuthorizationV2 {
+    /// Whether the checkpoint origin matches the external policy.
+    pub origin_matches_policy: bool,
+    /// Whether the checkpoint ledger lineage matches the external policy.
+    pub ledger_id_matches_policy: bool,
+    /// Whether the signer-asserted time is within the allowed future skew.
+    pub timestamp_not_in_future: bool,
+    /// Verifier time used for the timestamp check.
+    pub verification_time_ms: u64,
+    /// Allowed signer-clock lead over verifier time.
+    pub max_future_skew_ms: u64,
+    /// Number of distinct active signatures accepted under the policy.
+    pub accepted_signature_count: u64,
+    /// Minimum distinct active signatures required by the policy.
+    pub minimum_signature_count: u32,
+    /// Evaluation of every signature carried by the document.
+    pub signatures: Vec<CheckpointSignatureEvaluationV2>,
+    /// Composite offline policy verdict. This does not verify ledger contents.
+    pub authorized: bool,
+    /// Stable reasons for every failed or ignored authorization condition.
+    pub reasons: Vec<String>,
+}
+
 impl MemoryEngine {
     /// Build an operator trust policy for this ledger from explicitly supplied
     /// verifier keys. The returned policy must be protected independently of
@@ -346,172 +378,170 @@ impl MemoryEngine {
         policy: &CheckpointTrustPolicyV2,
         options: CheckpointVerificationOptionsV2,
     ) -> Result<CheckpointVerificationV2> {
-        validate_signed_document(signed)?;
-        validate_policy(policy)?;
-
-        let checkpoint = &signed.checkpoint;
-        let events = self.events();
-        let current_tree_size = u64::try_from(events.len()).map_err(|_| {
-            checkpoint_error("live ledger contains more events than checkpoint v2 supports")
-        })?;
-        let prefix_len = usize::try_from(checkpoint.tree_size).ok();
-        let prefix = prefix_len
-            .filter(|length| *length > 0 && *length <= events.len())
-            .map(|length| &events[..length]);
-        let tree_size_in_range = prefix.is_some();
-        let current_size_matches = prefix_len == Some(events.len());
-        let appended_event_count = current_tree_size.saturating_sub(checkpoint.tree_size);
-        let ledger_prefix_verified = prefix.is_some_and(|prefix| {
-            let audit = audit_events(prefix, &LedgerAuditOptions::default());
-            audit.integrity.verified && audit.integrity.chain_status == LedgerChainStatus::Verified
-        });
-        let current_audit = audit_events(events, &LedgerAuditOptions::default());
-        let current_ledger_verified = current_audit.integrity.verified
-            && current_audit.integrity.chain_status == LedgerChainStatus::Verified;
-
-        let current_ledger_id = derive_ledger_id(events)?;
-        let origin_matches_policy = checkpoint.origin == policy.expected_origin;
-        let ledger_id_matches = current_ledger_id.as_deref() == Some(&checkpoint.ledger_id)
-            && checkpoint.ledger_id == policy.expected_ledger_id;
-        let root_hash_matches = prefix
-            .and_then(ledger_merkle_root)
-            .is_some_and(|root| root == checkpoint.root_hash);
-        let chain_tip_matches = prefix
-            .and_then(|prefix| prefix.last())
-            .map(EventEnvelope::chain_hash)
-            .is_some_and(|tip| tip == checkpoint.chain_tip);
-        let timestamp_valid = prefix
-            .and_then(|prefix| prefix.iter().map(|event| event.timestamp_ms).max())
-            .is_some_and(|timestamp| checkpoint.generated_at_ms >= timestamp);
-        let timestamp_not_in_future = checkpoint.generated_at_ms
-            <= options
-                .verification_time_ms
-                .saturating_add(options.max_future_skew_ms);
-
-        let message = checkpoint_signing_message_v2(checkpoint)?;
-        let signatures = signed
-            .signatures
-            .iter()
-            .map(|signature| evaluate_signature(signature, &message, policy))
-            .collect::<Vec<_>>();
-        let accepted_signature_count = signatures
-            .iter()
-            .filter(|evaluation| evaluation.accepted)
-            .count() as u64;
-        let active_signature_invalid = signatures.iter().any(|evaluation| {
-            evaluation.key_authorized && !evaluation.key_revoked && !evaluation.signature_valid
-        });
-        let threshold_met = accepted_signature_count >= u64::from(policy.minimum_signatures);
-        let requested_size_matches =
-            options.match_mode == CheckpointMatchMode::Historical || current_size_matches;
-        let requested_ledger_verified =
-            options.match_mode == CheckpointMatchMode::Historical || current_ledger_verified;
-
-        let mut reasons = Vec::new();
-        if !origin_matches_policy {
-            reasons.push("checkpoint origin does not match the operator policy".to_string());
-        }
-        if !ledger_id_matches {
-            reasons.push(
-                "checkpoint ledger id does not match both policy and live ledger lineage"
-                    .to_string(),
-            );
-        }
-        if !tree_size_in_range {
-            reasons
-                .push("checkpoint tree size is not a present non-empty ledger prefix".to_string());
-        }
-        if tree_size_in_range && !requested_size_matches {
-            reasons.push(
-                "checkpoint is historical but verification requires the current ledger size"
-                    .to_string(),
-            );
-        }
-        if !requested_ledger_verified {
-            reasons.push(
-                "current ledger failed integrity verification required by current mode".to_string(),
-            );
-        }
-        if tree_size_in_range && !ledger_prefix_verified {
-            reasons.push("checkpoint ledger prefix failed integrity verification".to_string());
-        }
-        if !root_hash_matches {
-            reasons.push("checkpoint Merkle root does not match ledger history".to_string());
-        }
-        if !chain_tip_matches {
-            reasons.push("checkpoint chain tip does not match ledger history".to_string());
-        }
-        if !timestamp_valid {
-            reasons.push("checkpoint timestamp predates its latest ledger event".to_string());
-        }
-        if !timestamp_not_in_future {
-            reasons.push(format!(
-                "checkpoint timestamp exceeds verifier time by more than {} ms",
-                options.max_future_skew_ms
-            ));
-        }
-        for evaluation in &signatures {
-            if evaluation.key_authorized && !evaluation.signature_valid {
-                reasons.push(format!(
-                    "checkpoint signature '{}' for an active policy key is cryptographically invalid",
-                    evaluation.key_id
-                ));
-            } else if evaluation.key_revoked {
-                reasons.push(format!(
-                    "checkpoint signature '{}' uses a revoked key and was ignored",
-                    evaluation.key_id
-                ));
-            } else if !evaluation.key_known {
-                reasons.push(format!(
-                    "checkpoint signature '{}' is unknown to the policy and was ignored",
-                    evaluation.key_id
-                ));
-            }
-        }
-        if !threshold_met {
-            reasons.push(format!(
-                "checkpoint has {accepted_signature_count} accepted signature(s), policy requires {}",
-                policy.minimum_signatures
-            ));
-        }
-
-        let trusted = origin_matches_policy
-            && ledger_id_matches
-            && tree_size_in_range
-            && requested_size_matches
-            && requested_ledger_verified
-            && ledger_prefix_verified
-            && root_hash_matches
-            && chain_tip_matches
-            && timestamp_valid
-            && timestamp_not_in_future
-            && !active_signature_invalid
-            && threshold_met;
-
-        Ok(CheckpointVerificationV2 {
-            match_mode: options.match_mode,
-            origin_matches_policy,
-            ledger_id_matches,
-            checkpoint_tree_size: checkpoint.tree_size,
-            current_tree_size,
-            tree_size_in_range,
-            current_size_matches,
-            appended_event_count,
-            ledger_prefix_verified,
-            current_ledger_verified,
-            root_hash_matches,
-            chain_tip_matches,
-            timestamp_valid,
-            timestamp_not_in_future,
-            verification_time_ms: options.verification_time_ms,
-            max_future_skew_ms: options.max_future_skew_ms,
-            accepted_signature_count,
-            minimum_signature_count: policy.minimum_signatures,
-            signatures,
-            trusted,
-            reasons,
-        })
+        verify_checkpoint_events_v2(self.events(), signed, policy, options)
     }
+}
+
+pub(crate) fn verify_checkpoint_events_v2(
+    events: &[EventEnvelope],
+    signed: &SignedLedgerCheckpointV2,
+    policy: &CheckpointTrustPolicyV2,
+    options: CheckpointVerificationOptionsV2,
+) -> Result<CheckpointVerificationV2> {
+    let authorization = verify_checkpoint_authorization_v2(
+        signed,
+        policy,
+        options.verification_time_ms,
+        options.max_future_skew_ms,
+    )?;
+
+    let checkpoint = &signed.checkpoint;
+    let current_tree_size = u64::try_from(events.len()).map_err(|_| {
+        checkpoint_error("live ledger contains more events than checkpoint v2 supports")
+    })?;
+    let prefix_len = usize::try_from(checkpoint.tree_size).ok();
+    let prefix = prefix_len
+        .filter(|length| *length > 0 && *length <= events.len())
+        .map(|length| &events[..length]);
+    let tree_size_in_range = prefix.is_some();
+    let current_size_matches = prefix_len == Some(events.len());
+    let appended_event_count = current_tree_size.saturating_sub(checkpoint.tree_size);
+    let ledger_prefix_verified = prefix.is_some_and(|prefix| {
+        let audit = audit_events(prefix, &LedgerAuditOptions::default());
+        audit.integrity.verified && audit.integrity.chain_status == LedgerChainStatus::Verified
+    });
+    let current_audit = audit_events(events, &LedgerAuditOptions::default());
+    let current_ledger_verified = current_audit.integrity.verified
+        && current_audit.integrity.chain_status == LedgerChainStatus::Verified;
+
+    let current_ledger_id = derive_ledger_id(events)?;
+    let origin_matches_policy = authorization.origin_matches_policy;
+    let ledger_id_matches = current_ledger_id.as_deref() == Some(&checkpoint.ledger_id)
+        && authorization.ledger_id_matches_policy;
+    let root_hash_matches = prefix
+        .and_then(ledger_merkle_root)
+        .is_some_and(|root| root == checkpoint.root_hash);
+    let chain_tip_matches = prefix
+        .and_then(|prefix| prefix.last())
+        .map(EventEnvelope::chain_hash)
+        .is_some_and(|tip| tip == checkpoint.chain_tip);
+    let timestamp_valid = prefix
+        .and_then(|prefix| prefix.iter().map(|event| event.timestamp_ms).max())
+        .is_some_and(|timestamp| checkpoint.generated_at_ms >= timestamp);
+    let timestamp_not_in_future = authorization.timestamp_not_in_future;
+    let accepted_signature_count = authorization.accepted_signature_count;
+    let threshold_met = accepted_signature_count >= u64::from(policy.minimum_signatures);
+    let active_signature_invalid = authorization.signatures.iter().any(|evaluation| {
+        evaluation.key_authorized && !evaluation.key_revoked && !evaluation.signature_valid
+    });
+    let signatures = authorization.signatures;
+    let requested_size_matches =
+        options.match_mode == CheckpointMatchMode::Historical || current_size_matches;
+    let requested_ledger_verified =
+        options.match_mode == CheckpointMatchMode::Historical || current_ledger_verified;
+
+    let mut reasons = Vec::new();
+    if !origin_matches_policy {
+        reasons.push("checkpoint origin does not match the operator policy".to_string());
+    }
+    if !ledger_id_matches {
+        reasons.push(
+            "checkpoint ledger id does not match both policy and live ledger lineage".to_string(),
+        );
+    }
+    if !tree_size_in_range {
+        reasons.push("checkpoint tree size is not a present non-empty ledger prefix".to_string());
+    }
+    if tree_size_in_range && !requested_size_matches {
+        reasons.push(
+            "checkpoint is historical but verification requires the current ledger size"
+                .to_string(),
+        );
+    }
+    if !requested_ledger_verified {
+        reasons.push(
+            "current ledger failed integrity verification required by current mode".to_string(),
+        );
+    }
+    if tree_size_in_range && !ledger_prefix_verified {
+        reasons.push("checkpoint ledger prefix failed integrity verification".to_string());
+    }
+    if !root_hash_matches {
+        reasons.push("checkpoint Merkle root does not match ledger history".to_string());
+    }
+    if !chain_tip_matches {
+        reasons.push("checkpoint chain tip does not match ledger history".to_string());
+    }
+    if !timestamp_valid {
+        reasons.push("checkpoint timestamp predates its latest ledger event".to_string());
+    }
+    if !timestamp_not_in_future {
+        reasons.push(format!(
+            "checkpoint timestamp exceeds verifier time by more than {} ms",
+            options.max_future_skew_ms
+        ));
+    }
+    for evaluation in &signatures {
+        if evaluation.key_authorized && !evaluation.signature_valid {
+            reasons.push(format!(
+                "checkpoint signature '{}' for an active policy key is cryptographically invalid",
+                evaluation.key_id
+            ));
+        } else if evaluation.key_revoked {
+            reasons.push(format!(
+                "checkpoint signature '{}' uses a revoked key and was ignored",
+                evaluation.key_id
+            ));
+        } else if !evaluation.key_known {
+            reasons.push(format!(
+                "checkpoint signature '{}' is unknown to the policy and was ignored",
+                evaluation.key_id
+            ));
+        }
+    }
+    if !threshold_met {
+        reasons.push(format!(
+            "checkpoint has {accepted_signature_count} accepted signature(s), policy requires {}",
+            policy.minimum_signatures
+        ));
+    }
+
+    let trusted = origin_matches_policy
+        && ledger_id_matches
+        && tree_size_in_range
+        && requested_size_matches
+        && requested_ledger_verified
+        && ledger_prefix_verified
+        && root_hash_matches
+        && chain_tip_matches
+        && timestamp_valid
+        && timestamp_not_in_future
+        && !active_signature_invalid
+        && threshold_met;
+
+    Ok(CheckpointVerificationV2 {
+        match_mode: options.match_mode,
+        origin_matches_policy,
+        ledger_id_matches,
+        checkpoint_tree_size: checkpoint.tree_size,
+        current_tree_size,
+        tree_size_in_range,
+        current_size_matches,
+        appended_event_count,
+        ledger_prefix_verified,
+        current_ledger_verified,
+        root_hash_matches,
+        chain_tip_matches,
+        timestamp_valid,
+        timestamp_not_in_future,
+        verification_time_ms: options.verification_time_ms,
+        max_future_skew_ms: options.max_future_skew_ms,
+        accepted_signature_count,
+        minimum_signature_count: policy.minimum_signatures,
+        signatures,
+        trusted,
+        reasons,
+    })
 }
 
 impl CheckpointTrustPolicyV2 {
@@ -537,6 +567,98 @@ impl CheckpointTrustPolicyV2 {
     pub fn validate(&self) -> Result<()> {
         validate_policy(self)
     }
+}
+
+/// Verify only the signed checkpoint's offline authorization policy.
+///
+/// Callers that also hold the ledger should use
+/// [`MemoryEngine::verify_checkpoint_v2`] for prefix, root, chain-tip, and event
+/// timestamp verification. Portable receipts use this narrower function and
+/// prove selected event inclusion separately.
+pub fn verify_checkpoint_authorization_v2(
+    signed: &SignedLedgerCheckpointV2,
+    policy: &CheckpointTrustPolicyV2,
+    verification_time_ms: u64,
+    max_future_skew_ms: u64,
+) -> Result<CheckpointAuthorizationV2> {
+    validate_signed_document(signed)?;
+    validate_policy(policy)?;
+
+    let checkpoint = &signed.checkpoint;
+    let origin_matches_policy = checkpoint.origin == policy.expected_origin;
+    let ledger_id_matches_policy = checkpoint.ledger_id == policy.expected_ledger_id;
+    let timestamp_not_in_future =
+        checkpoint.generated_at_ms <= verification_time_ms.saturating_add(max_future_skew_ms);
+    let message = checkpoint_signing_message_v2(checkpoint)?;
+    let signatures = signed
+        .signatures
+        .iter()
+        .map(|signature| evaluate_signature(signature, &message, policy))
+        .collect::<Vec<_>>();
+    let accepted_signature_count = signatures
+        .iter()
+        .filter(|evaluation| evaluation.accepted)
+        .count() as u64;
+    let active_signature_invalid = signatures.iter().any(|evaluation| {
+        evaluation.key_authorized && !evaluation.key_revoked && !evaluation.signature_valid
+    });
+    let threshold_met = accepted_signature_count >= u64::from(policy.minimum_signatures);
+
+    let mut reasons = Vec::new();
+    if !origin_matches_policy {
+        reasons.push("checkpoint origin does not match the operator policy".to_string());
+    }
+    if !ledger_id_matches_policy {
+        reasons.push("checkpoint ledger id does not match the operator policy".to_string());
+    }
+    if !timestamp_not_in_future {
+        reasons.push(format!(
+            "checkpoint timestamp exceeds verifier time by more than {max_future_skew_ms} ms"
+        ));
+    }
+    for evaluation in &signatures {
+        if evaluation.key_authorized && !evaluation.signature_valid {
+            reasons.push(format!(
+                "checkpoint signature '{}' for an active policy key is cryptographically invalid",
+                evaluation.key_id
+            ));
+        } else if evaluation.key_revoked {
+            reasons.push(format!(
+                "checkpoint signature '{}' uses a revoked key and was ignored",
+                evaluation.key_id
+            ));
+        } else if !evaluation.key_known {
+            reasons.push(format!(
+                "checkpoint signature '{}' is unknown to the policy and was ignored",
+                evaluation.key_id
+            ));
+        }
+    }
+    if !threshold_met {
+        reasons.push(format!(
+            "checkpoint has {accepted_signature_count} accepted signature(s), policy requires {}",
+            policy.minimum_signatures
+        ));
+    }
+
+    let authorized = origin_matches_policy
+        && ledger_id_matches_policy
+        && timestamp_not_in_future
+        && !active_signature_invalid
+        && threshold_met;
+
+    Ok(CheckpointAuthorizationV2 {
+        origin_matches_policy,
+        ledger_id_matches_policy,
+        timestamp_not_in_future,
+        verification_time_ms,
+        max_future_skew_ms,
+        accepted_signature_count,
+        minimum_signature_count: policy.minimum_signatures,
+        signatures,
+        authorized,
+        reasons,
+    })
 }
 
 /// Fixed canonical bytes signed by every v2 checkpoint signer.
@@ -859,7 +981,7 @@ fn max_event_timestamp(events: &[EventEnvelope]) -> Result<u64> {
         .ok_or_else(|| checkpoint_error("empty ledger cannot define a checkpoint policy"))
 }
 
-fn derive_ledger_id(events: &[EventEnvelope]) -> Result<Option<String>> {
+pub(crate) fn derive_ledger_id(events: &[EventEnvelope]) -> Result<Option<String>> {
     let Some(genesis) = events.first() else {
         return Ok(None);
     };
