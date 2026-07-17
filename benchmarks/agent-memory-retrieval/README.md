@@ -14,7 +14,7 @@ and results that do not identify the tested binary and source revision.
 ## Checked-in baseline
 
 The current version-matched source-build result is checked in as
-[`nahuali-0.8.0-beta.6.json`](results/nahuali-0.8.0-beta.6.json).
+[`nahuali-0.8.0-beta.7.json`](results/nahuali-0.8.0-beta.7.json).
 
 | Mode | Recall@1 | Recall@3 | MRR | nDCG@10 | Median latency | p95 latency |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
