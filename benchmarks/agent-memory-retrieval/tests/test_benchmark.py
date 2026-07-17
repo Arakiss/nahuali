@@ -3,7 +3,10 @@ import hashlib
 import importlib.util
 import json
 import pathlib
+import sys
+import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -32,6 +35,37 @@ class RetrievalBenchmarkTests(unittest.TestCase):
         self.assertEqual(metrics["recallAt3"], 1.0)
         self.assertEqual(metrics["reciprocalRank"], 0.5)
         self.assertAlmostEqual(metrics["ndcgAt10"], 1.0 / adapter.math.log2(3))
+
+    def test_source_revision_requires_lowercase_hex(self):
+        with self.assertRaisesRegex(SystemExit, "lowercase"):
+            adapter.validate_source_revision("A" * 40)
+        with self.assertRaisesRegex(SystemExit, "40-character"):
+            adapter.validate_source_revision("a" * 39)
+        self.assertEqual(adapter.validate_source_revision("a" * 40), "a" * 40)
+
+    def test_release_identity_is_all_or_nothing(self):
+        self.assertEqual(
+            adapter.release_artifact_metadata(None, None, None, None),
+            {"kind": "source-build"},
+        )
+        with self.assertRaisesRegex(SystemExit, "requires"):
+            adapter.release_artifact_metadata("v1", None, None, None)
+        published = adapter.release_artifact_metadata(
+            "v1", "nahuali-v1-target.tar.gz", "target", "b" * 64
+        )
+        self.assertEqual(published["kind"], "published-release")
+
+    def test_run_cleans_files_and_qdrant_after_failure(self):
+        with tempfile.TemporaryDirectory() as parent:
+            root = pathlib.Path(parent) / "benchmark"
+            root.mkdir()
+            with mock.patch.object(adapter.tempfile, "mkdtemp", return_value=str(root)):
+                with mock.patch.object(adapter, "import_corpus", side_effect=RuntimeError("fixture")):
+                    with mock.patch.object(adapter, "delete_qdrant_collection_if_exists") as delete:
+                        with self.assertRaisesRegex(RuntimeError, "fixture"):
+                            adapter.run(sys.executable, CASES_PATH, "a" * 40)
+            self.assertFalse(root.exists())
+            self.assertEqual(delete.call_count, 2)
 
     def test_scorer_rejects_tampered_query_metric(self):
         cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
@@ -104,6 +138,19 @@ class RetrievalBenchmarkTests(unittest.TestCase):
                 },
                 cases,
                 hashlib.sha256(CASES_PATH.read_bytes()).hexdigest(),
+            )
+
+    def test_scorer_rejects_uppercase_identity(self):
+        cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
+        result = {
+            "benchmarkVersion": cases["benchmarkVersion"],
+            "corpus": {"sha256": hashlib.sha256(CASES_PATH.read_bytes()).hexdigest()},
+            "artifact": {"sha256": "A" * 64, "sourceRevision": "b" * 40},
+            "modes": {},
+        }
+        with self.assertRaisesRegex(ValueError, "lowercase"):
+            score.score_document(
+                result, cases, hashlib.sha256(CASES_PATH.read_bytes()).hexdigest()
             )
 
 

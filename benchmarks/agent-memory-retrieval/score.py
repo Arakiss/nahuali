@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -13,6 +14,8 @@ from adapters.nahuali import aggregate_metrics, ranking_metrics
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CASES = ROOT / "benchmarks/agent-memory-retrieval/cases.json"
+LOWER_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+LOWER_SOURCE_REVISION = re.compile(r"^[0-9a-f]{40}$")
 
 
 def sha256_file(path: pathlib.Path) -> str:
@@ -29,10 +32,19 @@ def score_document(result: dict, cases: dict, cases_sha256: str) -> dict:
     if result.get("corpus", {}).get("sha256") != cases_sha256:
         raise ValueError("result corpus digest does not match cases.json")
     artifact = result.get("artifact", {})
-    if len(artifact.get("sha256", "")) != 64:
-        raise ValueError("result must bind the tested binary SHA-256")
-    if len(artifact.get("sourceRevision", "")) != 40:
-        raise ValueError("result must bind the exact source revision")
+    if not LOWER_SHA256.fullmatch(artifact.get("sha256", "")):
+        raise ValueError("result must bind the tested binary SHA-256 as lowercase hexadecimal")
+    if not LOWER_SOURCE_REVISION.fullmatch(artifact.get("sourceRevision", "")):
+        raise ValueError("result must bind the exact source revision as lowercase hexadecimal")
+    artifact_kind = artifact.get("kind")
+    if artifact_kind not in {None, "source-build", "published-release"}:
+        raise ValueError("result artifact kind must be source-build or published-release")
+    if artifact_kind == "published-release":
+        for field in ("releaseTag", "releaseAsset", "target"):
+            if not artifact.get(field):
+                raise ValueError(f"published release result must include artifact.{field}")
+        if not LOWER_SHA256.fullmatch(artifact.get("archiveSha256", "")):
+            raise ValueError("published release result must include artifact.archiveSha256")
 
     query_cases = {query["id"]: query for query in cases["queries"]}
     summaries = {}

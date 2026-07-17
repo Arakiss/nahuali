@@ -8,7 +8,8 @@
   "artifact": {
     "name": "nahuali",
     "sha256": "63b0dc90914a464347a6371b1842dd3458fe9b6d48585f2199a8e74da115a56f",
-    "sourceRevision": "d8c1af20b631a1b9150523605decf33b8473aaa3"
+    "sourceRevision": "d8c1af20b631a1b9150523605decf33b8473aaa3",
+    "kind": "source-build"
   },
   "runner": {
     "relationship": "first-party",

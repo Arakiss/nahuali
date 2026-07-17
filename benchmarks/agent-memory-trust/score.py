@@ -3,11 +3,16 @@
 
 import json
 import pathlib
+import re
 import sys
 
 
 def fail(message: str) -> None:
     raise SystemExit(message)
+
+
+LOWER_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+LOWER_SOURCE_REVISION = re.compile(r"^[0-9a-f]{40}$")
 
 
 if len(sys.argv) != 2:
@@ -22,10 +27,22 @@ if result.get("benchmarkVersion") != cases_document["benchmarkVersion"]:
 if not result.get("system", {}).get("name") or not result.get("system", {}).get("version"):
     fail("result must identify the system name and version")
 artifact_digest = result.get("artifact", {}).get("sha256")
-if not artifact_digest or len(artifact_digest) != 64:
-    fail("result must include the tested artifact SHA-256")
+if not LOWER_SHA256.fullmatch(artifact_digest or ""):
+    fail("result must include the tested artifact SHA-256 as lowercase hexadecimal")
 if result.get("commit") != f"sha256:{artifact_digest}":
     fail("result commit identity must match the tested artifact SHA-256")
+source_revision = result.get("artifact", {}).get("sourceRevision")
+if not LOWER_SOURCE_REVISION.fullmatch(source_revision or ""):
+    fail("result must include the exact source revision as lowercase hexadecimal")
+artifact_kind = result.get("artifact", {}).get("kind")
+if artifact_kind not in {None, "source-build", "published-release"}:
+    fail("result artifact kind must be source-build or published-release")
+if artifact_kind == "published-release":
+    for field in ("releaseTag", "releaseAsset", "target"):
+        if not result["artifact"].get(field):
+            fail(f"published release result must include artifact.{field}")
+    if not LOWER_SHA256.fullmatch(result["artifact"].get("archiveSha256", "")):
+        fail("published release result must include artifact.archiveSha256")
 if result.get("runner", {}).get("relationship") not in {"first-party", "independent"}:
     fail("result must identify the runner as first-party or independent")
 

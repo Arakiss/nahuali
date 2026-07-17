@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -57,6 +58,37 @@ class AdapterTests(unittest.TestCase):
         case = self.adapter.observed_case("contradiction-detection", False, detected=True)
         self.assertEqual(case["status"], "fail")
 
+    def test_source_revision_requires_lowercase_hex(self):
+        with self.assertRaisesRegex(SystemExit, "lowercase"):
+            self.adapter.validate_source_revision("A" * 40)
+        with self.assertRaisesRegex(SystemExit, "40-character"):
+            self.adapter.validate_source_revision("a" * 39)
+        self.assertEqual(self.adapter.validate_source_revision("a" * 40), "a" * 40)
+
+    def test_release_identity_is_all_or_nothing(self):
+        self.assertEqual(
+            self.adapter.release_artifact_metadata(None, None, None, None),
+            {"kind": "source-build"},
+        )
+        with self.assertRaisesRegex(SystemExit, "requires"):
+            self.adapter.release_artifact_metadata("v1", None, None, None)
+        published = self.adapter.release_artifact_metadata(
+            "v1", "nahuali-v1-target.tar.gz", "target", "b" * 64
+        )
+        self.assertEqual(published["kind"], "published-release")
+
+    def test_run_cleans_temporary_directory_after_failure(self):
+        with tempfile.TemporaryDirectory() as parent:
+            root = pathlib.Path(parent) / "benchmark"
+            root.mkdir()
+            with mock.patch.object(self.adapter.tempfile, "mkdtemp", return_value=str(root)):
+                with mock.patch.object(
+                    self.adapter, "run_at_root", side_effect=RuntimeError("fixture")
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "fixture"):
+                        self.adapter.run(sys.executable, "a" * 40)
+            self.assertFalse(root.exists())
+
     def score(self, result):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "result.json"
@@ -90,6 +122,14 @@ class AdapterTests(unittest.TestCase):
         scored = self.score(result)
         self.assertNotEqual(scored.returncode, 0)
         self.assertIn("must match", scored.stderr)
+
+    def test_score_rejects_uppercase_identity(self):
+        result = valid_result()
+        result["artifact"]["sha256"] = "A" * 64
+        result["commit"] = "sha256:" + "A" * 64
+        scored = self.score(result)
+        self.assertNotEqual(scored.returncode, 0)
+        self.assertIn("lowercase", scored.stderr)
 
 
 if __name__ == "__main__":

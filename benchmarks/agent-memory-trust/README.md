@@ -85,15 +85,16 @@ python3 benchmarks/agent-memory-trust/score.py result.json
 
 The adapter uses only documented CLI commands and disposable embedded stores.
 
-## Published results
+## Checked-in results
 
-| System | Version | Runner | Result |
-|---|---|---|---|
-| Nahuali | 0.8.0-beta.6 | First-party | [7 pass, 0 fail, 0 unsupported](results/nahuali-0.8.0-beta.6.json) |
+| System | Version | Runner | Artifact | Result |
+|---|---|---|---|---|
+| Nahuali | 0.8.0-beta.6 | First-party | Source build | [7 pass, 0 fail, 0 unsupported](results/nahuali-0.8.0-beta.6.json) |
 
-The published file records the tested binary SHA-256, release source revision, adapter path,
-environment, native verdicts, and complete per-case output. Reproduce it from
-the release source with:
+The checked-in file records the tested binary SHA-256, exact source revision,
+adapter path, environment, native verdicts, and complete per-case output. It is
+a version-matched source build, not a claim about any published release archive.
+Reproduce a source-build result with:
 
 ```bash
 cargo build --release -p nahuali-cli
@@ -105,9 +106,31 @@ python3 benchmarks/agent-memory-trust/score.py \
   benchmarks/agent-memory-trust/results/nahuali-0.8.0-beta.6.json
 ```
 
+To label a result `published-release`, the adapter additionally requires the
+release tag, archive name, target, and archive SHA-256. Validate that document
+against the actual archive and extracted binary before publishing it:
+
+```bash
+python3 benchmarks/agent-memory-trust/adapters/nahuali.py \
+  --binary /path/to/extracted/nahuali \
+  --source-revision "$TAG_REVISION" \
+  --release-tag vX.Y.Z-beta.N \
+  --release-asset nahuali-vX.Y.Z-beta.N-TARGET.tar.gz \
+  --target TARGET \
+  --archive-sha256 "$ARCHIVE_SHA256" \
+  --output result.json
+
+python3 scripts/verify-benchmark-artifact-identity.py \
+  --result result.json \
+  --binary /path/to/extracted/nahuali \
+  --tag vX.Y.Z-beta.N \
+  --asset /path/to/nahuali-vX.Y.Z-beta.N-TARGET.tar.gz \
+  --target TARGET
+```
+
 ## Comparison rules
 
-Every published result must include:
+Every shared result must include:
 
 1. the unmodified case file and benchmark version;
 2. the product version plus an immutable commit or image digest;
@@ -116,6 +139,10 @@ Every published result must include:
 5. any external service, model, or operator action used;
 6. a statement that the benchmark is first-party unless an independent party
    ran it.
+
+A result may use `artifact.kind: source-build` or `published-release`. Only the
+latter may be described as evidence for a release archive, and it must pass the
+artifact identity verifier above.
 
 Adapters must exercise public product behavior. They may not inspect private
 database tables, patch product code, or infer a pass from documentation.

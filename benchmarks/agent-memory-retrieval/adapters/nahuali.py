@@ -7,16 +7,23 @@ import json
 import math
 import os
 import pathlib
+import re
 import shutil
 import statistics
 import subprocess
+import sys
 import tempfile
 import time
 from typing import Any, Optional
+from urllib import error as urlerror
+from urllib import parse as urlparse
+from urllib import request as urlrequest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_CASES = ROOT / "benchmarks/agent-memory-retrieval/cases.json"
+LOWER_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+LOWER_SOURCE_REVISION = re.compile(r"^[0-9a-f]{40}$")
 
 
 def sha256_file(path: pathlib.Path) -> str:
@@ -35,6 +42,63 @@ def resolve_binary(binary: str) -> pathlib.Path:
     if resolved is None:
         raise SystemExit(f"benchmark binary not found: {binary}")
     return pathlib.Path(resolved).resolve()
+
+
+def validate_source_revision(source_revision: str) -> str:
+    if not LOWER_SOURCE_REVISION.fullmatch(source_revision or ""):
+        raise SystemExit("--source-revision must be an exact lowercase 40-character commit SHA")
+    return source_revision
+
+
+def release_artifact_metadata(
+    release_tag: Optional[str],
+    release_asset: Optional[str],
+    target: Optional[str],
+    archive_sha256: Optional[str],
+) -> dict:
+    values = (release_tag, release_asset, target, archive_sha256)
+    if not any(values):
+        return {"kind": "source-build"}
+    if not all(values):
+        raise SystemExit(
+            "published release identity requires --release-tag, --release-asset, "
+            "--target, and --archive-sha256"
+        )
+    if not LOWER_SHA256.fullmatch(archive_sha256 or ""):
+        raise SystemExit("--archive-sha256 must be an exact lowercase 64-character SHA-256")
+    return {
+        "kind": "published-release",
+        "releaseTag": release_tag,
+        "releaseAsset": release_asset,
+        "target": target,
+        "archiveSha256": archive_sha256,
+    }
+
+
+def delete_qdrant_collection_if_exists(collection_name: str) -> None:
+    base_url = os.environ.get("NAHUALI_QDRANT_URL", "http://localhost:16333").rstrip("/")
+    endpoint = f"{base_url}/collections/{urlparse.quote(collection_name, safe='')}"
+    request = urlrequest.Request(endpoint, method="DELETE")
+    qdrant_token = os.environ.get("NAHUALI_QDRANT_API_KEY", "").strip()
+    if qdrant_token:
+        request.add_header("api-key", qdrant_token)
+    try:
+        with urlrequest.urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urlerror.HTTPError as error:
+        if error.code == 404:
+            return
+        raise RuntimeError(
+            f"failed to delete benchmark Qdrant collection {collection_name}: HTTP {error.code}"
+        ) from error
+    except urlerror.URLError as error:
+        raise RuntimeError(
+            f"failed to delete benchmark Qdrant collection {collection_name}: {error.reason}"
+        ) from error
+    if payload.get("status") != "ok":
+        raise RuntimeError(
+            f"failed to delete benchmark Qdrant collection {collection_name}: unexpected response"
+        )
 
 
 def command(
@@ -211,14 +275,19 @@ def evaluate_mode(
     }
 
 
-def run(binary: str, cases_path: pathlib.Path, source_revision: str) -> dict:
-    if not source_revision or len(source_revision) != 40:
-        raise SystemExit("--source-revision must be the exact 40-character source commit")
+def run(
+    binary: str,
+    cases_path: pathlib.Path,
+    source_revision: str,
+    artifact_metadata: Optional[dict] = None,
+) -> dict:
+    source_revision = validate_source_revision(source_revision)
     binary_path = resolve_binary(binary)
     cases = json.loads(cases_path.read_text(encoding="utf-8"))
     root = pathlib.Path(tempfile.mkdtemp(prefix="nahuali-retrieval-benchmark-"))
     home = root / "home"
     collection = f"nahuali_retrieval_eval_{os.getpid()}"
+    cleanup_collections = {collection, f"{collection}__memory"}
     deterministic_env = {
         "NAHUALI_QDRANT_COLLECTION": collection,
         "NAHUALI_EMBEDDING_PROVIDER": "deterministic",
@@ -278,6 +347,7 @@ def run(binary: str, cases_path: pathlib.Path, source_revision: str) -> dict:
                 "name": binary_path.name,
                 "sha256": sha256_file(binary_path),
                 "sourceRevision": source_revision,
+                **(artifact_metadata or {"kind": "source-build"}),
             },
             "runner": {
                 "relationship": "first-party",
@@ -292,7 +362,16 @@ def run(binary: str, cases_path: pathlib.Path, source_revision: str) -> dict:
             "modes": modes,
         }
     finally:
+        active_error = sys.exc_info()[0] is not None
+        cleanup_errors = []
+        for collection_name in cleanup_collections:
+            try:
+                delete_qdrant_collection_if_exists(collection_name)
+            except RuntimeError as error:
+                cleanup_errors.append(str(error))
         shutil.rmtree(root, ignore_errors=True)
+        if cleanup_errors and not active_error:
+            raise RuntimeError("; ".join(cleanup_errors))
 
 
 def main() -> None:
@@ -300,9 +379,24 @@ def main() -> None:
     parser.add_argument("--binary", default="nahuali")
     parser.add_argument("--cases", type=pathlib.Path, default=DEFAULT_CASES)
     parser.add_argument("--source-revision", required=True)
+    parser.add_argument("--release-tag")
+    parser.add_argument("--release-asset")
+    parser.add_argument("--target")
+    parser.add_argument("--archive-sha256")
     parser.add_argument("--output", type=pathlib.Path)
     arguments = parser.parse_args()
-    report = run(arguments.binary, arguments.cases.resolve(), arguments.source_revision)
+    artifact_metadata = release_artifact_metadata(
+        arguments.release_tag,
+        arguments.release_asset,
+        arguments.target,
+        arguments.archive_sha256,
+    )
+    report = run(
+        arguments.binary,
+        arguments.cases.resolve(),
+        arguments.source_revision,
+        artifact_metadata,
+    )
     rendered = json.dumps(report, indent=2) + "\n"
     if arguments.output:
         arguments.output.parent.mkdir(parents=True, exist_ok=True)

@@ -88,22 +88,13 @@ release_train="$(printf '%s' "$allowed_base" | cut -d. -f1-2)"
 grep -Fq "release-${release_train}_beta" README.md \
   || fail "README.md release badge must match the approved $release_train beta train"
 
-benchmark_link="$(
-  sed -n 's/.*](results\/\(nahuali-[^)]*\.json\)).*/\1/p' \
-    benchmarks/agent-memory-trust/README.md \
-    | head -n 1
-)"
-[[ -n "$benchmark_link" ]] \
-  || fail "trust benchmark table must link a published Nahuali result"
+benchmark_link="nahuali-$version.json"
 benchmark_result="benchmarks/agent-memory-trust/results/$benchmark_link"
 [[ -f "$benchmark_result" ]] \
-  || fail "linked trust benchmark result does not exist: $benchmark_link"
-benchmark_version="${benchmark_link#nahuali-}"
-benchmark_version="${benchmark_version%.json}"
-[[ "$benchmark_version" =~ ^0\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]] \
-  || fail "published trust benchmark must remain a pre-1.0 beta result"
-[[ "$benchmark_version" == "$version" ]] \
-  || fail "published trust benchmark $benchmark_version does not match product version $version"
+  || fail "version-matched trust benchmark result does not exist: $benchmark_link"
+grep -Fq "](results/$benchmark_link)" benchmarks/agent-memory-trust/README.md \
+  || fail "trust benchmark README must link the version-matched result: $benchmark_link"
+benchmark_version="$version"
 benchmark_system_version="$(jq -r '.system.version' "$benchmark_result")"
 [[ "$benchmark_system_version" == "nahuali $benchmark_version" ]] \
   || fail "published trust benchmark version disagrees with its linked filename"
@@ -115,5 +106,27 @@ benchmark_digest="$(jq -r '.artifact.sha256 // empty' "$benchmark_result")"
 benchmark_source_revision="$(jq -r '.artifact.sourceRevision // empty' "$benchmark_result")"
 [[ "$benchmark_source_revision" =~ ^[0-9a-f]{40}$ ]] \
   || fail "published trust benchmark must identify the release source revision"
+benchmark_artifact_kind="$(jq -r '.artifact.kind // empty' "$benchmark_result")"
+case "$benchmark_artifact_kind" in
+  source-build)
+    [[ "$(jq -r '[.artifact.releaseTag, .artifact.releaseAsset, .artifact.target, .artifact.archiveSha256] | map(select(. != null)) | length' "$benchmark_result")" == "0" ]] \
+      || fail "source-build benchmark results must not carry published-release metadata"
+    ;;
+  published-release)
+    benchmark_release_tag="$(jq -r '.artifact.releaseTag // empty' "$benchmark_result")"
+    benchmark_release_asset="$(jq -r '.artifact.releaseAsset // empty' "$benchmark_result")"
+    benchmark_release_target="$(jq -r '.artifact.target // empty' "$benchmark_result")"
+    benchmark_archive_digest="$(jq -r '.artifact.archiveSha256 // empty' "$benchmark_result")"
+    [[ "$benchmark_release_tag" == "v$version" ]] \
+      || fail "published-release benchmark tag must match v$version"
+    [[ "$benchmark_release_asset" == "nahuali-v${version}-${benchmark_release_target}.tar.gz" ]] \
+      || fail "published-release benchmark archive name must match its version and target"
+    [[ "$benchmark_archive_digest" =~ ^[0-9a-f]{64}$ ]] \
+      || fail "published-release benchmark must identify the release archive by SHA-256"
+    ;;
+  *)
+    fail "trust benchmark artifact.kind must be source-build or published-release"
+    ;;
+esac
 
 echo "version-policy: $version is one coherent pre-1.0 product release"

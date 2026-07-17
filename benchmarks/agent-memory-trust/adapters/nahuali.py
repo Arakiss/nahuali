@@ -6,11 +6,16 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import tempfile
 import time
 from typing import Optional
+
+
+LOWER_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+LOWER_SOURCE_REVISION = re.compile(r"^[0-9a-f]{40}$")
 
 
 def command(binary: str, home: pathlib.Path, *args: str, json_output: bool = True):
@@ -59,6 +64,37 @@ def sha256_file(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
+def validate_source_revision(source_revision: str) -> str:
+    if not LOWER_SOURCE_REVISION.fullmatch(source_revision or ""):
+        raise SystemExit("--source-revision must be an exact lowercase 40-character commit SHA")
+    return source_revision
+
+
+def release_artifact_metadata(
+    release_tag: Optional[str],
+    release_asset: Optional[str],
+    target: Optional[str],
+    archive_sha256: Optional[str],
+) -> dict:
+    values = (release_tag, release_asset, target, archive_sha256)
+    if not any(values):
+        return {"kind": "source-build"}
+    if not all(values):
+        raise SystemExit(
+            "published release identity requires --release-tag, --release-asset, "
+            "--target, and --archive-sha256"
+        )
+    if not LOWER_SHA256.fullmatch(archive_sha256 or ""):
+        raise SystemExit("--archive-sha256 must be an exact lowercase 64-character SHA-256")
+    return {
+        "kind": "published-release",
+        "releaseTag": release_tag,
+        "releaseAsset": release_asset,
+        "target": target,
+        "archiveSha256": archive_sha256,
+    }
+
+
 def normalize_verdict(mode: str, can_trust: Optional[bool] = None) -> str:
     if can_trust is False:
         return "refused"
@@ -73,11 +109,28 @@ def observed_case(case_id: str, passed: bool, **observation) -> dict:
     return {"id": case_id, "status": "pass" if passed else "fail", **observation}
 
 
-def run(binary: str, source_revision: Optional[str] = None) -> dict:
+def run(
+    binary: str,
+    source_revision: str,
+    artifact_metadata: Optional[dict] = None,
+) -> dict:
+    source_revision = validate_source_revision(source_revision)
     binary_path = resolve_binary(binary)
+    root = pathlib.Path(tempfile.mkdtemp(prefix="nahuali-trust-benchmark-"))
+    try:
+        return run_at_root(binary_path, source_revision, artifact_metadata or {"kind": "source-build"}, root)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def run_at_root(
+    binary_path: pathlib.Path,
+    source_revision: str,
+    artifact_metadata: dict,
+    root: pathlib.Path,
+) -> dict:
     binary = str(binary_path)
     binary_sha256 = sha256_file(binary_path)
-    root = pathlib.Path(tempfile.mkdtemp(prefix="nahuali-trust-benchmark-"))
     supported_home = root / "supported"
     command(binary, supported_home, "remember", "Lena owns release notes", "--json")
     command(
@@ -198,6 +251,7 @@ def run(binary: str, source_revision: Optional[str] = None) -> dict:
             "name": binary_path.name,
             "sha256": binary_sha256,
             "sourceRevision": source_revision,
+            **artifact_metadata,
         },
         "runner": {
             "relationship": "first-party",
@@ -274,10 +328,20 @@ def run(binary: str, source_revision: Optional[str] = None) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", default="nahuali")
-    parser.add_argument("--source-revision")
+    parser.add_argument("--source-revision", required=True)
+    parser.add_argument("--release-tag")
+    parser.add_argument("--release-asset")
+    parser.add_argument("--target")
+    parser.add_argument("--archive-sha256")
     parser.add_argument("--output", type=pathlib.Path)
     arguments = parser.parse_args()
-    report = run(arguments.binary, arguments.source_revision)
+    artifact_metadata = release_artifact_metadata(
+        arguments.release_tag,
+        arguments.release_asset,
+        arguments.target,
+        arguments.archive_sha256,
+    )
+    report = run(arguments.binary, arguments.source_revision, artifact_metadata)
     encoded = json.dumps(report, indent=2) + "\n"
     if arguments.output:
         arguments.output.parent.mkdir(parents=True, exist_ok=True)
