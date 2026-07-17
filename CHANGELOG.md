@@ -13,6 +13,21 @@ release histories.
   to restart its host after an upgrade, preventing old and new embedded engine
   versions from opening the same store.
 
+## [0.8.0-beta.7](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.6...v0.8.0-beta.7) (2026-07-17)
+
+
+### New
+
+* make ledger checkpoints independently verifiable ([97b6bd0](https://github.com/Arakiss/nahuali/commit/97b6bd0a04b23fb77210190dba802e7b4082007c))
+* make trust evidence portable and understandable ([b9d28fe](https://github.com/Arakiss/nahuali/commit/b9d28fe66a1682b31781e408df805b8f8ff0656b))
+
+
+### Fixed
+
+* keep the TUI mascot visually canonical ([e130f6f](https://github.com/Arakiss/nahuali/commit/e130f6fa0723556b79cdc84db44b98adbac8f219))
+* make graph projection rebuilds atomic and verifiable ([b2c225a](https://github.com/Arakiss/nahuali/commit/b2c225adc5f5b47b2b4f59a023f2c357efbda1da))
+* make ledger verification fail closed ([8a4c281](https://github.com/Arakiss/nahuali/commit/8a4c281165c3d0520c70e9343d3f431e37a133fc))
+
 ## [0.8.0-beta.6](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.5...v0.8.0-beta.6) (2026-07-16)
 
 
