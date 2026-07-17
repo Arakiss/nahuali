@@ -41,6 +41,8 @@ mod audit;
 mod authority;
 mod backup;
 mod briefing;
+#[cfg(feature = "attestation")]
+mod checkpoint;
 mod consolidation_plan;
 mod database;
 mod error;
@@ -103,6 +105,16 @@ pub use briefing::{
     BriefingEpisode, BriefingGraphSeed, BriefingIntention, BriefingOptions, BriefingSummary,
     MEMORY_BRIEFING_VERSION, MemoryBriefingReport,
 };
+#[cfg(feature = "attestation")]
+pub use checkpoint::{
+    CHECKPOINT_TRUST_POLICY_VERSION, CheckpointHashAlgorithm, CheckpointMatchMode,
+    CheckpointPolicyKey, CheckpointSignatureAlgorithm, CheckpointSignatureEvaluationV2,
+    CheckpointSignatureV2, CheckpointTreeAlgorithm, CheckpointTrustPolicyV2,
+    CheckpointVerificationOptionsV2, CheckpointVerificationV2, DEFAULT_CHECKPOINT_FUTURE_SKEW_MS,
+    LEDGER_CHECKPOINT_VERSION, LedgerCheckpointV2, MAX_CHECKPOINT_SIGNATURES,
+    SignedLedgerCheckpointV2, add_checkpoint_signature_v2, checkpoint_policy_key_v2,
+    checkpoint_signing_message_v2, sign_checkpoint_v2,
+};
 pub use consolidation_plan::{
     ConsolidationBlockedItem, ConsolidationGate, ConsolidationOperation,
     ConsolidationOperationKind, ConsolidationOperationStatus, ConsolidationPlanOptions,
@@ -163,8 +175,10 @@ pub use maintenance::{
 };
 #[cfg(feature = "tamper-evidence")]
 pub use merkle::{
-    ConsistencyVerdict, MerkleProof, MerkleSibling, ledger_append_only, ledger_inclusion_proof,
-    ledger_merkle_root, merkle_proof, merkle_root, verify_append_only, verify_merkle_proof,
+    ConsistencyVerdict, MAX_CONSISTENCY_PROOF_HASHES, MerkleConsistencyProof, MerkleProof,
+    MerkleSibling, ledger_append_only, ledger_consistency_proof, ledger_inclusion_proof,
+    ledger_merkle_root, merkle_consistency_proof, merkle_proof, merkle_root, verify_append_only,
+    verify_merkle_consistency_proof, verify_merkle_proof,
 };
 pub use model::{
     Claim, Entity, Episode, Fact, Intention, IntentionKind, IntentionPriority, IntentionStatus,

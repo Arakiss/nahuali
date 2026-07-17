@@ -115,6 +115,9 @@ fn grouped_commands() -> String {
     #[cfg(feature = "attestation")]
     let attest = "  attest-sign           Sign the current ledger chain tip with an Ed25519 key
   attest-verify         Verify a signed chain-tip receipt against the live ledger
+  checkpoint-policy-init  Create an external trust policy for signed ledger checkpoints
+  checkpoint-sign       Sign the current ledger checkpoint under an external policy
+  checkpoint-verify     Verify a signed checkpoint against the ledger and external policy
 ";
     #[cfg(not(feature = "attestation"))]
     let attest = "";
@@ -894,6 +897,55 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         #[arg(long)]
         json: bool,
     },
+    #[cfg(feature = "attestation")]
+    #[command(about = "Create an external trust policy for signed ledger checkpoints.")]
+    CheckpointPolicyInit {
+        /// Stable operator-selected name for this ledger origin.
+        #[arg(long, value_name = "ORIGIN")]
+        origin: String,
+        /// Stable signer identifier. Repeat in the same order as `--key-file`.
+        #[arg(long = "key-id", value_name = "ID", required = true)]
+        key_ids: Vec<String>,
+        /// File containing a hex-encoded Ed25519 seed. Repeat with `--key-id`.
+        #[arg(long = "key-file", value_name = "PATH", required = true)]
+        key_files: Vec<PathBuf>,
+        /// Number of distinct active signatures required for trust.
+        #[arg(long, value_name = "N", default_value_t = 1)]
+        minimum_signatures: u32,
+        /// New policy file to create. Existing files are never overwritten.
+        #[arg(long, short = 'o', value_name = "PATH")]
+        output: PathBuf,
+    },
+    #[cfg(feature = "attestation")]
+    #[command(about = "Sign the current ledger checkpoint under an external policy.")]
+    CheckpointSign {
+        /// External operator trust policy authorizing the supplied signing keys.
+        #[arg(long, value_name = "PATH")]
+        policy: PathBuf,
+        /// Stable signer identifier. Repeat in the same order as `--key-file`.
+        #[arg(long = "key-id", value_name = "ID", required = true)]
+        key_ids: Vec<String>,
+        /// File containing a hex-encoded Ed25519 seed. Repeat with `--key-id`.
+        #[arg(long = "key-file", value_name = "PATH", required = true)]
+        key_files: Vec<PathBuf>,
+        /// New signed-checkpoint file to create. Existing files are never overwritten.
+        #[arg(long, short = 'o', value_name = "PATH")]
+        output: PathBuf,
+    },
+    #[cfg(feature = "attestation")]
+    #[command(about = "Verify a signed checkpoint against the ledger and an external policy.")]
+    CheckpointVerify {
+        #[arg(value_name = "CHECKPOINT")]
+        checkpoint: PathBuf,
+        /// External operator trust policy. The checkpoint never supplies its own trust root.
+        #[arg(long, value_name = "PATH")]
+        policy: PathBuf,
+        /// Require the current ledger tip or allow a fully verified historical prefix.
+        #[arg(long, value_enum, default_value = "current")]
+        mode: CliCheckpointMode,
+        #[arg(long)]
+        json: bool,
+    },
     #[command(about = "Print a non-destructive maintenance report.")]
     Maintenance {
         #[arg(long)]
@@ -1103,6 +1155,23 @@ impl From<CliShell> for clap_complete::Shell {
             CliShell::Fish => Self::Fish,
             CliShell::PowerShell => Self::PowerShell,
             CliShell::Elvish => Self::Elvish,
+        }
+    }
+}
+
+#[cfg(feature = "attestation")]
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub(crate) enum CliCheckpointMode {
+    Current,
+    Historical,
+}
+
+#[cfg(feature = "attestation")]
+impl From<CliCheckpointMode> for nahuali_core::CheckpointMatchMode {
+    fn from(value: CliCheckpointMode) -> Self {
+        match value {
+            CliCheckpointMode::Current => Self::Current,
+            CliCheckpointMode::Historical => Self::Historical,
         }
     }
 }
@@ -1335,6 +1404,50 @@ mod tests {
             assert!(help.contains("ingest-text"));
             assert!(help.contains("ingest-dir"));
             assert!(help.contains("validate"));
+            #[cfg(feature = "attestation")]
+            {
+                assert!(help.contains("checkpoint-policy-init"));
+                assert!(help.contains("checkpoint-sign"));
+                assert!(help.contains("checkpoint-verify"));
+            }
+        });
+    }
+
+    #[cfg(feature = "attestation")]
+    #[test]
+    fn checkpoint_help_requires_external_policy_and_bounded_output_paths() {
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            let policy_init = command
+                .find_subcommand_mut("checkpoint-policy-init")
+                .expect("checkpoint-policy-init subcommand exists");
+            let policy_help = policy_init.render_long_help().to_string();
+            assert!(policy_help.contains("--origin"));
+            assert!(policy_help.contains("--key-id"));
+            assert!(policy_help.contains("--key-file"));
+            assert!(policy_help.contains("--minimum-signatures"));
+            assert!(policy_help.contains("--output"));
+
+            let mut command = Cli::command();
+            let sign = command
+                .find_subcommand_mut("checkpoint-sign")
+                .expect("checkpoint-sign subcommand exists");
+            let sign_help = sign.render_long_help().to_string();
+            assert!(sign_help.contains("--policy"));
+            assert!(sign_help.contains("--key-id"));
+            assert!(sign_help.contains("--key-file"));
+            assert!(sign_help.contains("--output"));
+
+            let mut command = Cli::command();
+            let verify = command
+                .find_subcommand_mut("checkpoint-verify")
+                .expect("checkpoint-verify subcommand exists");
+            let verify_help = verify.render_long_help().to_string();
+            assert!(verify_help.contains("--policy"));
+            assert!(verify_help.contains("--mode"));
+            assert!(verify_help.contains("current"));
+            assert!(verify_help.contains("historical"));
+            assert!(verify_help.contains("--json"));
         });
     }
 

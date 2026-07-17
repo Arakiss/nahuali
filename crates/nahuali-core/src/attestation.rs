@@ -405,7 +405,7 @@ pub fn verify_attestation_with_keyring(
     })
 }
 
-fn encode_hex(bytes: &[u8]) -> String {
+pub(crate) fn encode_hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
         out.push(char::from_digit((byte >> 4) as u32, 16).expect("nibble is a hex digit"));
@@ -414,7 +414,7 @@ fn encode_hex(bytes: &[u8]) -> String {
     out
 }
 
-fn decode_fixed<const N: usize>(hex: &str, label: &str) -> Result<[u8; N]> {
+pub(crate) fn decode_fixed<const N: usize>(hex: &str, label: &str) -> Result<[u8; N]> {
     let hex = hex.trim();
     if hex.len() != N * 2 {
         return Err(NahualiError::Attestation {

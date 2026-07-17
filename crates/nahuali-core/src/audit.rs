@@ -193,12 +193,23 @@ impl MemoryEngine {
 /// Audit a slice of validated event envelopes. Pure over its inputs so it can be
 /// exercised with synthetic and deliberately broken ledgers in tests.
 pub fn audit_events(events: &[EventEnvelope], options: &LedgerAuditOptions) -> LedgerAudit {
-    let latest_sequence = events.last().map(|event| event.sequence).unwrap_or(0);
     let from_sequence = options.from_sequence.unwrap_or(0);
-    let to_sequence = options
+    // A valid ledger's first N physical records are exactly sequences 1..=N.
+    // Resolve the upper bound to that physical prefix before reading sequence
+    // values so duplicate or regressive sequence numbers cannot hide records
+    // from the integrity verdict. On valid history this remains identical to a
+    // sequence bound; on malformed history it fails closed over the records
+    // that physically occupy the claimed prefix.
+    let prefix_len = options
         .to_sequence
-        .unwrap_or(latest_sequence)
-        .min(latest_sequence);
+        .map(|bound| {
+            usize::try_from(bound)
+                .unwrap_or(events.len())
+                .min(events.len())
+        })
+        .unwrap_or(events.len());
+    let prefix = &events[..prefix_len];
+    let to_sequence = u64::try_from(prefix_len).unwrap_or(u64::MAX);
 
     let in_range = |event: &EventEnvelope| -> bool {
         event.sequence > from_sequence
@@ -213,7 +224,7 @@ pub fn audit_events(events: &[EventEnvelope], options: &LedgerAuditOptions) -> L
 
     let mut counts = LedgerAuditCounts::default();
     let mut entries = Vec::new();
-    for event in events.iter().filter(|event| in_range(event)) {
+    for event in prefix.iter().filter(|event| in_range(event)) {
         count_event(&mut counts, &event.payload);
         entries.push(LedgerAuditEntry {
             sequence: event.sequence,
@@ -228,11 +239,6 @@ pub fn audit_events(events: &[EventEnvelope], options: &LedgerAuditOptions) -> L
     let from_timestamp_ms = entries.first().map(|entry| entry.timestamp_ms);
     let to_timestamp_ms = entries.last().map(|entry| entry.timestamp_ms);
 
-    let prefix_len = events
-        .iter()
-        .take_while(|event| event.sequence <= to_sequence)
-        .count();
-    let prefix = &events[..prefix_len];
     let integrity = audit_integrity(prefix);
     #[cfg(feature = "tamper-evidence")]
     let (from_tip, to_tip) = if integrity.verified {
@@ -281,9 +287,10 @@ fn audit_integrity(prefix: &[EventEnvelope]) -> LedgerAuditIntegrity {
         LedgerChainStatus::Empty | LedgerChainStatus::Verified
     );
     #[cfg(feature = "tamper-evidence")]
-    let merkle_root = (chain_status == LedgerChainStatus::Verified)
-        .then(|| crate::ledger_merkle_root(prefix))
-        .flatten();
+    let merkle_root =
+        (checksums_valid && sequence_contiguous && chain_status == LedgerChainStatus::Verified)
+            .then(|| crate::ledger_merkle_root(prefix))
+            .flatten();
 
     #[cfg(feature = "tamper-evidence")]
     let verified = checksums_valid && sequence_contiguous && chain_intact;
@@ -504,6 +511,81 @@ mod tests {
         assert!(audit.integrity.verified);
         assert_eq!(audit.entries[1].kind, LedgerAuditEventKind::FactAsserted);
         assert_eq!(audit.entries[1].summary, "Lena owns the release notes");
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn default_audit_never_skips_an_out_of_order_chained_record() {
+        let first = EventEnvelope::with_chain(1, 1000, episode("first"), None);
+        let third = EventEnvelope::with_chain(3, 2000, episode("third"), Some(&first.chain_hash()));
+        let second =
+            EventEnvelope::with_chain(2, 3000, episode("second"), Some(&third.chain_hash()));
+        let events = vec![first, third, second];
+
+        assert!(events.iter().all(EventEnvelope::validate_checksum));
+        assert!(crate::verify_event_chain(&events).is_none());
+
+        let audit = audit_events(&events, &LedgerAuditOptions::default());
+        assert_eq!(audit.to_sequence, 3);
+        assert_eq!(audit.total_event_count, 3);
+        assert!(!audit.integrity.sequence_contiguous);
+        assert!(!audit.integrity.verified);
+        assert!(audit.integrity.merkle_root.is_none());
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn default_audit_rejects_a_duplicate_sequence_at_the_physical_tail() {
+        let first = EventEnvelope::with_chain(1, 1000, episode("first"), None);
+        let duplicate =
+            EventEnvelope::with_chain(1, 2000, episode("duplicate"), Some(&first.chain_hash()));
+        let events = vec![first, duplicate];
+
+        assert!(events.iter().all(EventEnvelope::validate_checksum));
+        assert!(crate::verify_event_chain(&events).is_none());
+
+        let audit = audit_events(&events, &LedgerAuditOptions::default());
+        assert_eq!(audit.to_sequence, 2);
+        assert_eq!(audit.range_event_count, 2);
+        assert_eq!(audit.entries.len(), 2);
+        assert!(!audit.integrity.sequence_contiguous);
+        assert!(!audit.integrity.verified);
+        assert!(audit.integrity.merkle_root.is_none());
+    }
+
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn bounded_audit_uses_one_physical_prefix_for_entries_and_integrity() {
+        let first = EventEnvelope::with_chain(1, 1000, episode("first"), None);
+        let second =
+            EventEnvelope::with_chain(2, 2000, episode("second"), Some(&first.chain_hash()));
+        let duplicate = EventEnvelope::with_chain(
+            2,
+            3000,
+            episode("duplicate outside prefix"),
+            Some(&second.chain_hash()),
+        );
+        let events = vec![first, second, duplicate];
+
+        let audit = audit_events(
+            &events,
+            &LedgerAuditOptions {
+                to_sequence: Some(2),
+                ..LedgerAuditOptions::default()
+            },
+        );
+
+        assert_eq!(audit.to_sequence, 2);
+        assert_eq!(audit.total_event_count, 3);
+        assert_eq!(audit.range_event_count, 2);
+        assert_eq!(audit.entries.len(), 2);
+        assert_eq!(audit.entries[1].summary, "second");
+        assert!(audit.integrity.sequence_contiguous);
+        assert!(audit.integrity.verified);
+        assert_eq!(
+            audit.integrity.merkle_root,
+            crate::ledger_merkle_root(&events[..2])
+        );
     }
 
     #[test]

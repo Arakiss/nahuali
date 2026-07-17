@@ -2,6 +2,8 @@ mod artifacts;
 #[cfg(feature = "attestation")]
 mod attestation;
 mod audit;
+#[cfg(feature = "attestation")]
+mod checkpoint;
 mod config;
 mod demo;
 #[cfg(feature = "tui")]
@@ -522,6 +524,35 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             keyring,
             json,
         } => attestation::verify(&mut memory, &path, keyring.as_deref(), json)?,
+        #[cfg(feature = "attestation")]
+        Command::CheckpointPolicyInit {
+            origin,
+            key_ids,
+            key_files,
+            minimum_signatures,
+            output,
+        } => checkpoint::policy_init(
+            &mut memory,
+            &origin,
+            &key_ids,
+            &key_files,
+            minimum_signatures,
+            &output,
+        )?,
+        #[cfg(feature = "attestation")]
+        Command::CheckpointSign {
+            policy,
+            key_ids,
+            key_files,
+            output,
+        } => checkpoint::sign(&mut memory, &policy, &key_ids, &key_files, &output)?,
+        #[cfg(feature = "attestation")]
+        Command::CheckpointVerify {
+            checkpoint: path,
+            policy,
+            mode,
+            json,
+        } => checkpoint::verify(&mut memory, &path, &policy, mode.into(), json)?,
         Command::Audit {
             from,
             to,

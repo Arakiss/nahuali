@@ -21,6 +21,8 @@ fn assert_pretty_json(output: &str) {
 }
 
 include!("operator_path_cases/audit.rs");
+#[cfg(feature = "attestation")]
+include!("operator_path_cases/checkpoint.rs");
 include!("operator_path_cases/trust_report.rs");
 include!("operator_path_cases/memory.rs");
 include!("operator_path_cases/scopes.rs");

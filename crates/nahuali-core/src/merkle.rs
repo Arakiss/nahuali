@@ -180,6 +180,131 @@ pub fn ledger_inclusion_proof(events: &[EventEnvelope], index: usize) -> Option<
     merkle_proof(&leaves, index)
 }
 
+/// Maximum number of hashes accepted in a consistency proof over a `u64`
+/// sized tree.
+pub const MAX_CONSISTENCY_PROOF_HASHES: usize = u64::BITS as usize + 1;
+
+/// Compact evidence that one `nahuali-merkle-v1` tree is an append-only prefix
+/// of a later tree.
+///
+/// The proof shape follows the RFC 9162 consistency algorithm, but its hashes
+/// deliberately remain Nahuali's historical domain-separated v1 hashes. It is
+/// therefore RFC-shaped, not byte-compatible with Certificate Transparency.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MerkleConsistencyProof {
+    /// Leaf count committed by the earlier root.
+    pub old_leaf_count: u64,
+    /// Leaf count committed by the later root.
+    pub new_leaf_count: u64,
+    /// Canonical lowercase subtree hashes in verification order.
+    pub hashes: Vec<String>,
+}
+
+/// Build a compact consistency proof from an earlier prefix to the full tree.
+///
+/// Returns `None` for an empty prefix, a prefix larger than the tree, or a tree
+/// whose size cannot be represented as `u64`. An unchanged non-empty tree has
+/// a valid empty proof.
+pub fn merkle_consistency_proof(
+    leaves: &[String],
+    old_leaf_count: usize,
+) -> Option<MerkleConsistencyProof> {
+    if old_leaf_count == 0 || old_leaf_count > leaves.len() {
+        return None;
+    }
+    let old_size = u64::try_from(old_leaf_count).ok()?;
+    let new_size = u64::try_from(leaves.len()).ok()?;
+    let mut hashes = Vec::new();
+    consistency_subproof(leaves, old_leaf_count, true, &mut hashes)?;
+    if hashes.len() > MAX_CONSISTENCY_PROOF_HASHES {
+        return None;
+    }
+    Some(MerkleConsistencyProof {
+        old_leaf_count: old_size,
+        new_leaf_count: new_size,
+        hashes,
+    })
+}
+
+/// Verify a compact append-only consistency proof from `old_root` to
+/// `new_root`, using only the two authenticated roots, their sizes, and the
+/// proof hashes.
+///
+/// Sizes are taken from the proof so callers must bind the proof to signed
+/// checkpoints before treating either size as authoritative.
+pub fn verify_merkle_consistency_proof(
+    old_root: &str,
+    new_root: &str,
+    proof: &MerkleConsistencyProof,
+) -> bool {
+    if proof.old_leaf_count == 0
+        || proof.old_leaf_count > proof.new_leaf_count
+        || !is_canonical_sha256_hex(old_root)
+        || !is_canonical_sha256_hex(new_root)
+        || proof.hashes.len() > MAX_CONSISTENCY_PROOF_HASHES
+        || proof
+            .hashes
+            .iter()
+            .any(|hash| !is_canonical_sha256_hex(hash))
+    {
+        return false;
+    }
+
+    if proof.old_leaf_count == proof.new_leaf_count {
+        return proof.hashes.is_empty() && old_root == new_root;
+    }
+
+    let mut old_index = proof.old_leaf_count - 1;
+    let mut new_index = proof.new_leaf_count - 1;
+    while old_index & 1 == 1 {
+        old_index >>= 1;
+        new_index >>= 1;
+    }
+
+    let (mut old_hash, mut new_hash, mut proof_index) = if old_index == 0 {
+        (old_root.to_string(), old_root.to_string(), 0usize)
+    } else {
+        let Some(first) = proof.hashes.first() else {
+            return false;
+        };
+        (first.clone(), first.clone(), 1usize)
+    };
+
+    while let Some(hash) = proof.hashes.get(proof_index) {
+        if new_index == 0 {
+            return false;
+        }
+
+        if old_index & 1 == 1 || old_index == new_index {
+            old_hash = node_hash(hash, &old_hash);
+            new_hash = node_hash(hash, &new_hash);
+            while old_index != 0 && old_index & 1 == 0 {
+                old_index >>= 1;
+                new_index >>= 1;
+            }
+        } else {
+            new_hash = node_hash(&new_hash, hash);
+        }
+
+        old_index >>= 1;
+        new_index >>= 1;
+        proof_index += 1;
+    }
+
+    new_index == 0 && old_hash == old_root && new_hash == new_root
+}
+
+/// Compact consistency proof between an earlier event count and the current
+/// ledger root, using each event's chain hash as the Merkle leaf.
+pub fn ledger_consistency_proof(
+    events: &[EventEnvelope],
+    old_event_count: usize,
+) -> Option<MerkleConsistencyProof> {
+    let leaves: Vec<String> = events.iter().map(EventEnvelope::chain_hash).collect();
+    merkle_consistency_proof(&leaves, old_event_count)
+}
+
 /// A verdict for whether one Merkle commitment is an append-only extension of an
 /// earlier one: the earlier leaves are an unchanged prefix of the later ones.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -201,10 +326,9 @@ pub struct ConsistencyVerdict {
 ///
 /// This is the leaf-backed check -- the caller holds the later ledger's leaves
 /// and the earlier root, which is the local audit case (you have both states).
-/// It proves the earlier history was not rewritten. A *succinct* consistency
-/// proof, which a remote witness could check without holding the full prefix, is
-/// deliberately left as future work rather than shipped in a rushed, hard-to-
-/// audit form.
+/// It proves the earlier history was not rewritten. Use
+/// [`verify_merkle_consistency_proof`] when the verifier holds only signed roots
+/// and a compact proof rather than the complete later ledger.
 pub fn verify_append_only(
     old_root: &str,
     old_leaf_count: usize,
@@ -255,6 +379,38 @@ fn fold_level(level: &[String]) -> Vec<String> {
     next
 }
 
+fn consistency_subproof(
+    leaves: &[String],
+    old_leaf_count: usize,
+    complete_subtree: bool,
+    hashes: &mut Vec<String>,
+) -> Option<()> {
+    if old_leaf_count == leaves.len() {
+        if !complete_subtree {
+            hashes.push(merkle_root(leaves)?);
+        }
+        return Some(());
+    }
+
+    let split = largest_power_of_two_less_than(leaves.len())?;
+    if old_leaf_count <= split {
+        consistency_subproof(&leaves[..split], old_leaf_count, complete_subtree, hashes)?;
+        hashes.push(merkle_root(&leaves[split..])?);
+    } else {
+        consistency_subproof(&leaves[split..], old_leaf_count - split, false, hashes)?;
+        hashes.push(merkle_root(&leaves[..split])?);
+    }
+    Some(())
+}
+
+fn largest_power_of_two_less_than(value: usize) -> Option<usize> {
+    if value <= 1 {
+        return None;
+    }
+    let exponent = usize::BITS - (value - 1).leading_zeros() - 1;
+    Some(1usize << exponent)
+}
+
 fn leaf_hash(data: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(LEAF_DOMAIN);
@@ -288,16 +444,45 @@ fn is_sha256_hex(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
+fn is_canonical_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        EventEnvelope, ledger_append_only, ledger_inclusion_proof, ledger_merkle_root,
-        merkle_proof, merkle_root, verify_append_only, verify_merkle_proof,
+        EventEnvelope, MAX_CONSISTENCY_PROOF_HASHES, ledger_append_only, ledger_consistency_proof,
+        ledger_inclusion_proof, ledger_merkle_root, merkle_consistency_proof, merkle_proof,
+        merkle_root, verify_append_only, verify_merkle_consistency_proof, verify_merkle_proof,
     };
     use crate::event::{EpisodeRecorded, MemoryEvent};
 
     fn leaves(count: usize) -> Vec<String> {
         (0..count).map(|index| format!("leaf-{index}")).collect()
+    }
+
+    fn consistency_topology_hash_count(
+        old_leaf_count: u64,
+        new_leaf_count: u64,
+        complete_subtree: bool,
+    ) -> usize {
+        assert!(old_leaf_count > 0);
+        assert!(old_leaf_count <= new_leaf_count);
+        if old_leaf_count == new_leaf_count {
+            return if complete_subtree { 0 } else { 1 };
+        }
+
+        let exponent = u64::BITS - (new_leaf_count - 1).leading_zeros() - 1;
+        let split = 1u64 << exponent;
+        if old_leaf_count <= split {
+            consistency_topology_hash_count(old_leaf_count, split, complete_subtree) + 1
+        } else {
+            consistency_topology_hash_count(old_leaf_count - split, new_leaf_count - split, false)
+                + 1
+        }
     }
 
     #[test]
@@ -320,6 +505,149 @@ mod tests {
     #[test]
     fn root_is_deterministic() {
         assert_eq!(merkle_root(&leaves(6)), merkle_root(&leaves(6)));
+    }
+
+    #[test]
+    fn every_non_empty_prefix_has_a_compact_consistency_proof() {
+        for new_count in 1usize..=128 {
+            let new_leaves = leaves(new_count);
+            let new_root = merkle_root(&new_leaves).expect("new root");
+            for old_count in 1usize..=new_count {
+                let old_root = merkle_root(&new_leaves[..old_count]).expect("old root");
+                let proof = merkle_consistency_proof(&new_leaves, old_count)
+                    .expect("valid prefix has a consistency proof");
+
+                assert_eq!(proof.old_leaf_count, old_count as u64);
+                assert_eq!(proof.new_leaf_count, new_count as u64);
+                assert!(proof.hashes.len() <= MAX_CONSISTENCY_PROOF_HASHES);
+                assert!(
+                    verify_merkle_consistency_proof(&old_root, &new_root, &proof),
+                    "prefix {old_count} of {new_count} must verify"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn consistency_proof_bound_covers_the_full_u64_topology() {
+        let largest_tree = (1u64 << 63) + 1;
+        let required = consistency_topology_hash_count(3, largest_tree, true);
+
+        assert_eq!(required, 65);
+        assert_eq!(MAX_CONSISTENCY_PROOF_HASHES, required);
+    }
+
+    #[test]
+    fn unchanged_tree_has_an_empty_consistency_proof() {
+        let leaves = leaves(9);
+        let root = merkle_root(&leaves).expect("root");
+        let proof = merkle_consistency_proof(&leaves, leaves.len()).expect("proof");
+
+        assert!(proof.hashes.is_empty());
+        assert!(verify_merkle_consistency_proof(&root, &root, &proof));
+    }
+
+    #[test]
+    fn consistency_proof_rejects_rewrite_truncation_fork_and_tampering() {
+        let original = leaves(11);
+        let old_root = merkle_root(&original[..5]).expect("old root");
+        let new_root = merkle_root(&original).expect("new root");
+        let proof = merkle_consistency_proof(&original, 5).expect("proof");
+        assert!(verify_merkle_consistency_proof(
+            &old_root, &new_root, &proof
+        ));
+
+        let mut rewritten = original.clone();
+        rewritten[2] = "rewritten-history".to_string();
+        let rewritten_root = merkle_root(&rewritten).expect("rewritten root");
+        assert!(!verify_merkle_consistency_proof(
+            &old_root,
+            &rewritten_root,
+            &proof
+        ));
+
+        let truncated_root = merkle_root(&original[..8]).expect("truncated root");
+        let mut truncated = proof.clone();
+        truncated.new_leaf_count = 8;
+        assert!(!verify_merkle_consistency_proof(
+            &old_root,
+            &truncated_root,
+            &truncated
+        ));
+
+        let mut fork = original.clone();
+        fork[9] = "forked-suffix".to_string();
+        let fork_root = merkle_root(&fork).expect("fork root");
+        assert!(!verify_merkle_consistency_proof(
+            &old_root, &fork_root, &proof
+        ));
+
+        for index in 0..proof.hashes.len() {
+            let mut tampered = proof.clone();
+            tampered.hashes[index].replace_range(0..2, "ff");
+            assert!(!verify_merkle_consistency_proof(
+                &old_root, &new_root, &tampered
+            ));
+        }
+
+        let mut missing = proof.clone();
+        missing.hashes.pop();
+        assert!(!verify_merkle_consistency_proof(
+            &old_root, &new_root, &missing
+        ));
+
+        let mut extra = proof.clone();
+        extra.hashes.push("00".repeat(32));
+        assert!(!verify_merkle_consistency_proof(
+            &old_root, &new_root, &extra
+        ));
+    }
+
+    #[test]
+    fn consistency_proof_rejects_invalid_sizes_and_noncanonical_hashes() {
+        let leaves = leaves(4);
+        let old_root = merkle_root(&leaves[..2]).expect("old root");
+        let new_root = merkle_root(&leaves).expect("new root");
+        let proof = merkle_consistency_proof(&leaves, 2).expect("proof");
+
+        assert!(merkle_consistency_proof(&leaves, 0).is_none());
+        assert!(merkle_consistency_proof(&leaves, 5).is_none());
+
+        let mut zero = proof.clone();
+        zero.old_leaf_count = 0;
+        assert!(!verify_merkle_consistency_proof(
+            &old_root, &new_root, &zero
+        ));
+
+        let mut reversed = proof.clone();
+        reversed.old_leaf_count = 5;
+        assert!(!verify_merkle_consistency_proof(
+            &old_root, &new_root, &reversed
+        ));
+
+        assert!(!verify_merkle_consistency_proof(
+            &old_root.to_uppercase(),
+            &new_root,
+            &proof
+        ));
+    }
+
+    #[test]
+    fn consistency_proof_has_a_stable_golden_vector() {
+        let leaves = leaves(7);
+        let proof = merkle_consistency_proof(&leaves, 3).expect("proof");
+        assert_eq!(proof.old_leaf_count, 3);
+        assert_eq!(proof.new_leaf_count, 7);
+        assert_eq!(
+            proof.hashes,
+            [
+                "aadb91271013ee1793fe30a2caf68638ad278783514515f4e345e3ae398d7da9",
+                "5de32e6409d77202b85588f0420ef7a493e15c378b67f2f27b2f03ba02bd58c1",
+                "6c5a1369fedb19c5d7355771eb0740714494e97672e3ff5fa57c3ab60b4a0370",
+                "909c1ad504f79c381a8bdf02b418d041c41a064c7b77126cd3abd2f4dbf4afcc",
+            ]
+            .map(str::to_string)
+        );
     }
 
     #[test]
@@ -534,6 +862,11 @@ mod tests {
         }
 
         assert!(ledger_append_only(&old_root, old_count, &events).append_only);
+        let new_root = ledger_merkle_root(&events).expect("new ledger root");
+        let proof = ledger_consistency_proof(&events, old_count).expect("ledger consistency proof");
+        assert!(verify_merkle_consistency_proof(
+            &old_root, &new_root, &proof
+        ));
     }
 
     fn episode_event(sequence: u64) -> MemoryEvent {
