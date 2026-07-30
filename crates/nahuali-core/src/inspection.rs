@@ -33,7 +33,7 @@ pub struct KnowledgeHealth {
     /// Number of facts retired by a newer, evidence-backed value for the same
     /// `(scope, subject, predicate)`.
     pub superseded_fact_count: usize,
-    /// Number of entities with no relation edges.
+    /// Number of entities with no evidence-backed claim or link edges.
     pub isolated_entity_count: usize,
     /// Number of blind-spot-family signals: isolated entities plus the
     /// no-episodes signal. This is deliberately a strict subset of
@@ -125,7 +125,7 @@ pub enum HealthSignalKind {
     /// deliberate multi-valued observation and raise no signal at all (see
     /// `classify_fact_groups`).
     SupersededFact,
-    /// An entity appears in facts but has no relation edges.
+    /// An entity appears in memory but has no evidence-backed claim or link edges.
     IsolatedEntity,
 }
 
@@ -337,14 +337,17 @@ impl KnowledgeHealth {
             });
         }
 
-        let entity_graph = entity_graph(data);
+        let entity_graph = entity_graph(data, &resolved_review_evidence);
         // In a store that is building no knowledge yet — no facts and no relations,
         // e.g. a pure episode log whose only entities come from `--mention` — every
         // entity is trivially "isolated". That is noise, not a blind spot: an
         // episode-first memory is legitimate, not a deficiency. Isolation is only a
         // real gap once the store has knowledge (facts or relations) that leaves an
-        // entity disconnected. Without this gate, a clean episode log is wrongly
-        // capped at ADVISORY by a single orphan-from-mention signal.
+        // entity disconnected. Evidence-backed claims count as graph edges: making
+        // an operator repeat the same assertion as a link would add ceremony, not
+        // evidence. Unsupported claims stay disconnected until they gain evidence or
+        // an explicit review resolution. Without this gate, a clean episode log is
+        // wrongly capped at ADVISORY by a single orphan-from-mention signal.
         let building_knowledge = !facts.is_empty() || !relations.is_empty();
         let isolated_entities = if building_knowledge {
             entity_graph
@@ -365,7 +368,9 @@ impl KnowledgeHealth {
                 kind: HealthSignalKind::IsolatedEntity,
                 dimensions: vec![HealthDimension::Connectivity, HealthDimension::BlindSpot],
                 severity: HealthSeverity::Low,
-                message: format!("Entity '{entity}' is not connected by any relation."),
+                message: format!(
+                    "Entity '{entity}' is not connected by an evidence-backed claim or link."
+                ),
                 // The normalized entity name is the signal's memory identifier.
                 // Carrying it lets the self-inspection layer classify isolated
                 // entities whose names are extraction artifacts (a git hash or an
@@ -559,7 +564,10 @@ fn classify_fact_groups(facts: &[Fact]) -> (Vec<FactConflict>, Vec<Supersession>
     (conflicts, supersessions)
 }
 
-fn entity_graph(data: &MemoryData) -> BTreeMap<String, usize> {
+fn entity_graph(
+    data: &MemoryData,
+    resolved_review_evidence: &[BTreeSet<String>],
+) -> BTreeMap<String, usize> {
     let mut entities = BTreeMap::new();
     let facts = projected_facts(data);
     let relations = projected_relations(data);
@@ -569,13 +577,31 @@ fn entity_graph(data: &MemoryData) -> BTreeMap<String, usize> {
     }
 
     for fact in facts {
-        entities.entry(entity_key(&fact.subject)).or_insert(0);
-        entities.entry(entity_key(&fact.object)).or_insert(0);
+        let subject = entity_key(&fact.subject);
+        let object = entity_key(&fact.object);
+        let supported = fact.source_episode_id.is_some()
+            || evidence_reviewed(&[fact.event_id.as_str()], resolved_review_evidence);
+        if supported {
+            *entities.entry(subject).or_insert(0) += 1;
+            *entities.entry(object).or_insert(0) += 1;
+        } else {
+            entities.entry(subject).or_insert(0);
+            entities.entry(object).or_insert(0);
+        }
     }
 
     for relation in relations {
-        *entities.entry(entity_key(&relation.from)).or_insert(0) += 1;
-        *entities.entry(entity_key(&relation.to)).or_insert(0) += 1;
+        let from = entity_key(&relation.from);
+        let to = entity_key(&relation.to);
+        let supported = relation.source_episode_id.is_some()
+            || evidence_reviewed(&[relation.event_id.as_str()], resolved_review_evidence);
+        if supported {
+            *entities.entry(from).or_insert(0) += 1;
+            *entities.entry(to).or_insert(0) += 1;
+        } else {
+            entities.entry(from).or_insert(0);
+            entities.entry(to).or_insert(0);
+        }
     }
 
     entities
@@ -748,6 +774,69 @@ mod tests {
 
         assert_eq!(health.entity_count, 2);
         assert_eq!(health.isolated_entity_count, 0);
+    }
+
+    #[test]
+    fn unsupported_relation_does_not_connect_entities() {
+        let data = MemoryData {
+            event_count: 1,
+            last_event_id: Some("event_1".to_string()),
+            relations: vec![Relation {
+                id: "relation_1".to_string(),
+                event_id: "event_1".to_string(),
+                from: "Lena".to_string(),
+                relation: "owns".to_string(),
+                to: "Roadmap".to_string(),
+                source_episode_id: None,
+                confidence: 0.9,
+                scope: None,
+                created_at_ms: 1000,
+            }],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, 1000);
+
+        assert_eq!(health.entity_count, 2);
+        assert_eq!(health.isolated_entity_count, 2);
+    }
+
+    #[test]
+    fn evidence_backed_claim_connects_entities() {
+        let mut supported = fact(
+            "fact_1",
+            "event_1",
+            "Lena",
+            "owns",
+            "Release Notes",
+            1000,
+            0.92,
+        );
+        supported.source_episode_id = Some("episode_1".to_string());
+        let data = MemoryData {
+            event_count: 2,
+            last_event_id: Some("event_1".to_string()),
+            facts: vec![supported],
+            episodes: vec![Episode {
+                id: "episode_1".to_string(),
+                event_id: "episode_event_1".to_string(),
+                content: "Lena owns the release notes.".to_string(),
+                tags: Vec::new(),
+                mentions: vec!["Lena".to_string()],
+                source_id: None,
+                source_position: None,
+                source_role: None,
+                scope: None,
+                created_at_ms: 1000,
+            }],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, 1000);
+
+        assert_eq!(health.entity_count, 2);
+        assert_eq!(health.isolated_entity_count, 0);
+        assert!(health.signals.is_empty());
     }
 
     #[test]

@@ -1,4 +1,55 @@
 #[test]
+fn readme_first_use_certifies_an_evidence_backed_claim() {
+    let store = temp_database("readme-first-use");
+
+    run_ok(
+        &store,
+        &[
+            "remember",
+            "Lena owns the release notes",
+            "--mention",
+            "Lena",
+            "--tag",
+            "product",
+        ],
+    );
+    run_ok(
+        &store,
+        &[
+            "claim",
+            "Lena",
+            "owns",
+            "release notes",
+            "--source-last",
+            "--confidence",
+            "0.92",
+        ],
+    );
+
+    let recalled = run_ok(
+        &store,
+        &[
+            "recall",
+            "Who owns the release notes?",
+            "--authority",
+            "--require-evidence",
+            "--json",
+        ],
+    );
+    let recalled: Value = serde_json::from_str(&recalled).expect("recall output is JSON");
+    assert_eq!(recalled["authority"]["mode"], "certify");
+    assert_eq!(recalled["authority"]["can_trust"], true);
+    assert_eq!(recalled["health"]["isolated_entity_count"], 0);
+    assert!(recalled["results"].as_array().unwrap().iter().any(|result| {
+        result["kind"] == "claim"
+            && result["evidence_id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("episode_"))
+            && result["trust"]["mode"] == "certify"
+    }));
+}
+
+#[test]
 fn source_last_operator_path_produces_supported_memory() {
     let store = temp_database("source-last-operator-path");
 

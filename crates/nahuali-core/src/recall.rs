@@ -1155,7 +1155,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(report.authority.mode, AuthorityMode::Advisory);
+        assert_eq!(report.authority.mode, AuthorityMode::Certify);
         assert_eq!(report.store_authority.mode, AuthorityMode::Block);
         assert_eq!(report.health.conflicting_fact_count, 0);
         assert_eq!(report.store_health.conflicting_fact_count, 1);
