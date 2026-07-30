@@ -24,7 +24,7 @@
           "query": "billing invoice",
           "limit": 10,
           "require_result_count": 0,
-          "require_authority_mode": "advisory"
+          "require_authority_mode": "certify"
         }
       ],
       "expected": {
@@ -32,7 +32,7 @@
         "episode_count": 1,
         "fact_count": 1,
         "supported_fact_count": 1,
-        "authority_mode": "advisory"
+        "authority_mode": "certify"
       }
     },
     {
@@ -58,7 +58,7 @@
           "query": "concise",
           "limit": 10,
           "require_kinds": ["claim"],
-          "require_authority_mode": "advisory"
+          "require_authority_mode": "certify"
         }
       ],
       "expected": {
@@ -66,7 +66,7 @@
         "episode_count": 1,
         "fact_count": 1,
         "supported_fact_count": 1,
-        "authority_mode": "advisory"
+        "authority_mode": "certify"
       }
     },
     {
@@ -92,7 +92,7 @@
           "query": "who owns deployment keys",
           "limit": 10,
           "require_result_count": 0,
-          "require_authority_mode": "advisory"
+          "require_authority_mode": "certify"
         }
       ],
       "expected": {
@@ -100,7 +100,7 @@
         "episode_count": 1,
         "fact_count": 1,
         "supported_fact_count": 1,
-        "authority_mode": "advisory"
+        "authority_mode": "certify"
       }
     },
     {
