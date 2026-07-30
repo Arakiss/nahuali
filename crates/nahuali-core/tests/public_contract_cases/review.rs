@@ -289,31 +289,6 @@ fn public_api_calibrates_authority_from_health_signals() {
         )
         .expect("claim records");
 
-    let weak_graph = memory
-        .recall_with_authority("release notes", 10)
-        .expect("advisory recall succeeds");
-    assert_eq!(weak_graph.authority.mode, AuthorityMode::Advisory);
-    assert_eq!(weak_graph.authority.score, 0.75);
-    assert!(!weak_graph.authority.can_trust);
-    assert_eq!(
-        weak_graph.authority.signal_kinds,
-        vec![HealthSignalKind::IsolatedEntity]
-    );
-    let weak_graph_claim = weak_graph
-        .results
-        .iter()
-        .find(|result| result.kind == MemoryKind::Claim)
-        .expect("supported claim is returned");
-    let weak_graph_claim_trust = weak_graph_claim
-        .trust
-        .as_ref()
-        .expect("authority recall annotates result trust");
-    assert_eq!(weak_graph_claim_trust.mode, RecallResultTrustMode::Certify);
-    assert!(weak_graph_claim_trust.can_trust);
-
-    memory
-        .add_link("Lena", "owns", "release notes", Some(episode.id), 0.9)
-        .expect("link records");
     let supported = memory
         .recall_with_authority("release notes", 10)
         .expect("certified recall succeeds");
@@ -321,13 +296,17 @@ fn public_api_calibrates_authority_from_health_signals() {
     assert_eq!(supported.authority.score, 1.0);
     assert!(supported.authority.can_trust);
     assert!(supported.authority.signal_kinds.is_empty());
-    assert!(
-        supported
-            .results
-            .iter()
-            .filter_map(|result| result.trust.as_ref())
-            .any(|trust| trust.mode == RecallResultTrustMode::Certify && trust.can_trust)
-    );
+    let supported_claim = supported
+        .results
+        .iter()
+        .find(|result| result.kind == MemoryKind::Claim)
+        .expect("supported claim is returned");
+    let supported_claim_trust = supported_claim
+        .trust
+        .as_ref()
+        .expect("authority recall annotates result trust");
+    assert_eq!(supported_claim_trust.mode, RecallResultTrustMode::Certify);
+    assert!(supported_claim_trust.can_trust);
 
     memory
         .add_claim("Mateo", "owns", "deployment keys", None, 0.51)

@@ -1,6 +1,6 @@
 /// Semantic index schema version stored in Qdrant payloads.
 pub const SEMANTIC_INDEX_SCHEMA_VERSION: u32 = 4;
-/// Default local Qdrant REST endpoint for the OSS Docker stack.
+/// Default local Qdrant REST endpoint for the optional Docker development stack.
 pub const DEFAULT_QDRANT_URL: &str = "http://localhost:16333";
 /// Default collection used for memory-item vectors.
 pub const DEFAULT_SEMANTIC_COLLECTION: &str = "nahuali_memory_items";
@@ -201,7 +201,7 @@ pub enum EmbeddingProviderKind {
     DeterministicLocal,
     /// Optional local static embedding model (model2vec) loaded from disk.
     LocalModel,
-    /// Explicit hosted or external provider configured above the OSS core.
+    /// Explicit hosted or external provider configured above the core crate.
     Hosted,
 }
 

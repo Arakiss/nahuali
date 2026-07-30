@@ -2,10 +2,10 @@
 //!
 //! The report answers the four questions the engine's north star asks of memory
 //! before a caller relies on it, in one artifact: what do we know (knowledge
-//! counts), why should we trust it (authority and ledger integrity), what is
-//! missing or contradictory (knowledge health), and has the recorded history
-//! been altered (integrity, plus an optional signed-checkpoint verdict). It
-//! composes existing primitives; it does not introduce a new trust judgment.
+//! counts), why should we trust it (authority and internal history checks), what
+//! is missing or contradictory (knowledge health), and was the current state
+//! compared with an authorized external checkpoint. It composes existing
+//! primitives; it does not introduce a new trust judgment.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -28,7 +28,7 @@ pub const TRUST_ATTESTATION_FORMAT_V1: &str = "self_signed_tip_v1";
 #[derive(Clone, Debug, Default)]
 pub struct TrustReportOptions {
     /// A signed attestation receipt to verify against this ledger's history and
-    /// fold into the report as the "has history been altered" evidence.
+    /// fold into the report as an external comparison for the current history.
     #[cfg(feature = "attestation")]
     pub attestation: Option<LedgerAttestation>,
     /// Operator-held keys that are allowed to establish external signer trust.
@@ -59,7 +59,7 @@ pub struct TrustKnowledge {
     pub intention_count: usize,
 }
 
-/// Restated ledger integrity: whether the recorded history is intact.
+/// Restated internal checks over the history available to this store.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct TrustIntegrity {
     /// Whether the ledger passes every integrity check this build can run.
@@ -88,8 +88,8 @@ pub struct TrustIntegrity {
 
 /// Fail-closed evaluation of a supplied legacy attestation.
 ///
-/// A v1 receipt proves that the holder of its embedded private key signed a
-/// chain tip. It becomes a trusted external anchor only when the same key is
+/// A v1 receipt proves that the private key corresponding to its embedded public
+/// key signed a chain tip. It becomes a trusted external anchor only when that key is
 /// active in an operator-held keyring.
 #[cfg(feature = "attestation")]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -116,7 +116,7 @@ pub struct TrustAttestationEvaluation {
     pub rejection: Option<String>,
 }
 
-/// A composed, non-mutating snapshot of how trustworthy the memory is.
+/// A composed, non-mutating snapshot of the checks available for this memory.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct MemoryTrustReport {
     /// Report format version.
@@ -127,7 +127,7 @@ pub struct MemoryTrustReport {
     pub knowledge: TrustKnowledge,
     /// Projection-level authority decision.
     pub authority: AuthorityDecision,
-    /// Whether the recorded history is intact.
+    /// Internal checks over the recorded history available to this store.
     pub integrity: TrustIntegrity,
     /// What is missing, stale, unsupported, or contradictory.
     pub health: KnowledgeHealth,
@@ -135,8 +135,8 @@ pub struct MemoryTrustReport {
     #[cfg(feature = "attestation")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation: Option<TrustAttestationEvaluation>,
-    /// Composite verdict: the ledger is intact and authority certifies the
-    /// memory (and any supplied checkpoint is anchored).
+    /// Composite verdict: internal checks pass and authority certifies the
+    /// memory (and any supplied checkpoint is authorized and matches).
     pub trustworthy: bool,
     /// Human-readable reasons behind the verdict.
     pub verdict_reasons: Vec<String>,
@@ -223,9 +223,9 @@ fn assemble_trust_report(
 
     let mut reasons = Vec::new();
     reasons.push(if integrity.ledger_verified {
-        "ledger integrity verified".to_string()
+        "recorded-history checks passed".to_string()
     } else {
-        "ledger integrity failed".to_string()
+        "recorded-history checks failed".to_string()
     });
     #[cfg(feature = "tamper-evidence")]
     match integrity.chain_status {
@@ -377,9 +377,9 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MemoryData;
     #[cfg(feature = "attestation")]
     use crate::{AttestationKey, AttestationKeyStatus};
+    use crate::{AuthorityMode, MemoryData};
 
     fn empty_knowledge() -> TrustKnowledge {
         TrustKnowledge {
@@ -434,8 +434,35 @@ mod tests {
             report
                 .verdict_reasons
                 .iter()
-                .any(|reason| reason.contains("ledger integrity verified"))
+                .any(|reason| reason.contains("recorded-history checks passed"))
         );
+    }
+
+    #[test]
+    fn integrity_can_pass_while_the_composite_use_verdict_fails() {
+        let data = MemoryData::default();
+        let health = KnowledgeHealth::inspect_at(&data, 1_000);
+        let authority = AuthorityDecision {
+            mode: AuthorityMode::Block,
+            score: 0.0,
+            can_trust: false,
+            reasons: vec!["The memory lacks usable evidence.".to_string()],
+            signal_kinds: Vec::new(),
+        };
+
+        let report = assemble_trust_report(
+            empty_knowledge(),
+            authority,
+            health,
+            intact_integrity(),
+            #[cfg(feature = "attestation")]
+            None,
+            1_000,
+        );
+
+        assert!(report.integrity.ledger_verified);
+        assert!(!report.authority.can_trust);
+        assert!(!report.trustworthy);
     }
 
     #[test]
@@ -472,7 +499,7 @@ mod tests {
             report
                 .verdict_reasons
                 .iter()
-                .any(|reason| reason.contains("ledger integrity failed"))
+                .any(|reason| reason.contains("recorded-history checks failed"))
         );
     }
 

@@ -106,8 +106,8 @@ impl EventEnvelope {
 /// Hash-chain (tamper-evidence) support.
 ///
 /// Each chained event binds the *previous* event's chained hash into its own,
-/// so rewriting any historical event breaks the link at the next event even if
-/// the attacker recomputes that event's own per-event checksum. The per-event
+/// so rewriting a non-tip event breaks the following stored link when the
+/// suffix is not recomputed. The per-event
 /// checksum alone is self-contained and cannot detect such a rewrite; the chain
 /// can.
 ///

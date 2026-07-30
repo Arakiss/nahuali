@@ -203,7 +203,8 @@ pub struct BackupValidation {
 /// Result of restoring a backup into a target database.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BackupRestoreReport {
-    /// Whether the backup was valid and the target database was safe to use.
+    /// Whether the backup passed validation and the target remained eligible
+    /// for restore or use under the checks represented by this report.
     pub valid: bool,
     /// Whether this was a dry-run restore.
     pub dry_run: bool,

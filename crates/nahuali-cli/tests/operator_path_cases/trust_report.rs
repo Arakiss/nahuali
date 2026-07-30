@@ -36,7 +36,7 @@ fn trust_report_composes_knowledge_authority_integrity_and_health() {
             .iter()
             .any(|reason| reason
                 .as_str()
-                .is_some_and(|reason| reason.contains("ledger integrity verified")))
+                .is_some_and(|reason| reason.contains("recorded-history checks passed")))
     );
 
     let human = run_ok(&store, &["trust-report"]);

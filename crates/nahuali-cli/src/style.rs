@@ -12,23 +12,24 @@ use nahuali_ui::style;
 use nahuali_ui::theme::{self, Rgb};
 
 /// Plain-language label plus a short gloss for an authority mode, e.g.
-/// `CERTIFY · trustworthy`. Keeps the English mode token plus a short gloss.
+/// `CERTIFY · evidence checks passed`. Keeps the stable mode token plus a
+/// bounded description of what the engine actually established.
 pub(crate) fn authority_label(mode: &AuthorityMode) -> &'static str {
     match mode {
-        AuthorityMode::Certify => "CERTIFY · trustworthy",
-        AuthorityMode::Advisory => "ADVISORY · use with judgment",
+        AuthorityMode::Certify => "CERTIFY · evidence checks passed",
+        AuthorityMode::Advisory => "ADVISORY · use with context",
         AuthorityMode::Warn => "WARN · verify before use",
-        AuthorityMode::Block => "BLOCK · not yet trustworthy",
+        AuthorityMode::Block => "BLOCK · do not use yet",
     }
 }
 
 /// Plain-language label plus a short gloss for a per-result trust mode.
 fn trust_label(mode: &RecallResultTrustMode) -> &'static str {
     match mode {
-        RecallResultTrustMode::Certify => "CERTIFY · trustworthy",
-        RecallResultTrustMode::Advisory => "ADVISORY · use with judgment",
+        RecallResultTrustMode::Certify => "CERTIFY · evidence checks passed",
+        RecallResultTrustMode::Advisory => "ADVISORY · use with context",
         RecallResultTrustMode::Warn => "WARN · verify before use",
-        RecallResultTrustMode::Block => "BLOCK · not yet trustworthy",
+        RecallResultTrustMode::Block => "BLOCK · do not use yet",
     }
 }
 
@@ -63,7 +64,7 @@ pub(crate) fn trust_badge(mode: &RecallResultTrustMode) -> String {
 }
 
 /// Render the canonical store-trust line, e.g.
-/// `Store trust: CERTIFY · trustworthy (score 1.00)`.
+/// `Store trust: CERTIFY · evidence checks passed (score 1.00)`.
 pub(crate) fn store_trust_line(mode: &AuthorityMode, score: f32) -> String {
     format!(
         "Store trust: {} (score {:.2})",

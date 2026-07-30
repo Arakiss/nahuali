@@ -1,6 +1,6 @@
 # GDPR Position
 
-This document is an honest written position on how Nahuali relates to the EU
+This document is the current written position on how Nahuali relates to the EU
 General Data Protection Regulation (GDPR). It is an engineering alignment
 document, not legal advice and not a claim of GDPR compliance. The hard part —
 reconciling an append-only, tamper-evident ledger with the right to erasure — is
@@ -23,26 +23,26 @@ and identifiers:
 
 - **Episodes** store natural-language `content`, free-text `tags`, and explicit
   entity `mentions` — any of which can name a person or contain personal data
-  (`crates/nahuali-core/src/event.rs:238-262`).
+  (`crates/nahuali-core/src/event.rs:268-292`).
 - **Sources** carry a `title`, a `uri`/locator, and adapter-provided `metadata`
   preserved as provenance — these can reference or embed personal data
-  (`crates/nahuali-core/src/event.rs:195-218`).
+  (`crates/nahuali-core/src/event.rs:225-248`).
 - **Facts and relations** store `subject`/`predicate`/`object` and
   `from`/`relation`/`to` triples that can encode statements about identifiable
-  people (`crates/nahuali-core/src/event.rs:264-283`,
-  `crates/nahuali-core/src/event.rs:285-304`).
+  people (`crates/nahuali-core/src/event.rs:294-313`,
+  `crates/nahuali-core/src/event.rs:315-334`).
 
 The security guidance already states Nahuali is not a secret manager and that
 credentials, tokens, and customer secrets do not belong in memory databases
-(`SECURITY.md:24-25`). The same discipline should extend to special-category
+(`SECURITY.md:29-30`). The same discipline should extend to special-category
 personal data.
 
 ## Current deployment pattern
 
 - **Local-first.** Nahuali is a local-first Rust memory engine
-  (`README.md:18`). The authoritative store is a local SurrealDB `memory_record`
+  (`README.md:25-27`). The authoritative store is a local SurrealDB `memory_record`
   ledger; the semantic index is a derived, rebuildable tier
-  (`SECURITY.md:17-27`).
+  (`SECURITY.md:20-32`).
 - **Single-operator.** The beta API has no accounts, tenants, API keys, or
   role-based access; scopes are memory labels, not permission boundaries
   (`crates/nahuali-api/README.md:18-20`).
@@ -50,10 +50,12 @@ personal data.
   local services, a deployer can host it entirely within an EU boundary of their
   choosing. Data residency is a deployment decision, not a hosted-service default
   Nahuali imposes.
-- **No telemetry.** The crates ship no analytics, telemetry, or phone-home code;
-  the core attestation module states it never touches the network
-  (`crates/nahuali-core/src/attestation.rs:19-20`). The only network endpoints
-  are the operator's own configured SurrealDB and Qdrant services.
+- **Operator-controlled runtime data paths.** Nahuali does not provide a
+  vendor-hosted memory service. The HTTP API binds to loopback by default;
+  memory crosses a network boundary only when the operator selects remote
+  SurrealDB or Qdrant endpoints (`crates/nahuali-core/src/database.rs:161-174`,
+  `crates/nahuali-core/src/semantic/types.rs:16-77`,
+  `crates/nahuali-api/src/main.rs:13-16`).
 
 **Lawful basis, controller/processor roles, DPIAs, records of processing, and
 data-subject request handling are the deployer's responsibility.** Nahuali is a
@@ -71,11 +73,12 @@ be kept in identifiable form no longer than necessary
 Nahuali's integrity model is in direct tension with erasure by design. The ledger
 is append-only, and each event under `tamper-evidence` binds the previous event's
 chained hash into `prev_hash`, so removing or rewriting a historical record
-breaks the chain at the next event (`crates/nahuali-core/src/event.rs:13-39`,
-`crates/nahuali-core/src/event.rs:76-89`). The property that makes the ledger
-trustworthy for an auditor is the same property that makes selective deletion
-hard: you cannot quietly excise one person's records and still present an intact
-chain.
+breaks the chain at the next event (`crates/nahuali-core/src/event.rs:25-52`,
+`crates/nahuali-core/src/event.rs:106-159`). The same linking that exposes some
+historical rewrites also makes selective deletion difficult: removing one
+person's record breaks the following link unless the suffix is recomputed. An
+externally retained, authorized checkpoint is needed to distinguish that
+recomputed history from the previously accepted ledger state.
 
 ### Current state (shipped)
 
@@ -112,36 +115,36 @@ or the erasure is incomplete.
 Until an erasure mechanism ships, a deployer can reduce exposure with existing
 controls, understanding each is a blunt instrument, not Article 17 conformance:
 
-- **Scope discipline.** Record a subject's data under an explicit `MemoryScope`
-  so it can be located and, at worst, isolated for wholesale deletion
-  (`crates/nahuali-core/src/recall.rs:8-27`). Note that scopes are labels, not
-  authorization boundaries (see `compliance/threat-model.md`).
+- **Scope discipline.** An explicit `MemoryScope` can help queries locate records
+  associated with a context (`crates/nahuali-core/src/recall.rs:8-27`). It is a
+  label, not a subject index, authorization boundary, physical partition, or
+  guarantee that every record about a person was classified consistently.
 - **Data minimization at write time.** Keep special-category personal data and
   irreplaceable personal data out of memory databases entirely, consistent with
-  the existing "not a secret manager" posture (`SECURITY.md:24-25`) and the beta
-  rule to use only data you can recreate (`BETA.md:38`).
+  the existing "not a secret manager" posture (`SECURITY.md:29-30`) and the beta
+  rule to use only data you can recreate (`BETA.md:47-56`) and not to handle
+  secrets or irreplaceable personal data (`BETA.md:109-120`).
 - **Backup hygiene.** The `backup`, `backup-validate`, `backup-drill`, and
   `restore` commands let an operator take and verify local backups before changes
-  (`crates/nahuali-cli/src/cli.rs:93-96`). Because erasure must reach backups
+  (`crates/nahuali-cli/src/cli.rs:1022-1067`). Because erasure must reach backups
   too, keep backup retention short and inventoried for any store holding personal
   data.
-- **Store-level deletion as the blunt instrument.** The only complete "erasure"
-  available today is deleting an entire store (and its backups and derived
-  indexes) and, where needed, restoring the remainder into a fresh database
-  (`crates/nahuali-cli/src/cli.rs:919-929`). This erases the target subject but
-  also everything co-resident in that store, so it is only practical when a store
-  is scoped narrowly.
+- **Store-level disposal as a blunt deployment action.** An operator can dispose
+  of an entire store together with its backups and derived indexes. Nahuali does
+  not provide a command or verification report that proves all copies were
+  erased, and restoring selected data into a fresh database can reintroduce
+  personal data. Treat this as an operator procedure, not a shipped Article 17
+  mechanism.
 
-## Honest Position
+## Current limits
 
-Nahuali is honest about the tension: its tamper-evident, append-only ledger is
-built to prevent silent deletion, which is exactly what a naive Article 17
-erasure would require. Today there is no fine-grained erasure mechanism; there are
-two candidate designs and a set of operational mitigations that are coarse. A
-deployer with GDPR obligations over data that will enter Nahuali should keep
-special-category and irreplaceable personal data out of the store, scope
-aggressively, keep backups short and inventoried, and treat store-level deletion
-as the current erasure path — and should involve counsel before relying on
-Nahuali for any processing of personal data.
+Nahuali's append-oriented ledger is in tension with selective erasure. Today
+there is no fine-grained erasure mechanism, complete subject index, or proof that
+all operator-controlled copies were deleted; the two candidate designs above are
+not shipped. A deployer with GDPR obligations should keep special-category and
+irreplaceable personal data out of the store, minimize and inventory what is
+recorded, apply explicit backup retention, and involve counsel before relying on
+Nahuali for personal-data processing. Store disposal is a coarse operator action,
+not a verified erasure workflow.
 
-Last reviewed: 2026-07-10.
+Last reviewed: 2026-07-17.

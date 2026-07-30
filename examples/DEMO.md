@@ -212,11 +212,11 @@ also verifies both raster corner-mascot regions; the VHS path cannot capture
 terminal image layers and therefore validates its half-block protagonist.
 
 The supplementary [`sample-trust-report.html`](sample-trust-report.html) is a
-report-v2 snapshot generated from `examples/source-note.md`, a valid chained
-ledger, and a legacy tip attestation authorized by an external keyring. Its
-browser capture lives at `assets/nahuali-trust-report.png` (1440×1200). The
-checked-in sample shows eight events, one source, `Certify`, a verified chain,
-and a trusted sequence-eight checkpoint. Regenerate the HTML through
+report-v2 snapshot generated from the synthetic episode, claim, and link above,
+plus a legacy tip attestation authorized by an external keyring. Its
+browser capture lives at `assets/nahuali-trust-report.png` (1440×1388). The
+checked-in sample shows three events, `Certify`, passing internal checks, and a
+trusted sequence-three checkpoint. Regenerate the HTML through
 `trust-report --attestation ... --keyring ... --html`; do not edit verdicts into
 the artifact by hand.
 

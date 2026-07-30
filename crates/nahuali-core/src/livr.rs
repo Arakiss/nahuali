@@ -18,9 +18,10 @@
 //! Honest limits: it measures detection against a fixed synthetic injection
 //! method only; a passing rate proves self-consistency detection, not the
 //! absence of all tampering. The replay tier cannot catch a fully re-chained
-//! suffix on its own -- that gap is exactly what the anchored-tip tier closes,
-//! and the per-tier breakdown makes the gap visible rather than averaging it
-//! away.
+//! suffix on its own. The anchored-tip tier detects divergence from the retained
+//! signed tip in this corpus; authorization and freshness still depend on an
+//! external keyring or checkpoint policy. The per-tier breakdown keeps that
+//! boundary visible rather than averaging it away.
 //!
 //! Available only under the `attestation` feature, so all three tiers exist.
 
@@ -47,7 +48,7 @@ const TARGET: usize = 2;
 /// The corpus is grouped by the weakest tier that catches each class, so the
 /// per-tier detection rates stay honest and stable as classes are added: two
 /// checksum-catchable classes, five that need strict replay-chain validation,
-/// and two fully re-chained suffixes that only the anchored tip can see.
+/// and two fully re-chained suffixes that diverge from the retained anchored tip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LivrAttackClass {
@@ -246,8 +247,9 @@ fn attestation_tip_flags(events: &[EventEnvelope], receipt: &LedgerAttestation) 
         return true;
     }
     // The replay tier passed: the ledger is internally consistent. The anchored
-    // receipt is the only thing that can still catch a fully re-chained suffix,
-    // because its tip no longer matches the signed one.
+    // receipt is the remaining detector in this corpus for a fully re-chained
+    // suffix because its tip no longer matches the retained signed one. External
+    // key authorization is outside this synthetic tier.
     let tip = events
         .last()
         .map(EventEnvelope::chain_hash)

@@ -54,7 +54,10 @@ fn print_human(report: &MemoryTrustReport) {
     let integrity = &report.integrity;
 
     println!("Memory trust report");
-    println!("Trustworthy: {}", yes_no(report.trustworthy));
+    println!(
+        "Available checks support use: {}",
+        yes_no(report.trustworthy)
+    );
     println!(
         "Knowledge: {} events ({} episodes, {} claims, {} links, {} procedures, {} intentions, {} sources, {} entities)",
         knowledge.event_count,
@@ -125,6 +128,9 @@ fn print_human(report: &MemoryTrustReport) {
     for reason in &report.verdict_reasons {
         println!("- {reason}");
     }
+    println!(
+        "Scope: recorded evidence and supplied external checks; not factual truth, source authenticity, or an independent timestamp."
+    );
 }
 
 fn yes_no(value: bool) -> &'static str {
@@ -214,12 +220,12 @@ fn render_html(report: &MemoryTrustReport) -> String {
         None,
     ));
     trust_rows.push_str(&row(
-        "Can trust",
-        yes_no(report.authority.can_trust),
-        Some(report.authority.can_trust),
+        "Composite use verdict",
+        yes_no(report.trustworthy),
+        Some(report.trustworthy),
     ));
     trust_rows.push_str(&row(
-        "Ledger integrity",
+        "Recorded-history checks",
         if integrity.ledger_verified {
             "verified"
         } else {
@@ -259,7 +265,7 @@ fn render_html(report: &MemoryTrustReport) -> String {
 
     let mut history_rows = String::new();
     history_rows.push_str(&row(
-        "History verified",
+        "Internal history checks",
         yes_no(integrity.ledger_verified),
         Some(integrity.ledger_verified),
     ));
@@ -300,7 +306,7 @@ fn render_html(report: &MemoryTrustReport) -> String {
     let verdict_text = if report.trustworthy { "YES" } else { "NO" };
 
     format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Memory Trust Report</title><style>{style}</style></head><body><div class="wrap"><div class="kicker">Nahuali · memory trust report</div><h1>Memory Trust Report</h1><div class="verdict {verdict_class}">Trustworthy: {verdict_text}</div><section><div class="q">What do we know</div><div class="grid">{knowledge_cards}</div></section><section><div class="q">Why should we trust it</div><div class="rows">{trust_rows}</div></section><section><div class="q">What is missing or contradictory</div><div class="grid">{health_cards}</div></section><section><div class="q">Was the recorded history altered</div><div class="rows">{history_rows}</div>{tip_html}{root_html}</section><section><div class="q">Reasons</div><ul class="reasons">{reasons}</ul></section><footer>Non-mutating snapshot · report v{version} · generated at {generated} ms since the Unix epoch</footer></div></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Memory Trust Report</title><style>{style}</style></head><body><div class="wrap"><div class="kicker">Nahuali · memory trust report</div><h1>Memory Trust Report</h1><div class="verdict {verdict_class}">Available checks support use: {verdict_text}</div><section><div class="q">What do we know</div><div class="grid">{knowledge_cards}</div></section><section><div class="q">What checks passed</div><div class="rows">{trust_rows}</div></section><section><div class="q">What is missing or contradictory</div><div class="grid">{health_cards}</div></section><section><div class="q">History checks and external checkpoint</div><div class="rows">{history_rows}</div>{tip_html}{root_html}</section><section><div class="q">Reasons</div><ul class="reasons">{reasons}</ul></section><footer>Non-mutating snapshot · report v{version} · generated at {generated} ms since the Unix epoch · recorded evidence and supplied external checks only; not factual truth, source authenticity, or an independent timestamp</footer></div></body></html>"#,
         style = HTML_STYLE,
         verdict_class = verdict_class,
         verdict_text = verdict_text,

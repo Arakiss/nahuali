@@ -872,8 +872,8 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     },
     #[command(about = "Print a composed memory trust report without mutating memory.")]
     TrustReport {
-        /// Verify a signed attestation receipt and fold it into the report as the
-        /// evidence that the recorded history was not altered.
+        /// Compare a signed attestation receipt with the current history and
+        /// fold the result into the report. External trust requires `--keyring`.
         #[cfg(feature = "attestation")]
         #[arg(long = "attestation", value_name = "PATH")]
         attestation: Option<PathBuf>,

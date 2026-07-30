@@ -1,12 +1,12 @@
 //! Merkle commitment and inclusion proofs over ledger hashes.
 //!
 //! A Merkle tree summarizes any list of leaf hashes into a single root. An
-//! *inclusion proof* then proves one leaf is committed under that root with only
-//! O(log n) sibling hashes, so a caller can prove a specific record was in the
-//! recorded history without replaying or revealing the rest of the ledger. This
-//! is the selective, logarithmic-size verification a linear hash chain cannot
-//! give on its own: the chain proves the whole history all-or-nothing, while a
-//! Merkle proof answers "is *this* record under the committed root?" cheaply.
+//! *inclusion proof* then establishes that one leaf is committed under a supplied
+//! root with only O(log n) sibling hashes. This gives selective,
+//! logarithmic-size verification without replaying or revealing the rest of the
+//! ledger. The root is not authenticated by the proof itself; a verifier needs an
+//! externally authorized checkpoint before treating membership as third-party
+//! evidence.
 //!
 //! The construction is domain-separated and length-prefixed -- a leaf hash can
 //! never be read as an internal-node hash, and adjacent fields cannot be
@@ -40,8 +40,8 @@ pub struct MerkleSibling {
 
 /// An inclusion proof: the sibling path that ties one leaf to a Merkle root.
 ///
-/// It is portable -- a holder can keep it next to a record and later prove, to
-/// anyone who knows only the root, that the record was committed.
+/// It is portable: a holder can keep it next to a record and later establish
+/// membership under the supplied root. The proof does not authenticate the root.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MerkleProof {
@@ -230,8 +230,8 @@ pub fn merkle_consistency_proof(
 }
 
 /// Verify a compact append-only consistency proof from `old_root` to
-/// `new_root`, using only the two authenticated roots, their sizes, and the
-/// proof hashes.
+/// `new_root`, using the two caller-supplied roots, their sizes, and the proof
+/// hashes. Callers must authorize the roots separately before relying on them.
 ///
 /// Sizes are taken from the proof so callers must bind the proof to signed
 /// checkpoints before treating either size as authoritative.
@@ -317,8 +317,8 @@ pub struct ConsistencyVerdict {
     pub new_leaf_count: usize,
     /// The earlier root recomputed from the later leaves' prefix, when checkable.
     pub recomputed_old_root: Option<String>,
-    /// Whether the earlier commitment is an unchanged prefix of the later one:
-    /// the recorded history grew by appending only, with nothing rewritten.
+    /// Whether the earlier commitment is an unchanged prefix of the later one,
+    /// relative to the caller-supplied earlier root.
     pub append_only: bool,
 }
 
@@ -328,7 +328,8 @@ pub struct ConsistencyVerdict {
 ///
 /// This is the leaf-backed check -- the caller holds the later ledger's leaves
 /// and the earlier root, which is the local audit case (you have both states).
-/// It proves the earlier history was not rewritten. Use
+/// A match establishes that the supplied earlier root commits to the later
+/// leaves' prefix; it does not authenticate that root. Use
 /// [`verify_merkle_consistency_proof`] when the verifier holds only signed roots
 /// and a compact proof rather than the complete later ledger.
 pub fn verify_append_only(

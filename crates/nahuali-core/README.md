@@ -34,17 +34,21 @@ private during pre-release development.
   ingestion imports apply as a single batched ledger flush, so loading a large
   history stays fast.
 - Default builds enable `attestation`, which implies the `tamper-evidence` hash
-  chain. Each event binds the previous event's hash, so an in-place rewrite of
-  any historical record breaks the chain at the next record even when the
-  per-record checksum was recomputed. Empty, verified, legacy unchained, and
+  chain. Each event binds the previous event's hash, so an in-place rewrite of a
+  non-tip historical record breaks the chain at the next record when the suffix
+  is not recomputed, even if the per-record checksum was. Last-event rewrite,
+  rollback, and a full re-chain require an authorized external checkpoint.
+  Empty, verified, legacy unchained, and
   broken ledgers are represented explicitly; legacy never counts as verified.
   `--no-default-features` is the explicit legacy opt-out for an unchained build.
 - Merkle roots commit to the per-event chain hashes. Inclusion verification is
   strict about tree size, index, path topology, sibling direction, hash shape,
   and unused proof nodes. Compact consistency proofs show that one non-empty
-  root is an append-only prefix of a later root. Their proof algorithm follows
-  the RFC 9162 shape while retaining Nahuali's domain-separated v1 hashes, so it
-  is not byte-compatible with Certificate Transparency.
+  root is an append-only prefix of a later root, relative to the roots supplied
+  by the caller. A root is not independently trusted until an authorized party
+  retains or signs it outside the store. The proof algorithm follows the RFC
+  9162 shape while retaining Nahuali's domain-separated v1 hashes, so it is not
+  byte-compatible with Certificate Transparency.
 - Version 2 signed checkpoints bind origin, ledger lineage, tree algorithm,
   tree size, Merkle root, chain tip, and signer time into canonical binary
   bytes. Authorization comes only from a separately held policy with explicit
@@ -209,7 +213,7 @@ fn main() -> nahuali_core::Result<()> {
 
 - The built-in embedding provider is deterministic and local. An optional
   `local-embeddings` build feature adds a static model2vec model, loaded from a
-  local directory, for stronger semantic recall; both providers stay fully local
+  local directory, for model-backed semantic recall; both providers stay fully local
   and offline. Hosted embedding providers require an external adapter above this
   crate.
 - The SurrealDB record ledger is append-only. Destructive compaction is not
@@ -225,6 +229,6 @@ fn main() -> nahuali_core::Result<()> {
   verifies the checkpoint it receives but cannot know whether a newer valid
   checkpoint was withheld. Independent witnesses, gossip, and public anchoring
   are not implemented in this beta.
-- The crate is pre-1.0. Public APIs are documented and tested, but semver
-  stability is still intentionally conservative until the OSS release candidate
-  hardens further.
+- The crate is pre-1.0 and source-available under FSL-1.1-MIT. Public APIs are
+  documented and tested, but semver stability remains intentionally conservative
+  during the beta series.

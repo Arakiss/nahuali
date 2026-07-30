@@ -11,16 +11,19 @@ Nahuali aims to become a self-inspecting memory substrate for long-running
 agents and operator workflows.
 
 The goal is not just to retrieve more context. The goal is to make memory answer
-three questions before callers rely on it:
+four questions before callers rely on it:
 
 1. What do we know?
 2. Why should we trust it?
 3. What is missing, stale, unsupported, or contradictory?
-4. Has the recorded history been altered?
+4. Do the available history checks pass, and was this state compared with a
+   trusted reference retained outside the store?
 
 The first three are answered by inspectable trust: evidence, health signals, and
-authority context. The fourth is answered by a verifiable ledger: the default
-hash chain and a signed tip let a caller detect a rewritten past.
+authority context. Internal checks can detect several classes of in-place
+change. Rollback or a fully replaced and re-chained history requires a
+previously retained, authorized checkpoint; the store cannot prove that history
+about itself in isolation.
 
 The public source-available (FSL-1.1-MIT) engine should stay focused on that
 foundation: local persistence, ledger replay, evidence-backed recall,
@@ -66,18 +69,21 @@ The current public foundation includes:
 - local backup, restore, and backup-drill flows
 - non-mutating self-inspection, reflection, sleep, consolidation, review, and
   proactive reports
-- governed self-repair: an LLM proposes a consolidation or link, the
-  deterministic engine validates, classifies, gates, and records it as an
-  audited, reversible event (`nahuali repair`); see the
+- bounded repair workflow: an external model may propose a consolidation or
+  link; the deterministic engine validates the proposal, classifies its risk,
+  requires approval where configured, and records accepted changes as explicit
+  events (`nahuali repair`). This does not undo downstream actions; see the
   [Self-Repair Contract](SELF_REPAIR.md)
 - non-mutating ledger audit/diff between two points, with integrity restated and
   optional anchoring on a signed checkpoint
-- composed memory trust report that answers what we know, why to trust it, what
-  is missing, and whether history was altered in one non-mutating verdict
-- one-line installer, a zero-dependency `demo`, and a harness adoption skill and
-  cross-harness protocol that `init` wires into the user's agent
+- composed memory trust report that combines knowledge counts, authority,
+  health, internal history checks, and an optional authorized-checkpoint
+  comparison without mutating memory
+- release installer, a zero-dependency `demo`, a bundled adoption skill, and
+  `init` output for the supported local integration paths
 - OCI-packaged MCP server with official MCP Registry publication on release
-- vendor-neutral Agent Memory Trust Benchmark and a public adapter contract
+- adapter-based Agent Memory Trust Benchmark and a public adapter contract;
+  checked-in results remain first-party evidence
 - synthetic regression fixtures and release-gate scripts
 
 ## Near-Term: Public Beta Hardening

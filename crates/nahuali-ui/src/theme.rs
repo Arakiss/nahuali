@@ -12,7 +12,7 @@ pub struct Rgb(pub u8, pub u8, pub u8);
 pub const BACKGROUND: Rgb = Rgb(23, 19, 17);
 /// Primary accent — signal, used sparingly (headings, the live cursor).
 pub const CLAY: Rgb = Rgb(217, 119, 87);
-/// Trustworthy / certify.
+/// Certify / recorded checks passed.
 pub const GREEN: Rgb = Rgb(143, 184, 122);
 /// Caution / warn.
 pub const AMBER: Rgb = Rgb(224, 177, 94);

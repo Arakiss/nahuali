@@ -11,7 +11,9 @@ before installing. If `cosign` is available, it also verifies the Sigstore
 bundle against the repository's release workflow identity.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
+curl -fsSLo /tmp/nahuali-install.sh \
+  https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh
+sh /tmp/nahuali-install.sh
 export PATH="$HOME/.nahuali/bin:$PATH"
 nahuali demo
 ```
@@ -20,15 +22,16 @@ The script never edits a shell profile. To require Sigstore verification rather
 than treating an unavailable `cosign` command as a warning:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh \
-  | NAHUALI_REQUIRE_SIGSTORE=1 sh
+NAHUALI_REQUIRE_SIGSTORE=1 sh /tmp/nahuali-install.sh
 ```
 
 Pin an exact release with `NAHUALI_VERSION`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh \
-  | NAHUALI_VERSION=vX.Y.Z-beta.N sh
+VERSION=vX.Y.Z-beta.N
+curl -fsSLo /tmp/nahuali-install.sh \
+  "https://raw.githubusercontent.com/Arakiss/nahuali/${VERSION}/scripts/install.sh"
+NAHUALI_VERSION="$VERSION" sh /tmp/nahuali-install.sh
 ```
 
 ## Repository verifier

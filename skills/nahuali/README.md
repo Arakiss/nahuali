@@ -1,19 +1,10 @@
-# Give your agent governed memory
+# Give your agent evidence-aware memory
 
-Most agent memory stores more text and hopes recall surfaces the right thing.
-The failure is silent: the agent recalls something, treats it as true, and acts
-on it — with no way to tell an observed fact from a guess, a fresh fact from a
-stale one, or an intact history from one that was edited after the fact.
-
-Nahuali is a governance layer over memory. Every recall comes back with the
-evidence behind it and a trust decision. The engine inspects its own health
-(unsupported claims, contradictions, stale facts, blind spots) before the agent
-acts, and its default history is an append-only, hash-chained ledger that can be
-checked against an operator-held signed checkpoint.
-
-The shift is from **recall-more** to **trust-what-you-recall**. An agent that
-recalls a confident wrong answer is worse than one with no memory. Nahuali
-exists so the agent can tell the difference, and say so.
+Nahuali records observations and derived memory with their available evidence.
+Recall returns relevance and a separate deterministic trust decision. The
+engine reports unsupported claims, contradictions, stale facts, and blind spots,
+while its default append-only, hash-chained history supports local integrity
+checks and comparison with an operator-held authorized checkpoint.
 
 ## Wire it up (one MCP server)
 
@@ -66,18 +57,19 @@ context that can be queried. Capture decisions, facts, and events with
 `remember` as episodes; those episodes are the evidence everything else cites.
 Assert `claim`s and `link`s only when an episode supports them. On every recall
 result, read the trust mode (`Certify` / `Advisory` / `Warn` / `Block`), not
-just the relevance score: `Certify` is evidence-backed and safe to cite without
+just the relevance score: `Certify` is evidence-backed, but must be cited without
 strengthening what its source actually says, `Advisory` is a
 lead, `Warn` / `Block` should not be acted through. Before leaning on a lot of
 recalled memory, check health with `inspect` or `trust_report`. And never edit
 history silently — repairs go through `review_resolve` and stay on the ledger.
 
-## Proving the history was not altered
+## Checking recorded history
 
-`trust_report` gives one composed verdict — what we know, why to trust it,
-what's missing, and whether the recorded history was altered. `audit` returns a
-verifiable diff of what the ledger recorded between two points. Default builds
-chain events by hash so an
-in-place rewrite is detectable even if the checksum was recomputed. Signing a
-checkpoint (chain-tip attestation) is a CLI/operator action; the agent reads and
-audits integrity, it does not sign.
+`trust_report` gives one composed view of stored memory, authority, health, and
+the integrity checks represented in the report. `audit` returns a diff between
+retained ledger points and checks checksums, sequence contiguity, and the default
+hash chain. A rewritten non-tip record is detected when a later stored link no
+longer matches. Last-event replacement, truncation, rollback, or a fully
+re-chained history require comparison with an authorized checkpoint retained
+outside the store. Checkpoint signing is a CLI/operator action; the agent reads
+and audits integrity, it does not sign.

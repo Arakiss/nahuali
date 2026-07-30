@@ -1,13 +1,16 @@
 # Security
 
-Nahuali stores memory in the configured local data stack, including an
-authoritative SurrealDB `memory_record` ledger and a derived Qdrant semantic
-index. Treat those data directories as sensitive application data.
+Nahuali stores its authoritative SurrealDB `memory_record` ledger in embedded
+SurrealKV by default, or at an operator-configured SurrealDB endpoint. Qdrant is
+an optional, derived semantic index. Treat every configured data directory and
+remote endpoint as sensitive application infrastructure.
 
 ## Supported Versions
 
-Nahuali is still in a pre-release phase. Security fixes land on `main` until a
-public versioning policy exists.
+Nahuali is still in the `0.8` beta release train and does not offer an LTS
+branch. Security fixes land on `main` and are included in the next supported
+beta release; older beta builds should be upgraded rather than treated as
+maintained release lines.
 
 ## Reporting
 
@@ -16,7 +19,9 @@ real personal data, credentials, or customer data in public issues.
 
 ## Current Model
 
-- The default quickstart requires the local Docker Compose database stack.
+- The default quickstart uses embedded SurrealKV and requires no Docker service.
+- Docker Compose is an optional development path for remote SurrealDB and
+  Qdrant; Qdrant is not required for lexical recall.
 - The default memory database owns the authoritative `memory_record` ledger;
   the semantic index is derived and can be rebuilt.
 - Examples and benchmarks must use synthetic data.

@@ -1,23 +1,22 @@
 //! Ed25519 detached attestation over the tamper-evident ledger chain tip.
 //!
-//! The hash chain ([`crate::verify_event_chain`]) makes an in-place rewrite of
-//! any historical event detectable: the rewrite breaks the link at the *next*
-//! event. The one rewrite a self-contained chain cannot catch is a full re-chain
-//! of the ledger suffix — an attacker who controls the whole store can recompute
-//! every chained hash after an edit and produce a self-consistent chain, just
-//! with a different tip.
+//! The hash chain ([`crate::verify_event_chain`]) exposes an in-place rewrite of
+//! a non-tip event when the following stored link is not recomputed. A
+//! self-contained chain cannot detect a rewritten last event, truncation,
+//! rollback, or a rewritten suffix whose links are all recomputed.
 //!
-//! Signing the tip with a key the attacker does not hold closes that gap. The
-//! operator periodically signs the current [`MemoryEngine::chain_tip`] and keeps
-//! the detached signature outside the store (the "receipt"). A later re-chain
-//! changes the tip, so the receipt no longer verifies against the live ledger,
-//! and forging a fresh receipt requires the Ed25519 private key. Signing is
-//! detached: the signature lives next to the ledger, never inside it, so the
-//! default records stay byte-for-byte identical.
+//! A detached signature retained outside the store provides a comparison point
+//! for the state it covered. The operator periodically signs the current
+//! [`MemoryEngine::chain_tip`] and keeps the receipt separately. A divergent
+//! live state no longer matches that receipt. The legacy v1 receipt carries its
+//! own public key, so trust-sensitive use must also authorize that key through a
+//! separately held keyring. Signing is detached: the signature lives next to
+//! the ledger, never inside it, so the default records stay byte-for-byte
+//! identical.
 //!
 //! Keys are 32-byte Ed25519 seeds supplied as hex by the operator (generate one
-//! with, e.g., `openssl rand -hex 32`). The core never generates randomness and
-//! never touches the network.
+//! with, e.g., `openssl rand -hex 32`). The attestation path never generates
+//! randomness or performs network I/O.
 
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 

@@ -1,14 +1,16 @@
 ---
 name: nahuali
 description: >-
-  Nahuali is governed, tamper-evident memory for AI agents. Load this skill
+  Nahuali is evidence-aware memory for agents, with deterministic recall
+  verdicts and explicit recorded-history checks. Load this skill
   whenever a task depends on context from earlier turns or sessions: recall
   before you answer (never assume), record what happened as it happens, assert
   durable facts only with evidence, and read the trust verdict on what you
-  recall before you act on it. Unlike plain vector memory, every recall result
-  comes back with a trust decision (CERTIFY / ADVISORY / WARN / BLOCK) and the
-  evidence behind it, and the history is an append-only, hash-chained ledger you
-  can audit. Trigger phrases: "remember this", "what do we know about", "recall",
+  recall before you act on it. Recall results carry a trust decision (CERTIFY /
+  ADVISORY / WARN / BLOCK) and any recorded evidence behind them. The default
+  append-only, hash-chained history supports local integrity checks; rollback
+  and fully re-chained replacement require an authorized checkpoint retained
+  outside the store. Trigger phrases: "remember this", "what do we know about", "recall",
   "check memory", "is this trustworthy", "what's missing", "was the history
   altered", or any task that leans on prior context. The command is `nahuali`
   (a single Rust binary); the same operations are exposed over MCP for hosts
@@ -17,28 +19,21 @@ description: >-
 
 # Nahuali — governed memory for AI agents
 
-## What Nahuali is (read this first)
+## What Nahuali provides (read this first)
 
-Most agent memory stores more text and hopes retrieval surfaces the right thing.
-The failure is silent: the agent recalls something, treats it as true, and acts
-on it — with no way to tell an observed fact from a guess, a fresh fact from a
-stale one, or an intact history from one edited after the fact.
-
-Nahuali is a **governance layer** over memory. The differentiator is not recall,
-it is trust:
+Nahuali records observations, derived claims, relationships, procedures, and
+intentions together with their available evidence. It keeps relevance separate
+from a deterministic trust verdict:
 
 - Every recall result carries a **trust verdict** — `CERTIFY` / `ADVISORY` /
   `WARN` / `BLOCK` — computed from the evidence behind it, not from how relevant
   it looks.
-- The history is an **append-only, hash-chained ledger**. `nahuali audit` and
-  `nahuali validate` detect any in-place rewrite of a past record — the memory
-  is tamper-evident.
+- The default history is an **append-only, hash-chained ledger**. `nahuali audit`
+  and `nahuali validate` detect checksum, sequence, and broken-link failures.
+  The live store alone cannot detect every possible replacement; rollback and
+  fully re-chained history require an authorized checkpoint retained elsewhere.
 - The engine **inspects its own health** (unsupported claims, contradictions,
   stale facts, isolated entities) and tells you before you lean on it.
-
-The shift is from *recall-more* to *trust-what-you-recall*. An agent that
-confidently recalls a wrong answer is worse than one with no memory. Nahuali
-exists so the agent can tell the difference and say so.
 
 `nahuali` is a single Rust binary and the primary surface. The identical
 operations are available over an MCP server (`nahuali-mcp`) for hosts without a
@@ -113,7 +108,9 @@ graph the session will not maintain.
 Each `recall` result prints a trust line. Branch on it:
 
 - **`CERTIFY`** (`can_trust=true`, score 1.00) — backed by source evidence, no
-  weakening signal. State it as known; cite the `evidence:` id.
+  result-local weakening signal. State only what the recorded evidence supports,
+  cite the `evidence:` id, and verify load-bearing facts against their current
+  source.
 - **`ADVISORY`** (score 0.75) — observed but not an evidence-backed assertion on
   its own (e.g. a bare entity). State it as a lead ("memory suggests…"), not a
   settled fact.
@@ -135,13 +132,13 @@ tests before acting.
 
 | Command | Answers |
 |---|---|
-| `nahuali trust-report` | One composed verdict: what we know, the authority, ledger integrity, health counts, and an overall `Trustworthy: yes/no` with reasons. (`--html <path>` writes a dossier.) |
+| `nahuali trust-report` | One composed report: what is stored, the authority verdict, internal history checks, health counts, and whether the available checks support use. A supplied authorized checkpoint adds an external comparison. (`--html <path>` writes a dossier.) |
 | `nahuali inspect` | Health snapshot: unsupported / conflicting / stale facts, isolated entities, blind spots. Read-only; proposes no fixes. |
 | `nahuali self-inspect` | A prioritized review queue + consolidation candidates with evidence ids. Treat it as an **inspection packet to interpret against code/git/tests**, not an autonomous report. |
-| `nahuali audit` | Ledger integrity — `Integrity: verified (checksums ok, sequence contiguous, chain intact)` plus the Merkle root and chain tip. `✗ unverified` means history was altered. Bound with `--from/--to` (sequence) or `--since/--until` (ms); `--inclusion-proof <seq>` emits a Merkle proof. |
-| `nahuali validate` | Validate the ledger without mutating it; `--require-chained` fails if any record lacks a hash-chain link. |
+| `nahuali audit` | Recorded-history checks — `Integrity: verified (checksums ok, sequence contiguous, chain intact)` plus the Merkle root and chain tip. `✗ unverified` means at least one internal check failed; detecting rollback or a fully replaced and re-chained store requires a previously retained authorized checkpoint. Bound with `--from/--to` (sequence) or `--since/--until` (ms); `--inclusion-proof <seq>` emits membership evidence under the reported root. |
+| `nahuali validate` | Validate the ledger without mutating it; strict chain validation is the default. `--allow-unchained` is the explicit compatibility exception for legacy records. |
 | `nahuali reconcile` | Re-verify the ledger and rebuild the derived tiers (graph + semantic) from it. Run after a service was down. |
-| `nahuali explore` (alias `tui`) | Interactive governance cockpit: trust verdict, integrity, memory by kind, signals. |
+| `nahuali explore` (alias `tui`) | Interactive cockpit: `MEMORY` usability, `HISTORY` self-checks, optional `EXTERNAL` comparison, memory by kind, and review signals. |
 
 **Repairs are explicit and conservative.** Apply only safe, evidence-supported
 corrections surfaced by `self-inspect`; never invent facts, delete memory, or
@@ -149,8 +146,10 @@ rewrite history. The ledger is appended to, never edited in place.
 
 ## Data safety (non-negotiable)
 
-- **A stopped service is not lost data.** The append-only ledger lives on
-  SurrealDB's durable volume; an outage makes it unreachable, not gone.
+- **An unreachable service proves only that the request failed.** The failed
+  attempt does not write or delete a record, but the endpoint's durability
+  cannot be inferred while it is unavailable. Restore connectivity, inspect
+  the store, and verify backups before making a data-safety claim.
 - **Writes fail rather than queue** while the service is unreachable — re-run
   when it is back up.
 - **The semantic index is derived and optional** — lexical recall, capture,

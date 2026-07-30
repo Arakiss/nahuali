@@ -8,23 +8,14 @@ If your harness reads `AGENTS.md`, treat this as binding. If it reads a
 different convention (a system prompt, a skill, a hook), copy the protocol
 into that surface.
 
-## What Nahuali is, and why it is not optional
+## What Nahuali provides
 
-Most agent "memory" stores more text and hopes recall surfaces the right
-thing. The failure mode is silent: the agent recalls something, treats it as
-true, and acts on it — with no way to tell an observed fact from a guess, a
-fresh fact from a stale one, or an intact history from one that was edited
-after the fact.
-
-Nahuali is a governance layer over memory. Every recall comes back with the
-evidence behind it and a trust decision. The engine can inspect its own health
-(unsupported claims, contradictions, stale facts, blind spots) before you act,
-and its default history is an append-only, hash-chained ledger that can be
-checked against an operator-held signed checkpoint.
-
-The shift is from **recall-more** to **trust-what-you-recall**. An agent that
-recalls a confident wrong answer is worse than one with no memory. Nahuali
-exists so your agent can tell the difference, and say so.
+Nahuali records observations and derived memory with their available evidence.
+Every recall carries a trust decision separate from relevance. The engine can
+inspect unsupported claims, contradictions, stale facts, and blind spots before
+you act. Its default append-only, hash-chained history supports local integrity
+checks and can be compared with an authorized checkpoint retained outside the
+store.
 
 ## The protocol (non-negotiable)
 
@@ -51,8 +42,9 @@ These six rules are the contract. Follow them in order, every session.
    result carries a trust mode, not only a relevance number. The decision
    evaluates provenance and memory health; it does not prove external truth:
    - `Certify` (`can_trust=true`) — backed by source evidence, no result-local
-     signal weakens it. Safe to use as a supported memory claim when you cite
-     its evidence id and preserve any uncertainty in the source.
+     signal weakens it. State only what the evidence supports, cite its evidence
+     id, preserve any uncertainty in the source, and verify load-bearing facts
+     against their current source.
    - `Advisory` — observable but not a supported assertion on its own. Treat as
      a lead, not a fact.
    - `Warn` — relevant but missing support, or weakened by a medium-risk signal.
@@ -64,8 +56,8 @@ These six rules are the contract. Follow them in order, every session.
 
 5. **Check health before trusting at scale.** Before you make a decision that
    leans on a lot of recalled memory, read the health signals: `inspect` for
-   the database-wide snapshot, `trust_report` for one composed verdict on
-   whether the store can be trusted at all, `self_inspect` to turn weak spots
+   the database-wide snapshot, `trust_report` for one composed view of the
+   checks represented in that report, and `self_inspect` to turn weak spots
    into proposed review work. When authority is `Warn` or `Block`, slow down
    and surface the gap instead of acting through it.
 
@@ -90,18 +82,16 @@ Same for the store-level authority decision: it is computed from the health
 report, and `can_trust` is true only when the mode is `Certify`. When it is not,
 prefer `inspect` / `self_inspect` before acting.
 
-## Proving the history is intact
+## Checking recorded history
 
 `audit` returns a non-mutating diff of what the ledger recorded between two
-points, with the integrity of that history restated alongside it (checksums,
-sequence contiguity, and the default hash chain). Use
-it when you need to show *what changed* and *that nothing was silently rewritten*.
-
-Default builds chain recorded events by hash, so an in-place rewrite of any
-historical record is detectable even if
-its checksum was recomputed. Chain-tip attestation (cryptographically signing a
-checkpoint) is a CLI/operator action; the MCP server exposes no signing tool,
-so an agent reads and audits integrity but does not sign.
+points, together with checksum, sequence-contiguity, and default hash-chain
+checks. A non-tip rewrite with a recomputed checksum is detected when the next
+stored link no longer matches. A last-event rewrite, truncation, rollback, or a
+fully re-chained replacement can remain internally consistent; detecting those
+cases requires comparison with an authorized checkpoint retained outside the
+store. Checkpoint signing is a CLI/operator action; the MCP server exposes no
+signing tool.
 
 ## Adding the server (one-line MCP config)
 
@@ -143,7 +133,7 @@ Do not invent tools. These are the real ones.
   `consolidation_plan`, `review` / `review_resolve` (the explicit write-back
   path), `proactive`, `deadlines`, `anomalies` / `anomaly_acknowledge`,
   `reconcile_intentions`, `goal_progress`.
-- **Prove (integrity):** `audit` (verifiable diff over the ledger), `validate`
+- **Check (integrity):** `audit` (recorded-history diff and checks), `validate`
   (ledger intact + migration needs).
 - **Maintain (derived tiers):** `projection_status` / `projection_rebuild` /
   `projection_validate`, `semantic_status` / `semantic_rebuild`.

@@ -9,8 +9,8 @@
 //! It is a thin layer that *composes* the good libraries rather than
 //! reinventing terminal rendering. Everything degrades to plain text when
 //! stdout is not a terminal or `NO_COLOR` is set, so agent, hook, and `--json`
-//! output stays clean — Nahuali is agent-first, and this layer is the human
-//! supervisor's window onto what the agent stored and how much to trust it.
+//! output stays clean. This layer is the human supervisor's window onto what
+//! the agent stored and which recorded checks support using it.
 
 #[cfg(feature = "tui")]
 pub mod mascot;

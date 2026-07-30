@@ -6,13 +6,15 @@ workflows.
 ## Quickstart
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
+curl -fsSLo /tmp/nahuali-install.sh \
+  https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh
+sh /tmp/nahuali-install.sh
 export PATH="$HOME/.nahuali/bin:$PATH"
 nahuali demo          # governed recall, self-inspection, and tamper detection
 nahuali init          # wire your agent harness to use Nahuali
 ```
 
-`demo` runs the trust story with zero dependencies; `init` installs the Claude
+`demo` runs the trust story without external database services; `init` installs the Claude
 Code skill and prints the MCP config. (`demo`'s full narrative needs the
 `attestation` build feature; a build made without it explains how to get one
 that has it.)
@@ -371,10 +373,11 @@ calls) that renders offline. It exits non-zero when ledger integrity fails or a
 supplied attestation is not trusted under the operator keyring.
 
 `explore` opens the interactive memory cockpit. It keeps `MEMORY`, `HISTORY`,
-and `PROOF` on separate lines so the default view explains what is usable, what
-changed, and what has been independently verified. `/` enters local search;
-filters and search combine without mutating memory. Supplying both `--checkpoint`
-and `--policy` adds the optional independent proof.
+and `EXTERNAL` on separate lines so the default view explains which content
+checks passed, whether the recorded-history checks passed, and whether the state
+was compared with an authorized reference retained outside the store. `/`
+enters local search; filters and search combine without mutating memory.
+Supplying both `--checkpoint` and `--policy` enables that external comparison.
 `--checkpoint-mode current` requires the checkpoint to cover the live tip,
 while `historical` accepts a fully verified prefix and reports later events as
 uncovered.
@@ -430,8 +433,9 @@ review item count, and write-back policy before any import write.
 `convert-legacy-export` is the bridge for historical exports. It accepts the
 structured export shape plus deterministic SurrealQL export bundles, then emits
 the source-neutral interchange format so `import --dry-run --json` can inspect
-the write plan before any record is appended. This bridge imports into the OSS
-record-ledger/interchange contract and is not legacy schema parity.
+the write plan before any record is appended. This bridge imports into the
+source-available record-ledger/interchange contract and is not legacy schema
+parity.
 
 `convert-projection-export` is a dry-run-friendly bridge for projected memory
 exports. It accepts canonical top-level arrays plus conservative envelope and
@@ -449,12 +453,16 @@ The CLI default build includes `tui`, `tamper-evidence`, and `attestation`; buil
 `--no-default-features` only when you intentionally want the minimal,
 unchained compatibility surface. Extra features remain opt-in.
 
-- `--features tamper-evidence` (default in `nahuali-cli`): recorded events are chained by hash, so
-  `validate` detects an in-place rewrite of any historical record even when its
-  checksum was recomputed. `validate` and `backup-validate` reject missing chain
-  links by default; `--allow-unchained` is the explicit legacy exception.
-  `audit --inclusion-proof <sequence> --json` emits a Merkle
-  inclusion proof for one event under the audited root.
+- `--features tamper-evidence` (default in `nahuali-cli`): recorded events are
+  chained by hash. `validate` detects a rewritten non-tip record when the
+  following link was not recomputed, even if the record checksum was. It cannot
+  detect a last-event rewrite, truncation, rollback, or full re-chain from the
+  live store alone; compare with an externally retained, authorized checkpoint.
+  `validate` and `backup-validate` reject missing chain links by default;
+  `--allow-unchained` is the explicit legacy exception. `audit
+  --inclusion-proof <sequence> --json` emits membership evidence under the audit
+  result's root; the root needs an authorized checkpoint before a third party can
+  rely on it.
 - `--features attestation` (default; implies `tamper-evidence`): adds the current
   `checkpoint-*` and `receipt-*` commands plus the compatibility `attest-*`
   commands. Version 2 checkpoints use an external policy, an explicit ledger

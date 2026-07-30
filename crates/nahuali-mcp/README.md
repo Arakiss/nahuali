@@ -175,7 +175,8 @@ under `tamper-evidence`).
 The `trust_report` tool returns one composed, non-mutating verdict over knowledge
 counts, authority, restated ledger integrity, knowledge health, and an overall
 `trustworthy` flag with the reasons behind it, so a host can read whether the
-memory can be trusted without issuing several calls.
+checks represented in the report passed without issuing several calls. The
+flag does not establish factual truth or an external authorization boundary.
 
 The `self_inspect` tool returns a non-mutating consolidation report with health,
 authority, findings, proposed review items, and an explicit
@@ -213,8 +214,10 @@ artifacts. Build with `--no-default-features` only when you intentionally need
 the legacy unchained record format.
 
 - `--features tamper-evidence`: recorded events are chained by hash, so the
-  `validate` tool detects an in-place rewrite of any historical record even when
-  its checksum was recomputed.
+  `validate` tool detects a rewritten non-tip record when the following link was
+  not recomputed, even when the record checksum was. Last-event rewrite,
+  truncation, rollback, and a full re-chain require comparison with an externally
+  retained, authorized checkpoint.
 - `--features local-embeddings`: `semantic_rebuild` and semantic recall use a
   static model2vec model instead of the deterministic embedder. Set
   `NAHUALI_EMBEDDING_PROVIDER=model2vec` and point

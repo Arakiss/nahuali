@@ -15,23 +15,27 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--MIT-yellow.svg" alt="FSL-1.1-MIT license"></a>
 </p>
 
-Most memory systems answer *what context looks relevant?* Nahuali also answers:
+Memory retrieval usually begins with *what context looks relevant?* Nahuali
+also exposes four separate questions:
 
 - What observation supports this memory?
 - What conflicts with it or makes it stale?
-- Has the recorded history changed?
-- Is this safe for an agent to use now?
+- Do the current recorded-history checks pass?
+- Do the available evidence and health checks support using this result?
 
 The result is a local-first memory engine with deterministic trust verdicts,
-protected history, and portable evidence. Its core does not need a
+tamper-evident recorded history, and portable evidence. Its core does not need a
 model, account, API key, hosted service, or Docker.
 
 ## A 60-second tour
 
-Install the signed macOS or Linux binary:
+Install the macOS or Linux binary. The installer requires the matching SHA-256
+asset; the pinned path below can additionally require its Sigstore bundle.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
+curl -fsSLo /tmp/nahuali-install.sh \
+  https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh
+sh /tmp/nahuali-install.sh
 export PATH="$HOME/.nahuali/bin:$PATH"
 ```
 
@@ -44,10 +48,7 @@ Record an observation, derive a claim from it, and require evidence at recall:
 
 ```bash
 nahuali remember "Lena owns the release notes" --mention Lena --tag product
-CLAIM_ID="$(
-  nahuali claim Lena owns "release notes" \
-    --source-last --confidence 0.92 --json | jq -r '.id'
-)"
+nahuali claim Lena owns "release notes" --source-last --confidence 0.92
 nahuali recall "Who owns the release notes?" --authority --require-evidence
 nahuali explore
 ```
@@ -58,8 +59,8 @@ questions visible:
 | Axis | What it answers |
 |---|---|
 | `MEMORY` | Is this memory supported enough to use? |
-| `HISTORY` | Has the recorded memory changed unexpectedly? |
-| `PROOF` | Has this exact memory state been independently verified? |
+| `HISTORY` | Do this store's recorded-history checks pass? |
+| `EXTERNAL` | Was this state compared with an authorized reference kept outside this store? |
 
 Press `/` to search every displayed memory-item field, `Tab` to filter by memory kind, and
 `j`/`k` to inspect the evidence behind a result. The axolotl watches over the
@@ -68,9 +69,24 @@ windows on macOS with `scripts/render-readme-tui-gif.sh`; the canonical README
 asset is never replaced by the lower-fidelity text fallback.
 
 Run `nahuali demo` for a narrated, non-mutating explanation of how Nahuali
-detects an unexpected rewrite and keeps unsupported memory from driving action.
+detects a specific in-place record change and keeps unsupported memory from
+driving action. The demo states which changes require an externally retained
+reference rather than relying on the live store alone.
 
-## Why this is different
+## Where Nahuali fits
+
+Choose Nahuali when an agent needs local or operator-controlled memory and the
+decision to use a result must carry evidence, health signals, and explicit
+integrity limits. It is especially useful as a reliability layer around
+consequential memory rather than as a replacement for every retrieval system.
+
+Choose an established recall-first or managed memory platform when the main
+requirement is hosted operation, a broad framework ecosystem, or publicly
+disclosed LoCoMo/LongMemEval answer-quality results. Nahuali does not claim
+leadership on those axes today. An application can also pair another retrieval
+system with Nahuali's evidence and governance checks.
+
+## What Nahuali checks
 
 ### Evidence is part of memory
 
@@ -78,21 +94,22 @@ Observations are first-class episodes. Claims, relationships, procedures, and
 intentions can point back to the episode that supports them. Recall can refuse
 results without that path instead of filling the gap with confidence language.
 
-### Trust fails closed
+### Verdicts stay separate from relevance
 
 Authority-aware recall carries one of four deterministic verdicts:
 
 | Verdict | Meaning |
 |---|---|
 | `certify` | Available checks support use with the attached evidence. |
-| `advisory` | Useful as a lead, but not safe to repeat without qualification. |
+| `advisory` | Useful as a lead, but not ready to repeat as fact without qualification. |
 | `warn` | Evidence, freshness, or store-health problems require verification. |
 | `block` | The memory must not drive action until the conflict is resolved. |
 
 A `certify` verdict proves neither truth nor authorship. It means the available
-evidence and content-health checks passed; inspect `HISTORY` and `PROOF`
-separately for recorded changes and independent verification. Nahuali keeps
-those limits machine-readable instead of hiding them in documentation.
+evidence and content-health checks passed; inspect `HISTORY` and `EXTERNAL`
+separately for internal history checks and an optional external comparison.
+Nahuali keeps those limits machine-readable instead of hiding them in
+documentation.
 
 ### History is inspectable
 
@@ -105,7 +122,7 @@ standardized in [RFC 9162](https://www.rfc-editor.org/rfc/rfc9162.html) without
 publishing private memory to a public network or requiring consensus. Independent
 witness co-signing is a future step, not a capability claimed today.
 
-### One claim can travel with its proof
+### One claim can travel with a receipt
 
 Portable claim receipts contain only the selected claim, its evidence episode,
 an optional source envelope, their Merkle inclusion paths, and one signed
@@ -192,12 +209,14 @@ graph tables, snapshots, and semantic vectors are derived and rebuildable.
 The embedded store has one process owner. A second process fails clearly rather
 than waiting indefinitely or risking concurrent writes.
 
-## Evidence, without the marketing shortcut
+## Evidence and evaluation limits
 
-The vendor-neutral
-[Agent Memory Trust Benchmark](benchmarks/agent-memory-trust/README.md) reports
+The adapter-based
+[Agent Memory Trust Benchmark](benchmarks/agent-memory-trust/README.md) is
+designed for cross-product evaluation of
 provenance, abstention, contradiction, staleness, non-mutating inspection, and
-tamper detection as separate cases. The
+tamper detection as separate cases. The checked-in result is first-party
+Nahuali evidence, not an independent comparison. The
 [retrieval benchmark](benchmarks/agent-memory-retrieval/README.md) publishes
 every ranked item and latency sample for a versioned 24-memory, 12-query corpus.
 
@@ -236,6 +255,24 @@ Read [BETA.md](BETA.md) before using irreplaceable data and the full
 [trust model](TRUST_MODEL.md) before treating a verdict as an authorization
 boundary.
 
+## Install a pinned release
+
+The short installer above always requires the matching SHA-256 asset. For a
+version-pinned install that also requires the Sigstore bundle, choose a release
+tag and run the installer from that same tag:
+
+```bash
+VERSION=vX.Y.Z-beta.N
+curl -fsSLo /tmp/nahuali-install.sh \
+  "https://raw.githubusercontent.com/Arakiss/nahuali/${VERSION}/scripts/install.sh"
+NAHUALI_VERSION="$VERSION" NAHUALI_REQUIRE_SIGSTORE=1 \
+  sh /tmp/nahuali-install.sh
+```
+
+This path requires `cosign` and stops if the archive checksum, signing identity,
+or bundle cannot be verified. See [release verification](RELEASE_VERIFICATION.md)
+for the exact identity, provenance, SBOM, and manual verification path.
+
 ## Build from source
 
 ```bash
@@ -262,5 +299,11 @@ benchmark contributions have structured
 
 ## License
 
-Nahuali uses the [Functional Source License 1.1 with an MIT future grant](LICENSE).
-Each release converts to MIT two years after its release date.
+Nahuali is source-available under FSL-1.1-MIT, the
+[Functional Source License 1.1 with an MIT future grant](LICENSE). You may
+inspect, use, copy, modify, self-host, and redistribute it for permitted
+purposes. Offering the current code as a competing commercial product or
+service is restricted; each published version converts to MIT after two years.
+The license does not prevent an independent reimplementation of the product's
+ideas. Read the practical [licensing FAQ](compliance/licensing-faq.md); the
+license text remains the binding source.

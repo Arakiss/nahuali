@@ -1,33 +1,33 @@
 # Add Nahuali to Your Agent (MCP Onboarding)
 
-This is the fastest path to give an AI agent governed, tamper-evident memory.
+This is a short path to give an agent evidence-aware, integrity-checked memory.
 If your client speaks MCP (Claude Desktop, Claude Code, Cursor, Windsurf, Cline,
 and most others), add one stdio server entry. The default persistent store is
 embedded, so there is no database service to start.
 
 ## Why governed, tamper-evident memory
 
-Most agent "memory" is an undifferentiated blob: the agent cannot tell what is
-actually known, why any of it should be trusted, what evidence backs it, or
-whether the recorded history was quietly altered. Nahuali stores memory as an
-append-only ledger where every recalled result carries its evidence and a trust
-decision (`certify`, `advisory`, `warn`, or `block`), so an agent can refuse to
-act on memory it should not trust. The ledger restates its own integrity:
-`audit` and `trust_report` answer what is known, why to trust it, what is
-missing, and whether any historical record was rewritten. Default builds use
-hash-chained records, so an in-place rewrite
-of any past record is detected even if its checksum was recomputed. The result
-is memory your agent can cite and an operator can verify, which is what
-record-keeping and traceability programs need from a memory layer. Nahuali can
-support those programs, but it is not a compliance certification or legal
-advice; deployment-specific obligations still need their own review.
+Some memory integrations retrieve context without preserving a usable evidence
+path or reporting conflicts. Nahuali stores append-oriented records and returns
+a trust decision (`certify`, `advisory`, `warn`, or `block`) with evidence when
+available, so the caller can apply its own action policy. `audit` and
+`trust_report` report what is recorded, which support is missing, and whether
+specified integrity checks pass. Default builds hash-chain records: a rewritten
+non-tip record is detected when the following link was not recomputed. A
+last-event rewrite, truncation, rollback, or full re-chain requires comparison
+with an externally retained, authorized checkpoint. These controls can
+contribute to recordkeeping and traceability programs, but they do not establish
+factual truth or regulatory compliance; deployment-specific obligations still
+need their own review.
 
 ## Install the server
 
-Install the signed release binaries:
+Install the release binaries:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
+curl -fsSLo /tmp/nahuali-install.sh \
+  https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh
+sh /tmp/nahuali-install.sh
 export PATH="$HOME/.nahuali/bin:$PATH"
 ```
 
@@ -56,11 +56,15 @@ Registry. Its OCI package can be launched with a persistent named volume:
   "mcpServers": {
     "nahuali": {
       "command": "docker",
-      "args": ["run", "--rm", "-i", "-v", "nahuali-data:/data", "ghcr.io/arakiss/nahuali-mcp:latest"]
+      "args": ["run", "--rm", "-i", "-v", "nahuali-data:/data", "ghcr.io/arakiss/nahuali-mcp:v0.8.0-beta.7"]
     }
   }
 }
 ```
+
+Pin the image to the release you reviewed. The official registry metadata also
+uses a versioned image reference; `latest` is convenient for local experiments
+but is not a reproducible deployment input.
 
 ## Copy-paste config
 
@@ -108,8 +112,9 @@ so `~` may not be expanded.
 
 ### Build features
 
-Tamper evidence and attestation are enabled by default. The only optional trust
-adjacent feature in this example is the stronger local semantic model.
+The default build includes hash chaining and the core checkpoint/attestation
+types; checkpoint signing remains a CLI/operator action rather than an MCP tool.
+The optional feature in this example is the local model-backed semantic provider.
 
 ```bash
 # Local semantic recall via a static model2vec model instead of the
@@ -190,7 +195,8 @@ session looks like this.
 5. **Trust report.** Before relying on the memory as a whole, call
    `trust_report`. It returns one composed, non-mutating verdict over knowledge
    counts, authority, restated ledger integrity, knowledge health, and an
-   overall `trustworthy` flag with the reasons behind it.
+   overall `trustworthy` flag with the reasons behind it. That flag reports the
+   represented checks; it does not establish factual truth.
 
    ```json
    { "name": "trust_report", "arguments": {} }

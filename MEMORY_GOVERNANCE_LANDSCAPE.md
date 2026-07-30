@@ -1,216 +1,361 @@
-# Agent-Memory Governance Landscape
+# Agent-Memory and Governance Landscape
 
-Last external claim review: 2026-06-14.
+Last external claim review: 2026-07-17.
 
-Next scheduled review: 2026-09-14, or earlier before quoting the comparison
-claim in a new public release, launch post, benchmark report, investor note, or
-customer-facing document.
+Next scheduled review: 2026-10-15, or earlier before this comparison is used
+in a release, launch post, benchmark report, investor note, or customer-facing
+document.
 
-Nahuali's public claim is intentionally narrow:
+This review uses public primary sources: official repositories, official
+documentation, and the authors' papers. Product and benchmark statements remain
+the originating project's claims unless an independent reproduction is linked.
+The review is representative rather than exhaustive.
 
-> Nahuali combines a hash-chained, Merkle-proofed memory ledger, detached
-> Ed25519 tip attestation, and a per-recall confidence-vs-provenance trust
-> verdict over the memory it returns.
+## The Comparison Has Three Axes
 
-That is a composition claim, not a claim that Nahuali has the highest raw recall,
-the largest ecosystem, or legal compliance certification. This document records
-the adjacent prior art and external pressure behind that boundary so the README
-can stay short without hiding the evidence.
+Agent-memory products are often compared as though they answer one question.
+They currently expose at least three separate evaluation axes:
 
-## Claim Review Discipline
+1. **Answer quality:** can the system retain, retrieve, and apply the right
+   context across sessions, updates, and long histories?
+2. **Adoption and operation:** can a team integrate it through familiar SDKs
+   and frameworks, then run it reliably without building the surrounding
+   service itself?
+3. **Governance and integrity:** can a caller inspect evidence, freshness,
+   contradictions, authorization, and recorded-history integrity before acting
+   on a memory?
 
-External comparison claims are time-bounded. Treat the README comparison as
-stale if this document has not been reviewed within the last 90 days, or if a
-credible new competitor appears to combine the same primitives before that date.
+Good performance on one axis does not imply good performance on the others.
+Nahuali should therefore be described by the controls it implements and the
+evidence it publishes, not by a category-wide ranking.
 
-A claim review must update this document before the README is quoted
-externally. The review should:
+## Current Agent-Memory Systems
 
-1. Re-check direct memory engines and adjacent prior art from primary sources:
-   official repositories, documentation, release notes, papers, and standards or
-   regulatory sources.
-2. Inspect representative public code for the specific primitives Nahuali
-   claims together: recall-path evidence/freshness verdicts, tamper-evident
-   memory ledger, Merkle proofs, detached tip attestation, and reproducible
-   governance benchmarks.
-3. Separate public implementation evidence from vendor positioning,
-   research prototypes, blog posts, and commercial claims without public code.
-4. Weaken or remove the README claim if the evidence is ambiguous. A dated,
-   narrow claim is better than an overconfident evergreen one.
+### Mem0
 
-This file is the canonical freshness marker for public comparison claims. The
-README should summarize it, not duplicate the full competitor audit.
+[Mem0](https://github.com/mem0ai/mem0) provides an Apache-2.0 memory library,
+self-hosted server, managed platform, CLI, MCP integration, Python and
+JavaScript interfaces, and integrations with common agent frameworks. Its
+current open-source algorithm combines additive extraction, semantic and BM25
+retrieval, entity linking, and temporal ranking. Mem0 publishes a
+[research paper](https://arxiv.org/abs/2504.19413), evaluation code, and current
+project-authored LoCoMo and LongMemEval results.
 
-## Why This Matters
+Mem0 lowers adoption cost through hosted and open-source deployment paths,
+multiple SDKs, migration guides, framework examples, and recognizable
+answer-quality evidence. The reviewed sources emphasize retrieval quality,
+personalization, and managed operation; this review does not treat those sources
+as evidence for Nahuali-style authorized checkpoints or portable claim receipts.
 
-Persistent agent memory turns history into infrastructure. Once an agent writes
-facts, summaries, preferences, task state, or decisions across sessions, callers
-need more than a relevant retrieval result. They need to know:
+### Zep and Graphiti
 
-1. what evidence supports the returned memory,
-2. whether the memory is stale, contradictory, unsupported, or low-confidence,
-3. whether the recorded history was rewritten after the fact, and
-4. which reproducible checks prove those controls still work.
+[Graphiti](https://github.com/getzep/graphiti) is the Apache-2.0 temporal context
+graph engine used by Zep. It models source episodes, entities, relationships,
+and fact-validity intervals, and combines semantic, keyword, and graph
+retrieval. [Zep](https://help.getzep.com/v2/quickstart) supplies the managed
+operation around that model, including users, sessions, dashboards, and Python,
+TypeScript, and Go SDKs. The team also publishes the
+[Zep architecture paper](https://arxiv.org/abs/2501.13956) and benchmark claims.
 
-Recall-first memory benchmarks are still useful. They answer whether the right
-context can be found. Governance benchmarks answer a different question: whether
-the memory substrate exposes and verifies the basis for trust before a caller
-acts on the retrieved context.
+Graphiti overlaps with Nahuali on episode provenance and temporal change instead
+of treating memory as undifferentiated vector chunks. Zep's managed service and
+SDK coverage address operational work that Nahuali currently leaves to the
+operator. The reviewed sources do not establish a detached checkpoint policy or
+offline claim-receipt contract.
 
-## External Pressure
+### Letta
 
-### Memory Poisoning
+[Letta](https://github.com/letta-ai/letta), formerly MemGPT, is an Apache-2.0
+platform for stateful agents. Its memory model combines always-visible,
+agent-editable memory blocks with files, archival memory, and external retrieval
+tools. The [context hierarchy](https://docs.letta.com/guides/core-concepts/memory/context-hierarchy)
+makes those trade-offs explicit. Letta offers Python and TypeScript SDKs, a
+managed service, a self-hosted server, a developer community, and a separate
+[agent evaluation kit](https://github.com/letta-ai/letta-evals). Its underlying
+memory-tier approach was introduced in the
+[MemGPT paper](https://arxiv.org/abs/2310.08560).
 
-OWASP's agentic security work makes memory poisoning a first-class concern:
-[OWASP Agent Memory Guard](https://owasp.org/www-project-agent-memory-guard/)
-directly targets ASI06, Memory Poisoning, and its roadmap targets a stable v1.0
-in Q4 2026. Published memory-poisoning work reports that MINJA-style attacks can
-poison long-term memory through normal query interactions, with reported
-injection success above 95% and attack success above 70% in idealized settings
-([Memory Poisoning Attack and Defense on Memory Based LLM-Agents](https://arxiv.org/html/2601.05504v2)).
+Letta's adoption path is built around a complete stateful-agent runtime rather
+than a standalone integrity layer. Its memory blocks also expose useful control
+concepts such as read-only and shared blocks. The sources reviewed here do not
+support treating that state model as an append-only, externally checkpointed
+ledger.
 
-Nahuali is not a complete poisoning-defense product. Its contribution is the
-part a memory substrate can enforce deterministically: provenance-aware recall,
-freshness-aware trust decisions, explicit health signals, non-mutating review
-paths, and a ledger that makes rewritten history detectable.
+### LangMem
 
-### AI Act Record Keeping
+[LangMem](https://github.com/langchain-ai/langmem) is an MIT-licensed toolkit for
+forming and updating long-term memory. It supports semantic, episodic, and
+procedural memory; memory formation in the request path or in background work;
+storage-independent transformation functions; and native LangGraph storage and
+platform integration. Its
+[conceptual guide](https://langchain-ai.github.io/langmem/concepts/conceptual_guide/)
+also states that useful memory systems are usually application-specific.
 
-Article 12 of the EU AI Act requires high-risk AI systems to support automatic
-event logging over the lifetime of the system, with logs intended to support
-traceability, post-market monitoring, risk identification, and operational
-tracking
-([AI Act Service Desk: Article 12](https://ai-act-service-desk.ec.europa.eu/en/ai-act/article-12)).
-The Council and Parliament's 7 May 2026 provisional agreement on the Digital
-Omnibus introduced fixed delayed application dates for high-risk rules: 2
-December 2027 for stand-alone high-risk systems and 2 August 2028 for high-risk
-AI embedded in products
-([Council press release](https://www.consilium.europa.eu/en/press/press-releases/2026/05/07/artificial-intelligence-council-and-parliament-agree-to-simplify-and-streamline-rules/)).
+LangMem benefits from LangChain and LangGraph's existing integrations and user
+base. Applications can adopt it without replacing their storage model. That
+flexibility also means LangMem does not impose a tamper-evident ledger,
+checkpoint-retention policy, or recall-authorization verdict on the underlying
+store.
 
-Nahuali does not claim AI Act compliance. The relevant engineering point is
-smaller: memory systems aimed at regulated or high-stakes use should be designed
-around traceable, replayable, tamper-evident records rather than opaque mutable
-state.
+### Hindsight
 
-## Adjacent Prior Art
+[Hindsight](https://github.com/vectorize-io/hindsight) is an MIT-licensed memory
+system organized around `retain`, `recall`, and `reflect`. It stores world facts,
+agent experiences, and derived mental models in memory banks. It provides an LLM
+wrapper, REST API, Python and Node clients, a CLI, self-hosted deployment, a
+[managed cloud service](https://docs.hindsight.vectorize.io/), and public
+[benchmark artifacts](https://github.com/vectorize-io/hindsight-benchmarks).
 
-### SuperLocalMemory
+Hindsight documents answer-quality results alongside a short integration path
+and managed operation. Its published benchmark numbers should still be treated
+as project-authored unless a cited reproduction matches the dataset revision,
+reader, judge, prompts, and run protocol. The reviewed sources do not establish
+Nahuali's external checkpoint and receipt semantics.
 
-[SuperLocalMemory](https://arxiv.org/abs/2603.02240) is the closest
-memory-specific prior art found in this review. It describes a local-first
-multi-agent memory system with SQLite/FTS5, graph clustering, per-agent
-provenance, adaptive ranking, and Bayesian trust scoring against OWASP ASI06
-memory poisoning.
+### Supermemory
 
-Boundary relative to Nahuali: it scores writer/agent trust and poisoning risk,
-but it does not expose Nahuali's per-recall evidence/freshness/health verdict
-over a tamper-evident memory ledger.
+[Supermemory](https://github.com/supermemoryai/supermemory) is an MIT-licensed
+memory and context service spanning conversation memory, user profiles, hybrid
+search, document processing, data connectors, SDKs, MCP, and coding-agent
+plugins. It publishes LoCoMo and LongMemEval claims and an open
+[MemoryBench harness](https://github.com/supermemoryai/memorybench).
 
-### MentisDB
+Supermemory packages memory, retrieval, user context, and external data
+ingestion behind one managed interface. That is materially different from
+Nahuali's local governance focus. Project-authored benchmark results remain
+method-dependent, and the reviewed sources are not evidence of externally
+authorized ledger checkpoints.
 
-[MentisDB](https://docs.rs/mentisdb/latest/mentisdb/) is a Rust memory crate
-with append-only, hash-chained semantic thoughts and hybrid retrieval. Its
-project material also describes cryptographically signable versioned skill
-uploads.
+### MemMachine
 
-Boundary relative to Nahuali: it overlaps on durable hash-chained memory
-records, but it is not positioned as a governance benchmark suite and does not
-define a recall-path trust verdict contract.
+[MemMachine](https://github.com/MemMachine/MemMachine) is an Apache-2.0 memory
+layer with working, episodic, and profile memory; REST, Python, TypeScript, and
+MCP interfaces; framework integrations; and self-hosted and managed deployment
+paths. Its 2026
+[paper](https://arxiv.org/abs/2604.04853) emphasizes preserving complete
+conversation episodes to reduce information loss during extraction and reports
+LoCoMo and LongMemEval results.
 
-### OpenFang
+MemMachine is relevant because retaining full episodes is a practical answer to
+provenance loss. Preserving source conversations, however, is not the same claim
+as detecting a rewritten ledger or authorizing a retained checkpoint.
 
-[OpenFang](https://github.com/RightNow-AI/openfang) is an agent operating system
-with a Merkle hash-chain audit trail over agent actions, plus broader runtime
-isolation and security controls.
+## Why These Systems Gain Adoption
 
-Boundary relative to Nahuali: it is useful evidence that cryptographic
-agent-action audit trails are becoming expected, but it audits actions rather
-than a memory store and does not provide memory recall verdicts.
+Their public adoption paths share three patterns:
 
-### Right To History
+- **Answer-quality evidence is easy to understand.** LoCoMo and LongMemEval turn
+  an abstract memory claim into a score tied to recognizable abilities. Open
+  harnesses and saved outputs make the claim easier to inspect, even when the
+  originating vendor ran the evaluation.
+- **SDKs and integrations reduce switching cost.** Python and TypeScript SDKs,
+  REST APIs, MCP servers, framework adapters, wrappers, migration guides, and
+  runnable examples let a team test memory inside an existing application.
+- **Managed operation and community reduce non-model work.** Hosted storage,
+  authentication, tenant management, dashboards, monitoring, support, regular
+  releases, and active contributor channels make the product usable beyond a
+  local experiment.
 
-[Right to History](https://arxiv.org/abs/2602.20214) is a research prototype for
-verifiable agent execution using RFC 6962-style Merkle audit logs and a Rust
-sovereignty kernel.
+Nahuali currently publishes more detail about evidence and recorded-history
+limits than about those adoption concerns. This scope leaves product gaps:
+governance controls do not replace answer-quality evidence, client libraries,
+integrations, or managed operation.
 
-Boundary relative to Nahuali: it is directly relevant to verifiable agent
-history, but it is execution-history research, not an agent-memory engine with
-provenance-aware recall and governance benchmarks.
+## Security and Cryptographic Prior Art
 
-### Trace Continuity
+The relevant building blocks already appear in memory and agent systems. They
+should be treated as prior art, not as evidence that one project owns their
+combination.
 
-[Trace Continuity](https://dev.to/heath_99ab1667dfecd3da406/trace-continuity-vs-mem0-vs-zep-ai-memory-governance-compared-1mhp)
-is vendor-published positioning around PII redaction, retention, audit logging,
-and tenant isolation for regulated memory use cases.
+- [OWASP Agent Memory Guard](https://owasp.org/www-project-agent-memory-guard/)
+  screens memory reads and writes for injection, secret leakage, protected-key
+  changes, and other policy violations, and provides snapshots and rollback. It
+  is complementary to a tamper-evident ledger: content screening and historical
+  integrity answer different questions.
+- [SuperLocalMemory](https://arxiv.org/abs/2603.02240) describes a local-first
+  multi-agent memory system with per-agent provenance, trust scoring, adaptive
+  ranking, and defenses aimed at memory poisoning.
+- [MentisDB](https://docs.rs/mentisdb/latest/mentisdb/) is a Rust memory engine
+  with typed thoughts, an append-only hash-chained log, hybrid retrieval,
+  versioned skills, and signing support. It overlaps directly with durable and
+  cryptographically verifiable memory.
+- [OpenFang](https://github.com/RightNow-AI/openfang) applies a Merkle hash-chain
+  audit trail to agent actions and signs agent manifests. Its primary object is
+  execution history rather than a memory recall contract.
+- [Right to History](https://arxiv.org/abs/2602.20214) applies Merkle audit logs
+  and capability controls to verifiable agent execution. It addresses execution
+  history rather than a general-purpose memory engine.
 
-Boundary relative to Nahuali: it is useful as market signal, not as independent
-technical proof. Its public positioning validates demand for governance-first
-memory, while Nahuali's current differentiator is cryptographic history plus
-recall trust verdicts in a local source-available engine.
+Memory poisoning is also an active research topic. For example,
+[MPBench](https://arxiv.org/abs/2606.04329) studies write channels and structural
+weaknesses that allow persistent poisoned content to influence later behavior.
+Nahuali's provenance, health, and integrity checks can expose some risk signals;
+they are not a complete input-screening or poisoning-defense product.
 
-Other commercial pages now use overlapping language around signed or
-tamper-evident agent-memory retrieval logs, for example
-[CyborgDB's agent-memory audit-trail positioning](https://www.cyborg.co/solutions-use-cases/).
-Treat those as market signals unless they provide public implementation
-evidence for the full publicly inspectable memory-engine composition being claimed here.
+## Benchmark Landscape
 
-The conclusion is that the building blocks are not unique. Hash chains, Merkle
-proofs, signatures, provenance, and trust scoring are established ideas.
-Nahuali's differentiator is the composition: recall trust verdicts grounded in
-evidence, freshness, and health signals, over a tamper-evident memory ledger
-with attestation, measured by reproducible governance benchmarks.
+### LoCoMo
 
-## Benchmark Gap
+[LoCoMo](https://github.com/snap-research/locomo), introduced in the
+[ACL 2024 paper](https://arxiv.org/abs/2402.17753), releases ten long-running
+conversations annotated for question answering and event summarization, with
+multimodal dialogue-generation material. It tests whether a system can answer or
+summarize from long conversational histories.
 
-Existing agent-memory benchmark work is dominated by recall and long-context
-quality:
+LoCoMo does not by itself test whether stored history was rewritten, whether a
+retrieved statement has authorized provenance, or whether an operator retained
+an external integrity checkpoint.
 
-- [LOCOMO](https://snap-research.github.io/locomo/) evaluates long-term
-  conversational memory through question answering, event summarization, and
-  multimodal dialogue generation.
-- [LongMemEval and BEAM](https://github.com/mem0ai/memory-benchmarks) are used
-  in memory-augmented LLM benchmark suites to measure long-term recall,
-  extraction, temporal reasoning, multi-session reasoning, contradiction
-  resolution, and related answer quality.
+### LongMemEval
 
-Those are important tests, but they do not measure whether a memory engine:
+[LongMemEval](https://github.com/xiaowu0162/LongMemEval), accepted at ICLR 2025,
+contains 500 questions covering information extraction, multi-session
+reasoning, knowledge updates, temporal reasoning, and abstention. The official
+repository publishes cleaned datasets and separate retrieval and answer
+evaluation paths; the accompanying
+[paper](https://arxiv.org/abs/2410.10813) defines the task.
 
-- detects rewritten ledger history,
-- distinguishes sourced from unsupported recall,
-- reports stale or contradictory knowledge,
-- verifies signature-key lifecycle behavior,
-- calibrates an authority verdict over a memory store, or
-- publishes the fixed corpus and formula needed to recompute those governance
-  numbers from a checkout.
+LongMemEval is a relevant answer-quality target for Nahuali. A retrieval-only
+adapter does not constitute a LongMemEval question-answering result: it must not
+be reported as one without the reader, official answer evaluation, dataset
+revision, prompts, model identifiers, and run outputs.
 
-Nahuali's [Governance Benchmark Methodology](GOVERNANCE_BENCHMARKS.md) covers
-that second axis. It is first-party and synthetic by design, so it should be
-quoted with the command, commit or release, and report JSON. It should not be
-quoted as independent certification.
+### LongMemEval-V2
 
-## How To Compare Nahuali Responsibly
+[LongMemEval-V2](https://github.com/xiaowu0162/LongMemEval-V2) moves from chat
+history to long histories of multimodal web-agent trajectories in customized
+web and enterprise environments. Its 451 curated questions cover static state,
+dynamic state, workflows, environment-specific failure modes, and premise
+awareness. The largest released histories reach 115 million tokens, and the
+evaluation combines answer accuracy with query latency. The official
+[2026 paper](https://arxiv.org/abs/2605.12493) and repository define fixed
+baseline and submission protocols.
 
-Use Nahuali when the evaluation question is:
+V2 evaluates learned environment behavior rather than dialogue recall alone. It
+still does not replace integrity tests: an accurate answer does not establish
+that the retained history is untampered or that a checkpoint signer was
+authorized.
 
-> Can this memory substrate explain why a returned memory should be trusted, and
-> can it prove its recorded history was not silently rewritten?
+### Rules for Quoting Memory Benchmarks
 
-Use a recall-first engine when the evaluation question is:
+Do not compare headline numbers unless the report identifies:
 
-> Can this system maximize answer quality, ecosystem reach, or benchmark scores
-> on LOCOMO, LongMemEval, BEAM, or application-specific retrieval tasks?
+- exact dataset and revision,
+- ingestion and retrieval configuration,
+- reader and judge models,
+- prompts and context formatting,
+- number of runs and aggregation method,
+- latency boundary and hardware or service conditions, and
+- raw or per-question outputs sufficient for review.
 
-The two axes are complementary. A production system can pair high-recall memory
-retrieval with governance checks. Nahuali's current source-available repository focuses on
-the local deterministic governance foundation, not on replacing every
-recall-first product surface.
+Vendor-authored harnesses and results are useful evidence when disclosed. They
+are not independent certification. Retrieval metrics, answer accuracy, token
+cost, and latency should remain separate rather than being collapsed into one
+rank.
 
-When citing the landscape, keep these limits attached:
+## Nahuali: Implemented Behavior and Current Gaps
 
-- Nahuali is pre-release.
-- The governance benchmarks are first-party release gates.
-- The project does not claim legal compliance.
-- The project does not claim memory contents are true.
-- The public API can still change before 1.0.
-- Public claims should be tied to a commit, release, fixture, or validation
-  command.
+The beta behavior reviewed here is documented in the [README](README.md), the
+[trust model](TRUST_MODEL.md), and the project's
+[release history](https://github.com/Arakiss/nahuali/releases). It implements:
+
+- a local-first Rust engine with embedded SurrealKV by default and optional
+  operator-controlled SurrealDB;
+- CLI, TUI, stdio MCP, local HTTP, and Rust crate interfaces;
+- evidence-linked episodes, claims, relationships, procedures, and intentions;
+- deterministic recall verdicts based on evidence, freshness, contradictions,
+  and store-health signals;
+- an append-only hash-chained authoritative ledger, non-mutating audit, and
+  Merkle inclusion and consistency proofs;
+- Ed25519-signed ledger checkpoints verified against a separately supplied
+  operator policy, including origin, ledger lineage, active or revoked keys, and
+  signature threshold; and
+- portable claim receipts that bind a selected claim, its evidence episode, an
+  optional source event, their inclusion paths, and an authorized checkpoint.
+
+The project also publishes synthetic
+[governance regression suites](GOVERNANCE_BENCHMARKS.md). Those are
+project-authored release gates, not a comparative answer-quality benchmark, an
+external security audit, or a certification.
+
+Current gaps and limits:
+
+- The current beta line publishes no end-to-end LoCoMo, LongMemEval, or
+  LongMemEval-V2 answer score. Development work on the
+  [LongMemEval v1 adapter](benchmarks/longmemeval/README.md) is retrieval-only;
+  it does not run a reader or produce the official question-answering score.
+- It has no managed control plane, hosted synchronization, accounts, billing,
+  tenant administration, or vendor-operated checkpoint-retention service.
+- It does not yet offer the Python, TypeScript, and Go SDK coverage or breadth of
+  framework and data-source integrations shown by several systems above.
+- The local HTTP API is unauthenticated and is not intended for exposure to an
+  untrusted network. Scope labels organize memory; they are not access-control
+  boundaries.
+- It does not independently witness checkpoints, publish them to a transparency
+  service, or provide an external time guarantee.
+- Evidence commitment does not prove factual truth, author identity, source
+  authenticity, or the continued availability of source bytes.
+- The product is in beta, and its API and storage behavior may change before
+  1.0.
+
+Nahuali is source-available under
+[FSL-1.1-MIT](LICENSE), with a future MIT grant for each released version. That
+license can add evaluation and adoption friction compared with Apache-2.0 or MIT
+projects and should be described plainly. [Qdrant](https://github.com/qdrant/qdrant#license),
+which Nahuali can use as an optional derived semantic index, is Apache-2.0. It is
+not an FSL precedent and should not be presented as one.
+
+## Internal History Checks vs External Checkpoints
+
+This boundary must remain explicit in every public explanation.
+
+### Checks performed against the store itself
+
+Nahuali can recompute event checksums, sequence continuity, hash-chain links,
+and the Merkle root for the ledger bytes it is currently reading. These checks
+detect malformed or inconsistent current history. They cannot, on their own,
+distinguish the original ledger from a fully rewritten and consistently
+re-chained replacement.
+
+### Checks against an externally retained authorized state
+
+An operator can export a signed checkpoint and retain that checkpoint and its
+authorization policy separately from the memory store. Later,
+`checkpoint-verify` can compare the live ledger prefix with the retained tree
+size, Merkle root, chain tip, lineage, origin, signer set, revocation state, and
+signature threshold. This can detect rollback, truncation, or re-chaining
+relative to the retained checkpoint.
+
+The assurance depends on keeping the checkpoint, policy, and signing authority
+outside the attacker's control. A valid checkpoint proves that authorized keys
+committed to a ledger state; it does not prove an independently witnessed time.
+If the attacker can replace the store and every retained trust artifact, local
+verification has no independent reference. Witness co-signing or publication to
+an external transparency service remains future work.
+
+Portable claim-receipt verification has a narrower scope. It verifies selected
+events, their provenance links and inclusion paths, and checkpoint
+authorization. It does not replay the complete ledger prefix unless the verifier
+also obtains the ledger and runs checkpoint verification.
+
+## Responsible Public Positioning
+
+A supportable summary is:
+
+> Nahuali is a locally operated agent-memory engine with evidence-aware recall
+> verdicts and tamper-evident recorded-history checks. Separately retained,
+> operator-authorized checkpoints can detect specified rollback and re-chaining
+> cases relative to a previously accepted ledger state.
+
+Keep these qualifications attached:
+
+- no claim of superior answer quality;
+- no claim that the architecture or cryptographic primitives are exclusive;
+- no claim of independent witnessing, factual truth, or authorship;
+- no claim of legal compliance or independent certification; and
+- no claim that governance controls replace content screening, access control,
+  strong retrieval, integrations, or managed operation.
+
+The comparison should be refreshed from the same primary-source standard before
+each public use. If another system documents overlapping controls, record the
+overlap directly and narrow the wording rather than defending a category claim.

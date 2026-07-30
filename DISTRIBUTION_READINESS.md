@@ -1,9 +1,10 @@
 # Distribution Readiness
 
-Nahuali is distributed as a local-first beta project. The supported channels are
-source checkout workflows and GitHub prerelease binary archives produced by the
-release workflow. Package registries and third-party package managers are not
-supported distribution channels yet.
+Nahuali is distributed as a local-first beta project. Supported channels include
+source checkout workflows, GitHub prerelease binary archives, the release
+installer backed by those archives, and the versioned MCP container referenced
+by the official MCP Registry entry. Crates.io and third-party package managers
+are not supported distribution channels yet.
 
 This page defines the non-destructive checks that make a commit ready for a
 controlled beta or a prerelease decision. None of these commands publish crates,
@@ -15,9 +16,10 @@ create tags, upload release assets, or submit package-manager formulas.
 | --- | --- | --- |
 | Source checkout | Supported beta path | `cargo run`, `cargo install --path`, demos, and controlled-beta gates |
 | GitHub prerelease archives | Supported beta path after Release Please tag | `release.yml`, signed archives, SHA-256 files, release verification scripts |
-| One-line installer | Supported only after a GitHub prerelease exists | `scripts/install.sh` resolves published GitHub release assets |
+| Release installer | Supported prerelease path | `scripts/install.sh` resolves published GitHub release assets and requires their SHA-256 checksum |
+| MCP Registry and OCI image | Supported beta path | `server.json` references a versioned `ghcr.io/arakiss/nahuali-mcp` image; `publish-mcp.yml` publishes the image and registry metadata |
 | Crates.io | Not supported yet | `cargo package` dry-runs only; no `cargo publish` path |
-| Homebrew, npm, apt, containers, hosted service | Not supported | No formula, package, image, account, sync, billing, or hosted contract |
+| Homebrew, npm, apt, hosted service | Not supported | No formula, package, account, sync, billing, or hosted contract |
 
 ## Local Readiness Gate
 
@@ -109,7 +111,8 @@ These actions require explicit maintainer approval in the same release decision:
 - creating, moving, or deleting release tags
 - uploading, replacing, or deleting GitHub release assets
 - publishing any crate to Crates.io
-- submitting Homebrew, apt, container, npm, or other package-manager artifacts
+- submitting Homebrew, apt, npm, or other new package-manager artifacts
+- manually publishing or replacing MCP container tags outside the release workflow
 - changing repository release settings, branch protection, or workflow
   permissions
 - advertising a stable release, hosted service, sync, accounts, billing, or

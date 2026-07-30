@@ -9,8 +9,9 @@ The trust model has four separate questions:
    evidence, confidence, freshness, contradictions, and review state.
 2. **Does the store need attention?** Self-inspection reports unsupported,
    stale, contradictory, or isolated memory without changing it.
-3. **Is the ledger internally intact?** Event checksums, sequence validation, a
-   default hash chain, and Merkle proofs detect different structural failures.
+3. **Do the store's internal history checks pass?** Event checksums, sequence
+   validation, and the default hash chain detect different structural failures;
+   Merkle paths establish membership under a supplied root.
 4. **Is that exact ledger state independently authorized?** Version 2 signed
    checkpoints are accepted only under a separately held operator policy.
 
@@ -38,8 +39,9 @@ deterministic verdicts:
 | `block` | The result should not drive action until its conflict is resolved. |
 
 Authority is policy, not truth. An episode can faithfully record a mistaken
-statement. Nahuali can prove which observation a claim cites and how that claim
-was evaluated; it cannot prove the external world matched the observation.
+statement. Nahuali can show which recorded observation a claim cites and how
+that claim was evaluated; it cannot prove the external world matched the
+observation.
 
 ## Store inspection
 
@@ -67,7 +69,7 @@ chain. The tiers deliberately make different guarantees:
 | Integrity tier | Detects | Does not detect by itself |
 |---|---|---|
 | Event checksum | Accidental or direct modification of one event | An attacker who edits the event and recomputes its checksum |
-| Hash chain | In-place history edits, even with recomputed event checksums | A full rewrite followed by re-chaining every later event |
+| Hash chain | A changed non-tip event when the later suffix is not also recomputed | A last-event rewrite, truncation, rollback, or a full rewrite followed by re-chaining the suffix |
 | Merkle root and strict inclusion proof | Whether one selected chain hash is committed under one root | Who authorized the root, factual truth, or freshness |
 | Version 2 signed checkpoint plus external policy | Full re-chaining, wrong lineage, unauthorized signers, and rollback relative to the checkpoint supplied | A newer valid checkpoint being withheld, key compromise, or external truth |
 | Portable claim receipt | Commitment and provenance linkage for one claim, its episode, and optional source | Claim truth, authorship, source authenticity, source bytes, or an external timestamp |

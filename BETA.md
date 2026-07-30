@@ -3,7 +3,7 @@
 Nahuali is a public beta. This page defines the data-safety boundary for
 technical testers while the storage and API contracts are still pre-1.0.
 
-The beta goal is narrow: prove that the local CLI-first memory loop can run
+The beta goal is narrow: verify that the local CLI-first memory loop can run
 from a clean install without risking existing data.
 
 ## What The Beta Covers

@@ -512,8 +512,8 @@ pub enum ReviewDecisionOutcome {
 /// Each entry is the projection of one [`crate::MemoryEvent::RepairApplied`]
 /// event. It records the materialized claim or link, the model that proposed
 /// the repair, the deterministic autonomy verdict it was applied under, and
-/// whether an operator approved it. Append-only: a bad repair is reversed by a
-/// superseding observation, never by mutation.
+/// whether an operator approved it. Append-only: a later observation can
+/// supersede a bad repair, but cannot undo downstream actions already taken.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct MemoryRepair {
     /// Stable repair-decision identifier.

@@ -38,44 +38,46 @@ system that maintains and preserves records in a manner that permits the
 recreation of an original record if it is altered, overwritten, or erased. The
 WORM option was retained; the audit-trail alternative was added alongside it.
 
-Nahuali's integrity model is built around exactly this alternative. It does not
-freeze bytes on WORM media; it keeps an append-only, hash-chained event ledger
-whose validation detects any in-place alteration and whose audit path recreates
-what changed between two points. A firm choosing the audit-trail alternative for
-agent-generated records still owns the surrounding obligations (see Known
-Limitations); Nahuali supplies the technical audit trail, not the arrangement.
+Nahuali provides some components that can contribute to an audit-trail design,
+but it does not implement the SEC alternative by itself. It does not freeze bytes
+on WORM media. Its hash chain can detect a rewritten non-tip event when the next
+stored link is left unchanged, and its audit path reports append history between
+retained bounds. Recreating an original after overwrite or deletion still
+requires the firm to retain the original bytes or a suitable backup outside the
+modified store. The full recordkeeping arrangement, including that preservation,
+remains the firm's responsibility.
 
 ## Control Mapping
 
 | Obligation | Nahuali implementation | Evidence | Gap or counsel note |
 |---|---|---|---|
-| SEC 17a-4 audit-trail alternative: recreate an original record if it is modified or deleted. | Every memory write is an append-only, typed `EventEnvelope` (version, id, sequence, timestamp, checksum, optional chain link, payload). The audit path emits a non-mutating diff of what changed between two ledger points, restating integrity through the upper bound. | `crates/nahuali-core/src/event.rs:13-39`; `crates/nahuali-core/src/audit.rs:122-160`; `crates/nahuali-core/src/audit.rs:101-120` | Nahuali records its own memory events. It is not a firm-wide recordkeeping platform and does not classify which agent records are 17a-4 "required records". |
-| Tamper-evidence for the retained record. | With `tamper-evidence` enabled, each event binds the previous event's chained hash into `prev_hash`; validation detects an in-place rewrite at the next event even if the per-event checksum is recomputed. | `crates/nahuali-core/src/event.rs:76-89`; `crates/nahuali-core/src/event.rs:13-39` | Detects alteration; does not by itself detect a full re-chain of the suffix by an actor who controls the whole store (see attestation below). |
-| Reconstruction / inclusion evidence for a specific record. | Merkle roots and portable inclusion proofs can be derived over the chained ledger; the `audit --inclusion-proof <SEQUENCE>` path emits an inclusion proof under the audited root. | `crates/nahuali-core/src/merkle.rs:54-142`; `crates/nahuali-cli/src/cli.rs:824-828`; `crates/nahuali-core/src/audit.rs:101-120` | A proof shows a record was committed in a given order under a root; it does not attest to the truthfulness of the record's contents. |
-| Independent third party / verification anchor for the preserved series. | Detached Ed25519 tip attestation signs the live chain tip with operator-held key material and stores the receipt outside the ledger; verification fails when the live ledger no longer matches the receipt. Keyrings model active and revoked keys. | `crates/nahuali-core/src/attestation.rs:1-20`; `crates/nahuali-core/src/attestation.rs:29-58`; `crates/nahuali-cli/src/cli.rs:845-868` | This is a cryptographic anchor an operator holds. It is **not** the designated-third-party (D3P) or designated executive officer undertaking that 17a-4 contemplates. Nahuali does not provide or act as a D3P. |
-| FINRA 3110 supervision: reviewable, evidence-linked record of activity. | Health inspection surfaces unsupported, low-confidence, contradictory, superseded, and stale memory with evidence IDs; the trust report composes health, authority, and ledger integrity into one non-mutating verdict; recall can require a concrete evidence identifier. | `crates/nahuali-core/src/inspection.rs:289-328`; `crates/nahuali-core/src/recall.rs:8-27`; `crates/nahuali-core/src/audit.rs:122-160` | This is memory-governance signal for a reviewer, not a supervisory system. FINRA 3110 written supervisory procedures, designation of principals, and review workflows sit with the firm. |
-| FINRA 4511 / 17a-4 retention (preserve for the required period; where unspecified, at least six years). | The append-only ledger retains events and validates their integrity over time; recall supports point-in-time (`as_of_ms`) and lower-bound (`since_ms`) windows for audit replay. | `crates/nahuali-core/src/recall.rs:8-27`; `crates/nahuali-core/src/event.rs:13-39` | **Retention is not enforced.** No six-year retention timer, legal hold, or scheduled disposition exists. The operator controls the store lifetime. |
-| Operator access to the preserved records and their integrity. | `validate`, `audit`, `trust-report`, and (under `attestation`) `attest-verify` expose machine-readable integrity and trust status over the same core; the same paths are exposed over the local API. | `crates/nahuali-cli/src/cli.rs:84-86`; `crates/nahuali-cli/src/cli.rs:855-868`; `crates/nahuali-api/README.md:40-41` | Local, operator-run access. There is no regulator portal, immutable export bundle for examiners, or role-scoped access-control layer. |
+| SEC 17a-4 audit-trail alternative: recreate an original record if it is modified or deleted. | Every ordinary Nahuali memory write appends a typed `EventEnvelope`, and the audit path can diff retained ledger bounds. | `crates/nahuali-core/src/event.rs:25-52`; `crates/nahuali-core/src/store/services.rs:833-883`; `crates/nahuali-core/src/audit.rs:153-264` | This does **not** recreate bytes removed from or overwritten in the only store. Original records, suitable backups, classification of required records, and the complete 17a-4 arrangement must be provided externally. |
+| Tamper-evidence for the retained record. | With `tamper-evidence` enabled, each event binds the previous event's chain hash into `prev_hash`; validation detects a non-tip in-place rewrite when the following link is not recomputed. | `crates/nahuali-core/src/event.rs:106-197`; `crates/nahuali-core/src/validation.rs:240-273` | A rewritten last event, truncation or rollback, and a fully recomputed suffix require comparison with an externally retained, authorized checkpoint. |
+| Inclusion evidence for a specific record. | The `audit --inclusion-proof <SEQUENCE>` path emits a Merkle inclusion proof relative to the root in that audit result. | `crates/nahuali-core/src/merkle.rs:54-182`; `crates/nahuali-cli/src/cli.rs:865-869`; `crates/nahuali-cli/src/commands/audit.rs:66-120` | The proof establishes membership only under the supplied root. Third-party reliance requires an independently retained and authorized checkpoint for that root; it does not establish content truth or SEC preservation. |
+| Independent verification anchor for the preserved series. | Version 2 Ed25519 checkpoints bind ledger lineage, tree size, Merkle root, and chain tip; verification requires a separately held operator policy. | `crates/nahuali-core/src/checkpoint.rs:125-220`; `crates/nahuali-cli/README.md:363-384` | This is an operator-controlled cryptographic anchor. It is **not** the designated-third-party (D3P) or designated executive officer undertaking that 17a-4 contemplates. Nahuali does not provide or act as a D3P. |
+| FINRA 3110 supervision: reviewable, evidence-linked record of activity. | Health inspection surfaces unsupported, low-confidence, contradictory, superseded, and stale memory with evidence IDs; the trust report composes health, authority, and ledger integrity into one non-mutating verdict; recall can require a concrete evidence identifier. | `crates/nahuali-core/src/inspection.rs:181-338`; `crates/nahuali-core/src/recall.rs:9-27`; `crates/nahuali-core/src/trust_report.rs:119-222` | This is memory-governance signal for a reviewer, not a supervisory system. FINRA 3110 written supervisory procedures, designation of principals, and review workflows sit with the firm. |
+| FINRA 4511 / 17a-4 retention (preserve for the required period; where unspecified, at least six years). | The core append path retains typed events in the configured ledger, validation can rescan checksum, sequence, and chain consistency, and recall applies inclusive point-in-time (`as_of_ms`) and lower-bound (`since_ms`) windows over retained items. | `crates/nahuali-core/src/event.rs:25-53`; `crates/nahuali-core/src/store/services.rs:833-883`; `crates/nahuali-core/src/validation.rs:142-280`; `crates/nahuali-core/src/recall.rs:394-404` | **Retention is not enforced.** No six-year retention timer, legal hold, or scheduled disposition exists. The operator controls the store lifetime. |
+| Operator access to the preserved records and their integrity. | The CLI exposes `validate`, `audit`, `trust-report`, and checkpoint verification. The local API exposes memory health, audit, and trust reports, but it has no ledger-validation or checkpoint-verification endpoint. | `crates/nahuali-cli/src/cli.rs:829-889`; `crates/nahuali-cli/src/cli.rs:915-962`; `crates/nahuali-api/README.md:47-59` | Local, operator-run access. There is no regulator portal, non-rewriteable export bundle for examiners, or role-scoped access-control layer. |
 
 ## What Nahuali's ledger provides today
 
 - **Append-only, hash-chained events** with per-event checksums and an optional
-  SHA-256 chain link (`crates/nahuali-core/src/event.rs:13-39`,
-  `crates/nahuali-core/src/event.rs:76-89`).
+  SHA-256 chain link (`crates/nahuali-core/src/event.rs:25-52`,
+  `crates/nahuali-core/src/event.rs:106-159`).
 - **Merkle commitments and portable inclusion proofs** over the chained ledger,
   reachable from the CLI audit path
-  (`crates/nahuali-core/src/merkle.rs:54-142`,
-  `crates/nahuali-cli/src/cli.rs:824-828`).
-- **Detached Ed25519 tip attestation** with keyring rotation and revocation, as
-  an operator-held anchor against a full re-chain
-  (`crates/nahuali-core/src/attestation.rs:1-20`,
-  `crates/nahuali-core/src/attestation.rs:29-58`).
+  (`crates/nahuali-core/src/merkle.rs:54-182`,
+  `crates/nahuali-cli/src/cli.rs:865-869`,
+  `crates/nahuali-cli/src/commands/audit.rs:66-120`).
+- **Authorized Ed25519 checkpoints** under a separately held operator policy, as
+  an external comparison point for rollback or a full re-chain
+  (`crates/nahuali-core/src/checkpoint.rs:125-220`).
 - **Non-mutating audit and trust reporting** that restate checksum, sequence,
   chain, and Merkle-root integrity and diff the ledger between two points
-  (`crates/nahuali-core/src/audit.rs:101-120`,
-  `crates/nahuali-core/src/audit.rs:122-160`).
-- **Point-in-time recall** for reconstructing what memory held as of a checkpoint
-  (`crates/nahuali-core/src/recall.rs:8-27`).
+  (`crates/nahuali-core/src/audit.rs:129-184`,
+  `crates/nahuali-core/src/audit.rs:195-310`).
+- **Point-in-time recall** for filtering memory to records created at or before a
+  supplied timestamp (`crates/nahuali-core/src/recall.rs:394-404`).
 
 ## What Nahuali does NOT provide
 
@@ -94,20 +96,22 @@ Limitations); Nahuali supplies the technical audit trail, not the arrangement.
 - **No hosted access control for examiners.** There is no accounts/tenant model
   or role-based access; the beta API has no authentication
   (`crates/nahuali-api/README.md:18-20`).
-- **No promise that recorded content is true.** The chain proves the record was
-  not altered after the fact, not that the underlying assertion is correct
-  (`crates/nahuali-core/src/audit.rs:101-120`).
+- **No promise that recorded content is true or permanently unaltered.** Local
+  validation detects specified integrity failures. Rollback, last-event rewrite,
+  or a full re-chain require an authorized external checkpoint, and none of
+  these controls establish that the underlying assertion is correct.
 
-## Honest Position
+## Current limits
 
-For a firm evaluating Nahuali as the technical audit trail behind AI-agent
-activity records, the engine aligns with the direction of the 2022 SEC 17a-4
-audit-trail alternative: append-only capture, tamper-evidence, reconstruction
-via audit and inclusion proofs, and an operator-held cryptographic anchor. It
-does not, on its own, make a deployment 17a-4 or FINRA compliant. Record
-classification, retention periods and legal holds, the third-party or executive-
-officer undertaking, supervisory procedures under FINRA 3110, and examiner access
-all remain the firm's responsibility and require counsel. Quote any ledger claim
-with the commit, the command run, and the resulting report JSON.
+For a firm evaluating Nahuali behind agent activity records, the engine offers
+append-oriented capture, bounded integrity checks, Merkle membership evidence,
+and operator-authorized checkpoints. Those are potential components of a wider
+recordkeeping system, not proof of SEC or FINRA compliance. Nahuali does not
+recreate an original whose only bytes were deleted or overwritten. Record
+classification, original-record preservation, retention and legal holds, the
+third-party or executive-officer undertaking, supervisory procedures under
+FINRA 3110, and examiner access all remain the firm's responsibility and require
+counsel. Quote any ledger claim with the commit, command, retained checkpoint,
+and resulting report JSON.
 
-Last reviewed: 2026-07-10.
+Last reviewed: 2026-07-17.

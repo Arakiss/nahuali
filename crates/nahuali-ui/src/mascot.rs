@@ -67,7 +67,8 @@ pub enum Verdict {
 }
 
 impl Verdict {
-    /// Parse a verdict from a store-trust label such as `CERTIFY · trustworthy`.
+    /// Parse a verdict from a store-trust label such as
+    /// `CERTIFY · evidence checks passed`.
     /// Unrecognized labels fall back to the neutral `Advisory` pose.
     pub fn from_label(label: &str) -> Self {
         let token = label
@@ -488,7 +489,7 @@ mod tests {
             Verdict::Empty
         );
         assert_eq!(
-            Verdict::from_label("CERTIFY · trustworthy"),
+            Verdict::from_label("CERTIFY · evidence checks passed"),
             Verdict::Certify
         );
         assert_eq!(
@@ -496,7 +497,7 @@ mod tests {
             Verdict::Warn
         );
         assert_eq!(
-            Verdict::from_label("BLOCK · not yet trustworthy"),
+            Verdict::from_label("BLOCK · do not use yet"),
             Verdict::Block
         );
         assert_eq!(Verdict::from_label(""), Verdict::Advisory);

@@ -1,7 +1,7 @@
 //! The interactive `explore` governance cockpit (ratatui).
 //!
-//! Nahuali is agent-first, but a human supervises the agent's memory — this is
-//! that window. It renders a trust-first browse of what the agent stored: the
+//! A human can supervise an agent's memory through this window. It renders an
+//! evidence-aware browse of what the agent stored: the
 //! store verdict up top, memory items by kind on the left each with its own
 //! trust dot, and the selected item's detail (content, trust verdict, evidence)
 //! on the right. The CLI builds a plain `Snapshot` and hands it here, so this
@@ -60,8 +60,8 @@ pub enum LedgerStatus {
     Unavailable,
 }
 
-/// The ledger's tamper-evidence posture — Nahuali's core differentiator,
-/// surfaced independently from the content authority verdict.
+/// The store's recorded-history posture, shown independently from the content
+/// authority verdict.
 pub struct Integrity {
     pub records: usize,
     pub checksums_valid: bool,
@@ -544,7 +544,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
 fn proof_line(anchor: &Anchor) -> Line<'static> {
     let (label, label_color) = proof_badge(anchor.status);
     Line::from(vec![
-        Span::styled(" PROOF ", Style::default().fg(color(theme::INK_FAINT))),
+        Span::styled(" EXTERNAL ", Style::default().fg(color(theme::INK_FAINT))),
         Span::styled(
             label,
             Style::default()
@@ -560,7 +560,7 @@ fn proof_line(anchor: &Anchor) -> Line<'static> {
 
 fn proof_detail(anchor: &Anchor) -> String {
     match anchor.status {
-        AnchorStatus::NotChecked => "optional independent check not provided".to_string(),
+        AnchorStatus::NotChecked => "optional external check not provided".to_string(),
         AnchorStatus::TrustedCurrent => "covers the memory shown now".to_string(),
         AnchorStatus::TrustedHistorical => format!(
             "{} newer {} not covered",
@@ -571,9 +571,9 @@ fn proof_detail(anchor: &Anchor) -> String {
                 "updates are"
             }
         ),
-        AnchorStatus::Untrusted => "independent proof was rejected".to_string(),
-        AnchorStatus::Invalid => "independent proof could not be checked".to_string(),
-        AnchorStatus::Unavailable => "independent checks are unavailable in this build".to_string(),
+        AnchorStatus::Untrusted => "external check was not accepted".to_string(),
+        AnchorStatus::Invalid => "external check could not be completed".to_string(),
+        AnchorStatus::Unavailable => "external checks are unavailable in this build".to_string(),
     }
 }
 
@@ -612,7 +612,7 @@ fn history_line(integrity: &Integrity) -> Line<'static> {
             && integrity.merkle_root.is_none())
     {
         spans.push(Span::styled(
-            "recorded history changed unexpectedly",
+            "internal record checks failed",
             Style::default().fg(color(theme::RED)),
         ));
     } else {
@@ -633,7 +633,7 @@ fn history_badge(integrity: &Integrity) -> (&'static str, Rgb) {
 
     match integrity.status {
         LedgerStatus::Empty => ("o EMPTY", theme::INK_DIM),
-        LedgerStatus::Verified => ("\u{2713} INTACT", theme::GREEN),
+        LedgerStatus::Verified => ("\u{2713} CHECKS PASS", theme::GREEN),
         LedgerStatus::Legacy => ("! LIMITED", theme::AMBER),
         LedgerStatus::Broken => ("\u{2717} PROBLEM", theme::RED),
         LedgerStatus::Unavailable => ("! PARTIAL", theme::AMBER),
@@ -650,7 +650,7 @@ fn append_history_detail(spans: &mut Vec<Span<'static>>, integrity: &Integrity) 
         }
         (LedgerStatus::Verified, Some(_)) => {
             spans.push(Span::styled(
-                "no unexpected changes",
+                "internally consistent",
                 Style::default()
                     .fg(color(theme::GREEN))
                     .add_modifier(Modifier::BOLD),
@@ -658,25 +658,25 @@ fn append_history_detail(spans: &mut Vec<Span<'static>>, integrity: &Integrity) 
         }
         (LedgerStatus::Verified, None) => {
             spans.push(Span::styled(
-                "full history verification is unavailable",
+                "some internal checks are unavailable",
                 Style::default().fg(color(theme::RED)),
             ));
         }
         (LedgerStatus::Legacy, _) => {
             spans.push(Span::styled(
-                "older history has limited protection",
+                "older records have fewer checks",
                 Style::default().fg(color(theme::AMBER)),
             ));
         }
         (LedgerStatus::Broken, _) => {
             spans.push(Span::styled(
-                "recorded history changed unexpectedly",
+                "internal record checks failed",
                 Style::default().fg(color(theme::RED)),
             ));
         }
         (LedgerStatus::Unavailable, _) => {
             spans.push(Span::styled(
-                "some history checks are unavailable",
+                "some record checks are unavailable",
                 Style::default().fg(color(theme::INK_DIM)),
             ));
         }
@@ -948,7 +948,7 @@ mod tests {
             store_trust_label: if n == 0 {
                 "EMPTY · ready for the first memory".to_string()
             } else {
-                "CERTIFY · trustworthy".to_string()
+                "CERTIFY · evidence checks passed".to_string()
             },
             store_trust_color: if n == 0 { theme::INK_DIM } else { theme::GREEN },
             integrity: Integrity {
@@ -1002,7 +1002,7 @@ mod tests {
 
     fn mixed() -> Snapshot {
         Snapshot {
-            store_trust_label: "ADVISORY · use with judgment".to_string(),
+            store_trust_label: "ADVISORY · use with context".to_string(),
             store_trust_color: theme::BLUE,
             integrity: Integrity {
                 records: 4,
@@ -1165,7 +1165,7 @@ mod tests {
     }
 
     #[test]
-    fn header_renders_memory_history_and_proof_as_independent_states() {
+    fn header_renders_memory_history_and_external_check_as_separate_states() {
         let mut state = snapshot(3);
         state.anchor = Anchor {
             status: AnchorStatus::TrustedCurrent,
@@ -1177,8 +1177,8 @@ mod tests {
         assert!(text.contains("MEMORY"));
         assert!(text.contains("CERTIFY"));
         assert!(text.contains("HISTORY"));
-        assert!(text.contains("INTACT"));
-        assert!(text.contains("PROOF"));
+        assert!(text.contains("CHECKS PASS"));
+        assert!(text.contains("EXTERNAL"));
         assert!(text.contains("CURRENT"));
         assert!(text.contains("covers the memory shown now"));
     }
@@ -1240,7 +1240,7 @@ mod tests {
             (
                 AnchorStatus::NotChecked,
                 0,
-                "optional independent check not provided",
+                "optional external check not provided",
             ),
             (
                 AnchorStatus::TrustedCurrent,
@@ -1252,16 +1252,20 @@ mod tests {
                 1,
                 "1 newer update is not covered",
             ),
-            (AnchorStatus::Untrusted, 0, "independent proof was rejected"),
+            (
+                AnchorStatus::Untrusted,
+                0,
+                "external check was not accepted",
+            ),
             (
                 AnchorStatus::Invalid,
                 0,
-                "independent proof could not be checked",
+                "external check could not be completed",
             ),
             (
                 AnchorStatus::Unavailable,
                 0,
-                "independent checks are unavailable in this build",
+                "external checks are unavailable in this build",
             ),
         ];
 
@@ -1343,7 +1347,7 @@ mod tests {
 
         assert!(text.contains("MEMORY"));
         assert!(text.contains("HISTORY"));
-        assert!(text.contains("PROOF"));
+        assert!(text.contains("EXTERNAL"));
         assert!(text.contains("search"));
         assert!(text.contains("Esc"));
         assert!(text.contains("≋(•ᴗ•)≋"));
@@ -1414,7 +1418,7 @@ mod tests {
     fn history_header_distinguishes_every_integrity_state() {
         let cases = [
             (LedgerStatus::Empty, "EMPTY"),
-            (LedgerStatus::Verified, "INTACT"),
+            (LedgerStatus::Verified, "CHECKS PASS"),
             (LedgerStatus::Legacy, "LIMITED"),
             (LedgerStatus::Broken, "PROBLEM"),
             (LedgerStatus::Unavailable, "PARTIAL"),
@@ -1451,7 +1455,7 @@ mod tests {
         // Empty BLOCK store: the full mascot wears the paused pose, never the
         // ready one — the empty-state art is bound to the live verdict.
         let mut empty = snapshot(0);
-        empty.store_trust_label = "BLOCK · not yet trustworthy".to_string();
+        empty.store_trust_label = "BLOCK · do not use yet".to_string();
         empty.store_trust_color = theme::RED;
         let mut app = App::new(empty);
         let text = text_of(&render_cockpit(&mut app, 120, 40));
@@ -1467,7 +1471,7 @@ mod tests {
         // Non-empty BLOCK store without terminal graphics: the compact fallback
         // switches expression while the full half-block sprite remains absent.
         let mut full = snapshot(3);
-        full.store_trust_label = "BLOCK · not yet trustworthy".to_string();
+        full.store_trust_label = "BLOCK · do not use yet".to_string();
         full.store_trust_color = theme::RED;
         let mut app = App::new(full);
         let buf = render_cockpit(&mut app, 120, 40);

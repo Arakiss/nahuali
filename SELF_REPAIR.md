@@ -6,12 +6,12 @@ unsupported claims. Self-repair closes that loop without giving up governance:
 an LLM **proposes** a repair, and the deterministic engine **validates,
 classifies, records, and gates** it.
 
-The thesis is narrow and load-bearing: only a governed, tamper-evident memory
-can safely let an LLM repair it. Because every repair is evidence-anchored,
-append-only, audited, and trust-gated, a bad proposal has a bounded blast radius
-— it is rejected before it is written, queued for a human when it needs
-judgment, or reversed by a later observation if it ever lands. The governance is
-what makes the autonomy safe.
+The design goal is narrow: let an LLM propose a repair while keeping validation
+and write-back deterministic and reviewable. A proposal can be rejected before
+it is written, queued for an operator, or superseded by a later ledger event.
+Those controls reduce unattended ledger mutation; they do not prove that a
+proposal is true or relevant, and they cannot reverse actions an external caller
+already took from a bad memory.
 
 ## The guarantee
 
@@ -24,17 +24,18 @@ deterministic, offline, and append-only. The trust kernel stays LLM-free.
 
 1. **The LLM proposes; the deterministic engine validates and records.** The
    trust kernel uses no LLM.
-2. **Always evidence-anchored.** Without a real source episode there is no
-   repair. A fabricated citation is rejected, never minted into evidence-backed
-   memory.
-3. **Additive, never destructive.** Repairs are append-only. A bad repair is
-   reversed by a superseding observation, never by mutation or deletion.
+2. **Always reference-anchored.** Without an existing source episode there is no
+   repair. A nonexistent citation is rejected rather than minted into
+   evidence-backed memory. An existing episode ID proves only that the cited
+   record exists; it does not prove source truth, relevance, or independence.
+3. **Additive inside the ledger.** Repairs append events. A later observation
+   can supersede a bad repair in projected memory, but does not delete history or
+   undo any external action already taken from it.
 4. **The repair is itself an audited event.** It is recorded in the
    tamper-evident ledger like any other event, with its proposal provenance and
    the verdict it was applied under.
-5. **The trust verdict gates the repair.** The authority decision is no longer
-   only for recall: a store the engine cannot trust does not receive an
-   unattended write.
+5. **A `Block` verdict gates the repair.** The authority decision is used beyond
+   recall: `Block` prevents an otherwise automatic unattended write.
 6. **The core stays LLM-free, offline, and deterministic.** Self-repair is an
    opt-in layer at the edge, not a change to the kernel.
 
@@ -45,14 +46,14 @@ proposal, deterministically, from the current projection:
 
 | Repair | Policy | Why |
 |---|---|---|
-| Consolidate episodes that share one scope and a common tag into a cited claim | `Auto` | deterministic, evidence-anchored, reversible |
-| Link two entities that are both already present in memory | `Auto` | both exist; the link cites a real episode |
+| Consolidate episodes that share one scope and a common tag into a cited claim | `Auto` | deterministic, reference-anchored, and supersedable inside the ledger |
+| Link two entities that are both already present in memory | `Auto` | both endpoints and a cited episode exist; this is a structural check, not proof of the relationship |
 | Consolidate without a homogeneous tag and scope (ambiguous pattern) | `Queue` | needs operator judgment → requires `--approve` |
 | Assert a claim that contradicts an existing one (same subject + predicate, different value) | `NeverAuto` | a trust engine does not mask contradictions; it is raised to the operator |
 
-Rule 5 layers on top: when the store's authority verdict is `Block`, an
-otherwise `Auto` repair is degraded to `Queue`, so a contaminated store never
-gets an unattended write.
+Rule 5 layers on top: only a store authority verdict of `Block` degrades an
+otherwise `Auto` repair to `Queue`. `Advisory` and `Warn` remain visible in the
+report but do not change the classifier's autonomy level.
 
 Write-back is gated on the level:
 
@@ -106,8 +107,9 @@ Link two entities:
 The engine rejects a structurally invalid proposal before anything is written:
 a missing `proposed_by`, no evidence, an evidence episode that does not exist, an
 empty field, or a link whose endpoints are not present in the projection. The
-materialized claim or link is anchored to the first cited episode, so it clears
-the same recall-trust evidence bar as any directly written memory.
+materialized claim or link references the first cited episode, so it meets the
+same structural evidence requirement as a directly written memory. That check
+does not establish that the episode actually supports the proposal.
 
 ## Using it
 
@@ -129,8 +131,8 @@ nahuali repair --proposal proposal.json --json
 The applied repair is a single append-only `RepairApplied` event that
 materializes the claim or link **and** records its audit atomically. It shows up
 in `nahuali audit` and `nahuali trust-report` like any other event, and
-`nahuali validate --require-chained` stays green: the tamper-evident chain is
-intact.
+`nahuali validate` stays green: strict chain validation is the default.
+`--allow-unchained` is the explicit compatibility exception for legacy records.
 
 ### Step 0: the deterministic nudge
 
@@ -147,8 +149,8 @@ real repair with a review queue. Deliberately out of scope:
 - **No automatic resolution of contradictions.** `NeverAuto` is never relaxed.
   A contradiction is always raised to the operator.
 - **No repair runs on every write.** `nahuali repair` is a deliberate,
-  explicitly invoked command. The classifier marks safe consolidations `Auto`,
-  but nothing applies them on your behalf.
+  explicitly invoked command. The classifier marks eligible consolidations
+  `Auto`, but nothing applies them on your behalf.
 - **Step 2 is not wired.** An automatic consolidation pass inside a `sleep` /
   `consolidate` cycle is specified for later and intentionally not built here.
 

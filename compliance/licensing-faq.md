@@ -8,7 +8,8 @@ Primary sources:
 
 - Repo license: `LICENSE`
 - SPDX entry: https://spdx.org/licenses/FSL-1.1-MIT.html
-- Fair Source overview: https://fsl.software/
+- FSL license and FAQ: https://fsl.software/
+- Open Source Definition: https://opensource.org/osd
 
 ## Is Nahuali open source?
 
@@ -37,6 +38,23 @@ of the version date, or offers the same or substantially similar functionality
 If your planned use might be a competing hosted product or service, check with
 counsel before relying on this FAQ.
 
+## Does FSL prevent someone from copying Nahuali?
+
+It restricts distributing the current code in a competing commercial product or
+service. It does not make the source secret, protect the underlying ideas or
+algorithms, prevent an independent implementation, or make enforcement
+automatic. A party can also use each published version under MIT after that
+version's two-year conversion date.
+
+The practical trade-off is deliberate: FSL adds a contractual restriction on
+direct competing commercial use of the current code that MIT and Apache-2.0 do
+not contain, while being less permissive for adopters than an OSI-approved
+open-source license. Whether and how that restriction can be enforced depends
+on the facts and applicable law. Organizations whose policy requires an
+OSI-approved license may decline or delay adoption. The license is one part of
+a product strategy, not a substitute for execution, distribution, support, or
+brand.
+
 ## What happens after two years?
 
 Each version receives an irrevocable future MIT grant on the second anniversary
@@ -47,9 +65,8 @@ two-year clocks.
 ## Can I self-host it?
 
 Yes, self-hosted internal use is a Permitted Purpose when it does not become a
-Competing Use. The README states the same practical posture: you may use, copy,
-modify, and self-host Nahuali for any purpose other than offering a competing
-commercial product or service (`README.md:868-872`).
+Competing Use. The README gives the same practical summary while identifying the
+license text as binding (`README.md:279-288`).
 
 ## Can I sell consulting or integration work around it?
 
@@ -57,7 +74,7 @@ The FSL text permits professional services provided to a licensee using the
 software in accordance with the license (`LICENSE:35-43`). That is different
 from offering a competing commercial product or service.
 
-## How does this compare to Sentry, Keygen, and Liquibase?
+## How does this compare to Sentry, Keygen, Liquibase, and Qdrant?
 
 These are licensing precedents and market references, not legal equivalence:
 
@@ -73,6 +90,10 @@ These are licensing precedents and market references, not legal equivalence:
   precedent for delayed open-source conversion and non-compete source-available
   licensing, but it is not the same license family:
   https://github.com/keygen-sh/keygen-api and https://fcl.dev/.
+- **Qdrant is not an FSL precedent.** The Qdrant database is licensed under
+  Apache-2.0 and is offered alongside Qdrant Cloud. That is an open-source core
+  plus managed-service model, not the delayed MIT conversion used by Nahuali:
+  https://github.com/qdrant/qdrant#license.
 
 ## How should public docs name the license?
 
