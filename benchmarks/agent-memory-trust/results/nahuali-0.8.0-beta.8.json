@@ -1,0 +1,87 @@
+{
+  "benchmarkVersion": "1.0.0",
+  "system": {
+    "name": "Nahuali",
+    "version": "nahuali 0.8.0-beta.8"
+  },
+  "commit": "sha256:a55214c18bcb7d4c2bc95f1a0791e47f604e3ab967cd82031c79642b1881889a",
+  "artifact": {
+    "name": "nahuali",
+    "sha256": "a55214c18bcb7d4c2bc95f1a0791e47f604e3ab967cd82031c79642b1881889a",
+    "sourceRevision": "00290f69e6aec1859ef5e7479c2d7f31824e4674",
+    "kind": "source-build"
+  },
+  "runner": {
+    "relationship": "first-party",
+    "adapter": "benchmarks/agent-memory-trust/adapters/nahuali.py"
+  },
+  "environment": {
+    "services": [
+      "embedded SurrealKV"
+    ],
+    "models": [],
+    "operatorActions": []
+  },
+  "cases": [
+    {
+      "id": "evidence-traceability",
+      "status": "pass",
+      "verdict": "certify",
+      "normalizedVerdict": "trusted",
+      "evidenceIds": [
+        "episode_1785436442146_1"
+      ],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "unsupported-memory-abstention",
+      "status": "pass",
+      "verdict": "warn",
+      "normalizedVerdict": "refused",
+      "evidenceIds": [],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "contradiction-detection",
+      "status": "pass",
+      "verdict": "block",
+      "normalizedVerdict": "refused",
+      "evidenceIds": [],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "staleness-signaling",
+      "status": "pass",
+      "verdict": "warn",
+      "normalizedVerdict": "qualified",
+      "evidenceIds": [],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "non-mutating-inspection",
+      "status": "pass",
+      "evidenceIds": [],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "in-place-tamper-detection",
+      "status": "pass",
+      "evidenceIds": [],
+      "detected": true,
+      "mutated": false
+    },
+    {
+      "id": "full-rechain-detection",
+      "status": "pass",
+      "evidenceIds": [],
+      "detected": true,
+      "externalCheckpoint": true,
+      "mutated": false
+    }
+  ]
+}

@@ -13,6 +13,13 @@ release histories.
   to restart its host after an upgrade, preventing old and new embedded engine
   versions from opening the same store.
 
+## [0.8.0-beta.8](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.7...v0.8.0-beta.8) (2026-07-30)
+
+
+### Performance
+
+* stop rewriting unchanged graph rows ([af748a6](https://github.com/Arakiss/nahuali/commit/af748a6a42ae1f842007cc5a3793133a6d3dee33))
+
 ## [0.8.0-beta.7](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.6...v0.8.0-beta.7) (2026-07-17)
 
 
