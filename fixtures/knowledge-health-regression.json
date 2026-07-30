@@ -82,8 +82,8 @@
       }
     },
     {
-      "id": "isolated_entity_advisory_memory",
-      "goal": "Supported claims with no relation edges should remain usable while carrying low-severity advisory authority.",
+      "id": "evidence_backed_claim_memory",
+      "goal": "An evidence-backed claim should connect its entities and certify without requiring a duplicate relation.",
       "steps": [
         {
           "type": "remember",
@@ -110,19 +110,13 @@
         "low_confidence_fact_count": 0,
         "conflicting_fact_count": 0,
         "stale_fact_count": 0,
-        "isolated_entity_count": 2,
-        "blind_spot_count_min": 2,
-        "required_signal_kinds": ["isolated_entity"],
-        "required_signals": [
-          {
-            "kind": "isolated_entity",
-            "severity": "low",
-            "dimensions": ["connectivity", "blind_spot"]
-          }
-        ],
-        "authority_mode": "advisory",
-        "authority_score": 0.75,
-        "authority_can_trust": false
+        "isolated_entity_count": 0,
+        "blind_spot_count_min": 0,
+        "required_signal_kinds": [],
+        "required_signals": [],
+        "authority_mode": "certify",
+        "authority_score": 1.0,
+        "authority_can_trust": true
       }
     },
     {
@@ -192,8 +186,8 @@
         "conflicting_fact_count": 1,
         "stale_fact_count": 0,
         "superseded_fact_count": 0,
-        "blind_spot_count_min": 1,
-        "required_signal_kinds": ["conflicting_fact", "isolated_entity"],
+        "blind_spot_count_min": 0,
+        "required_signal_kinds": ["conflicting_fact"],
         "required_signals": [
           {
             "kind": "conflicting_fact",
@@ -244,10 +238,10 @@
         "conflicting_fact_count": 0,
         "stale_fact_count": 0,
         "superseded_fact_count": 0,
-        "required_signal_kinds": ["isolated_entity"],
-        "authority_mode": "advisory",
-        "authority_score": 0.75,
-        "authority_can_trust": false
+        "required_signal_kinds": [],
+        "authority_mode": "certify",
+        "authority_score": 1.0,
+        "authority_can_trust": true
       }
     },
     {
@@ -294,8 +288,8 @@
         "conflicting_fact_count": 0,
         "stale_fact_count": 0,
         "superseded_fact_count": 1,
-        "blind_spot_count_min": 1,
-        "required_signal_kinds": ["superseded_fact", "isolated_entity"],
+        "blind_spot_count_min": 0,
+        "required_signal_kinds": ["superseded_fact"],
         "required_signals": [
           {
             "kind": "superseded_fact",
@@ -352,8 +346,8 @@
         "low_confidence_fact_count": 0,
         "conflicting_fact_count": 0,
         "stale_fact_count": 1,
-        "blind_spot_count_min": 2,
-        "required_signal_kinds": ["stale_fact", "isolated_entity"],
+        "blind_spot_count_min": 0,
+        "required_signal_kinds": ["stale_fact"],
         "required_signals": [
           {
             "kind": "stale_fact",
