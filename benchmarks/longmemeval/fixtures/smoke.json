@@ -1,0 +1,148 @@
+[
+  {
+    "question_id": "smoke-city",
+    "question_type": "single-session-user",
+    "question": "Which city is my permanent home?",
+    "question_date": "2024/01/05 (Fri) 12:00",
+    "answer": "Kyoto",
+    "answer_session_ids": [
+      "answer_city"
+    ],
+    "haystack_dates": [
+      "2024/01/01 (Mon) 09:00",
+      "2024/01/02 (Tue) 10:00",
+      "2024/01/03 (Wed) 11:00"
+    ],
+    "haystack_session_ids": [
+      "travel_lisbon",
+      "answer_city",
+      "cooking_note"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "I enjoyed a short holiday in Lisbon last year."
+        },
+        {
+          "role": "assistant",
+          "content": "Lisbon sounds like a memorable place to visit."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Kyoto is now my permanent home.",
+          "has_answer": true
+        },
+        {
+          "role": "assistant",
+          "content": "I will remember that your permanent home is Kyoto."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I baked sourdough bread this morning."
+        },
+        {
+          "role": "assistant",
+          "content": "A fresh loaf is a satisfying way to start the day."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-instruments",
+    "question_type": "multi-session",
+    "question": "Which instruments do I play?",
+    "question_date": "2024/02/05 (Mon) 12:00",
+    "answer": "Guitar and piano",
+    "answer_session_ids": [
+      "answer_guitar",
+      "answer_piano"
+    ],
+    "haystack_dates": [
+      "2024/02/01 (Thu) 09:00",
+      "2024/02/02 (Fri) 10:00",
+      "2024/02/03 (Sat) 11:00"
+    ],
+    "haystack_session_ids": [
+      "answer_guitar",
+      "gardening_note",
+      "answer_piano"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "I play guitar every evening.",
+          "has_answer": true
+        },
+        {
+          "role": "assistant",
+          "content": "Evening guitar practice can build a steady routine."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "The tomatoes in my garden are ready to harvest."
+        },
+        {
+          "role": "assistant",
+          "content": "Home-grown tomatoes are excellent in a summer salad."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I also play piano on weekends.",
+          "has_answer": true
+        },
+        {
+          "role": "assistant",
+          "content": "Weekend piano practice complements your guitar sessions."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-passport_abs",
+    "question_type": "single-session-user",
+    "question": "What is my passport number?",
+    "question_date": "2024/03/05 (Tue) 12:00",
+    "answer": "The conversation history does not contain a passport number.",
+    "answer_session_ids": [],
+    "haystack_dates": [
+      "2024/03/01 (Fri) 09:00",
+      "2024/03/02 (Sat) 10:00"
+    ],
+    "haystack_session_ids": [
+      "train_note",
+      "museum_note"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "My train to Berlin leaves at eight tomorrow morning."
+        },
+        {
+          "role": "assistant",
+          "content": "Setting an early alarm should leave enough time for the station."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I would like to visit the history museum this weekend."
+        },
+        {
+          "role": "assistant",
+          "content": "The weekend exhibit schedule is worth checking in advance."
+        }
+      ]
+    ]
+  }
+]

@@ -1,0 +1,54 @@
+[
+  {
+    "question_id": "edge-scalar-duplicate-empty",
+    "question_type": "single-session-user",
+    "question": "Which integer did I ask you to remember?",
+    "question_date": "2024/04/04 (Thu) 12:00",
+    "answer": 42,
+    "answer_session_ids": [
+      "repeated-session"
+    ],
+    "haystack_dates": [
+      "2024/04/01 (Mon) 09:00",
+      "2024/04/02 (Tue) 10:00",
+      "2024/04/03 (Wed) 11:00"
+    ],
+    "haystack_session_ids": [
+      "repeated-session",
+      "repeated-session",
+      "distractor-session"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "There was no content to retain in that turn."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Please remember the integer 42."
+        },
+        {
+          "role": "assistant",
+          "content": "I will remember that the integer is 42."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "The garden needs water this afternoon."
+        },
+        {
+          "role": "assistant",
+          "content": "Watering after the strongest sun can reduce evaporation."
+        }
+      ]
+    ]
+  }
+]
