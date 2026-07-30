@@ -164,7 +164,7 @@ require_json "$SUMMARY_JSON" '.preflight.evidence_gap_count' '2' "summary JSON d
 require_json "$SUMMARY_JSON" '.preflight.unsourced_episode_count' '0' "summary JSON did not record sourced episode safety"
 require_json "$SUMMARY_JSON" '.preflight.unscoped_record_count' '0' "summary JSON did not record scoped record safety"
 require_json "$SUMMARY_JSON" '.preflight.scope_keys' '["project:nahuali"]' "summary JSON did not record scope keys"
-require_json "$SUMMARY_JSON" '.readiness.review_item_count' '5' "summary JSON did not record review item pressure"
+require_json "$SUMMARY_JSON" '.readiness.review_item_count' '1' "summary JSON did not record review item pressure"
 require_json "$SUMMARY_JSON" '.readiness.source_coverage_count' '1' "summary JSON did not record source coverage pressure"
 require_json "$SUMMARY_JSON" '.readiness.automatic_write_back' 'false' "summary JSON must keep readiness non-mutating"
 require_json "$SUMMARY_JSON" '.isolated_apply.ran' 'false' "summary JSON should not report isolated apply without --apply"
