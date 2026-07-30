@@ -12,8 +12,6 @@ use anyhow::Context;
 /// The Claude Code skill, bundled into the binary so `init` needs no network.
 const SKILL: &str = include_str!("../../../../skills/nahuali/SKILL.md");
 
-const MCP_SNIPPET: &str = "{\n  \"mcpServers\": {\n    \"nahuali\": { \"command\": \"nahuali-mcp\", \"args\": [\"--database\", \"memory\"] }\n  }\n}";
-
 struct Style {
     bold: &'static str,
     dim: &'static str,
@@ -47,8 +45,9 @@ impl Style {
 }
 
 /// Wire the current agent harness to use Nahuali.
-pub(crate) fn init(dry_run: bool, force: bool) -> anyhow::Result<()> {
+pub(crate) fn init(database: &Path, dry_run: bool, force: bool) -> anyhow::Result<()> {
     let s = Style::detect();
+    let mcp_snippet = mcp_snippet(database)?;
 
     println!(
         "{}Setting up Nahuali as your agent's memory protocol.{}",
@@ -76,7 +75,7 @@ pub(crate) fn init(dry_run: bool, force: bool) -> anyhow::Result<()> {
         "    Paste into your client's MCP config (e.g. {}.mcp.json{}):",
         s.dim, s.reset
     );
-    for line in MCP_SNIPPET.lines() {
+    for line in mcp_snippet.lines() {
         println!("    {line}");
     }
     println!();
@@ -99,6 +98,21 @@ pub(crate) fn init(dry_run: bool, force: bool) -> anyhow::Result<()> {
     );
 
     Ok(())
+}
+
+fn mcp_snippet(database: &Path) -> anyhow::Result<String> {
+    let database = database
+        .to_str()
+        .context("resolved database name is not valid UTF-8")?;
+    serde_json::to_string_pretty(&serde_json::json!({
+        "mcpServers": {
+            "nahuali": {
+                "command": "nahuali-mcp",
+                "args": ["--database", database]
+            }
+        }
+    }))
+    .context("failed to render MCP configuration")
 }
 
 /// The Claude Code skill destination, when a `~/.claude` harness is present.
@@ -145,12 +159,15 @@ fn install_skill(target: &Path, dry_run: bool, force: bool, s: &Style) -> anyhow
 
 #[cfg(test)]
 mod tests {
-    use super::MCP_SNIPPET;
+    use std::path::Path;
+
+    use super::mcp_snippet;
 
     #[test]
-    fn generated_mcp_config_uses_a_valid_database_identifier() {
+    fn generated_mcp_config_uses_the_selected_database_identifier() {
+        let snippet = mcp_snippet(Path::new("project_memory")).expect("snippet renders");
         let snippet: serde_json::Value =
-            serde_json::from_str(MCP_SNIPPET).expect("MCP snippet is valid JSON");
+            serde_json::from_str(&snippet).expect("MCP snippet is valid JSON");
         let database = snippet["mcpServers"]["nahuali"]["args"][1]
             .as_str()
             .expect("database argument is a string");
@@ -158,7 +175,6 @@ mod tests {
             nahuali_core::validate_database_name(database).expect("valid database"),
             database
         );
-        assert!(MCP_SNIPPET.contains("[\"--database\", \"memory\"]"));
-        assert!(!MCP_SNIPPET.contains("./memory"));
+        assert_eq!(database, "project_memory");
     }
 }

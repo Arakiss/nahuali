@@ -27,13 +27,24 @@ mod trust_report;
 use std::path::PathBuf;
 
 use anyhow::Context;
-use nahuali_core::{LedgerAuditOptions, MemoryEngine, ResolvedValue, TrustReportOptions};
+use nahuali_core::{
+    LedgerAuditOptions, MemoryEngine, NahualiError, ResolvedValue, TrustReportOptions,
+};
 
 use crate::cli::{Cli, Command};
 
 pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
     let verbose = cli.verbose;
-    let database_flag = cli.database.as_deref().and_then(std::path::Path::to_str);
+    let database_flag = cli
+        .database
+        .as_deref()
+        .map(|path| {
+            path.to_str()
+                .ok_or_else(|| NahualiError::InvalidDatabasePath {
+                    path: path.to_path_buf(),
+                })
+        })
+        .transpose()?;
 
     // `config` reports the resolved configuration without opening a store, so it
     // runs before resolution can fail-open into a connection attempt.
@@ -797,34 +808,79 @@ fn verbose_open_line(database: &ResolvedValue) {
 fn open_store(database: &std::path::Path, verbose: bool) -> anyhow::Result<MemoryEngine> {
     match MemoryEngine::open(database) {
         Ok(engine) => Ok(engine),
-        Err(error) => {
+        Err(mut error) => {
             let endpoint = nahuali_core::resolve_endpoint().value;
-            eprintln!();
-            if endpoint.starts_with("surrealkv://") {
-                eprintln!("\u{2717} Cannot open the local Nahuali store at {endpoint}.");
-                eprintln!(
-                    "  Another Nahuali process may be using it, or the path may be unreadable."
-                );
-                eprintln!("  Close the other process and retry. No data was deleted.");
-                return Err(error).context("the local Nahuali store could not be opened");
-            }
-
-            eprintln!("\u{2717} Cannot reach the Nahuali store at {endpoint}.");
-            eprintln!("  Your data is safe. Nothing was lost or deleted; the database service");
-            eprintln!("  is just unreachable (the append-only ledger lives in its own volume).");
-
             let local = endpoint.contains("localhost") || endpoint.contains("127.0.0.1");
             if local
+                && classify_open_failure(&error) == OpenFailureKind::Connection
                 && try_start_local_stack(verbose)
-                && let Ok(engine) = MemoryEngine::open(database)
             {
-                eprintln!("  \u{2713} started the local stack and reconnected.");
-                return Ok(engine);
+                match MemoryEngine::open(database) {
+                    Ok(engine) => {
+                        eprintln!("  \u{2713} started the local stack and reconnected.");
+                        return Ok(engine);
+                    }
+                    Err(retry_error) => error = retry_error,
+                }
             }
 
-            eprintln!("  Start the local stack and retry:");
-            eprintln!("      docker compose up -d");
-            Err(error).context("the Nahuali store is unreachable (your data is safe)")
+            report_open_failure(error, &endpoint, local)
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OpenFailureKind {
+    Connection,
+    Integrity,
+    Other,
+}
+
+fn classify_open_failure(error: &NahualiError) -> OpenFailureKind {
+    match error {
+        NahualiError::InvalidRecordLedger { .. } | NahualiError::DecodeRecord { .. } => {
+            OpenFailureKind::Integrity
+        }
+        NahualiError::Database { .. } | NahualiError::Runtime { .. } => OpenFailureKind::Connection,
+        _ => OpenFailureKind::Other,
+    }
+}
+
+fn report_open_failure(
+    error: NahualiError,
+    endpoint: &str,
+    local_remote: bool,
+) -> anyhow::Result<MemoryEngine> {
+    eprintln!();
+    match classify_open_failure(&error) {
+        OpenFailureKind::Integrity => {
+            eprintln!("\u{2717} The Nahuali store failed recorded-history validation.");
+            eprintln!("  Store: {endpoint}");
+            eprintln!("  Reason: {error}");
+            eprintln!("  Preserve the store and inspect the reported record before retrying.");
+            Err(error).context("the Nahuali store failed recorded-history validation")
+        }
+        OpenFailureKind::Connection if endpoint.starts_with("surrealkv://") => {
+            eprintln!("\u{2717} Cannot open the local Nahuali store at {endpoint}.");
+            eprintln!("  Reason: {error}");
+            eprintln!("  Another Nahuali process may be using it, or the path may be unreadable.");
+            eprintln!("  Close the other process and retry.");
+            Err(error).context("the local Nahuali store could not be opened")
+        }
+        OpenFailureKind::Connection => {
+            eprintln!("\u{2717} Cannot open the Nahuali store at {endpoint}.");
+            eprintln!("  Reason: {error}");
+            eprintln!("  Check the endpoint, credentials, and database service.");
+            if local_remote {
+                eprintln!("  Start the local stack and retry:");
+                eprintln!("      docker compose up -d");
+            }
+            Err(error).context("the Nahuali store connection failed")
+        }
+        OpenFailureKind::Other => {
+            eprintln!("\u{2717} Cannot open or validate the Nahuali store at {endpoint}.");
+            eprintln!("  Reason: {error}");
+            Err(error).context("the Nahuali store could not be opened or validated")
         }
     }
 }
@@ -846,5 +902,43 @@ fn try_start_local_stack(verbose: bool) -> bool {
             true
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OpenFailureKind, classify_open_failure};
+    use nahuali_core::NahualiError;
+
+    #[test]
+    fn open_failure_classification_keeps_integrity_distinct_from_connectivity() {
+        let integrity = NahualiError::InvalidRecordLedger {
+            path: "memory".into(),
+            record: 2,
+            message: "checksum mismatch".to_string(),
+        };
+        let decode = NahualiError::DecodeRecord {
+            path: "memory".into(),
+            record: 2,
+            source: serde_json::from_str::<serde_json::Value>("{")
+                .expect_err("fixture must be invalid JSON"),
+        };
+        let connection = NahualiError::Runtime {
+            source: std::io::Error::other("runtime unavailable"),
+        };
+
+        assert_eq!(
+            classify_open_failure(&integrity),
+            OpenFailureKind::Integrity
+        );
+        assert_eq!(classify_open_failure(&decode), OpenFailureKind::Integrity);
+        assert_eq!(
+            classify_open_failure(&connection),
+            OpenFailureKind::Connection
+        );
+        assert_eq!(
+            classify_open_failure(&NahualiError::EmptyQuery),
+            OpenFailureKind::Other
+        );
     }
 }

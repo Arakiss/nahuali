@@ -115,7 +115,7 @@ fn resolve_database_name_from(
     flag: Option<&str>,
     env: Option<&str>,
 ) -> Result<ResolvedValue, DatabaseNameError> {
-    if let Some(flag) = flag.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(flag) = flag {
         return Ok(ResolvedValue {
             value: validate_database_name(flag)?,
             source: ConfigSource::Flag,
@@ -139,7 +139,10 @@ fn resolve_database_name_from(
 pub fn validate_database_name(raw: &str) -> Result<String, DatabaseNameError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return Ok(SURREAL_DATABASE.to_string());
+        return Err(DatabaseNameError {
+            provided: raw.to_string(),
+            suggestion: SURREAL_DATABASE.to_string(),
+        });
     }
     if trimmed == DEFAULT_ARCHIVE_DATABASE {
         return Ok(LEGACY_ARCHIVE_IDENTIFIER.to_string());
@@ -638,6 +641,14 @@ mod tests {
     }
 
     #[test]
+    fn resolution_refuses_an_explicit_blank_flag_instead_of_using_the_env() {
+        let error = resolve_database_name_from(Some("   "), Some("env_db"))
+            .expect_err("blank explicit flag must not fall through");
+        assert_eq!(error.provided, "   ");
+        assert_eq!(error.suggestion, "memory");
+    }
+
+    #[test]
     fn validate_rejects_path_like_names_and_accepts_clean_ones() {
         // Clean identifiers pass through unchanged.
         assert_eq!(validate_database_name("memory").expect("clean"), "memory");
@@ -652,6 +663,7 @@ mod tests {
         assert!(validate_database_name("project:nahuali").is_err());
         assert!(validate_database_name("has space").is_err());
         assert!(validate_database_name("123").is_err());
+        assert!(validate_database_name("").is_err());
     }
 
     #[test]

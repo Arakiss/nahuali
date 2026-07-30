@@ -18,7 +18,9 @@ use super::{migration, migration_legacy};
 pub(crate) fn handle(command: &Command, database: &Path) -> anyhow::Result<bool> {
     match command {
         Command::Demo { json } => super::demo::demo(*json).map(|()| true),
-        Command::Init { dry_run, force } => super::init::init(*dry_run, *force).map(|()| true),
+        Command::Init { dry_run, force } => {
+            super::init::init(database, *dry_run, *force).map(|()| true)
+        }
         Command::Completions { shell } => {
             let mut command = Cli::command();
             let bin_name = command.get_name().to_string();

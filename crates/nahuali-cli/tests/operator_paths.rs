@@ -38,6 +38,7 @@ fn assert_pretty_json(output: &str) {
 }
 
 include!("operator_path_cases/audit.rs");
+include!("operator_path_cases/init.rs");
 #[cfg(feature = "attestation")]
 include!("operator_path_cases/checkpoint.rs");
 #[cfg(feature = "attestation")]
