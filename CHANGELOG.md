@@ -13,6 +13,13 @@ release histories.
   to restart its host after an upgrade, preventing old and new embedded engine
   versions from opening the same store.
 
+## [0.8.0-beta.9](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.8...v0.8.0-beta.9) (2026-07-30)
+
+
+### New
+
+* animate mascot in version output ([2494f0d](https://github.com/Arakiss/nahuali/commit/2494f0d3525b76daccae665484017d0dcd4f93b1))
+
 ## [0.8.0-beta.8](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.7...v0.8.0-beta.8) (2026-07-30)
 
 
