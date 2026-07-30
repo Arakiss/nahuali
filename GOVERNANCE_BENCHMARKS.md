@@ -199,7 +199,8 @@ cargo run -p nahuali-regression -- --fixtures fixtures/trust-verdict-soundness-r
 TVS verifies that labeled stores land in the expected recall authority mode:
 
 - clean connected memory certifies;
-- isolated or weakly connected context degrades to advisory;
+- supported claims connect their own entities, while unrelated isolated context
+  degrades the store to advisory;
 - unsupported assertions warn;
 - cross-observation contradictions block (two values recorded against one
   episode are a deliberate multi-valued observation and do not block).
