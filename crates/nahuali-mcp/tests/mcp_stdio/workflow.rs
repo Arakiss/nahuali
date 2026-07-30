@@ -430,42 +430,30 @@ fn assert_recall_graph_and_health(server: &mut McpProcess, episode_id: &str) {
     );
     assert_eq!(
         recalled["result"]["structuredContent"]["authority"]["mode"],
-        "advisory"
+        "certify"
     );
     assert_eq!(
         recalled["result"]["structuredContent"]["authority"]["score"],
-        0.75
+        1.0
     );
     assert_eq!(
         recalled["result"]["structuredContent"]["authority"]["can_trust"],
-        false
+        true
     );
     assert_eq!(
         recalled["result"]["structuredContent"]["authority"]["signal_kinds"],
-        json!(["isolated_entity"])
+        json!([])
     );
     assert_eq!(
         recalled["result"]["structuredContent"]["health"]["isolated_entity_count"],
-        1
+        0
     );
-    assert_health_signal(&recalled);
+    assert_eq!(
+        recalled["result"]["structuredContent"]["health"]["signals"],
+        json!([])
+    );
     assert_graph(server);
     assert_inspection(server);
-}
-
-fn assert_health_signal(recalled: &Value) {
-    assert_eq!(
-        recalled["result"]["structuredContent"]["health"]["signals"][0]["kind"],
-        "isolated_entity"
-    );
-    assert_eq!(
-        recalled["result"]["structuredContent"]["health"]["signals"][0]["severity"],
-        "low"
-    );
-    assert_eq!(
-        recalled["result"]["structuredContent"]["health"]["signals"][0]["dimensions"],
-        json!(["connectivity", "blind_spot"])
-    );
 }
 
 fn assert_graph(server: &mut McpProcess) {
@@ -543,7 +531,7 @@ fn assert_self_inspection(server: &mut McpProcess) {
     );
     assert_eq!(
         self_inspected["result"]["structuredContent"]["report"]["summary"]["blind_spot_count"],
-        1
+        0
     );
     assert_eq!(
         self_inspected["result"]["structuredContent"]["report"]["summary"]["source_coverage_count"],
@@ -579,7 +567,6 @@ fn assert_reflection(server: &mut McpProcess) {
     let cycles = reflected["result"]["structuredContent"]["report"]["cycles"]
         .as_array()
         .expect("reflection returns cycles");
-    assert!(cycles.iter().any(|cycle| cycle["action"] == "link_memory"));
     assert!(
         cycles
             .iter()

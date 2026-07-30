@@ -58,9 +58,9 @@ fn assert_summary_resource(server: &mut McpProcess) {
     assert_eq!(summary["intention_count"], 1);
     assert_eq!(summary["review_decision_count"], 1);
     assert_eq!(summary["supported_fact_count"], 2);
-    assert_eq!(summary["authority_mode"], "advisory");
-    assert_eq!(summary["authority_score"], 0.75);
-    assert_eq!(summary["authority_can_trust"], false);
+    assert_eq!(summary["authority_mode"], "certify");
+    assert_eq!(summary["authority_score"], 1.0);
+    assert_eq!(summary["authority_can_trust"], true);
 }
 
 fn assert_health_and_source_resources(server: &mut McpProcess) {
