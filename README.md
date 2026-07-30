@@ -137,10 +137,20 @@ all use the same deterministic engine:
 
 | Interface | Use it for | Reference |
 |---|---|---|
-| `nahuali` | Capture, recall, inspection, review, recovery, receipts, and the TUI | [CLI](crates/nahuali-cli/README.md) |
-| `nahuali-mcp` | Structured tools and resources for MCP clients | [MCP](crates/nahuali-mcp/README.md) |
+| `nahuali` | Shell-capable agents, scripts, sustained ingestion, inspection, recovery, receipts, and the TUI | [CLI](crates/nahuali-cli/README.md) |
+| `nahuali-mcp` | Hosts that expose MCP tools but cannot run local commands directly | [MCP](crates/nahuali-mcp/README.md) |
 | `nahuali-api` | Local HTTP integrations with an OpenAPI contract | [HTTP API](crates/nahuali-api/README.md) |
 | `nahuali-core` | Embedding the engine in Rust | [Core](crates/nahuali-core/README.md) |
+
+Prefer the CLI for terminal-based agent workloads. It is the direct, scriptable
+interface, supports batch commands without an MCP tool-call round trip, and
+makes the exact database and JSON contract explicit in every invocation. MCP is
+an adapter for clients whose integration boundary is a tool protocol. Both
+interfaces have the same trust semantics; choosing the CLI does not bypass
+validation. An embedded database has one process owner, so do not point a
+running MCP server and CLI processes at the same embedded database
+simultaneously. Use remote SurrealDB when independent processes need shared
+access.
 
 Run `nahuali init` to install the bundled agent skill where supported and print
 a native MCP configuration. Nahuali is also published as
@@ -156,6 +166,12 @@ untrusted network.
 `memory_record` in SurrealDB is the source of truth. The current-memory view,
 graph tables, snapshots, and semantic vectors are derived and rebuildable.
 
+- A normal write appends one ledger event, updates the in-memory view, compares
+  the desired graph with the last verified graph projection, and writes only
+  rows that are new or changed. Rows no longer present are removed.
+- If the stored projection checkpoint, schema version, error state, or content
+  manifest cannot be trusted, Nahuali clears the derived graph and rebuilds it
+  from the ledger. Recovery never rewrites authoritative history.
 - Embedded SurrealKV is the zero-service default.
 - Remote SurrealDB supports deliberately shared deployments.
 - Lexical recall works without Qdrant or an embedding model.

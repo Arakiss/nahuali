@@ -249,6 +249,17 @@ struct ProjectionManifestBuilder {
     row_digests: BTreeMap<String, Vec<[u8; 32]>>,
 }
 
+#[derive(Default)]
+struct ExistingProjection {
+    rows: BTreeMap<String, BTreeMap<String, serde_json::Value>>,
+}
+
+enum ExistingRow {
+    Missing,
+    Unchanged,
+    Changed,
+}
+
 struct ProjectionMutationBatch {
     statements: Vec<String>,
     relation_rows: Vec<String>,
@@ -256,6 +267,9 @@ struct ProjectionMutationBatch {
     bindings: Vec<(String, serde_json::Value)>,
     manifest_entries: Vec<(String, serde_json::Value)>,
     next_binding_index: usize,
+    existing: ExistingProjection,
+    unchanged_node_rows: usize,
+    unchanged_relation_rows: usize,
 }
 
 struct ProjectedRelationInput<'a> {
@@ -265,6 +279,15 @@ struct ProjectedRelationInput<'a> {
     out_table: &'a str,
     out_id: &'a str,
     content: serde_json::Value,
+}
+
+impl ProjectedRelationInput<'_> {
+    fn memory_id(&self) -> &str {
+        self.content
+            .get("memory_id")
+            .and_then(serde_json::Value::as_str)
+            .expect("projected relations always carry a logical memory_id")
+    }
 }
 
 impl MemoryEngine {
@@ -547,15 +570,27 @@ async fn rebuild_graph_projection_locked(
     lease: &GraphProjectionLease,
 ) -> Result<GraphProjectionRebuildReport> {
     verify_graph_projection_lease(path, &db, lease).await?;
-    clear_graph_projection(path, &db, lease).await?;
+    let current_status = graph_projection_status_with_db(path, &db, data, events).await?;
+    let existing = if projection_baseline_is_trustworthy(&current_status) {
+        match read_existing_projection(path, &db).await? {
+            Some(existing) => existing,
+            None => {
+                clear_graph_projection(path, &db, lease).await?;
+                ExistingProjection::default()
+            }
+        }
+    } else {
+        clear_graph_projection(path, &db, lease).await?;
+        ExistingProjection::default()
+    };
 
     let event_meta = event_meta(events);
     let entity_ids = entity_id_lookup(data);
     let intention_ids = intention_id_lookup(data);
     let mut manifest = ProjectionManifestBuilder::new();
-    let mut mutation_batch = ProjectionMutationBatch::new();
-    let mut node_rows_written = 0;
-    let mut relation_rows_written = 0;
+    let mut mutation_batch = ProjectionMutationBatch::new(existing);
+    let mut node_rows_written: usize = 0;
+    let mut relation_rows_written: usize = 0;
 
     for scope in projected_scopes(data) {
         create_projected_record(
@@ -1098,6 +1133,10 @@ async fn rebuild_graph_projection_locked(
     mutation_batch
         .flush(path, &db, lease, &mut manifest)
         .await?;
+    delete_stale_projected_rows(path, &db, lease, &mut mutation_batch.existing).await?;
+    node_rows_written = node_rows_written.saturating_sub(mutation_batch.unchanged_node_rows);
+    relation_rows_written =
+        relation_rows_written.saturating_sub(mutation_batch.unchanged_relation_rows);
     let expected_manifest = manifest.finish();
     let status_counts = expected_graph_projection_counts(data);
     create_single_projected_record(
@@ -1445,6 +1484,102 @@ async fn clear_graph_projection(
     query_graph_projection_mutation(path, db, lease, statement, Vec::new()).await
 }
 
+fn projection_baseline_is_trustworthy(status: &GraphProjectionStatus) -> bool {
+    status.checkpoint_projection_version == Some(GRAPH_PROJECTION_VERSION)
+        && status.checkpoint_memory_data_version == Some(MEMORY_DATA_VERSION)
+        && status.checkpoint_manifest_algorithm.as_deref()
+            == Some(GRAPH_PROJECTION_MANIFEST_ALGORITHM)
+        && status.checkpoint_manifest_digest.as_deref()
+            == Some(status.actual_manifest_digest.as_str())
+        && status.checkpoint_manifest_table_digests == status.actual_manifest_table_digests
+        && status.table_counts.get("projection_checkpoint") == Some(&1)
+        && status.table_counts.get("projection_error") == Some(&0)
+}
+
+async fn read_existing_projection(
+    path: &Path,
+    db: &DatabaseSession,
+) -> Result<Option<ExistingProjection>> {
+    let mut existing = ExistingProjection::default();
+    for table in MANIFEST_NODE_TABLES
+        .iter()
+        .chain(PROJECTED_RELATION_TABLES.iter())
+    {
+        let mut response = db
+            .query_with_retry(path, format!("SELECT * FROM {table}"), Vec::new())
+            .await?;
+        let rows: Vec<serde_json::Value> = response
+            .take(0)
+            .map_err(|source| database_error(path, source))?;
+        let table_rows = existing.rows.entry((*table).to_string()).or_default();
+        for mut row in rows {
+            if let serde_json::Value::Object(object) = &mut row {
+                object.remove("id");
+                object.remove("in");
+                object.remove("out");
+            }
+            let Some(memory_id) = row
+                .get("memory_id")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+            else {
+                return Ok(None);
+            };
+            if table_rows.insert(memory_id, row).is_some() {
+                return Ok(None);
+            }
+        }
+    }
+    Ok(Some(existing))
+}
+
+async fn delete_stale_projected_rows(
+    path: &Path,
+    db: &DatabaseSession,
+    lease: &GraphProjectionLease,
+    existing: &mut ExistingProjection,
+) -> Result<()> {
+    for table in PROJECTED_RELATION_TABLES
+        .iter()
+        .chain(MANIFEST_NODE_TABLES.iter())
+    {
+        let Some(rows) = existing.rows.remove(*table) else {
+            continue;
+        };
+        let memory_ids = rows.into_keys().collect::<Vec<_>>();
+        for chunk in memory_ids.chunks(GRAPH_PROJECTION_MUTATION_BATCH_SIZE) {
+            delete_projected_rows_by_memory_id(path, db, lease, table, chunk).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn delete_projected_rows_by_memory_id(
+    path: &Path,
+    db: &DatabaseSession,
+    lease: &GraphProjectionLease,
+    table: &str,
+    memory_ids: &[String],
+) -> Result<()> {
+    debug_assert!(
+        MANIFEST_NODE_TABLES.contains(&table) || PROJECTED_RELATION_TABLES.contains(&table)
+    );
+    if memory_ids.is_empty() {
+        return Ok(());
+    }
+    query_graph_projection_mutation(
+        path,
+        db,
+        lease,
+        format!("DELETE {table} WHERE memory_id IN $memory_ids"),
+        vec![(
+            "memory_ids".to_string(),
+            serde_json::json!(memory_ids),
+        )],
+    )
+    .await
+}
+
 async fn create_projected_record(
     path: &Path,
     db: &DatabaseSession,
@@ -1453,12 +1588,20 @@ async fn create_projected_record(
     manifest: &mut ProjectionManifestBuilder,
     record: (&str, &str),
     content: serde_json::Value,
-) -> Result<()> {
+) -> Result<bool> {
+    match batch.take_existing(record.0, record.1, &content) {
+        ExistingRow::Unchanged => {
+            batch.unchanged_node_rows += 1;
+            manifest.record(record.0, &content);
+            return Ok(false);
+        }
+        ExistingRow::Missing | ExistingRow::Changed => {}
+    }
     batch.queue_record(record.0, record.1, content);
     if batch.is_full() {
         batch.flush(path, db, lease, manifest).await?;
     }
-    Ok(())
+    Ok(true)
 }
 
 async fn create_single_projected_record(
@@ -1473,7 +1616,7 @@ async fn create_single_projected_record(
         path,
         db,
         lease,
-        "CREATE type::record($table, $id) CONTENT $content",
+        "UPSERT type::record($table, $id) CONTENT $content",
         vec![
             ("table".to_string(), serde_json::Value::String(table.to_string())),
             ("id".to_string(), serde_json::Value::String(id.to_string())),
@@ -1490,7 +1633,26 @@ async fn relate_projected_records(
     batch: &mut ProjectionMutationBatch,
     manifest: &mut ProjectionManifestBuilder,
     input: ProjectedRelationInput<'_>,
-) -> Result<()> {
+) -> Result<bool> {
+    match batch.take_existing(input.relation_table, input.memory_id(), &input.content) {
+        ExistingRow::Unchanged => {
+            batch.unchanged_relation_rows += 1;
+            manifest.record(input.relation_table, &input.content);
+            return Ok(false);
+        }
+        ExistingRow::Changed => {
+            batch.flush(path, db, lease, manifest).await?;
+            delete_projected_rows_by_memory_id(
+                path,
+                db,
+                lease,
+                input.relation_table,
+                &[input.memory_id().to_string()],
+            )
+            .await?;
+        }
+        ExistingRow::Missing => {}
+    }
     if batch.requires_relation_flush(input.relation_table) {
         batch.flush(path, db, lease, manifest).await?;
     }
@@ -1498,11 +1660,11 @@ async fn relate_projected_records(
     if batch.is_full() {
         batch.flush(path, db, lease, manifest).await?;
     }
-    Ok(())
+    Ok(true)
 }
 
 impl ProjectionMutationBatch {
-    fn new() -> Self {
+    fn new(existing: ExistingProjection) -> Self {
         Self {
             statements: Vec::with_capacity(GRAPH_PROJECTION_MUTATION_BATCH_SIZE),
             relation_rows: Vec::with_capacity(GRAPH_PROJECTION_MUTATION_BATCH_SIZE),
@@ -1510,6 +1672,30 @@ impl ProjectionMutationBatch {
             bindings: Vec::with_capacity(GRAPH_PROJECTION_MUTATION_BATCH_SIZE * 5),
             manifest_entries: Vec::with_capacity(GRAPH_PROJECTION_MUTATION_BATCH_SIZE),
             next_binding_index: 0,
+            existing,
+            unchanged_node_rows: 0,
+            unchanged_relation_rows: 0,
+        }
+    }
+
+    fn take_existing(
+        &mut self,
+        table: &str,
+        memory_id: &str,
+        expected: &serde_json::Value,
+    ) -> ExistingRow {
+        let Some(stored) = self
+            .existing
+            .rows
+            .get_mut(table)
+            .and_then(|rows| rows.remove(memory_id))
+        else {
+            return ExistingRow::Missing;
+        };
+        if canonicalize_json(&stored) == canonicalize_json(expected) {
+            ExistingRow::Unchanged
+        } else {
+            ExistingRow::Changed
         }
     }
 
@@ -1518,7 +1704,7 @@ impl ProjectionMutationBatch {
         let prefix = format!("projection_record_{}", self.next_binding_index);
         self.next_binding_index += 1;
         self.statements.push(format!(
-            "CREATE type::record(${prefix}_table, ${prefix}_id) CONTENT ${prefix}_content"
+            "UPSERT type::record(${prefix}_table, ${prefix}_id) CONTENT ${prefix}_content"
         ));
         self.bindings.extend([
             (

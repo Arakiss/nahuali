@@ -71,6 +71,12 @@ private during pre-release development.
   ledger and materialized into rebuildable SurrealDB graph tables.
 - The graph projection can be inspected, rebuilt, and validated without making
   it authoritative memory.
+- Normal synchronization compares the desired graph with a verified stored
+  projection, upserts only new or changed nodes, replaces only changed
+  relations, and removes rows that are no longer derived from the ledger.
+- A missing, incompatible, errored, or manifest-invalid projection is never
+  used as an incremental baseline. The core clears that derived tier and
+  rebuilds it from the validated record ledger instead.
 - Projection v2 uses a permanent lock row and monotonic fencing tokens. Every
   bounded mutation batch updates that row inside the same transaction, so a
   replaced rebuild owner cannot commit stale or partial rows.

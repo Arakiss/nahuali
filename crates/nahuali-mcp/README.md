@@ -3,6 +3,19 @@
 `nahuali-mcp` is the local MCP stdio server for Nahuali. It uses the same
 append-only record ledger and core memory engine as the CLI.
 
+## When To Use MCP
+
+Use this server when an agent host exposes MCP tools and resources but cannot
+run the `nahuali` command directly. For shell-capable agents, long-running
+terminal workflows, and bulk ingestion, prefer the CLI: it is the canonical
+scriptable interface and avoids a protocol round trip for each operation.
+
+CLI and MCP behavior is backed by the same engine. This recommendation is about
+the integration path, not weaker MCP trust guarantees. An embedded database has
+one process owner; do not run this server and CLI commands against the same
+embedded database at the same time. Use remote SurrealDB when separate
+processes need concurrent access.
+
 ## Install From Source
 
 From the repository root:

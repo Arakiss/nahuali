@@ -17,6 +17,13 @@ Code skill and prints the MCP config. (`demo`'s full narrative needs the
 `attestation` build feature; a build made without it explains how to get one
 that has it.)
 
+Use the CLI as the default integration for shell-capable agents and sustained
+terminal automation. Commands are directly scriptable, expose stable JSON with
+`--json`, and support batch ingestion without MCP tool-call overhead. Use
+`nahuali-mcp` when the host can integrate only through MCP or when native tool
+discovery is more useful than shell control. The two interfaces share the same
+engine and trust rules.
+
 ## Install From Source
 
 During pre-release development, avoid overwriting an existing global `nahuali`

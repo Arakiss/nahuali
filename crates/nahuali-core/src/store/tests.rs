@@ -564,6 +564,145 @@ mod tests {
     }
 
     #[test]
+    fn synchronizes_only_changed_rows_after_a_large_projection() {
+        const BASE_EVENT_COUNT: u64 = 300;
+
+        let path = temp_path("projection_incremental_sync");
+        let _ = fs::remove_file(&path);
+        drop(MemoryEngine::open(&path).unwrap());
+
+        let events = (1..=BASE_EVENT_COUNT)
+            .map(|sequence| {
+                EventEnvelope::new(
+                    sequence,
+                    sequence,
+                    MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                        id: format!("episode_incremental_{sequence}"),
+                        content: format!("Incremental projection memory {sequence}."),
+                        tags: vec!["incremental".to_string()],
+                        mentions: vec![format!("Entity {sequence}")],
+                        source_id: None,
+                        source_position: None,
+                        source_role: None,
+                        scope: None,
+                    }),
+                )
+            })
+            .collect::<Vec<_>>();
+        let write_path = path.clone();
+        block_on_database(async move { write_records(&write_path, &events).await }).unwrap();
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let initial = memory.projection_rebuild().unwrap();
+        assert!(initial.status.in_sync);
+        assert!(initial.node_rows_written > BASE_EVENT_COUNT as usize);
+        assert_eq!(
+            initial.relation_rows_written,
+            BASE_EVENT_COUNT as usize
+        );
+
+        let next_sequence = BASE_EVENT_COUNT + 1;
+        let event = EventEnvelope::new(
+            next_sequence,
+            next_sequence,
+            MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                id: format!("episode_incremental_{next_sequence}"),
+                content: "Only this memory should be materialized.".to_string(),
+                tags: vec!["incremental".to_string()],
+                mentions: vec![format!("Entity {next_sequence}")],
+                source_id: None,
+                source_position: None,
+                source_role: None,
+                scope: None,
+            }),
+        );
+        let write_path = path.clone();
+        block_on_database(async move { write_record(&write_path, &event).await }).unwrap();
+
+        let rebuild_path = path.clone();
+        let report =
+            block_on_database(async move { super::rebuild_graph_projection(&rebuild_path).await })
+                .unwrap();
+        assert!(report.status.in_sync);
+        assert!(
+            report.node_rows_written < 16,
+            "incremental synchronization rewrote {} node rows",
+            report.node_rows_written
+        );
+        assert_eq!(report.relation_rows_written, 1);
+
+        memory.refresh().unwrap();
+        let validation = memory.projection_validate().unwrap();
+        assert!(validation.valid, "{:?}", validation.issues);
+        assert_eq!(
+            validation.status.table_counts["episode"],
+            next_sequence as usize
+        );
+        assert_eq!(
+            validation.status.table_counts["mentions"],
+            next_sequence as usize
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn incremental_sync_removes_relations_that_are_no_longer_projected() {
+        let path = temp_path("projection_incremental_stale_relation");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let dependency = memory
+            .add_intention(
+                "Prepare release",
+                IntentionKind::Task,
+                IntentionPriority::Medium,
+                None,
+            )
+            .unwrap();
+        let intention = memory
+            .add_intention(
+                "Publish release",
+                IntentionKind::Task,
+                IntentionPriority::High,
+                None,
+            )
+            .unwrap();
+        memory
+            .update_intention(
+                intention.id.clone(),
+                IntentionUpdateOptions {
+                    depends_on: Some(vec![dependency.id]),
+                    ..IntentionUpdateOptions::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            memory.projection_validate().unwrap().status.table_counts
+                ["intention_depends_on"],
+            1
+        );
+
+        memory
+            .update_intention(
+                intention.id,
+                IntentionUpdateOptions {
+                    depends_on: Some(Vec::new()),
+                    ..IntentionUpdateOptions::default()
+                },
+            )
+            .unwrap();
+        let validation = memory.projection_validate().unwrap();
+        assert!(validation.valid, "{:?}", validation.issues);
+        assert_eq!(
+            validation.status.table_counts["intention_depends_on"],
+            0
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn concurrent_graph_rebuilds_leave_one_complete_projection() {
         const REBUILDER_COUNT: usize = 8;
         let path = temp_path("concurrent_graph_rebuilds");

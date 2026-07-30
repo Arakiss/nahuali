@@ -882,9 +882,9 @@ impl MemoryEngine {
         projection::project_event(&mut self.data, &envelope);
         self.next_sequence += 1;
 
-        // The graph projection is a full rebuild from the whole ledger, so doing
-        // it per event during an import is O(n^2) in database writes. Inside a
-        // batch we rebuild it exactly once at flush time instead.
+        // Projection synchronization compares the complete desired graph but
+        // writes only rows that changed. Deferring it during imports avoids
+        // repeating that full-state comparison for every buffered event.
         if !self.batch_active {
             let graph_path = self.path.clone();
             if let Err(source) =
@@ -904,11 +904,12 @@ impl MemoryEngine {
     ///
     /// While the batch is active, each `append_at` accumulates its event in
     /// memory and updates the deterministic projection, but defers the database
-    /// write and the graph rebuild. On success the buffered records are written
-    /// with a single database connection and the graph projection is rebuilt
-    /// once, turning an O(n^2) per-event import into a single O(n) flush. If
-    /// `body` or the flush fails, the in-memory state is rolled back to its
-    /// pre-batch snapshot so the engine stays consistent with the database.
+    /// write and the graph synchronization. On success the buffered records are
+    /// written with a single database connection and the graph projection is
+    /// synchronized once, avoiding repeated full-state comparison during a
+    /// large import. If `body` or the flush fails, the in-memory state is rolled
+    /// back to its pre-batch snapshot so the engine stays consistent with the
+    /// database.
     fn run_import_batch<T>(
         &mut self,
         mut body: impl FnMut(&mut Self) -> Result<T>,
