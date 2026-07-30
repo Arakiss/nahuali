@@ -22,15 +22,18 @@
     },
     {
       "id": "tvs-advisory",
-      "goal": "Trust Verdict Soundness: a sourced, high-confidence claim whose entities are unconnected raises only a Low isolated-entity signal, so the gate degrades to Advisory (score 0.75, not can_trust) without over-blocking.",
+      "goal": "Trust Verdict Soundness: a sourced, high-confidence claim connects its own entities while an unrelated mentioned entity remains isolated, so the single Low signal degrades the store to Advisory (score 0.75, not can_trust) without over-blocking.",
+      "inspect_at_ms": 1000,
       "steps": [
-        { "type": "remember", "bind": "src", "content": "Orion is on the roadmap.", "tags": ["product"] },
-        { "type": "fact", "subject": "Orion", "predicate": "status", "object": "planned", "source_episode_ref": "src", "confidence": 0.9 }
+        { "type": "raw_event", "sequence": 1, "timestamp_ms": 1000, "payload": { "type": "episode_recorded", "id": "ep_roadmap", "content": "Orion is planned; Lyra was mentioned for later review.", "tags": ["product"], "mentions": ["Orion", "Lyra"] } },
+        { "type": "raw_event", "sequence": 2, "timestamp_ms": 1000, "payload": { "type": "fact_asserted", "id": "f_orion_planned", "subject": "Orion", "predicate": "status", "object": "planned", "source_episode_id": "ep_roadmap", "confidence": 0.9 } },
+        { "type": "write_raw_records" }
       ],
       "expected": {
         "fact_count": 1,
         "unsupported_fact_count": 0,
         "conflicting_fact_count": 0,
+        "isolated_entity_count": 1,
         "authority_mode": "advisory",
         "authority_score": 0.75,
         "authority_can_trust": false,
