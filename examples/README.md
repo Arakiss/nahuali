@@ -85,3 +85,28 @@ Validated MCP prompts:
 recall_with_health_check
 record_evidence_backed_fact
 ```
+
+## HTTP trust clients
+
+The dependency-free Python 3 and TypeScript examples exercise the local HTTP
+API as a trust contract, not as a source of factual truth. Each client records a
+synthetic episode, creates an evidence-backed claim, validates store-level and
+per-result trust fields, then adds an unsupported competing assertion and
+checks that Nahuali returns a non-trust verdict.
+
+Build the existing API binary and run both clients against separate disposable
+databases bound only to loopback:
+
+```bash
+cargo build -p nahuali-api
+bash scripts/verify-http-client-examples.sh
+```
+
+The verifier accepts `NAHUALI_API_BIN=/path/to/nahuali-api` when the binary is
+outside `target/debug`. To run one client manually against a local disposable
+API, set `NAHUALI_API_URL` and use either:
+
+```bash
+python3 examples/http/python_client.py
+bun examples/http/typescript_client.ts
+```

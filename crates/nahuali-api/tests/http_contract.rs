@@ -17,6 +17,12 @@ static API_CONTRACT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static API_TEST_ENDPOINT: OnceLock<()> = OnceLock::new();
 
 #[test]
+fn openapi_contract_matches_the_product_version() {
+    let openapi: Value = serde_json::from_str(OPENAPI_JSON).expect("OpenAPI JSON parses");
+    assert_eq!(openapi["info"]["version"], env!("CARGO_PKG_VERSION"));
+}
+
+#[test]
 fn openapi_contract_has_the_frozen_beta_path_set() {
     let openapi: Value = serde_json::from_str(OPENAPI_JSON).expect("OpenAPI JSON parses");
     let mut paths = openapi["paths"]
@@ -132,6 +138,16 @@ fn openapi_contract_has_beta_operation_shapes() {
         .find(|parameter| parameter["name"] == "seed")
         .expect("graph seed parameter is documented");
     assert_eq!(seed_parameter["required"], true);
+
+    assert_eq!(
+        paths["/v1/trust-report"]["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/TrustReportResponse"
+    );
+    assert_schema_requires(&openapi, "MemoryTrustReport", "integrity");
+    assert_schema_requires(&openapi, "MemoryTrustReport", "health");
+    assert_schema_requires(&openapi, "TrustIntegrity", "ledger_verified");
+    assert_schema_does_not_require(&openapi, "TrustIntegrity", "chain_intact");
+    assert_schema_does_not_require(&openapi, "TrustIntegrity", "chain_status");
 }
 
 #[tokio::test]
@@ -939,6 +955,16 @@ fn assert_schema_requires(openapi: &Value, schema: &str, property: &str) {
     assert!(
         required.iter().any(|required| required == property),
         "{schema} must require {property}"
+    );
+}
+
+fn assert_schema_does_not_require(openapi: &Value, schema: &str, property: &str) {
+    let required = openapi["components"]["schemas"][schema]["required"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{schema} schema is missing required properties"));
+    assert!(
+        !required.iter().any(|required| required == property),
+        "{schema} must leave {property} optional for builds without tamper-evidence"
     );
 }
 

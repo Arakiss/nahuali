@@ -29,8 +29,9 @@ curl http://127.0.0.1:7070/v1/openapi.json
 ```
 
 `GET /health` and `GET /v1/health` return `{"status":"ok"}` without opening the
-database, so they are safe as liveness probes. Transport-level failures (unknown
-route, wrong `Content-Type`, malformed JSON, unknown or missing fields) return the
+database, so they are process-liveness probes, not data-readiness or integrity
+checks. Transport-level failures (unknown route, wrong `Content-Type`, malformed
+JSON, unknown or missing fields) return the
 same structured envelope as core errors: `{"error":{"code":"...","message":"..."}}`.
 
 `GET /ready` and `GET /v1/ready` open and refresh the ledger, validate the graph
@@ -76,7 +77,9 @@ artifacts. Build with `--no-default-features` only when you intentionally need
 the legacy unchained record format.
 
 - `--features tamper-evidence`: recorded events are chained by hash, so ledger
-  replay on open detects an in-place rewrite of any historical record.
+  replay detects a rewritten non-tip record when the following link was not
+  recomputed. Last-event rewrite, truncation, rollback, and a full re-chain
+  require comparison with an externally retained, authorized checkpoint.
 - `--features local-embeddings`: `POST /v1/semantic/rebuild` and semantic recall
   use a static model2vec model instead of the deterministic embedder. Set
   `NAHUALI_EMBEDDING_PROVIDER=model2vec` and point

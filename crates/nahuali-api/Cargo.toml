@@ -18,11 +18,12 @@ path = "src/main.rs"
 
 [features]
 default = ["tamper-evidence", "attestation"]
-# Forward the nahuali-core surfaces to match the flagship default posture and the
-# published binary artifacts. Build with `--no-default-features` for a legacy
+# Forward the nahuali-core surfaces to match the published binary artifacts.
+# Build with `--no-default-features` for a legacy
 # unchained record format.
-# - tamper-evidence: writes are chained, and ledger replay on open detects an
-#   in-place rewrite of any historical record.
+# - tamper-evidence: writes are chained, and replay detects a rewritten non-tip
+#   record when the following link was not recomputed. External checkpoints are
+#   needed for rollback, last-event rewrite, and full re-chains.
 # - attestation: builds the core with the signable chain-tip surface so a default
 #   `cargo build` of the whole workspace is chained and attestation-ready. The API
 #   exposes no signing endpoint; the feature only aligns the core build posture.

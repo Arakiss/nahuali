@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Nahuali Beta API",
-    "version": "0.1.0",
-    "description": "HTTP surface over nahuali-core. The SurrealDB memory_record ledger remains authoritative, SurrealDB graph tables are derived projections, and Qdrant is a rebuildable semantic index."
+    "version": "0.8.0-beta.9",
+    "description": "Local HTTP API for evidence-backed agent memory. Recorded history is authoritative; query views and optional semantic indexes are rebuildable."
   },
   "paths": {
     "/v1/status": {
@@ -231,9 +231,9 @@
     "/v1/trust-report": {
       "get": {
         "operationId": "getTrustReport",
-        "summary": "Return a composed memory trust report.",
+        "summary": "Return internal recorded-history checks and knowledge health.",
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
+          "200": { "$ref": "#/components/responses/TrustReportResponse" },
           "default": { "$ref": "#/components/responses/ApiError" }
         }
       }
@@ -499,6 +499,10 @@
       "SessionResumeResponse": {
         "description": "Continuity briefing with store-level authority and knowledge-health context.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResumeResponse" } } }
+      },
+      "TrustReportResponse": {
+        "description": "Internal recorded-history checks, memory authority, and knowledge health. This HTTP endpoint does not accept an external checkpoint input.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoryTrustReport" } } }
       },
       "JsonObject": {
         "description": "JSON response returned by nahuali-core.",
@@ -959,6 +963,85 @@
         "properties": {
           "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
           "health": { "$ref": "#/components/schemas/KnowledgeHealth" }
+        }
+      },
+      "LedgerChainStatus": {
+        "type": "string",
+        "description": "Result of the current store's internal history-link checks.",
+        "enum": ["empty", "verified", "legacy", "broken"]
+      },
+      "TrustKnowledge": {
+        "type": "object",
+        "description": "Counts of the memory records currently available to this store.",
+        "additionalProperties": false,
+        "required": [
+          "event_count", "source_count", "entity_count", "episode_count",
+          "claim_count", "link_count", "procedure_count", "intention_count"
+        ],
+        "properties": {
+          "event_count": { "type": "integer", "minimum": 0 },
+          "source_count": { "type": "integer", "minimum": 0 },
+          "entity_count": { "type": "integer", "minimum": 0 },
+          "episode_count": { "type": "integer", "minimum": 0 },
+          "claim_count": { "type": "integer", "minimum": 0 },
+          "link_count": { "type": "integer", "minimum": 0 },
+          "procedure_count": { "type": "integer", "minimum": 0 },
+          "intention_count": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "TrustIntegrity": {
+        "type": "object",
+        "description": "Self-checks over the history available to this store. Independent rewrite detection requires a previously retained authorized checkpoint.",
+        "additionalProperties": false,
+        "required": [
+          "ledger_verified", "checksums_valid", "sequence_contiguous"
+        ],
+        "properties": {
+          "ledger_verified": { "type": "boolean", "description": "Whether every internal history check available in this build passed." },
+          "checksums_valid": { "type": "boolean" },
+          "sequence_contiguous": { "type": "boolean" },
+          "chain_intact": { "type": "boolean", "description": "Present when the server was built with tamper-evidence support." },
+          "chain_status": { "allOf": [{ "$ref": "#/components/schemas/LedgerChainStatus" }], "description": "Present when the server was built with tamper-evidence support." },
+          "chain_tip": { "type": "string", "description": "Current history tip, present only for a fully chained store." },
+          "merkle_root": { "type": "string", "description": "Current history commitment, present only for a fully chained store; it is not independent proof by itself." }
+        }
+      },
+      "TrustAttestationEvaluation": {
+        "type": "object",
+        "description": "Evaluation of a supplied checkpoint receipt against the current history and the operator's authorized keys.",
+        "additionalProperties": false,
+        "required": [
+          "format", "sequence", "signature_valid", "matches_history", "trusted"
+        ],
+        "properties": {
+          "format": { "type": "string" },
+          "sequence": { "type": "integer", "minimum": 0 },
+          "signature_valid": { "type": "boolean" },
+          "matches_history": { "type": "boolean" },
+          "signer_authorized": { "type": "boolean" },
+          "signer_revoked": { "type": "boolean" },
+          "trusted": { "type": "boolean" },
+          "rejection": { "type": "string" }
+        }
+      },
+      "MemoryTrustReport": {
+        "type": "object",
+        "description": "A composed snapshot of internal consistency and memory quality. Without an authorized retained checkpoint, it is not an independent guarantee that a full history was never replaced.",
+        "additionalProperties": false,
+        "required": [
+          "version", "generated_at_ms", "knowledge", "authority", "integrity",
+          "health", "trustworthy", "verdict_reasons"
+        ],
+        "properties": {
+          "version": { "type": "integer", "minimum": 0 },
+          "generated_at_ms": { "type": "integer", "minimum": 0 },
+          "knowledge": { "$ref": "#/components/schemas/TrustKnowledge" },
+          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
+          "integrity": { "$ref": "#/components/schemas/TrustIntegrity" },
+          "health": { "$ref": "#/components/schemas/KnowledgeHealth" },
+          "attestation": { "allOf": [{ "$ref": "#/components/schemas/TrustAttestationEvaluation" }], "description": "Optional in the shared report type. The current HTTP endpoint accepts no checkpoint input and omits this field." },
+          "trustworthy": { "type": "boolean", "description": "Composite result from the checks represented in this report, including an authorized checkpoint only when one was supplied." },
+          "verdict_reasons": { "type": "array", "items": { "type": "string" } }
         }
       },
       "SessionResumeResponse": {
