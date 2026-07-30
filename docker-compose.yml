@@ -3,6 +3,10 @@ services:
     image: surrealdb/surrealdb:v3.0.5
     container_name: nahual-mictlan-surrealdb
     user: root
+    cpus: 1.0
+    mem_limit: 3g
+    environment:
+      SURREAL_SURREALKV_BLOCK_CACHE_CAPACITY: "134217728"
     ports:
       - "18000:8000"
     command: start --user root --pass root surrealkv:/data/nahuali.db

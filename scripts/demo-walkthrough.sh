@@ -15,7 +15,7 @@ if   [[ -n "${NAHUALI_BIN:-}" ]];        then N="$NAHUALI_BIN"
 elif [[ -x target/debug/nahuali ]];      then N="target/debug/nahuali"
 elif [[ -x target/release/nahuali ]];    then N="target/release/nahuali"
 else N=""; fi
-DB="walkthrough_$$"
+DB="${NAHUALI_DEMO_DB:-walkthrough_$$}"
 run(){ if [[ -n "$N" ]]; then "$N" --database "$DB" "$@"; else cargo run -q -p nahuali-cli -- --database "$DB" "$@"; fi; }
 
 B(){ printf '\033[1m%s\033[0m\n' "$*"; }
@@ -26,17 +26,15 @@ arrow(){ printf '   \033[36m→\033[0m %s\n' "$*"; }
 cmd(){ dim "     \$ nahuali $*"; }
 pause(){ [[ "${NAHUALI_DEMO_PAUSE:-0}" == "1" ]] && read -rp $'     (enter to continue)' _ ; printf '\n'; }
 
-bash scripts/ensure-dev-stack.sh >/dev/null 2>&1 || true
-
 printf '\n'
 B "═══════════════════════════════════════════════════════════════"
 B "   Nahuali in 6 steps. No jargon. See what it actually does."
 B "═══════════════════════════════════════════════════════════════"
 cat <<'EOF'
 
-   Your agent remembers things as it works. Some with proof of where
-   they came from, some without. An ordinary memory stores them all
-   the same. Nahuali does not: it tells you which ones you can trust.
+   Your agent remembers things as it works. Some entries have a source
+   record; others do not. This walkthrough shows how Nahuali keeps that
+   distinction visible in recall and review.
 
    We will give it two memories -- one WITH a source, one WITHOUT --
    and watch it treat them differently.
@@ -53,7 +51,7 @@ B "Step 2 · The agent OBSERVES something and stores it with its origin"
 cmd 'remember "Ana said in the planning meeting that she owns the March release"'
 run remember "Ana said in the planning meeting that she owns the March release." \
     --tag meeting --mention Ana --scope project:Demo >/dev/null
-arrow "That becomes an EPISODE. It is the source: the original proof of where the information came from."
+arrow "That becomes an EPISODE: the recorded source for the later claim."
 pause
 
 B "Step 3 · Turn the observation into a fact, citing that source"
@@ -62,10 +60,10 @@ run claim Ana owns "March release" --confidence 0.9 --source-last --scope projec
 ok "Now there is a FACT, and it points to the meeting as its evidence."
 pause
 
-B "Step 4 · The agent asserts ANOTHER fact... but with no proof at all"
+B "Step 4 · The agent asserts ANOTHER fact... but with no source record"
 cmd 'claim Beto owns "the roadmap"'
 run claim Beto owns "the roadmap" --confidence 0.5 --scope project:Demo >/dev/null
-arrow "Nahuali stores it, but takes note: nobody knows where this came from."
+arrow "Nahuali stores it and reports that it has no source reference."
 pause
 
 B "Step 5 · You ask the agent: who owns the March release?"
@@ -80,18 +78,17 @@ AMODE=$(echo "$R" | jq -r '.authority.mode')
 AWHY=$(echo "$R" | jq -r '.authority.reasons[0] // ""')
 echo "   Nahuali finds:  \"$EXC\""
 if [[ "$TCAN" == "true" ]]; then
-  ok "CERTIFIED ($TMODE). It has evidence behind it. You can act on this."
+  ok "CERTIFIED ($TMODE). It meets the configured evidence gate."
   dim "       engine reason: $TWHY"
 fi
 if [[ "$ACAN" != "true" ]]; then
   warn "But it WARNS about the whole set ($AMODE). Not all of the store is trustworthy:"
   dim "       engine reason: $AWHY"
 fi
-arrow "This is what a recall-only memory does NOT do: it gives you the good"
-arrow "answer AND warns you about the doubtful part, in the same query."
+arrow "The response keeps the sourced result and the store-level warning distinct."
 pause
 
-B "Step 6 · What should you review before fully trusting it?"
+B "Step 6 · What should you review next?"
 cmd "review"
 RV=$(run review --json)
 CNT=$(echo "$RV" | jq -r '.summary.item_count // (.items|length)')
@@ -106,13 +103,11 @@ pause
 B "The aha"
 cat <<'EOF'
 
-   An ordinary memory (Mem0, Zep) would have returned both things as
-   if they were equally true. Nahuali returned the good one WITH its
-   receipt and flagged the doubtful one for review.
-
-   It does not sell memory. It sells being able to trust it -- and to
-   stand behind what your agent remembered and did.
+   Nahuali returned the sourced claim with its evidence and flagged the
+   unsupported claim for review. The CERTIFY verdict means the configured
+   structural evidence checks passed; it does not prove the meeting statement
+   was true or that an external action is safe.
 
 EOF
-dim "   (Demo memory in $DB · synthetic · safe to delete)"
+dim "   (Demo memory in $DB · synthetic · disposable test store)"
 printf '\n'

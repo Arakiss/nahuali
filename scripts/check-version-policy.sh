@@ -77,10 +77,13 @@ mismatches="$(
 
 server_version="$(jq -r '.version' server.json)"
 server_image="$(jq -r '.packages[0].identifier' server.json)"
+openapi_version="$(jq -r '.info.version' crates/nahuali-api/openapi.json)"
 [[ "$server_version" == "$version" ]] \
   || fail "server.json version $server_version does not match $version"
 [[ "$server_image" == "ghcr.io/arakiss/nahuali-mcp:$version" ]] \
   || fail "server.json image must use the product version"
+[[ "$openapi_version" == "$version" ]] \
+  || fail "OpenAPI version $openapi_version does not match $version"
 
 grep -q "^## \[$version\]" CHANGELOG.md \
   || fail "CHANGELOG.md needs a curated [$version] product entry"

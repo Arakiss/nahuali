@@ -28,7 +28,8 @@ section="$(
 cat <<EOF
 Nahuali v${version} is a prerelease of the local trust layer for agent memory.
 Every recall can carry its evidence and a deterministic verdict, and the ledger
-can prove whether its recorded history was rewritten.
+can detect specified integrity failures. Rollback and a fully re-chained history
+require comparison with an externally retained, authorized checkpoint.
 
 ## Why upgrade
 
@@ -38,7 +39,7 @@ opening the same local store without a clear recovery path.
 
 ## Changes
 
-$(sed 's/^### /### /' <<<"$section")
+${section}
 
 ## Breaking changes and migration
 
@@ -49,7 +50,9 @@ version 2 records remain readable. After upgrading, restart every long-lived
 ## Install
 
 \`\`\`bash
-curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
+curl -fsSLo /tmp/nahuali-install.sh \\
+  https://raw.githubusercontent.com/Arakiss/nahuali/${tag}/scripts/install.sh
+NAHUALI_VERSION=${tag} sh /tmp/nahuali-install.sh
 nahuali demo
 nahuali explore
 \`\`\`

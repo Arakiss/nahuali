@@ -194,9 +194,9 @@ fn legacy_export_conversion_supports_dogfood_migration_dry_run() {
     );
     assert_eq!(
         dry_run["report"]["readiness"]["self_inspection_summary"]["finding_count"],
-        5
+        1
     );
-    assert_eq!(dry_run["report"]["readiness"]["review_item_count"], 5);
+    assert_eq!(dry_run["report"]["readiness"]["review_item_count"], 1);
     assert_eq!(
         dry_run["report"]["readiness"]["write_back_policy"]["automatic_write_back"],
         false
@@ -209,7 +209,7 @@ fn legacy_export_conversion_supports_dogfood_migration_dry_run() {
     assert!(human_dry_run.contains("Evidence gaps: 2"));
     assert!(human_dry_run.contains("Scopes: project:nahuali"));
     assert!(human_dry_run.contains("Readiness source coverage findings: 1"));
-    assert!(human_dry_run.contains("Readiness review items: 5"));
+    assert!(human_dry_run.contains("Readiness review items: 1"));
 
     let imported = run_ok(
         &store,

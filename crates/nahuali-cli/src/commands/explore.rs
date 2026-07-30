@@ -1,8 +1,8 @@
 //! The `explore` command: open the store and hand a trust-first snapshot of
 //! its memory to the nahuali-ui governance cockpit.
 //!
-//! Nahuali is agent-first, but a human supervises what the agent stored. This
-//! reduces the engine's memory to a plain `Snapshot` of display strings — each
+//! A human can supervise what an agent stored. This reduces the engine's memory
+//! to a plain `Snapshot` of display strings — each
 //! item carrying a provenance signal (observed / evidenced / no source) and a
 //! few detail fields — plus store-level governance signals, and launches the
 //! interactive TUI.

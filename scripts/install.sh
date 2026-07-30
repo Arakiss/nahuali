@@ -1,14 +1,16 @@
 #!/bin/sh
 # Nahuali installer.
 #
-# One-line install:
-#   curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh | sh
+# Download and run:
+#   curl -fsSLo /tmp/nahuali-install.sh \
+#     https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/install.sh
+#   sh /tmp/nahuali-install.sh
 #
 # Installs the prebuilt `nahuali`, `nahuali-mcp`, and `nahuali-api` binaries
 # from the latest GitHub release into ~/.nahuali/bin. No Rust, Docker, or build
 # toolchain is required to RUN this installer.
 #
-# The installer is idempotent and safe to re-run. It never edits your shell rc
+# The installer is idempotent. It never edits your shell rc
 # files; instead it prints the exact PATH line for you to add.
 #
 # The download is verified before anything is installed. The SHA-256 checksum is
@@ -223,7 +225,7 @@ EOF
 # Main flow.
 # ---------------------------------------------------------------------------
 printf '\n%s%sNahuali%s installer\n' "${C_BOLD}" "${C_CYAN}" "${C_RESET}"
-printf '%sGoverned memory for AI agents. Prove what you know and that it was not altered.%s\n\n' "${C_DIM}" "${C_RESET}"
+printf '%sEvidence-aware memory with explicit trust and ledger-integrity checks.%s\n\n' "${C_DIM}" "${C_RESET}"
 
 step "Detecting platform"
 TARGET="$(detect_target)"
@@ -427,7 +429,7 @@ fi
 # ---------------------------------------------------------------------------
 # The magic next step.
 # ---------------------------------------------------------------------------
-printf '\n%sNext:%s see why memory is trusted, flagged, or blocked. No Docker, no setup:\n\n' "${C_BOLD}" "${C_RESET}"
+printf '\n%sNext:%s see why memory is trusted, flagged, or blocked. No Docker or database service:\n\n' "${C_BOLD}" "${C_RESET}"
 if [ "$ON_PATH" = "true" ]; then
   printf '    %snahuali demo%s\n' "${C_CYAN}${C_BOLD}" "${C_RESET}"
 else

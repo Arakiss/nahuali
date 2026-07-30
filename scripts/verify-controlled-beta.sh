@@ -41,6 +41,7 @@ require_docker() {
 
 require_command cargo
 require_command jq
+require_command bun
 require_docker
 
 run_step "Public documentation contract" bash scripts/check-doc-release-refs.sh
@@ -48,16 +49,22 @@ run_step "Public security and supply-chain hygiene" bash scripts/security-supply
 run_step "Service-backed dev stack" bash scripts/ensure-dev-stack.sh
 run_step "Governance benchmark suite" bash scripts/verify-governance-benchmarks.sh
 
-run_step "Build local binaries once for beta checks" cargo build -p nahuali-cli -p nahuali-mcp --quiet
+run_step "Build local binaries once for beta checks" cargo build -p nahuali-cli -p nahuali-mcp -p nahuali-api --quiet
 TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
 case "$TARGET_DIR" in
   /*) ;;
   *) TARGET_DIR="$ROOT/$TARGET_DIR" ;;
 esac
 NAHUALI_BIN="$TARGET_DIR/debug/nahuali"
+NAHUALI_API_BIN="$TARGET_DIR/debug/nahuali-api"
 if [[ ! -x "$NAHUALI_BIN" ]]; then
   echo "Rust nahuali binary is missing after build" >&2
   echo "expected: $NAHUALI_BIN" >&2
+  exit 1
+fi
+if [[ ! -x "$NAHUALI_API_BIN" ]]; then
+  echo "Rust nahuali-api binary is missing after build" >&2
+  echo "expected: $NAHUALI_API_BIN" >&2
   exit 1
 fi
 
@@ -88,6 +95,12 @@ run_step "Daily-driver reliability gate" \
 
 run_step "Evidence-backed recall contract" \
   env NAHUALI_RECALL_CONTRACT_BIN="$NAHUALI_BIN" bash scripts/verify-recall-contract.sh
+
+run_step "Loopback HTTP client examples" \
+  env NAHUALI_API_BIN="$NAHUALI_API_BIN" bash scripts/verify-http-client-examples.sh
+
+run_step "LongMemEval retrieval adapter smoke" \
+  env NAHUALI_LONGMEMEVAL_BIN="$NAHUALI_BIN" bash scripts/verify-longmemeval-adapter.sh
 
 printf '\ncontrolled beta gate passed\n'
 printf 'The checkout is ready for controlled synthetic/local testing.\n'

@@ -26,17 +26,19 @@ default = ["attestation"]
 local-embeddings = ["dep:model2vec-rs"]
 # Tamper-evident hash chain over the append-only record ledger. On by default via
 # `attestation`. When enabled, each appended event binds the previous event's
-# chained SHA-256 hash, so rewriting any historical event breaks the chain at the
-# next event and ledger replay detects it. Build with `--no-default-features` for
+# chained SHA-256 hash, so rewriting a non-tip event breaks the following stored
+# link when the suffix is not recomputed. Last-event rewrite, rollback,
+# truncation, and full re-chains require an authorized external checkpoint.
+# Build with `--no-default-features` for
 # a legacy-unchained ledger (records carry no `prev_hash`). The per-event SHA-256
 # integrity checksum ships in every build — it does not depend on this feature.
 tamper-evidence = []
 # Ed25519 detached signatures over the tamper-evident chain tip. Implies
 # `tamper-evidence` (signing a tip only makes sense once events are chained) and
-# is part of the default feature set. The hash chain detects in-place rewrites;
-# signing the tip closes the remaining gap — a full suffix re-chain changes the
-# tip, and a detached signature over the old tip no longer verifies without the
-# private key. `ed25519-dalek` and its dependencies are already present
+# is part of the default feature set. A detached receipt retained outside the
+# store provides a comparison point; the legacy v1 receipt still requires a
+# separately held keyring for signer authorization. `ed25519-dalek` and its
+# dependencies are already present
 # transitively (via surrealdb), so enabling this pulls no new crate versions.
 attestation = ["tamper-evidence", "dep:ed25519-dalek"]
 # Internal seam for the unpublished regression runner to inject deliberately

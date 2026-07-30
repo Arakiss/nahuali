@@ -23,8 +23,10 @@ default = ["tui", "tamper-evidence", "attestation"]
 # minimal/server CLI.
 tui = ["nahuali-ui/tui"]
 # Forward nahuali-core's tamper-evident hash chain. On by default in this
-# crate: recorded events are chained and `validate` detects an in-place rewrite
-# of any historical record. Build with --no-default-features for a CLI that
+# crate: recorded events are chained and `validate` detects a rewritten non-tip
+# record when the following link was not recomputed. Rollback, last-event rewrite,
+# and full re-chain detection require an authorized external checkpoint. Build
+# with --no-default-features for a CLI that
 # writes records byte-identical to the core's default (unchained) format.
 tamper-evidence = ["nahuali-core/tamper-evidence"]
 # Forward the Ed25519 chain-tip attestation surface from nahuali-core. Implies
@@ -33,7 +35,7 @@ tamper-evidence = ["nahuali-core/tamper-evidence"]
 # `--no-default-features` for a build without the signing surface.
 attestation = ["nahuali-core/attestation", "tamper-evidence"]
 # Forward nahuali-core's optional static model2vec embedder so `semantic-rebuild`
-# and recall can use a local model for stronger semantic recall. Off by default
+# and recall can use a local model for model-backed semantic recall. Off by default
 # (the deterministic embedder ships in every build); point
 # NAHUALI_EMBEDDING_PROVIDER=model2vec and NAHUALI_LOCAL_EMBEDDING_MODEL_PATH at a
 # model directory when built with this feature.

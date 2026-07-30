@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# try-nahuali.sh — from zero to seeing "the receipt" in one command.
+# try-nahuali.sh — from zero to an evidence-aware recall in one command.
 #
-# Brings up the local stack, builds the CLI, seeds synthetic memory, and runs
-# the daily loop. At the end you will see, in the same store, a claim CERTIFIED
-# by its evidence and, at the same time, a WARNING about a fact with no source:
-# the moment that sets Nahuali apart from a recall-only memory.
+# Builds the CLI against the embedded default store and runs a synthetic
+# walkthrough. At the end you will see a sourced claim that meets the configured
+# evidence gate and, in the same store, a warning about a claim with no source.
 #
 # Usage:  bash scripts/try-nahuali.sh
-# Requires: docker (or an already-running SurrealDB+Qdrant stack), cargo, jq.
+# Requires: cargo and jq. Docker is not required for the embedded default store.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,24 +15,22 @@ cd "$ROOT"
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
 # A clean SurrealDB identifier: the CLI refuses a path-like --database name.
-DEMO_DB="try_nahuali_demo"
+DEMO_DB="${NAHUALI_DEMO_DB:-try_nahuali_demo_$$}"
 export NAHUALI_DEMO_DB="$DEMO_DB"
 
-step "1/4 · Bringing up the local stack (SurrealDB + Qdrant)"
-bash scripts/ensure-dev-stack.sh
-
-step "2/4 · Building the CLI (the first build takes a few minutes)"
+step "1/3 · Building the CLI (the initial build can take a few minutes)"
 cargo build -q -p nahuali-cli
 
-step "3/4 · Seeding synthetic memory and running the daily loop"
-NAHUALI_BIN="$ROOT/target/debug/nahuali" bash scripts/demo-daily-driver-loop.sh
+step "2/3 · Running the synthetic evidence walkthrough"
+NAHUALI_BIN="$ROOT/target/debug/nahuali" bash scripts/demo-walkthrough.sh
 
-step "4/4 · What you just saw"
+step "3/3 · What you just saw"
 cat <<EOF
-  In the "3. Evidence-backed recall" block above:
-    - the sourced claim is CERTIFIED       (trust.can_trust: true,  score 1.0)
-    - the store WARNS about a fact with no source (authority.can_trust: false, score 0.5)
-  That is the receipt: useful memory and, in the same response, why to trust it or not.
+  The sourced claim met the configured evidence gate, while the store warned
+  about a claim with no source. That distinction is visible in one recall.
+
+  Evidence linkage does not prove the source is true or sufficient. The caller
+  still decides whether the information is appropriate for an external action.
 
   Keep exploring against the same database:
     target/debug/nahuali --database $DEMO_DB inspect --json

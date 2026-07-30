@@ -27,7 +27,12 @@
       "extra-files": [
         { "type": "generic", "path": "Cargo.toml" },
         { "type": "generic", "path": "README.md" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.version" }
+        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
+        {
+          "type": "json",
+          "path": "crates/nahuali-api/openapi.json",
+          "jsonpath": "$.info.version"
+        }
       ]
     }
   }

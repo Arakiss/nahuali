@@ -361,7 +361,7 @@ fn run() -> (String, serde_json::Value) {
     }
     out.push('\n');
 
-    // Part 6: full suffix re-chain, then the signature catches it.
+    // Part 6: full suffix re-chain, then compare it with the retained receipt.
     let mut rechained: Vec<EventEnvelope> = Vec::new();
     for (index, event) in ledger.iter().enumerate() {
         let previous = rechained.last().map(EventEnvelope::chain_hash);
@@ -394,7 +394,7 @@ fn run() -> (String, serde_json::Value) {
     );
     let _ = writeln!(
         out,
-        "    {}the signed receipt still refuses{}: verifies = {} (forging one needs the private key).",
+        "    {}the retained signed receipt no longer matches{}: verifies = {} (authorization still requires an external keyring or checkpoint policy).",
         s.green,
         s.reset,
         s.yes(rewritten_receipt_verifies)
@@ -412,7 +412,11 @@ fn run() -> (String, serde_json::Value) {
     );
     let _ = writeln!(
         out,
-        "    The chain detects in-place edits; an operator-held signed checkpoint detects a full re-chain."
+        "    The chain detects this in-place edit; a retained signed tip detects divergence after this full re-chain."
+    );
+    let _ = writeln!(
+        out,
+        "    Deciding who may authorize that tip requires an external keyring or checkpoint policy."
     );
     out.push('\n');
     let _ = writeln!(out, "{}Next{}", s.bold, s.reset);
@@ -633,7 +637,8 @@ mod tests {
         assert!(story.contains("5 · An attacker rewrites event 2"));
         assert!(story.contains("the chain catches it"));
         assert!(story.contains("6 · The attacker re-chains the whole history"));
-        assert!(story.contains("the signed receipt still refuses"));
+        assert!(story.contains("the retained signed receipt no longer matches"));
+        assert!(story.contains("requires an external keyring or checkpoint policy"));
         assert!(story.contains("Self-inspection turns memory problems into review work"));
         assert!(story.contains("What you just saw"));
         // No apology / source-build guidance in the full story.
