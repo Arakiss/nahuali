@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Nahuali Beta API",
-    "version": "0.8.0-beta.9",
+    "version": "0.8.0-beta.10",
     "description": "Local HTTP API for evidence-backed agent memory. Recorded history is authoritative; query views and optional semantic indexes are rebuildable."
   },
   "paths": {
@@ -11,8 +11,12 @@
         "operationId": "getStatus",
         "summary": "Return memory counts, authority, health, and graph projection validation.",
         "responses": {
-          "200": { "$ref": "#/components/responses/StatusResponse" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/StatusResponse"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -21,9 +25,15 @@
         "operationId": "getReadiness",
         "summary": "Verify ledger access, graph parity, and required semantic freshness.",
         "responses": {
-          "200": { "$ref": "#/components/responses/ReadinessResponse" },
-          "503": { "$ref": "#/components/responses/ReadinessResponse" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/ReadinessResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ReadinessResponse"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -32,8 +42,12 @@
         "operationId": "getOpenapi",
         "summary": "Return the static OpenAPI contract for the beta HTTP surface.",
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -41,10 +55,16 @@
       "post": {
         "operationId": "createEpisode",
         "summary": "Append an observed episode through nahuali-core.",
-        "requestBody": { "$ref": "#/components/requestBodies/EpisodeRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/EpisodeRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -52,10 +72,16 @@
       "post": {
         "operationId": "createClaim",
         "summary": "Append a derived claim through nahuali-core.",
-        "requestBody": { "$ref": "#/components/requestBodies/ClaimRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ClaimRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -63,10 +89,16 @@
       "post": {
         "operationId": "createLink",
         "summary": "Append a derived typed link through nahuali-core.",
-        "requestBody": { "$ref": "#/components/requestBodies/LinkRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/LinkRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -74,10 +106,16 @@
       "post": {
         "operationId": "createProcedure",
         "summary": "Append a reusable procedure through nahuali-core.",
-        "requestBody": { "$ref": "#/components/requestBodies/ProcedureRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ProcedureRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -85,10 +123,16 @@
       "post": {
         "operationId": "createIntention",
         "summary": "Append future work, a goal, or a reminder through nahuali-core.",
-        "requestBody": { "$ref": "#/components/requestBodies/IntentionRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/IntentionRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -96,10 +140,16 @@
       "post": {
         "operationId": "updateIntention",
         "summary": "Update intention metadata without changing lifecycle status.",
-        "requestBody": { "$ref": "#/components/requestBodies/IntentionUpdateRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/IntentionUpdateRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -107,10 +157,16 @@
       "post": {
         "operationId": "updateIntentionStatus",
         "summary": "Change an intention lifecycle state.",
-        "requestBody": { "$ref": "#/components/requestBodies/IntentionStatusRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/IntentionStatusRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -118,10 +174,16 @@
       "post": {
         "operationId": "reconcileIntentions",
         "summary": "Return a non-mutating intention reconciliation report.",
-        "requestBody": { "$ref": "#/components/requestBodies/IntentionReconcileRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/IntentionReconcileRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -130,8 +192,12 @@
         "operationId": "getGoalProgress",
         "summary": "Return a non-mutating goal progress report.",
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -139,10 +205,16 @@
       "post": {
         "operationId": "getProactiveReport",
         "summary": "Return a non-mutating proactive operator report.",
-        "requestBody": { "$ref": "#/components/requestBodies/ProactiveRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ProactiveRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -150,10 +222,16 @@
       "post": {
         "operationId": "getDeadlines",
         "summary": "Return non-mutating proactive deadline signals.",
-        "requestBody": { "$ref": "#/components/requestBodies/ProactiveRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ProactiveRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -161,10 +239,16 @@
       "post": {
         "operationId": "getAnomalies",
         "summary": "Return non-mutating proactive anomaly alerts.",
-        "requestBody": { "$ref": "#/components/requestBodies/ProactiveRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ProactiveRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -172,10 +256,16 @@
       "post": {
         "operationId": "acknowledgeAnomaly",
         "summary": "Acknowledge a proactive anomaly with an explicit audit note.",
-        "requestBody": { "$ref": "#/components/requestBodies/AnomalyAcknowledgeRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/AnomalyAcknowledgeRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -183,10 +273,16 @@
       "post": {
         "operationId": "recall",
         "summary": "Recall projected memory with authority and health context.",
-        "requestBody": { "$ref": "#/components/requestBodies/RecallRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/RecallRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/RecallResponse" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/RecallResponse"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -194,10 +290,16 @@
       "post": {
         "operationId": "sessionResume",
         "summary": "Return a continuity briefing with authority and health context.",
-        "requestBody": { "$ref": "#/components/requestBodies/SessionResumeRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/SessionResumeRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/SessionResumeResponse" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/SessionResumeResponse"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -205,10 +307,16 @@
       "post": {
         "operationId": "getMemoryHealth",
         "summary": "Return knowledge-health and authority context.",
-        "requestBody": { "$ref": "#/components/requestBodies/EmptyRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/EmptyRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/MemoryHealthResponse" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/MemoryHealthResponse"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -217,14 +325,26 @@
         "operationId": "getAudit",
         "summary": "Diff what the record ledger recorded between two points.",
         "parameters": [
-          { "$ref": "#/components/parameters/AuditFrom" },
-          { "$ref": "#/components/parameters/AuditTo" },
-          { "$ref": "#/components/parameters/AuditSince" },
-          { "$ref": "#/components/parameters/AuditUntil" }
+          {
+            "$ref": "#/components/parameters/AuditFrom"
+          },
+          {
+            "$ref": "#/components/parameters/AuditTo"
+          },
+          {
+            "$ref": "#/components/parameters/AuditSince"
+          },
+          {
+            "$ref": "#/components/parameters/AuditUntil"
+          }
         ],
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -233,8 +353,12 @@
         "operationId": "getTrustReport",
         "summary": "Return internal recorded-history checks and knowledge health.",
         "responses": {
-          "200": { "$ref": "#/components/responses/TrustReportResponse" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/TrustReportResponse"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -243,13 +367,23 @@
         "operationId": "getGraph",
         "summary": "Return a deterministic graph neighborhood.",
         "parameters": [
-          { "$ref": "#/components/parameters/GraphSeed" },
-          { "$ref": "#/components/parameters/Depth" },
-          { "$ref": "#/components/parameters/Limit" }
+          {
+            "$ref": "#/components/parameters/GraphSeed"
+          },
+          {
+            "$ref": "#/components/parameters/Depth"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
         ],
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -257,10 +391,18 @@
       "get": {
         "operationId": "getTimeline",
         "summary": "Return SurrealDB graph-projection episodes.",
-        "parameters": [{ "$ref": "#/components/parameters/Limit" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -268,10 +410,18 @@
       "get": {
         "operationId": "getPending",
         "summary": "Return SurrealDB graph-projection pending intentions.",
-        "parameters": [{ "$ref": "#/components/parameters/Limit" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -280,8 +430,12 @@
         "operationId": "getProjectionStatus",
         "summary": "Return SurrealDB graph-projection checkpoint and table counts.",
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -289,10 +443,16 @@
       "post": {
         "operationId": "rebuildProjection",
         "summary": "Rebuild derived SurrealDB graph projection from the record ledger.",
-        "requestBody": { "$ref": "#/components/requestBodies/EmptyRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/EmptyRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -300,10 +460,16 @@
       "post": {
         "operationId": "validateProjection",
         "summary": "Validate derived SurrealDB graph projection against the record ledger.",
-        "requestBody": { "$ref": "#/components/requestBodies/EmptyRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/EmptyRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -312,8 +478,12 @@
         "operationId": "getSemanticStatus",
         "summary": "Return Qdrant semantic-index status.",
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -321,10 +491,16 @@
       "post": {
         "operationId": "rebuildSemantic",
         "summary": "Rebuild Qdrant semantic index from the projected memory state.",
-        "requestBody": { "$ref": "#/components/requestBodies/EmptyRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/EmptyRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -332,10 +508,16 @@
       "post": {
         "operationId": "syncSemantic",
         "summary": "Non-destructively sync the Qdrant semantic index (upsert without dropping the collection).",
-        "requestBody": { "$ref": "#/components/requestBodies/EmptyRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/EmptyRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     },
@@ -343,10 +525,16 @@
       "post": {
         "operationId": "resolveReview",
         "summary": "Append an explicit operator review resolution.",
-        "requestBody": { "$ref": "#/components/requestBodies/ReviewResolveRequest" },
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ReviewResolveRequest"
+        },
         "responses": {
-          "200": { "$ref": "#/components/responses/JsonObject" },
-          "default": { "$ref": "#/components/responses/ApiError" }
+          "200": {
+            "$ref": "#/components/responses/JsonObject"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
         }
       }
     }
@@ -357,197 +545,423 @@
         "name": "from",
         "in": "query",
         "required": false,
-        "schema": { "type": "integer", "minimum": 0 },
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        },
         "description": "Exclusive lower sequence bound. Defaults to the genesis event."
       },
       "AuditTo": {
         "name": "to",
         "in": "query",
         "required": false,
-        "schema": { "type": "integer", "minimum": 0 },
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        },
         "description": "Inclusive upper sequence bound. Defaults to the latest event."
       },
       "AuditSince": {
         "name": "since",
         "in": "query",
         "required": false,
-        "schema": { "type": "integer", "minimum": 0 },
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        },
         "description": "Inclusive lower timestamp bound in milliseconds since the Unix epoch."
       },
       "AuditUntil": {
         "name": "until",
         "in": "query",
         "required": false,
-        "schema": { "type": "integer", "minimum": 0 },
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        },
         "description": "Inclusive upper timestamp bound in milliseconds since the Unix epoch."
       },
       "Depth": {
         "name": "depth",
         "in": "query",
         "required": false,
-        "schema": { "type": "integer", "minimum": 0 },
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        },
         "description": "Graph traversal depth. Defaults to 2."
       },
       "GraphSeed": {
         "name": "seed",
         "in": "query",
         "required": true,
-        "schema": { "type": "string", "minLength": 1 },
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
         "description": "Canonical entity or memory id used as the graph seed."
       },
       "Limit": {
         "name": "limit",
         "in": "query",
         "required": false,
-        "schema": { "type": "integer", "minimum": 1 },
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
         "description": "Maximum number of records to return."
       }
     },
     "requestBodies": {
-      "AnomalyAcknowledgeRequest": { "$ref": "#/components/requestBodies/JsonAnomalyAcknowledgeRequest" },
-      "ClaimRequest": { "$ref": "#/components/requestBodies/JsonClaimRequest" },
-      "EmptyRequest": { "$ref": "#/components/requestBodies/JsonEmptyRequest" },
-      "EpisodeRequest": { "$ref": "#/components/requestBodies/JsonEpisodeRequest" },
-      "IntentionReconcileRequest": { "$ref": "#/components/requestBodies/JsonIntentionReconcileRequest" },
-      "IntentionRequest": { "$ref": "#/components/requestBodies/JsonIntentionRequest" },
-      "IntentionStatusRequest": { "$ref": "#/components/requestBodies/JsonIntentionStatusRequest" },
-      "IntentionUpdateRequest": { "$ref": "#/components/requestBodies/JsonIntentionUpdateRequest" },
-      "LinkRequest": { "$ref": "#/components/requestBodies/JsonLinkRequest" },
-      "ProcedureRequest": { "$ref": "#/components/requestBodies/JsonProcedureRequest" },
-      "ProactiveRequest": { "$ref": "#/components/requestBodies/JsonProactiveRequest" },
-      "RecallRequest": { "$ref": "#/components/requestBodies/JsonRecallRequest" },
-      "ReviewResolveRequest": { "$ref": "#/components/requestBodies/JsonReviewResolveRequest" },
-      "SessionResumeRequest": { "$ref": "#/components/requestBodies/JsonSessionResumeRequest" },
+      "AnomalyAcknowledgeRequest": {
+        "$ref": "#/components/requestBodies/JsonAnomalyAcknowledgeRequest"
+      },
+      "ClaimRequest": {
+        "$ref": "#/components/requestBodies/JsonClaimRequest"
+      },
+      "EmptyRequest": {
+        "$ref": "#/components/requestBodies/JsonEmptyRequest"
+      },
+      "EpisodeRequest": {
+        "$ref": "#/components/requestBodies/JsonEpisodeRequest"
+      },
+      "IntentionReconcileRequest": {
+        "$ref": "#/components/requestBodies/JsonIntentionReconcileRequest"
+      },
+      "IntentionRequest": {
+        "$ref": "#/components/requestBodies/JsonIntentionRequest"
+      },
+      "IntentionStatusRequest": {
+        "$ref": "#/components/requestBodies/JsonIntentionStatusRequest"
+      },
+      "IntentionUpdateRequest": {
+        "$ref": "#/components/requestBodies/JsonIntentionUpdateRequest"
+      },
+      "LinkRequest": {
+        "$ref": "#/components/requestBodies/JsonLinkRequest"
+      },
+      "ProcedureRequest": {
+        "$ref": "#/components/requestBodies/JsonProcedureRequest"
+      },
+      "ProactiveRequest": {
+        "$ref": "#/components/requestBodies/JsonProactiveRequest"
+      },
+      "RecallRequest": {
+        "$ref": "#/components/requestBodies/JsonRecallRequest"
+      },
+      "ReviewResolveRequest": {
+        "$ref": "#/components/requestBodies/JsonReviewResolveRequest"
+      },
+      "SessionResumeRequest": {
+        "$ref": "#/components/requestBodies/JsonSessionResumeRequest"
+      },
       "JsonAnomalyAcknowledgeRequest": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnomalyAcknowledgeRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AnomalyAcknowledgeRequest"
+            }
+          }
+        }
       },
       "JsonClaimRequest": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClaimRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ClaimRequest"
+            }
+          }
+        }
       },
       "JsonEmptyRequest": {
         "required": false,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmptyRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/EmptyRequest"
+            }
+          }
+        }
       },
       "JsonEpisodeRequest": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EpisodeRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/EpisodeRequest"
+            }
+          }
+        }
       },
       "JsonIntentionReconcileRequest": {
         "required": false,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentionReconcileRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/IntentionReconcileRequest"
+            }
+          }
+        }
       },
       "JsonIntentionRequest": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentionRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/IntentionRequest"
+            }
+          }
+        }
       },
       "JsonIntentionStatusRequest": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentionStatusRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/IntentionStatusRequest"
+            }
+          }
+        }
       },
       "JsonIntentionUpdateRequest": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentionUpdateRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/IntentionUpdateRequest"
+            }
+          }
+        }
       },
       "JsonLinkRequest": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LinkRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/LinkRequest"
+            }
+          }
+        }
       },
       "JsonProcedureRequest": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcedureRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProcedureRequest"
+            }
+          }
+        }
       },
       "JsonProactiveRequest": {
         "required": false,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProactiveRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProactiveRequest"
+            }
+          }
+        }
       },
       "JsonRecallRequest": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecallRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RecallRequest"
+            }
+          }
+        }
       },
       "JsonReviewResolveRequest": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReviewResolveRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ReviewResolveRequest"
+            }
+          }
+        }
       },
       "JsonSessionResumeRequest": {
         "required": false,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResumeRequest" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SessionResumeRequest"
+            }
+          }
+        }
       }
     },
     "responses": {
       "ApiError": {
         "description": "Structured Nahuali API error.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiErrorResponse" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            }
+          }
+        }
       },
       "StatusResponse": {
         "description": "Memory counts, store-level authority, knowledge health, and graph projection validation.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/StatusResponse"
+            }
+          }
+        }
       },
       "ReadinessResponse": {
         "description": "Serving readiness across the authoritative ledger and configured derived tiers.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadinessResponse" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ReadinessResponse"
+            }
+          }
+        }
       },
       "RecallResponse": {
         "description": "Lexical recall results with per-result trust, store-level authority, and knowledge health.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecallResponse" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RecallResponse"
+            }
+          }
+        }
       },
       "MemoryHealthResponse": {
         "description": "Store-level authority decision paired with the knowledge-health report it was derived from.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoryHealthResponse" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MemoryHealthResponse"
+            }
+          }
+        }
       },
       "SessionResumeResponse": {
         "description": "Continuity briefing with store-level authority and knowledge-health context.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionResumeResponse" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SessionResumeResponse"
+            }
+          }
+        }
       },
       "TrustReportResponse": {
         "description": "Internal recorded-history checks, memory authority, and knowledge health. This HTTP endpoint does not accept an external checkpoint input.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoryTrustReport" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MemoryTrustReport"
+            }
+          }
+        }
       },
       "JsonObject": {
         "description": "JSON response returned by nahuali-core.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JsonObject" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
+          }
+        }
       }
     },
     "schemas": {
       "AnomalyAcknowledgeRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["anomaly_id", "note"],
+        "required": [
+          "anomaly_id",
+          "note"
+        ],
         "properties": {
-          "anomaly_id": { "type": "string", "minLength": 1 },
-          "note": { "type": "string", "minLength": 1 },
-          "dry_run": { "type": "boolean", "default": false }
+          "anomaly_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": false
+          }
         }
       },
       "ApiErrorBody": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["code", "message"],
+        "required": [
+          "code",
+          "message"
+        ],
         "properties": {
-          "code": { "type": "string" },
-          "message": { "type": "string" }
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
         }
       },
       "ApiErrorResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
-          "error": { "$ref": "#/components/schemas/ApiErrorBody" }
+          "error": {
+            "$ref": "#/components/schemas/ApiErrorBody"
+          }
         }
       },
       "ClaimRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["subject", "predicate", "object"],
+        "required": [
+          "subject",
+          "predicate",
+          "object"
+        ],
         "properties": {
-          "subject": { "type": "string", "minLength": 1 },
-          "predicate": { "type": "string", "minLength": 1 },
-          "object": { "type": "string", "minLength": 1 },
-          "source_episode_id": { "type": "string" },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 },
-          "scope": { "$ref": "#/components/schemas/MemoryScope" }
+          "subject": {
+            "type": "string",
+            "minLength": 1
+          },
+          "predicate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "object": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_episode_id": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MemoryScope"
+          }
         }
       },
       "EmptyRequest": {
@@ -558,68 +972,165 @@
       "EpisodeRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["content"],
+        "required": [
+          "content"
+        ],
         "properties": {
-          "content": { "type": "string", "minLength": 1 },
-          "tags": { "type": "array", "items": { "type": "string" }, "default": [] },
-          "mentions": { "type": "array", "items": { "type": "string" }, "default": [] },
-          "scope": { "$ref": "#/components/schemas/MemoryScope" }
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "mentions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MemoryScope"
+          }
         }
       },
       "IntentionKind": {
         "type": "string",
-        "enum": ["task", "goal", "reminder"]
+        "enum": [
+          "task",
+          "goal",
+          "reminder"
+        ]
       },
       "IntentionPriority": {
         "type": "string",
-        "enum": ["low", "medium", "high", "critical"]
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ]
       },
       "IntentionReconcileRequest": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "now_ms": { "type": "integer", "minimum": 0 },
-          "stale_after_ms": { "type": "integer", "minimum": 0 }
+          "now_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stale_after_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       },
       "IntentionRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["description", "kind", "priority"],
+        "required": [
+          "description",
+          "kind",
+          "priority"
+        ],
         "properties": {
-          "description": { "type": "string", "minLength": 1 },
-          "kind": { "$ref": "#/components/schemas/IntentionKind" },
-          "priority": { "$ref": "#/components/schemas/IntentionPriority" },
-          "source_episode_id": { "type": "string" },
-          "scope": { "$ref": "#/components/schemas/MemoryScope" }
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IntentionKind"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/IntentionPriority"
+          },
+          "source_episode_id": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MemoryScope"
+          }
         }
       },
       "IntentionStatus": {
         "type": "string",
-        "enum": ["active", "completed", "abandoned", "blocked", "deferred"]
+        "enum": [
+          "active",
+          "completed",
+          "abandoned",
+          "blocked",
+          "deferred"
+        ]
       },
       "IntentionStatusRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "status"],
+        "required": [
+          "id",
+          "status"
+        ],
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "status": { "$ref": "#/components/schemas/IntentionStatus" },
-          "reason": { "type": "string" }
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "$ref": "#/components/schemas/IntentionStatus"
+          },
+          "reason": {
+            "type": "string"
+          }
         }
       },
       "IntentionUpdateRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id"],
+        "required": [
+          "id"
+        ],
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "description": { "type": "string" },
-          "priority": { "$ref": "#/components/schemas/IntentionPriority" },
-          "deadline_at_ms": { "type": ["integer", "null"], "minimum": 0 },
-          "depends_on": { "type": "array", "items": { "type": "string" } },
-          "goal_id": { "type": ["string", "null"] },
-          "progress_percent": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 }
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/IntentionPriority"
+          },
+          "deadline_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "goal_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress_percent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          }
         }
       },
       "JsonObject": {
@@ -629,148 +1140,391 @@
       "LinkRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["from", "relation", "to"],
+        "required": [
+          "from",
+          "relation",
+          "to"
+        ],
         "properties": {
-          "from": { "type": "string", "minLength": 1 },
-          "relation": { "type": "string", "minLength": 1 },
-          "to": { "type": "string", "minLength": 1 },
-          "source_episode_id": { "type": "string" },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 },
-          "scope": { "$ref": "#/components/schemas/MemoryScope" }
+          "from": {
+            "type": "string",
+            "minLength": 1
+          },
+          "relation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_episode_id": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MemoryScope"
+          }
         }
       },
       "MemoryKind": {
         "type": "string",
-        "enum": ["entity", "episode", "claim", "link", "procedure", "intention", "fact", "relation"]
+        "enum": [
+          "entity",
+          "episode",
+          "claim",
+          "link",
+          "procedure",
+          "intention",
+          "fact",
+          "relation"
+        ]
       },
       "MemoryScope": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["kind", "name"],
+        "required": [
+          "kind",
+          "name"
+        ],
         "properties": {
-          "kind": { "type": "string", "enum": ["personal", "project", "organization", "custom"] },
-          "name": { "type": "string", "minLength": 1 }
+          "kind": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "project",
+              "organization",
+              "custom"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "ProcedureRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "body"],
+        "required": [
+          "name",
+          "body"
+        ],
         "properties": {
-          "name": { "type": "string", "minLength": 1 },
-          "body": { "type": "string", "minLength": 1 },
-          "source_episode_id": { "type": "string" },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 },
-          "scope": { "$ref": "#/components/schemas/MemoryScope" }
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_episode_id": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MemoryScope"
+          }
         }
       },
       "ProactiveRequest": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "now_ms": { "type": "integer", "minimum": 0 },
-          "deadline_horizon_ms": { "type": "integer", "minimum": 0 },
-          "stale_after_ms": { "type": "integer", "minimum": 0 },
-          "review_limit": { "type": "integer", "minimum": 1 }
+          "now_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deadline_horizon_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stale_after_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "review_limit": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       },
       "RecallRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["query"],
+        "required": [
+          "query"
+        ],
         "properties": {
-          "query": { "type": "string", "minLength": 1 },
-          "limit": { "type": "integer", "minimum": 1, "default": 10 },
-          "scope": { "$ref": "#/components/schemas/MemoryScope" },
-          "kinds": { "type": "array", "items": { "$ref": "#/components/schemas/MemoryKind" }, "default": [] },
-          "require_evidence": { "type": "boolean", "default": false },
-          "semantic": { "type": "boolean", "default": false },
-          "as_of_ms": { "type": "integer", "minimum": 0, "description": "Inclusive upper bound: only memory created at or before this epoch-ms timestamp (point-in-time recall)." },
-          "since_ms": { "type": "integer", "minimum": 0, "description": "Inclusive lower bound: only memory created at or after this epoch-ms timestamp (exclude stale memory at query time)." }
+          "query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 10
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MemoryScope"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryKind"
+            },
+            "default": []
+          },
+          "require_evidence": {
+            "type": "boolean",
+            "default": false
+          },
+          "semantic": {
+            "type": "boolean",
+            "default": false
+          },
+          "as_of_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Inclusive upper bound: only memory created at or before this epoch-ms timestamp (point-in-time recall)."
+          },
+          "since_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Inclusive lower bound: only memory created at or after this epoch-ms timestamp (exclude stale memory at query time)."
+          }
         }
       },
       "ReviewResolveRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["review_id", "note"],
+        "required": [
+          "review_id",
+          "note"
+        ],
         "properties": {
-          "review_id": { "type": "string", "minLength": 1 },
-          "note": { "type": "string", "minLength": 1 },
-          "dry_run": { "type": "boolean", "default": false }
+          "review_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": false
+          }
         }
       },
       "SessionResumeRequest": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "episode_limit": { "type": "integer", "minimum": 1, "default": 5 },
-          "intention_limit": { "type": "integer", "minimum": 1, "default": 5 },
-          "review_limit": { "type": "integer", "minimum": 1, "default": 5 },
-          "graph_seed_limit": { "type": "integer", "minimum": 1, "default": 8 }
+          "episode_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 5
+          },
+          "intention_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 5
+          },
+          "review_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 5
+          },
+          "graph_seed_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 8
+          }
         }
       },
       "AuthorityMode": {
         "type": "string",
         "description": "Authority mode assigned to a memory answer, derived deterministically from knowledge health.",
-        "enum": ["advisory", "warn", "block", "certify"]
+        "enum": [
+          "advisory",
+          "warn",
+          "block",
+          "certify"
+        ]
       },
       "AuthorityDecision": {
         "type": "object",
         "description": "Deterministic store-level trust decision derived from knowledge health.",
         "additionalProperties": false,
-        "required": ["mode", "score", "can_trust", "reasons", "signal_kinds"],
+        "required": [
+          "mode",
+          "score",
+          "can_trust",
+          "reasons",
+          "signal_kinds"
+        ],
         "properties": {
-          "mode": { "$ref": "#/components/schemas/AuthorityMode" },
-          "score": { "type": "number", "minimum": 0, "maximum": 1, "description": "Numeric trust score in the 0.0..=1.0 range." },
-          "can_trust": { "type": "boolean", "description": "Whether callers may rely on memory without adding uncertainty." },
-          "reasons": { "type": "array", "items": { "type": "string" }, "description": "Human-readable reasons for the decision." },
-          "signal_kinds": { "type": "array", "items": { "$ref": "#/components/schemas/HealthSignalKind" }, "description": "Health signal kinds that drove the decision." }
+          "mode": {
+            "$ref": "#/components/schemas/AuthorityMode"
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Numeric trust score in the 0.0..=1.0 range."
+          },
+          "can_trust": {
+            "type": "boolean",
+            "description": "Whether callers may rely on memory without adding uncertainty."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Human-readable reasons for the decision."
+          },
+          "signal_kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HealthSignalKind"
+            },
+            "description": "Health signal kinds that drove the decision."
+          }
         }
       },
       "RecallResultTrustMode": {
         "type": "string",
         "description": "Query-local trust classification for one recall result.",
-        "enum": ["certify", "advisory", "warn", "block"]
+        "enum": [
+          "certify",
+          "advisory",
+          "warn",
+          "block"
+        ]
       },
       "RecallResultTrust": {
         "type": "object",
         "description": "Query-local trust context for one recall result, independent of store-level authority.",
         "additionalProperties": false,
-        "required": ["mode", "score", "can_trust", "reasons", "signal_kinds"],
+        "required": [
+          "mode",
+          "score",
+          "can_trust",
+          "reasons",
+          "signal_kinds"
+        ],
         "properties": {
-          "mode": { "$ref": "#/components/schemas/RecallResultTrustMode" },
-          "score": { "type": "number", "minimum": 0, "maximum": 1, "description": "Numeric result trust score in the 0.0..=1.0 range." },
-          "can_trust": { "type": "boolean", "description": "Whether callers may rely on this specific result without adding uncertainty." },
-          "reasons": { "type": "array", "items": { "type": "string" }, "description": "Human-readable reasons for this result trust decision." },
-          "signal_kinds": { "type": "array", "items": { "type": "string" }, "description": "Result-local health signal kinds that drove the decision." }
+          "mode": {
+            "$ref": "#/components/schemas/RecallResultTrustMode"
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Numeric result trust score in the 0.0..=1.0 range."
+          },
+          "can_trust": {
+            "type": "boolean",
+            "description": "Whether callers may rely on this specific result without adding uncertainty."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Human-readable reasons for this result trust decision."
+          },
+          "signal_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Result-local health signal kinds that drove the decision."
+          }
         }
       },
       "HealthSignalKind": {
         "type": "string",
         "description": "Category for a knowledge-health signal.",
-        "enum": ["no_episodes", "unsupported_fact", "low_confidence_fact", "conflicting_fact", "stale_fact", "isolated_entity"]
+        "enum": [
+          "no_episodes",
+          "unsupported_fact",
+          "low_confidence_fact",
+          "conflicting_fact",
+          "stale_fact",
+          "isolated_entity"
+        ]
       },
       "HealthDimension": {
         "type": "string",
         "description": "Higher-level knowledge-health dimension affected by a signal.",
-        "enum": ["completeness", "confidence", "freshness", "connectivity", "contradiction", "staleness", "unsupported_memory", "blind_spot"]
+        "enum": [
+          "completeness",
+          "confidence",
+          "freshness",
+          "connectivity",
+          "contradiction",
+          "staleness",
+          "unsupported_memory",
+          "blind_spot"
+        ]
       },
       "HealthSeverity": {
         "type": "string",
         "description": "Severity level for a knowledge-health signal.",
-        "enum": ["high", "medium", "low"]
+        "enum": [
+          "high",
+          "medium",
+          "low"
+        ]
       },
       "HealthSignal": {
         "type": "object",
         "description": "Single knowledge-health issue or observation.",
         "additionalProperties": false,
-        "required": ["kind", "dimensions", "severity", "message", "evidence_ids"],
+        "required": [
+          "kind",
+          "dimensions",
+          "severity",
+          "message",
+          "evidence_ids"
+        ],
         "properties": {
-          "kind": { "$ref": "#/components/schemas/HealthSignalKind" },
-          "dimensions": { "type": "array", "items": { "$ref": "#/components/schemas/HealthDimension" } },
-          "severity": { "$ref": "#/components/schemas/HealthSeverity" },
-          "message": { "type": "string" },
-          "evidence_ids": { "type": "array", "items": { "type": "string" }, "description": "Event or memory identifiers that support the signal." }
+          "kind": {
+            "$ref": "#/components/schemas/HealthSignalKind"
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HealthDimension"
+            }
+          },
+          "severity": {
+            "$ref": "#/components/schemas/HealthSeverity"
+          },
+          "message": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Event or memory identifiers that support the signal."
+          }
         }
       },
       "KnowledgeHealth": {
@@ -778,141 +1532,424 @@
         "description": "Structured health report for a projected memory store.",
         "additionalProperties": false,
         "required": [
-          "event_count", "episode_count", "fact_count", "relation_count", "entity_count",
-          "supported_fact_count", "unsupported_fact_count", "low_confidence_fact_count",
-          "conflicting_fact_count", "stale_fact_count", "isolated_entity_count", "blind_spot_count",
-          "average_fact_confidence", "signals", "warnings"
+          "event_count",
+          "episode_count",
+          "fact_count",
+          "relation_count",
+          "entity_count",
+          "supported_fact_count",
+          "unsupported_fact_count",
+          "low_confidence_fact_count",
+          "conflicting_fact_count",
+          "stale_fact_count",
+          "isolated_entity_count",
+          "blind_spot_count",
+          "average_fact_confidence",
+          "signals",
+          "warnings"
         ],
         "properties": {
-          "event_count": { "type": "integer", "minimum": 0 },
-          "episode_count": { "type": "integer", "minimum": 0 },
-          "fact_count": { "type": "integer", "minimum": 0 },
-          "relation_count": { "type": "integer", "minimum": 0 },
-          "entity_count": { "type": "integer", "minimum": 0 },
-          "supported_fact_count": { "type": "integer", "minimum": 0 },
-          "unsupported_fact_count": { "type": "integer", "minimum": 0 },
-          "low_confidence_fact_count": { "type": "integer", "minimum": 0 },
-          "conflicting_fact_count": { "type": "integer", "minimum": 0 },
-          "stale_fact_count": { "type": "integer", "minimum": 0 },
-          "isolated_entity_count": { "type": "integer", "minimum": 0 },
-          "blind_spot_count": { "type": "integer", "minimum": 0 },
-          "average_fact_confidence": { "type": "number", "minimum": 0, "maximum": 1, "description": "Mean confidence for projected facts, rounded to two decimals." },
-          "signals": { "type": "array", "items": { "$ref": "#/components/schemas/HealthSignal" } },
-          "warnings": { "type": "array", "items": { "type": "string" }, "description": "Human-readable warning messages derived from the signals." }
+          "event_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "episode_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "fact_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "relation_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "entity_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "supported_fact_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unsupported_fact_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "low_confidence_fact_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "conflicting_fact_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stale_fact_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "isolated_entity_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "blind_spot_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "average_fact_confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Mean confidence for projected facts, rounded to two decimals."
+          },
+          "signals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HealthSignal"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Human-readable warning messages derived from the signals."
+          }
         }
       },
       "RecallResult": {
         "type": "object",
         "description": "Scored lexical recall candidate.",
         "additionalProperties": false,
-        "required": ["kind", "id", "score", "excerpt", "matched_terms"],
+        "required": [
+          "kind",
+          "id",
+          "score",
+          "excerpt",
+          "matched_terms"
+        ],
         "properties": {
-          "kind": { "$ref": "#/components/schemas/MemoryKind" },
-          "id": { "type": "string", "description": "Identifier of the matched memory item." },
-          "score": { "type": "number", "description": "Deterministic lexical score, including confidence and evidence bonuses." },
-          "excerpt": { "type": "string", "description": "Human-readable excerpt for display or agent context." },
-          "evidence_id": { "type": ["string", "null"], "description": "Optional evidence episode identifier." },
-          "matched_terms": { "type": "array", "items": { "type": "string" }, "description": "Normalized query terms found in the matched item." },
-          "scope": { "$ref": "#/components/schemas/MemoryScope" },
-          "trust": { "$ref": "#/components/schemas/RecallResultTrust" }
+          "kind": {
+            "$ref": "#/components/schemas/MemoryKind"
+          },
+          "id": {
+            "type": "string",
+            "description": "Identifier of the matched memory item."
+          },
+          "score": {
+            "type": "number",
+            "description": "Deterministic lexical score, including confidence and evidence bonuses."
+          },
+          "excerpt": {
+            "type": "string",
+            "description": "Human-readable excerpt for display or agent context."
+          },
+          "evidence_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional evidence episode identifier."
+          },
+          "matched_terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Normalized query terms found in the matched item."
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MemoryScope"
+          },
+          "trust": {
+            "$ref": "#/components/schemas/RecallResultTrust"
+          }
         }
       },
       "GraphProjectionStatus": {
         "type": "object",
         "description": "SurrealDB graph-projection checkpoint and table counts.",
         "additionalProperties": false,
-        "required": ["projection_version", "ledger_event_count", "table_counts", "in_sync"],
+        "required": [
+          "projection_version",
+          "ledger_event_count",
+          "table_counts",
+          "in_sync"
+        ],
         "properties": {
-          "projection_version": { "type": "integer", "minimum": 0 },
-          "ledger_event_count": { "type": "integer", "minimum": 0 },
-          "latest_sequence": { "type": ["integer", "null"], "minimum": 0 },
-          "latest_event_id": { "type": ["string", "null"] },
-          "checkpoint_sequence": { "type": ["integer", "null"], "minimum": 0 },
-          "checkpoint_event_id": { "type": ["string", "null"] },
-          "table_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 }, "description": "Row count for every graph projection table." },
-          "in_sync": { "type": "boolean", "description": "Whether table counts and checkpoint match the current ledger projection." }
+          "projection_version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ledger_event_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "latest_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "latest_event_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checkpoint_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "checkpoint_event_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "table_counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Row count for every graph projection table."
+          },
+          "in_sync": {
+            "type": "boolean",
+            "description": "Whether table counts and checkpoint match the current ledger projection."
+          }
         }
       },
       "GraphProjectionValidation": {
         "type": "object",
         "description": "Result of validating the derived graph projection against the record ledger.",
         "additionalProperties": false,
-        "required": ["status", "valid", "issues"],
+        "required": [
+          "status",
+          "valid",
+          "issues"
+        ],
         "properties": {
-          "status": { "$ref": "#/components/schemas/GraphProjectionStatus" },
-          "valid": { "type": "boolean", "description": "Whether the graph projection matches the current ledger projection." },
-          "issues": { "type": "array", "items": { "type": "string" }, "description": "Validation issues. Empty when valid is true." }
+          "status": {
+            "$ref": "#/components/schemas/GraphProjectionStatus"
+          },
+          "valid": {
+            "type": "boolean",
+            "description": "Whether the graph projection matches the current ledger projection."
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Validation issues. Empty when valid is true."
+          }
         }
       },
       "BriefingSummary": {
         "type": "object",
         "description": "Aggregate counts for a session briefing.",
         "additionalProperties": true,
-        "required": ["source_count", "episode_count", "entity_count", "active_intention_count"],
+        "required": [
+          "source_count",
+          "episode_count",
+          "entity_count",
+          "active_intention_count"
+        ],
         "properties": {
-          "source_count": { "type": "integer", "minimum": 0 },
-          "episode_count": { "type": "integer", "minimum": 0 },
-          "entity_count": { "type": "integer", "minimum": 0 },
-          "active_intention_count": { "type": "integer", "minimum": 0 },
-          "high_priority_review_count": { "type": "integer", "minimum": 0 },
-          "critical_review_count": { "type": "integer", "minimum": 0 },
-          "high_review_count": { "type": "integer", "minimum": 0 }
+          "source_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "episode_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "entity_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "active_intention_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "high_priority_review_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "critical_review_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "high_review_count": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       },
       "MemoryBriefingReport": {
         "type": "object",
         "description": "Continuity briefing produced by nahuali-core. Collections of recent episodes, active intentions, review items, and graph seeds are returned as structured arrays.",
         "additionalProperties": true,
-        "required": ["version", "generated_at_ms", "event_count", "authority", "health", "summary"],
+        "required": [
+          "version",
+          "generated_at_ms",
+          "event_count",
+          "authority",
+          "health",
+          "summary"
+        ],
         "properties": {
-          "version": { "type": "integer", "minimum": 0 },
-          "generated_at_ms": { "type": "integer", "minimum": 0 },
-          "event_count": { "type": "integer", "minimum": 0 },
-          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
-          "health": { "$ref": "#/components/schemas/KnowledgeHealth" },
-          "summary": { "$ref": "#/components/schemas/BriefingSummary" },
-          "recent_episodes": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
-          "active_intentions": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
-          "review_items": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
-          "graph_seeds": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "generated_at_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "event_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "authority": {
+            "$ref": "#/components/schemas/AuthorityDecision"
+          },
+          "health": {
+            "$ref": "#/components/schemas/KnowledgeHealth"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/BriefingSummary"
+          },
+          "recent_episodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "active_intentions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "review_items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "graph_seeds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
         }
       },
       "ReadinessCheck": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["ready", "status"],
+        "required": [
+          "ready",
+          "status"
+        ],
         "properties": {
-          "ready": { "type": "boolean" },
-          "status": { "type": "string" }
+          "ready": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          }
         }
       },
       "SemanticReadiness": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["required", "ready", "status"],
+        "required": [
+          "required",
+          "ready",
+          "status"
+        ],
         "properties": {
-          "required": { "type": "boolean" },
-          "ready": { "type": "boolean" },
-          "status": { "type": "string", "enum": ["current", "stale", "unavailable", "not_required", "not_checked"] },
-          "collection_exists": { "type": "boolean" },
-          "expected_point_count": { "type": "integer", "minimum": 0 },
-          "indexed_point_count": { "type": "integer", "minimum": 0 },
-          "missing_point_count": { "type": "integer", "minimum": 0 },
-          "orphan_point_count": { "type": "integer", "minimum": 0 },
-          "stale_point_count": { "type": "integer", "minimum": 0 }
+          "required": {
+            "type": "boolean"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "current",
+              "stale",
+              "unavailable",
+              "not_required",
+              "not_checked"
+            ]
+          },
+          "collection_exists": {
+            "type": "boolean"
+          },
+          "expected_point_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "indexed_point_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "missing_point_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "orphan_point_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stale_point_count": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       },
       "ReadinessResponse": {
         "type": "object",
         "description": "Readiness is true only when the ledger is available, the graph projection is current, and a required semantic index is current.",
         "additionalProperties": false,
-        "required": ["ready", "database", "ledger", "graph", "semantic"],
+        "required": [
+          "ready",
+          "database",
+          "ledger",
+          "graph",
+          "semantic"
+        ],
         "properties": {
-          "ready": { "type": "boolean" },
-          "database": { "type": "string" },
-          "ledger": { "$ref": "#/components/schemas/ReadinessCheck" },
-          "graph": { "$ref": "#/components/schemas/ReadinessCheck" },
-          "semantic": { "$ref": "#/components/schemas/SemanticReadiness" }
+          "ready": {
+            "type": "boolean"
+          },
+          "database": {
+            "type": "string"
+          },
+          "ledger": {
+            "$ref": "#/components/schemas/ReadinessCheck"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/ReadinessCheck"
+          },
+          "semantic": {
+            "$ref": "#/components/schemas/SemanticReadiness"
+          }
         }
       },
       "StatusResponse": {
@@ -920,73 +1957,184 @@
         "description": "Memory counts, store-level authority, knowledge health, and graph projection validation.",
         "additionalProperties": false,
         "required": [
-          "database", "event_count", "source_count", "entity_count", "episode_count",
-          "claim_count", "link_count", "procedure_count", "intention_count",
-          "review_decision_count", "authority", "health", "surrealdb_graph_projection",
+          "database",
+          "event_count",
+          "source_count",
+          "entity_count",
+          "episode_count",
+          "claim_count",
+          "link_count",
+          "procedure_count",
+          "intention_count",
+          "review_decision_count",
+          "authority",
+          "health",
+          "surrealdb_graph_projection",
           "semantic_index_role"
         ],
         "properties": {
-          "database": { "type": "string", "description": "SurrealDB database name backing this engine." },
-          "event_count": { "type": "integer", "minimum": 0 },
-          "source_count": { "type": "integer", "minimum": 0 },
-          "entity_count": { "type": "integer", "minimum": 0 },
-          "episode_count": { "type": "integer", "minimum": 0 },
-          "claim_count": { "type": "integer", "minimum": 0 },
-          "link_count": { "type": "integer", "minimum": 0 },
-          "procedure_count": { "type": "integer", "minimum": 0 },
-          "intention_count": { "type": "integer", "minimum": 0 },
-          "review_decision_count": { "type": "integer", "minimum": 0 },
-          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
-          "health": { "$ref": "#/components/schemas/KnowledgeHealth" },
-          "surrealdb_graph_projection": { "$ref": "#/components/schemas/GraphProjectionValidation" },
-          "semantic_index_role": { "type": "string", "description": "Role of the Qdrant tier relative to the ledger; always \"derived\"." }
+          "database": {
+            "type": "string",
+            "description": "SurrealDB database name backing this engine."
+          },
+          "event_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "entity_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "episode_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "claim_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "link_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "procedure_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "intention_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "review_decision_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "authority": {
+            "$ref": "#/components/schemas/AuthorityDecision"
+          },
+          "health": {
+            "$ref": "#/components/schemas/KnowledgeHealth"
+          },
+          "surrealdb_graph_projection": {
+            "$ref": "#/components/schemas/GraphProjectionValidation"
+          },
+          "semantic_index_role": {
+            "type": "string",
+            "description": "Role of the Qdrant tier relative to the ledger; always \"derived\"."
+          }
         }
       },
       "RecallResponse": {
         "type": "object",
         "description": "Lexical recall results with per-result trust, store-level authority, and knowledge health. The optional semantic block is present only when the request set semantic=true.",
         "additionalProperties": false,
-        "required": ["query", "lexical_results", "authority", "health"],
+        "required": [
+          "query",
+          "lexical_results",
+          "authority",
+          "health"
+        ],
         "properties": {
-          "query": { "type": "string" },
-          "lexical_results": { "type": "array", "items": { "$ref": "#/components/schemas/RecallResult" } },
-          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
-          "health": { "$ref": "#/components/schemas/KnowledgeHealth" },
-          "semantic": { "type": "object", "additionalProperties": true, "description": "Hybrid (lexical + semantic) recall report; omitted unless semantic recall was requested." }
+          "query": {
+            "type": "string"
+          },
+          "lexical_results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecallResult"
+            }
+          },
+          "authority": {
+            "$ref": "#/components/schemas/AuthorityDecision"
+          },
+          "health": {
+            "$ref": "#/components/schemas/KnowledgeHealth"
+          },
+          "semantic": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Hybrid (lexical + semantic) recall report; omitted unless semantic recall was requested."
+          }
         }
       },
       "MemoryHealthResponse": {
         "type": "object",
         "description": "Store-level authority decision paired with the knowledge-health report it was derived from.",
         "additionalProperties": false,
-        "required": ["authority", "health"],
+        "required": [
+          "authority",
+          "health"
+        ],
         "properties": {
-          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
-          "health": { "$ref": "#/components/schemas/KnowledgeHealth" }
+          "authority": {
+            "$ref": "#/components/schemas/AuthorityDecision"
+          },
+          "health": {
+            "$ref": "#/components/schemas/KnowledgeHealth"
+          }
         }
       },
       "LedgerChainStatus": {
         "type": "string",
         "description": "Result of the current store's internal history-link checks.",
-        "enum": ["empty", "verified", "legacy", "broken"]
+        "enum": [
+          "empty",
+          "verified",
+          "legacy",
+          "broken"
+        ]
       },
       "TrustKnowledge": {
         "type": "object",
         "description": "Counts of the memory records currently available to this store.",
         "additionalProperties": false,
         "required": [
-          "event_count", "source_count", "entity_count", "episode_count",
-          "claim_count", "link_count", "procedure_count", "intention_count"
+          "event_count",
+          "source_count",
+          "entity_count",
+          "episode_count",
+          "claim_count",
+          "link_count",
+          "procedure_count",
+          "intention_count"
         ],
         "properties": {
-          "event_count": { "type": "integer", "minimum": 0 },
-          "source_count": { "type": "integer", "minimum": 0 },
-          "entity_count": { "type": "integer", "minimum": 0 },
-          "episode_count": { "type": "integer", "minimum": 0 },
-          "claim_count": { "type": "integer", "minimum": 0 },
-          "link_count": { "type": "integer", "minimum": 0 },
-          "procedure_count": { "type": "integer", "minimum": 0 },
-          "intention_count": { "type": "integer", "minimum": 0 }
+          "event_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "entity_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "episode_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "claim_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "link_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "procedure_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "intention_count": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       },
       "TrustIntegrity": {
@@ -994,16 +2142,41 @@
         "description": "Self-checks over the history available to this store. Independent rewrite detection requires a previously retained authorized checkpoint.",
         "additionalProperties": false,
         "required": [
-          "ledger_verified", "checksums_valid", "sequence_contiguous"
+          "ledger_verified",
+          "checksums_valid",
+          "sequence_contiguous"
         ],
         "properties": {
-          "ledger_verified": { "type": "boolean", "description": "Whether every internal history check available in this build passed." },
-          "checksums_valid": { "type": "boolean" },
-          "sequence_contiguous": { "type": "boolean" },
-          "chain_intact": { "type": "boolean", "description": "Present when the server was built with tamper-evidence support." },
-          "chain_status": { "allOf": [{ "$ref": "#/components/schemas/LedgerChainStatus" }], "description": "Present when the server was built with tamper-evidence support." },
-          "chain_tip": { "type": "string", "description": "Current history tip, present only for a fully chained store." },
-          "merkle_root": { "type": "string", "description": "Current history commitment, present only for a fully chained store; it is not independent proof by itself." }
+          "ledger_verified": {
+            "type": "boolean",
+            "description": "Whether every internal history check available in this build passed."
+          },
+          "checksums_valid": {
+            "type": "boolean"
+          },
+          "sequence_contiguous": {
+            "type": "boolean"
+          },
+          "chain_intact": {
+            "type": "boolean",
+            "description": "Present when the server was built with tamper-evidence support."
+          },
+          "chain_status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LedgerChainStatus"
+              }
+            ],
+            "description": "Present when the server was built with tamper-evidence support."
+          },
+          "chain_tip": {
+            "type": "string",
+            "description": "Current history tip, present only for a fully chained store."
+          },
+          "merkle_root": {
+            "type": "string",
+            "description": "Current history commitment, present only for a fully chained store; it is not independent proof by itself."
+          }
         }
       },
       "TrustAttestationEvaluation": {
@@ -1011,17 +2184,38 @@
         "description": "Evaluation of a supplied checkpoint receipt against the current history and the operator's authorized keys.",
         "additionalProperties": false,
         "required": [
-          "format", "sequence", "signature_valid", "matches_history", "trusted"
+          "format",
+          "sequence",
+          "signature_valid",
+          "matches_history",
+          "trusted"
         ],
         "properties": {
-          "format": { "type": "string" },
-          "sequence": { "type": "integer", "minimum": 0 },
-          "signature_valid": { "type": "boolean" },
-          "matches_history": { "type": "boolean" },
-          "signer_authorized": { "type": "boolean" },
-          "signer_revoked": { "type": "boolean" },
-          "trusted": { "type": "boolean" },
-          "rejection": { "type": "string" }
+          "format": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "signature_valid": {
+            "type": "boolean"
+          },
+          "matches_history": {
+            "type": "boolean"
+          },
+          "signer_authorized": {
+            "type": "boolean"
+          },
+          "signer_revoked": {
+            "type": "boolean"
+          },
+          "trusted": {
+            "type": "boolean"
+          },
+          "rejection": {
+            "type": "string"
+          }
         }
       },
       "MemoryTrustReport": {
@@ -1029,31 +2223,79 @@
         "description": "A composed snapshot of internal consistency and memory quality. Without an authorized retained checkpoint, it is not an independent guarantee that a full history was never replaced.",
         "additionalProperties": false,
         "required": [
-          "version", "generated_at_ms", "knowledge", "authority", "integrity",
-          "health", "trustworthy", "verdict_reasons"
+          "version",
+          "generated_at_ms",
+          "knowledge",
+          "authority",
+          "integrity",
+          "health",
+          "trustworthy",
+          "verdict_reasons"
         ],
         "properties": {
-          "version": { "type": "integer", "minimum": 0 },
-          "generated_at_ms": { "type": "integer", "minimum": 0 },
-          "knowledge": { "$ref": "#/components/schemas/TrustKnowledge" },
-          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
-          "integrity": { "$ref": "#/components/schemas/TrustIntegrity" },
-          "health": { "$ref": "#/components/schemas/KnowledgeHealth" },
-          "attestation": { "allOf": [{ "$ref": "#/components/schemas/TrustAttestationEvaluation" }], "description": "Optional in the shared report type. The current HTTP endpoint accepts no checkpoint input and omits this field." },
-          "trustworthy": { "type": "boolean", "description": "Composite result from the checks represented in this report, including an authorized checkpoint only when one was supplied." },
-          "verdict_reasons": { "type": "array", "items": { "type": "string" } }
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "generated_at_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "knowledge": {
+            "$ref": "#/components/schemas/TrustKnowledge"
+          },
+          "authority": {
+            "$ref": "#/components/schemas/AuthorityDecision"
+          },
+          "integrity": {
+            "$ref": "#/components/schemas/TrustIntegrity"
+          },
+          "health": {
+            "$ref": "#/components/schemas/KnowledgeHealth"
+          },
+          "attestation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TrustAttestationEvaluation"
+              }
+            ],
+            "description": "Optional in the shared report type. The current HTTP endpoint accepts no checkpoint input and omits this field."
+          },
+          "trustworthy": {
+            "type": "boolean",
+            "description": "Composite result from the checks represented in this report, including an authorized checkpoint only when one was supplied."
+          },
+          "verdict_reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "SessionResumeResponse": {
         "type": "object",
         "description": "Continuity briefing with store-level authority and knowledge-health context.",
         "additionalProperties": false,
-        "required": ["database", "authority", "health", "briefing"],
+        "required": [
+          "database",
+          "authority",
+          "health",
+          "briefing"
+        ],
         "properties": {
-          "database": { "type": "string" },
-          "authority": { "$ref": "#/components/schemas/AuthorityDecision" },
-          "health": { "$ref": "#/components/schemas/KnowledgeHealth" },
-          "briefing": { "$ref": "#/components/schemas/MemoryBriefingReport" }
+          "database": {
+            "type": "string"
+          },
+          "authority": {
+            "$ref": "#/components/schemas/AuthorityDecision"
+          },
+          "health": {
+            "$ref": "#/components/schemas/KnowledgeHealth"
+          },
+          "briefing": {
+            "$ref": "#/components/schemas/MemoryBriefingReport"
+          }
         }
       }
     }

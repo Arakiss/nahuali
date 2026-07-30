@@ -13,6 +13,22 @@ release histories.
   to restart its host after an upgrade, preventing old and new embedded engine
   versions from opening the same store.
 
+## [0.8.0-beta.10](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.9...v0.8.0-beta.10) (2026-07-30)
+
+
+### New
+
+* add LongMemEval retrieval adapter ([2df5b7d](https://github.com/Arakiss/nahuali/commit/2df5b7dabfd92970188cdd64955c9944bf169250))
+* publish executable HTTP trust clients ([c09e0f4](https://github.com/Arakiss/nahuali/commit/c09e0f43b8e75a9322c39e17490178718cc81586))
+
+
+### Fixed
+
+* align beta release safeguards ([103a689](https://github.com/Arakiss/nahuali/commit/103a689e6768ee0c060e9f5842f71dfb0dc19b56))
+* keep store setup failures explicit ([97f5cb9](https://github.com/Arakiss/nahuali/commit/97f5cb9227c0a086fee73cc88187ffe0fccac9e3))
+* recognize supported claims as connected knowledge ([e1f1ebb](https://github.com/Arakiss/nahuali/commit/e1f1ebbfd2912e493a0ee833ff7480364a0bb795))
+* tolerate bounded projection rebuild capacity ([017e35c](https://github.com/Arakiss/nahuali/commit/017e35c95b3b1e3b4caee7625d73c8cf86845eb6))
+
 ## [0.8.0-beta.9](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.8...v0.8.0-beta.9) (2026-07-30)
 
 

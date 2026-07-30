@@ -7,7 +7,7 @@
     "url": "https://github.com/Arakiss/nahuali",
     "source": "github"
   },
-  "version": "0.8.0-beta.9",
+  "version": "0.8.0-beta.10",
   "packages": [
     {
       "registryType": "oci",
