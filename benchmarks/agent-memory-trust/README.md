@@ -89,7 +89,7 @@ The adapter uses only documented CLI commands and disposable embedded stores.
 
 | System | Version | Runner | Artifact | Result |
 |---|---|---|---|---|
-| Nahuali | 0.8.0-beta.9 | First-party | Source build | [7 pass, 0 fail, 0 unsupported](results/nahuali-0.8.0-beta.9.json) |
+| Nahuali | 0.8.0-beta.10 | First-party | Source build | [7 pass, 0 fail, 0 unsupported](results/nahuali-0.8.0-beta.10.json) |
 
 The checked-in file records the tested binary SHA-256, exact source revision,
 adapter path, environment, native verdicts, and complete per-case output. It is
@@ -101,9 +101,9 @@ cargo build --release -p nahuali-cli
 python3 benchmarks/agent-memory-trust/adapters/nahuali.py \
   --binary target/release/nahuali \
   --source-revision "$(git rev-parse HEAD)" \
-  --output benchmarks/agent-memory-trust/results/nahuali-0.8.0-beta.9.json
+  --output benchmarks/agent-memory-trust/results/nahuali-0.8.0-beta.10.json
 python3 benchmarks/agent-memory-trust/score.py \
-  benchmarks/agent-memory-trust/results/nahuali-0.8.0-beta.9.json
+  benchmarks/agent-memory-trust/results/nahuali-0.8.0-beta.10.json
 ```
 
 To label a result `published-release`, the adapter additionally requires the
