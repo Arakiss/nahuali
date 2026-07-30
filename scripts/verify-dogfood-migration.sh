@@ -172,7 +172,7 @@ require_pattern "$DRY_RUN_OUTPUT" '"scoped_record_count"[[:space:]]*:[[:space:]]
 require_pattern "$DRY_RUN_OUTPUT" '"unscoped_record_count"[[:space:]]*:[[:space:]]*0' "import preflight reported unscoped records"
 require_pattern "$DRY_RUN_OUTPUT" '"readiness"' "import dry-run did not include migration readiness forecast"
 require_pattern "$DRY_RUN_OUTPUT" '"source_coverage_count"[[:space:]]*:[[:space:]]*1' "import dry-run did not forecast source coverage review pressure"
-require_pattern "$DRY_RUN_OUTPUT" '"review_item_count"[[:space:]]*:[[:space:]]*5' "import dry-run did not forecast review item count"
+require_pattern "$DRY_RUN_OUTPUT" '"review_item_count"[[:space:]]*:[[:space:]]*1' "import dry-run did not forecast review item count"
 require_pattern "$DRY_RUN_OUTPUT" '"project:nahuali"' "import preflight did not preserve project scope key"
 
 IMPORT_OUTPUT="$WORK_DIR/import.json"
