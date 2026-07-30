@@ -8,12 +8,16 @@
 //!
 //! It tells the story in four parts, entirely in memory and offline:
 //!   1. an honest, hash-chained ledger and its tip;
-//!   2. the operator signs that tip into a portable receipt;
+//!   2. the demo signs that tip into a portable receipt;
 //!   3. an attacker rewrites a historical event *and recomputes its checksum* —
 //!      the self-contained checksum is fooled, but the chain catches it;
 //!   4. the attacker goes further and re-chains the whole suffix so no link is
-//!      broken — the chain is now fooled, but the signed receipt is not, because
-//!      the tip changed and forging a fresh signature needs the private key.
+//!      broken — the live chain is internally consistent, but it no longer
+//!      matches the previously retained signed tip.
+//!
+//! The demo seed below is public and provides no independent authorization. A
+//! real deployment must authorize keys outside the ledger and retain the
+//! accepted checkpoint or freshness floor separately.
 //!
 //! The events here are built directly with the public `EventEnvelope` API to keep
 //! the demo dependency-free; on disk the engine writes exactly these chained
@@ -84,7 +88,7 @@ fn main() {
     // Part 2 — the operator signs the tip.
     let receipt =
         sign_chain_tip(DEMO_SEED_HEX, tip_sequence, &tip_hash).expect("signing the tip succeeds");
-    println!("2. The operator signs that tip with an Ed25519 key (the receipt).");
+    println!("2. The demo signs that tip with an Ed25519 key (the receipt).");
     println!("   public key: {}", receipt.public_key);
     println!(
         "   receipt verifies against the live tip: {}\n",
@@ -117,7 +121,7 @@ fn main() {
         None => println!("   (unexpected) chain reported intact\n"),
     }
 
-    // Part 4 — full suffix re-chain, then the signature catches it.
+    // Part 4 — full suffix re-chain, then compare with the retained signed tip.
     let mut rechained: Vec<EventEnvelope> = Vec::new();
     for (index, event) in ledger.iter().enumerate() {
         let previous = rechained.last().map(EventEnvelope::chain_hash);
@@ -145,9 +149,12 @@ fn main() {
         "   the signed receipt no longer verifies: {}",
         verify_chain_tip(&receipt, new_sequence, &new_tip).unwrap()
     );
-    println!("   forging a fresh receipt would require the operator's private key.\n");
+    println!("   production trust also requires an external key policy and freshness floor.\n");
 
-    println!("Checksum proves an event is internally consistent.");
-    println!("The chain proves the history was not rewritten in place.");
-    println!("The signed tip proves the history was not rewritten at all.");
+    println!("A checksum detects a changed event unless the checksum is recomputed.");
+    println!(
+        "The next chain link detects a rewritten non-tip event unless the suffix is re-chained."
+    );
+    println!("A retained, authorized signed tip detects a mismatch with that checkpoint.");
+    println!("None of these checks proves content truth or checkpoint freshness.");
 }
