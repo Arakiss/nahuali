@@ -35,6 +35,11 @@ curl -fsSL https://raw.githubusercontent.com/Arakiss/nahuali/main/scripts/instal
 export PATH="$HOME/.nahuali/bin:$PATH"
 ```
 
+Run `nahuali --version` in a terminal to see the real axolotl spritesheet come
+alive beside the build identity. When the command is captured or redirected, it
+emits the stable `nahuali <semver>` line expected by agents, install checks, and
+benchmark tooling.
+
 Record an observation, derive a claim from it, and require evidence at recall:
 
 ```bash

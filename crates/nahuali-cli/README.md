@@ -45,6 +45,18 @@ Verify the installed command:
 nahuali --version
 ```
 
+In an interactive terminal, `--version` animates the real checked-in axolotl
+spritesheet beside Nahuali's product name, version, and purpose. Supported
+terminals receive the raster image directly; other terminals receive a
+color-preserving half-block rendering of those same pixels. Captured or
+redirected output deliberately remains one stable line so agents and scripts
+can parse it without stripping terminal presentation:
+
+```bash
+VERSION="$(nahuali --version)"
+# nahuali 0.8.0-beta.8
+```
+
 ## Install From Release Archive
 
 Pre-release archives are intended for isolated operator checks before replacing

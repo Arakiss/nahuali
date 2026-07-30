@@ -19,3 +19,5 @@ pub mod style;
 pub mod theme;
 #[cfg(feature = "tui")]
 pub mod tui;
+#[cfg(feature = "tui")]
+pub mod version;

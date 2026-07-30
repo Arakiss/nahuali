@@ -9,6 +9,23 @@ use operator_path_support::{
 };
 use serde_json::Value;
 
+#[test]
+fn version_output_stays_stable_when_captured_by_agents_and_scripts() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_nahuali"))
+        .arg("--version")
+        .output()
+        .expect("nahuali-cli runs");
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("version output is UTF-8"),
+        format!("nahuali {}\n", env!("CARGO_PKG_VERSION"))
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "version output should not write to stderr"
+    );
+}
+
 fn assert_pretty_json(output: &str) {
     assert!(
         output.starts_with("{\n  ") || output.starts_with("[\n  "),

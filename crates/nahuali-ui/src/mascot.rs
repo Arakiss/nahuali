@@ -39,10 +39,16 @@ pub const MINI_HEIGHT: u16 = 5;
 /// The footer gives the five-row image one extra row in which to breathe.
 pub const MINI_SLOT_HEIGHT: u16 = MINI_HEIGHT + 1;
 
+/// Width of the animated mascot in the inline version banner.
+pub const VERSION_WIDTH: u16 = 18;
+/// Height of the animated mascot in the inline version banner.
+pub const VERSION_HEIGHT: u16 = 9;
+
 const SPRITESHEET: &[u8] = include_bytes!("../../../assets/nahuali-mascot-spritesheet.png");
 const FRAME_COLS: u32 = 4;
 const FRAME_ROWS: u32 = 2;
 const FRAME_COUNT: usize = (FRAME_COLS * FRAME_ROWS) as usize;
+const VERSION_SEQUENCE: [usize; 7] = [0, 1, 2, 3, 2, 1, 0];
 /// Mostly rests on the bottom edge, rising briefly every few seconds.
 const MOTION_SEQUENCE: [u16; 12] = [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1];
 
@@ -196,6 +202,64 @@ impl MascotImages {
     }
 }
 
+/// The real happy-pose sprites used by the interactive version banner.
+///
+/// A single terminal capability query prepares every frame. Unsupported
+/// terminals still render the checked-in PNG through proportional half blocks.
+pub struct VersionMascot {
+    frames: Vec<RasterMascot>,
+}
+
+impl VersionMascot {
+    /// Prepare the best renderer supported by the current terminal.
+    pub fn from_terminal() -> Result<Self, String> {
+        if std::env::var_os("NAHUALI_TUI_FORCE_HALF_BLOCKS").is_some() {
+            return Self::halfblocks();
+        }
+        let mut picker = Picker::from_query_stdio().map_err(|error| error.to_string())?;
+        picker.set_background_color(Some([0, 0, 0, 0]));
+        Self::from_picker(&picker)
+    }
+
+    /// Prepare the deterministic fallback without querying the terminal.
+    pub fn halfblocks() -> Result<Self, String> {
+        let size = Size::new(VERSION_WIDTH, VERSION_HEIGHT);
+        let frames = version_images()?
+            .into_iter()
+            .map(|image| RasterMascot::from_halfblocks(image, size))
+            .collect();
+        Ok(Self { frames })
+    }
+
+    fn from_picker(picker: &Picker) -> Result<Self, String> {
+        if matches!(picker.protocol_type(), ProtocolType::Halfblocks) {
+            return Self::halfblocks();
+        }
+        let size = Size::new(VERSION_WIDTH, VERSION_HEIGHT);
+        let frames = version_images()?
+            .into_iter()
+            .map(|image| RasterMascot::from_image(picker, image, size))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self { frames })
+    }
+
+    /// Number of frames in the complete greeting animation.
+    pub fn len(&self) -> usize {
+        self.frames.len()
+    }
+
+    /// Whether the animation contains no frames.
+    pub fn is_empty(&self) -> bool {
+        self.frames.is_empty()
+    }
+
+    /// Return one frame, wrapping so callers can use a monotonically increasing
+    /// animation tick.
+    pub fn frame(&self, tick: usize) -> RasterMascotFrame<'_> {
+        self.frames[tick % self.frames.len()].frame()
+    }
+}
+
 /// A fixed-size mascot encoded for one terminal graphics protocol.
 pub struct RasterMascot {
     protocol: MascotProtocol,
@@ -337,6 +401,20 @@ fn pose_image(verdict: Verdict) -> Result<DynamicImage, String> {
         .into_iter()
         .nth(pose_frame(verdict))
         .ok_or_else(|| "mascot spritesheet is incomplete".to_string())
+}
+
+fn version_images() -> Result<Vec<DynamicImage>, String> {
+    let sheet = image::load_from_memory(SPRITESHEET).map_err(|error| error.to_string())?;
+    let frames = split_frames(&sheet);
+    VERSION_SEQUENCE
+        .iter()
+        .map(|index| {
+            frames
+                .get(*index)
+                .cloned()
+                .ok_or_else(|| "mascot spritesheet is incomplete".to_string())
+        })
+        .collect()
 }
 
 fn split_frames(sheet: &DynamicImage) -> Vec<DynamicImage> {
@@ -493,5 +571,24 @@ mod tests {
         let offsets: Vec<_> = (0..MOTION_SEQUENCE.len()).map(motion_offset).collect();
         assert!(offsets.iter().all(|offset| *offset <= 1));
         assert!(offsets.iter().filter(|offset| **offset == 0).count() <= 2);
+    }
+
+    #[test]
+    fn version_animation_uses_distinct_happy_spritesheet_frames() {
+        let mascot = VersionMascot::halfblocks().unwrap();
+        assert_eq!(mascot.len(), VERSION_SEQUENCE.len());
+
+        let first = {
+            let mut buffer = Buffer::empty(Rect::new(0, 0, VERSION_WIDTH, VERSION_HEIGHT));
+            mascot.frame(0).render(buffer.area, &mut buffer);
+            signature(&buffer)
+        };
+        let blink = {
+            let mut buffer = Buffer::empty(Rect::new(0, 0, VERSION_WIDTH, VERSION_HEIGHT));
+            mascot.frame(2).render(buffer.area, &mut buffer);
+            signature(&buffer)
+        };
+
+        assert_ne!(first, blink);
     }
 }
