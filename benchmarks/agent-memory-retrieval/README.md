@@ -14,12 +14,12 @@ and results that do not identify the tested binary and source revision.
 ## Checked-in baseline
 
 The current version-matched source-build result is checked in as
-[`nahuali-0.8.0-beta.8.json`](results/nahuali-0.8.0-beta.8.json).
+[`nahuali-0.8.0-beta.9.json`](results/nahuali-0.8.0-beta.9.json).
 
 | Mode | Recall@1 | Recall@3 | MRR | nDCG@10 | Median latency | p95 latency |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Lexical | 1.000 | 1.000 | 1.000 | 1.000 | 31.2 ms | 54.2 ms |
-| Deterministic hybrid | 1.000 | 1.000 | 1.000 | 1.000 | 35.8 ms | 56.6 ms |
+| Lexical | 1.000 | 1.000 | 1.000 | 1.000 | 30.0 ms | 46.0 ms |
+| Deterministic hybrid | 1.000 | 1.000 | 1.000 | 1.000 | 33.6 ms | 44.4 ms |
 | Optional local model | not configured | — | — | — | — | — |
 
 This is a deliberately small regression corpus, so a perfect score is a gate,

@@ -201,7 +201,7 @@ tamper detection as separate cases. The
 [retrieval benchmark](benchmarks/agent-memory-retrieval/README.md) publishes
 every ranked item and latency sample for a versioned 24-memory, 12-query corpus.
 
-The checked-in 0.8.0-beta.8 results are **first-party, version-matched source
+The checked-in 0.8.0-beta.9 results are **first-party, version-matched source
 builds**. They are bound to a binary SHA-256 and source revision, but they are
 not claimed to be the published release archives. New published-release results
 must additionally match the release tag, target, archive name, archive digest,
