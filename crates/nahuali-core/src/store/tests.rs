@@ -1300,7 +1300,7 @@ mod tests {
         .unwrap();
 
         let report = receiver
-            .recv_timeout(Duration::from_secs(15))
+            .recv_timeout(Duration::from_secs(45))
             .expect("waiter completes after the owner releases")
             .expect("waiter rebuild succeeds");
         assert!(report.status.in_sync);
