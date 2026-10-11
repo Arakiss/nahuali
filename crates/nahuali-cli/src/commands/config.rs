@@ -23,7 +23,7 @@ pub(crate) fn config(database_flag: Option<&str>, json: bool) -> anyhow::Result<
         print_row("Archive database", &resolved.archive_database);
         println!();
         println!(
-            "Sources: flag = --database; env = NAHUALI_DB_URL / NAHUALI_DB_NAMESPACE / \
+            "Sources: flag = --store / --database; env = NAHUALI_DB_URL / NAHUALI_DB_NAMESPACE / \
 NAHUALI_DB_DATABASE / NAHUALI_ARCHIVE_DB; default = built-in."
         );
         println!(

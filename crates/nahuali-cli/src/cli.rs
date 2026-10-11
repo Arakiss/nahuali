@@ -173,9 +173,17 @@ pub(crate) struct Cli {
         long = "database",
         global = true,
         value_name = "NAME",
-        help = "SurrealDB database name. Defaults to $NAHUALI_DB_DATABASE or memory"
+        help = "Database name inside the store (not a path), e.g. project_nahuali. Defaults to $NAHUALI_DB_DATABASE or memory"
     )]
     pub(crate) database: Option<PathBuf>,
+
+    #[arg(
+        long = "store",
+        global = true,
+        value_name = "PATH|URL",
+        help = "Where the store lives: a directory for the embedded store, or a SurrealDB URL. Overrides $NAHUALI_DB_URL; defaults to ~/.nahuali/data"
+    )]
+    pub(crate) store: Option<String>,
 
     #[arg(
         long,

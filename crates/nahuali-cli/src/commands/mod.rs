@@ -36,6 +36,9 @@ use crate::cli::{Cli, Command};
 
 pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
     let verbose = cli.verbose;
+    if let Some(store) = cli.store.as_deref() {
+        nahuali_core::set_store_location(store).map_err(anyhow::Error::msg)?;
+    }
     let database_flag = cli
         .database
         .as_deref()
@@ -75,7 +78,14 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
 
     // One resolution point: flag > env > default, refusing a path-like name
     // rather than silently mangling it into a different database.
-    let resolved = nahuali_core::resolve_database_name(database_flag)?;
+    let resolved = nahuali_core::resolve_database_name(database_flag).map_err(|error| {
+        let path_hint = if database_flag.is_some_and(|name| name.contains(['/', '\\'])) {
+            "\n--database names a database inside the store; choose where the store lives with --store <PATH>."
+        } else {
+            ""
+        };
+        anyhow::anyhow!("{error}{path_hint}")
+    })?;
     let database = PathBuf::from(&resolved.value);
     if preopen::handle(&cli.command, &database)? {
         return Ok(());

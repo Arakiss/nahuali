@@ -158,10 +158,53 @@ pub fn validate_database_name(raw: &str) -> Result<String, DatabaseNameError> {
     }
 }
 
-/// Resolve the storage endpoint (`NAHUALI_DB_URL` env, else an embedded
-/// SurrealKV store under `~/.nahuali/data`). Remote endpoints without a scheme
-/// keep compatibility with the historical `host:port` form by using `ws://`.
+static STORE_LOCATION_FLAG: OnceLock<String> = OnceLock::new();
+
+/// Select this process's store from a command-line flag (`--store`), which
+/// takes precedence over `NAHUALI_DB_URL`. A value with a scheme is used as the
+/// endpoint; anything else is an embedded SurrealKV directory, made absolute
+/// against the current directory. Can be set once per process.
+pub fn set_store_location(location: &str) -> std::result::Result<ResolvedValue, String> {
+    let location = location.trim();
+    if location.is_empty() {
+        return Err("--store cannot be empty".to_string());
+    }
+    let endpoint = if location.contains("://") {
+        location.to_string()
+    } else {
+        let path = Path::new(location);
+        let absolute = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map_err(|error| format!("cannot resolve --store {location}: {error}"))?
+                .join(path)
+        };
+        format!("surrealkv://{}", absolute.display())
+    };
+    let stored = STORE_LOCATION_FLAG.get_or_init(|| endpoint.clone());
+    if *stored != endpoint {
+        return Err(format!(
+            "the store location is already set to {stored} for this process"
+        ));
+    }
+    Ok(ResolvedValue {
+        value: endpoint,
+        source: ConfigSource::Flag,
+    })
+}
+
+/// Resolve the storage endpoint: `--store` (see [`set_store_location`]), then
+/// `NAHUALI_DB_URL`, else an embedded SurrealKV store under `~/.nahuali/data`
+/// (or `$NAHUALI_HOME/data`). Remote endpoints without a scheme keep
+/// compatibility with the historical `host:port` form by using `ws://`.
 pub fn resolve_endpoint() -> ResolvedValue {
+    if let Some(endpoint) = STORE_LOCATION_FLAG.get() {
+        return ResolvedValue {
+            value: endpoint.clone(),
+            source: ConfigSource::Flag,
+        };
+    }
     match std::env::var("NAHUALI_DB_URL") {
         Ok(url) if !url.trim().is_empty() => ResolvedValue {
             value: normalize_endpoint(&url),
