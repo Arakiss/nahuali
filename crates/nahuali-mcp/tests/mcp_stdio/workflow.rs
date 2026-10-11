@@ -510,9 +510,32 @@ fn assert_inspection(server: &mut McpProcess) {
 }
 
 fn assert_reflection_and_review(server: &mut McpProcess) {
+    record_unsourced_procedure(server);
     assert_self_inspection(server);
     assert_reflection(server);
     resolve_first_review_item(server);
+}
+
+/// First-hand episodes are evidence, so the workflow so far leaves nothing to
+/// review. A procedure recorded without a source episode is a real coverage gap.
+fn record_unsourced_procedure(server: &mut McpProcess) {
+    let procedure = server.request(json!({
+        "jsonrpc": "2.0",
+        "id": 26,
+        "method": "tools/call",
+        "params": {
+            "name": "procedure",
+            "arguments": {
+                "name": "Release checklist",
+                "body": "Tag only after the changelog is reviewed"
+            }
+        }
+    }));
+    assert_eq!(procedure["result"]["isError"], false);
+    assert_eq!(
+        procedure["result"]["structuredContent"]["procedure"]["source_episode_id"],
+        Value::Null
+    );
 }
 
 fn assert_self_inspection(server: &mut McpProcess) {
@@ -673,7 +696,7 @@ fn assert_validation(server: &mut McpProcess) {
         }
     }));
     assert_eq!(validated["result"]["structuredContent"]["valid"], true);
-    assert_eq!(validated["result"]["structuredContent"]["event_count"], 10);
+    assert_eq!(validated["result"]["structuredContent"]["event_count"], 11);
     assert_eq!(validated["result"]["structuredContent"]["source_count"], 0);
     assert_eq!(
         validated["result"]["structuredContent"]["supported_event_version"],
@@ -702,7 +725,7 @@ fn assert_validation(server: &mut McpProcess) {
     assert_eq!(validated["result"]["structuredContent"]["link_count"], 2);
     assert_eq!(
         validated["result"]["structuredContent"]["procedure_count"],
-        2
+        3
     );
     assert_eq!(
         validated["result"]["structuredContent"]["intention_count"],

@@ -475,3 +475,39 @@ fn human_review_shows_the_id_review_resolve_needs() {
         &["review-resolve", first_id, "--note", "Copied from the human output."],
     );
 }
+
+/// Mirrors the logged friction: a fresh store holding only first-hand
+/// `remember` episodes and claims derived from them with `--source-last` showed
+/// a "Source coverage gap" item for every episode. First-hand observations are
+/// the evidence, so a clean store has an empty queue; derived memory without
+/// episode evidence is still reported.
+#[test]
+fn fresh_store_with_first_hand_episodes_has_no_source_coverage_noise() {
+    let store = temp_database("fresh-source-coverage");
+    run_ok(&store, &["remember", "Petru vive en Valencia", "--mention", "Petru"]);
+    run_ok(&store, &["claim", "Petru", "ciudad", "Valencia", "--source-last"]);
+    run_ok(&store, &["remember", "Petru trabaja de enfermero", "--mention", "Petru"]);
+    run_ok(&store, &["claim", "Petru", "profesion", "enfermero", "--source-last"]);
+
+    let review: Value =
+        serde_json::from_str(&run_ok(&store, &["review", "--json"])).expect("review is JSON");
+    assert_eq!(review["total_items"], 0, "{review}");
+    assert_eq!(review["authority"]["mode"], "certify");
+    let inspected: Value =
+        serde_json::from_str(&run_ok(&store, &["self-inspect", "--json"])).expect("JSON");
+    assert_eq!(inspected["summary"]["source_coverage_count"], 0, "{inspected}");
+
+    run_ok(&store, &["claim", "Petru", "edad", "41"]);
+    let review: Value =
+        serde_json::from_str(&run_ok(&store, &["review", "--json"])).expect("review is JSON");
+    let gap = review["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["title"] == "Source coverage gap")
+        .unwrap_or_else(|| panic!("an unsourced claim is a real gap: {review}"));
+    assert_eq!(
+        gap["detail"],
+        "2 episode(s) lack source records and 1 derived memory item(s) lack source episode evidence."
+    );
+}

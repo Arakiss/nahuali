@@ -13,23 +13,20 @@ pub(super) fn append_source_coverage_findings(
         .map(|episode| episode.id.clone())
         .collect::<Vec<_>>();
     let unsupported_derived = unsupported_derived_ids(data);
-    if unsourced_episodes.is_empty() && unsupported_derived.is_empty() {
+    // An episode without a source record is a first-hand observation and is
+    // itself the evidence; only derived memory lacking it is a coverage gap.
+    if unsupported_derived.is_empty() {
         return;
     }
 
-    let mut evidence_ids = unsourced_episodes
+    let mut evidence_ids = unsupported_derived
         .iter()
-        .chain(unsupported_derived.iter())
+        .chain(unsourced_episodes.iter())
         .take(12)
         .cloned()
         .collect::<Vec<_>>();
     evidence_ids.sort();
 
-    let severity = if !unsupported_derived.is_empty() {
-        HealthSeverity::Medium
-    } else {
-        HealthSeverity::Low
-    };
     let detail = format!(
         "{} episode(s) lack source records and {} derived memory item(s) lack source episode evidence.",
         unsourced_episodes.len(),
@@ -43,7 +40,7 @@ pub(super) fn append_source_coverage_findings(
             &detail,
         ),
         kind: SelfInspectionFindingKind::SourceCoverage,
-        severity,
+        severity: HealthSeverity::Medium,
         title: "Source coverage gap".to_string(),
         detail,
         dimensions: vec![HealthDimension::Completeness, HealthDimension::UnsupportedMemory],
