@@ -515,8 +515,13 @@ pub(crate) fn print_operator_review(report: &OperatorReviewReport) {
             item.title,
             item.action
         );
+        println!("   Id: {}", item.id);
         println!("   {}", item.detail);
         println!("   Next action: {}", item.operator_guidance);
+        println!(
+            "   Resolve: nahuali review-resolve {} --note \"<why>\"",
+            item.id
+        );
         if !item.evidence_ids.is_empty() {
             println!("   Evidence: {}", item.evidence_ids.join(", "));
         }

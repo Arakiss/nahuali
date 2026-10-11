@@ -442,3 +442,36 @@ fn validate_human_output_reports_database_and_status() {
 
     let _ = fs::remove_file(store);
 }
+
+/// Mirrors the logged friction: `review-resolve` needs an item id that the
+/// human `review` output never showed, forcing operators into `--json`.
+#[test]
+fn human_review_shows_the_id_review_resolve_needs() {
+    let store = temp_database("human-review-ids");
+    run_ok(&store, &["remember", "Lena owns the release notes"]);
+    run_ok(&store, &["claim", "Lena", "role", "CTO"]);
+
+    let review: Value =
+        serde_json::from_str(&run_ok(&store, &["review", "--json"])).expect("review is JSON");
+    let items = review["items"].as_array().expect("review items");
+    assert!(!items.is_empty());
+
+    let human = run_ok(&store, &["review"]);
+    for item in items {
+        let id = item["id"].as_str().expect("item id");
+        assert!(
+            human.contains(&format!("   Id: {id}\n")),
+            "human review lists {id}:\n{human}"
+        );
+        assert!(
+            human.contains(&format!("   Resolve: nahuali review-resolve {id} --note \"<why>\"\n")),
+            "human review shows how to resolve {id}:\n{human}"
+        );
+    }
+
+    let first_id = items[0]["id"].as_str().unwrap();
+    run_ok(
+        &store,
+        &["review-resolve", first_id, "--note", "Copied from the human output."],
+    );
+}
