@@ -87,6 +87,27 @@ generate.
   `RecallResult` and `MemoryData` gain fields. Exhaustive matches and struct
   literals need updating.
 
+## [0.8.0-beta.11](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.10...v0.8.0-beta.11) (2026-10-11)
+
+
+### New
+
+* **cli:** add --store to choose the store location ([13ab68a](https://github.com/Arakiss/nahuali/commit/13ab68a33a210165ee2bb2d46bc31513f143c265))
+* **core:** forget memory with an auditable redaction trail ([2f05b25](https://github.com/Arakiss/nahuali/commit/2f05b258e98c981d197f641b049d7b2e1fdbb626))
+
+
+### Fixed
+
+* **cli:** document every subcommand option ([8218c2d](https://github.com/Arakiss/nahuali/commit/8218c2dc741d982726c30acd58c09b400595ca1c))
+* **cli:** show the review item id and resolve command in human review output ([c33415e](https://github.com/Arakiss/nahuali/commit/c33415e00813cd8b6e68ca88e174cc7e956cd989))
+* **core:** keep claim supersession visible in recall and rank by recency ([7a3191f](https://github.com/Arakiss/nahuali/commit/7a3191fb3ba195e4ee0661a3520749b897f739ce))
+* **core:** name the command that derives memory from an episode in review guidance ([2c2d14b](https://github.com/Arakiss/nahuali/commit/2c2d14bfa5498ac57f418debe2eaf2ffdae1886a))
+* **core:** queue concurrent processes on the embedded store lock ([11c7715](https://github.com/Arakiss/nahuali/commit/11c771587ecdadee2a516824ced67f89b4ff28aa))
+* **core:** stop flagging first-hand episodes as a source coverage gap ([1ec5695](https://github.com/Arakiss/nahuali/commit/1ec5695800951a76797285c4a97d0956e4916cc4))
+* **core:** treat claim values as literals instead of entities ([63ae626](https://github.com/Arakiss/nahuali/commit/63ae62648c8741246f75c80913bdd750dd65f649))
+* **install:** repeat the signature outcome in the install summary ([6aaed5d](https://github.com/Arakiss/nahuali/commit/6aaed5d9ac4e735ce8f9ff2065b59b7bc9f1b376))
+* resolve logged daily-use friction (recall lifecycle, ranking, store lock, forget, literals, CLI polish) ([0e9cfa0](https://github.com/Arakiss/nahuali/commit/0e9cfa00f6ce561aea1314ee557180cedc07e055))
+
 ## [0.8.0-beta.10](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.9...v0.8.0-beta.10) (2026-07-30)
 
 
