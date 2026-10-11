@@ -82,24 +82,40 @@ By default, `nahuali` opens the logical SurrealDB database:
 memory
 ```
 
-Override the database name with `--database` or `NAHUALI_DB_DATABASE`:
+Two independent settings decide what is opened:
+
+| Setting | Flag | Environment | Default |
+|---|---|---|---|
+| Where the store lives: a directory for the embedded store, or a SurrealDB URL | `--store <PATH\|URL>` | `NAHUALI_DB_URL` | `~/.nahuali/data` |
+| Which database inside that store | `--database <NAME>` | `NAHUALI_DB_DATABASE` | `memory` |
 
 ```bash
 nahuali --database memory remember "Lena owns the release notes"
+nahuali --store ./project-memory --database project_nahuali recall "release notes"
+nahuali --store ws://127.0.0.1:8000 --database memory status
 ```
 
-The value selects a SurrealDB database identifier. Nahuali accepts only
-`A-Z`, `a-z`, `0-9`, and `_`; it refuses path-like or hyphenated values rather
-than silently connecting to a different normalized name. The zero-service
-default is an embedded SurrealKV store under `~/.nahuali/data`. Set
-`NAHUALI_DB_URL` to use a remote SurrealDB endpoint. The store is an append-only
+`--database` is a SurrealDB database identifier, not a path. Nahuali accepts
+only `A-Z`, `a-z`, `0-9`, and `_`; it refuses path-like or hyphenated values
+(and suggests `--store` when the value looks like a path) rather than silently
+connecting to a different normalized name. `--store` overrides
+`NAHUALI_DB_URL`; a plain directory path opens an embedded SurrealKV store
+there. The store is an append-only
 `memory_record` ledger. Opening the store validates event ordering and checksums
 before projecting memory state in Rust. The public storage boundary is
 summarized in the root README while design notes remain private during
 pre-release development.
 
-Embedded SurrealKV has one process owner. Use a remote endpoint if independent
-CLI, MCP, or HTTP processes need the same database concurrently.
+Embedded SurrealKV has one process owner at a time. When another process holds
+the store, a command waits for it with bounded backoff instead of failing at
+once, so parallel short reads (for example an agent issuing several `recall`
+calls) queue and all succeed. The wait is bounded by
+`NAHUALI_STORE_LOCK_TIMEOUT_MS` (default `30000`; `0` fails immediately); after
+it, the command fails with a "store is busy" error naming the likely holders.
+A long-lived `nahuali-mcp`, `nahuali-api`, or TUI process keeps the lock for
+its whole lifetime, so short commands time out behind it. Use a remote
+SurrealDB endpoint (`--store ws://…`) if independent CLI, MCP, or HTTP
+processes need the same database truly concurrently.
 
 ## Primary Workflow
 
@@ -141,6 +157,8 @@ nahuali --database memory self-inspect --json
 nahuali --database memory reflect --json
 nahuali --database memory review --limit 5 --min-priority high --json
 nahuali --database memory review-resolve <review_id> --note "Operator reviewed this item" --json
+nahuali --database memory recall "Lena release" --exclude-superseded --recency-half-life-days 7 --json
+nahuali --database memory forget <episode_id> --reason "Erasure request #42" --requested-by operator --dry-run --json
 nahuali --database memory validate
 nahuali --database memory audit --json
 nahuali --database memory audit --inclusion-proof 2 --json
@@ -232,6 +250,32 @@ has a `report` wrapper.
 Use `--kind <kind>` to narrow lexical or authority recall to specific memory
 families, and `--require-evidence` when every returned result must carry an
 evidence ID.
+
+Recall ranking is deterministic and explainable. Each result's `score` is the
+sum of the components in `score_breakdown`:
+
+| Component | Meaning | Flag (default) |
+|---|---|---|
+| `relevance` | Matched query terms plus match density, and kind-specific bonuses | none |
+| `confidence` | Recorded confidence times the confidence weight | `--confidence-weight` (`1.0`) |
+| `evidence` | Bonus for citing a source episode | none (`0.25`) |
+| `recency` | `weight × 0.5^(age / half-life)`, age measured from the newest matching result, not the wall clock | `--recency-weight` (`0.5`), `--recency-half-life-days` (`30`) |
+
+With the default weights, recency reorders results that match the same number
+of query terms but never outranks an additional matched term. Ties break by the
+newer timestamp, then by id. Results also carry `created_at_ms`,
+`updated_at_ms`, `observed_at_ms` (of the cited episode), and `confidence` so
+callers can apply their own policy.
+
+Claims carry a `lifecycle` derived from the ledger on every read: `current`,
+`superseded` (with `superseded_by` and `superseded_at_ms`), or `contested`
+(with `contested_with`). A claim is superseded when a newer evidence-backed
+claim from a different observation gives the same subject and predicate a
+different value. Resolving the related review item with `review-resolve`
+acknowledges the change but never erases the lifecycle: the old value stays in
+recall as history, ranked after every non-superseded result and marked
+`ADVISORY` with a reason naming its replacement. Pass `--exclude-superseded`
+to hide it.
 
 Use `--scope kind:name` on recording and recall commands when memory belongs to
 an explicit context boundary. Supported kinds are `personal`, `project`,
@@ -332,8 +376,25 @@ the independently replayed Rust `MemoryData` projection.
 
 `self-inspect --json` returns a non-mutating consolidation report with
 knowledge health, authority, findings, proposed review items, and an explicit
-no-automatic-write-back policy. It includes source-coverage findings when
-episodes lack source records or derived memory lacks source episode evidence.
+no-automatic-write-back policy. It includes a source-coverage finding when
+derived memory (claims, links, procedures, intentions) lacks source episode
+evidence. Episodes recorded with `remember` are first-hand observations and are
+themselves evidence, so a store holding only episodes and memory derived from
+them with `--source-last` has an empty review queue.
+
+"Deriving" memory means recording it with a pointer to the episode that
+supports it: `remember` the observation, then
+`claim <subject> <predicate> <value> --source-last` (or
+`--source-episode <id>`; `link`, `procedure`, `preference`, and `intention`
+accept the same flags).
+
+A claim's value is a literal attribute, not an entity:
+`claim petru mascotas "2 podencos y 5 gatos"` creates the entity `petru` and
+stores `"2 podencos y 5 gatos"` as the value, so it never shows up as an
+isolated entity. Claim subjects, `--mention` values, and both ends of a `link`
+create entities. When a sourced claim's value names an entity that already
+exists, the claim still connects it. Use `link` when the object is itself
+something you want to track as an entity.
 
 `reflect --json` groups self-inspection findings into non-mutating reflection
 cycles with priority, evidence IDs, source/evidence coverage, and the same
@@ -348,6 +409,30 @@ or recording follow-up evidence.
 `review-resolve <review_id> --note ...` is the explicit write-back path for
 review work. It appends an audit decision only after an operator supplies a note;
 `--dry-run --json` previews the decision without mutating the record ledger.
+Human `review` output prints each item's `Id:` and the exact `Resolve:` command
+to copy; `review --json` exposes the same value as `items[].id`.
+
+`forget <id>... --reason ... [--requested-by WHO]` is the explicit erasure path
+(for example a GDPR Article 17 request). It erases each target and every memory
+derived from it: a source takes its episodes; an episode takes the claims,
+links, procedures, intentions, repairs, and review decisions that cite it.
+In one transaction, every ledger record holding that content is replaced by a
+`redacted` stub and a `memory_forgotten` record is appended with who asked,
+when, why, the erased ids, and the redacted record positions, but never the
+erased content. Stubs keep their chained hash, so `validate`, `audit`, Merkle
+proofs, and checkpoints signed earlier (in `historical` mode) stay valid; a stub
+without an authorizing forget record fails validation. `--dry-run --json`
+shows the full cascade without writing. Recall, inspection, review, and the
+graph projection stop surfacing the content immediately.
+
+`forget` does not erase: backups, snapshots, exports, and receipts written
+earlier; the Qdrant index until `--rebuild-semantic` or `semantic-rebuild`;
+bytes the storage engine keeps until it compacts; shell history or logs that
+captured the content. Re-importing an old export or restoring an old backup
+brings the content back. The `--reason` is stored verbatim, so it must not
+repeat the erased content. Erasure is deliberately CLI-only and is not exposed
+through MCP or the HTTP API. See
+[the GDPR position](../../compliance/gdpr-position.md).
 
 `validate --json` is non-destructive. It reports record-ledger compatibility
 issues as structured JSON before exiting non-zero, includes `database`, and lets

@@ -80,40 +80,69 @@ person's record breaks the following link unless the suffix is recomputed. An
 externally retained, authorized checkpoint is needed to distinguish that
 recomputed history from the previously accepted ledger state.
 
-### Current state (shipped)
+### Current state (shipped): `nahuali forget`
 
-**No erasure mechanism ships today.** There is no per-subject deletion, no
-redaction event, no tombstone, and no retention timer in the engine. Recall
-supports query-time windows (`as_of_ms`, `since_ms`) and inspection flags stale
-memory, but neither removes data (`crates/nahuali-core/src/recall.rs:8-27`,
-`crates/nahuali-core/src/inspection.rs:289-328`). Treat this as a known gap, not
-a solved problem.
+Since 0.8.0-beta.11 the CLI ships an explicit, operator-invoked erasure command
+that follows the "versioned redaction" design:
 
-### Mechanism under design (candidate approaches, not yet built)
+```bash
+nahuali forget episode_123 --reason "GDPR art. 17 request #42" --requested-by dpo --dry-run
+nahuali forget episode_123 --reason "GDPR art. 17 request #42" --requested-by dpo --rebuild-semantic
+```
 
-Two candidate designs are being evaluated. Both are described here so the gap is
-transparent; neither is shipped, and no delivery date is implied.
+- **What is erased.** Each target id and every memory derived from it: a source
+  takes the episodes recorded from it; an episode takes the claims, links,
+  procedures, intentions (and their updates), repairs, and review decisions
+  that cite it. `--dry-run` lists the full cascade without writing anything.
+- **How.** In one database transaction, every ledger record that held that
+  content is replaced by a `redacted` stub, and a `memory_forgotten` record is
+  appended. A stub keeps only the record's sequence, envelope id, checksum,
+  previous-hash link, chained hash, the original event kind, and the id of the
+  authorizing forget record. Payload text, tags, mentions, titles, locators,
+  and metadata are gone from the ledger.
+- **Auditable trace.** The `memory_forgotten` record holds who requested the
+  erasure, when, the reason, the targets, the cascaded ids, and the sequence,
+  kind, and chained hash of every redacted record. It is visible in
+  `nahuali audit`, `nahuali data --json` (`forgotten`), and validation output.
+  The reason is stored verbatim, so it must not repeat the erased content.
+- **Integrity stays verifiable.** Because each stub keeps its chained hash, the
+  hash chain, Merkle roots, inclusion and consistency proofs, and previously
+  signed checkpoints remain valid. The tamper-evident history still shows that
+  a record of a given kind existed at that position and was redacted, which is
+  the intended trade-off.
+- **Fails closed.** A stub that is not listed by a later `memory_forgotten`
+  record, or a listed record that still holds content, makes reads, `validate`,
+  and `backup-validate` fail. Redaction cannot be used to silently rewrite
+  history.
+- **Derived tiers.** Recall, inspection, review, and the SurrealDB graph
+  projection stop surfacing the content immediately. The Qdrant semantic index
+  is cleared of it only by `--rebuild-semantic` or `nahuali semantic-rebuild`.
+- **Interface.** Erasure is CLI-only. It is deliberately not exposed through
+  MCP or the HTTP API, so an agent cannot erase memory through its tool
+  surface.
 
-- **Crypto-shredding via per-subject envelope keys.** Personal data for a subject
-  is encrypted under a per-subject key; erasure becomes destroying that key,
-  which renders the ciphertext unrecoverable while leaving the chain structurally
-  intact. The trade-off is key-management complexity and defining the subject
-  boundary precisely.
-- **Versioned redaction events reconciled with the chain.** Erasure is recorded
-  as a new, forward appended redaction event that supersedes the target, and the
-  derived tiers (graph projection, semantic index) are rebuilt to drop the
-  redacted content, while the original event's chain position is preserved as a
-  tombstone. The trade-off is that the tamper-evident history still records that
-  something existed and was redacted.
+### What `forget` does not erase
 
-A chosen approach must also propagate erasure to every derived and backup copy —
-the graph projection, the Qdrant semantic index, and any local backup artifacts —
-or the erasure is incomplete.
+`forget` is a building block for Article 17 handling, not proof that every copy
+is gone. The operator remains responsible for:
+
+- backups, snapshots, exports, and claim receipts written before the erasure;
+- the Qdrant semantic index until it is rebuilt;
+- physical bytes the storage engine (SurrealKV or a remote SurrealDB) keeps
+  until it compacts or its own retention expires;
+- terminal history, shell logs, and agent transcripts that contained the
+  original command or output;
+- re-importing an older export or restoring an older backup, which brings the
+  content back.
+
+Remaining candidate work: crypto-shredding via per-subject keys would also cover
+copies the operator cannot reach, at the cost of key management and a precise
+subject boundary. It is not built, and no delivery date is implied.
 
 ### Operational mitigations available today
 
-Until an erasure mechanism ships, a deployer can reduce exposure with existing
-controls, understanding each is a blunt instrument, not Article 17 conformance:
+Alongside `forget`, a deployer can reduce exposure with existing controls,
+understanding each is a blunt instrument, not Article 17 conformance:
 
 - **Scope discipline.** An explicit `MemoryScope` can help queries locate records
   associated with a context (`crates/nahuali-core/src/recall.rs:8-27`). It is a
@@ -126,7 +155,7 @@ controls, understanding each is a blunt instrument, not Article 17 conformance:
   secrets or irreplaceable personal data (`BETA.md:109-120`).
 - **Backup hygiene.** The `backup`, `backup-validate`, `backup-drill`, and
   `restore` commands let an operator take and verify local backups before changes
-  (`crates/nahuali-cli/src/cli.rs:1022-1067`). Because erasure must reach backups
+  (`nahuali backup --help`). Because erasure must reach backups
   too, keep backup retention short and inventoried for any store holding personal
   data.
 - **Store-level disposal as a blunt deployment action.** An operator can dispose
@@ -138,13 +167,14 @@ controls, understanding each is a blunt instrument, not Article 17 conformance:
 
 ## Current limits
 
-Nahuali's append-oriented ledger is in tension with selective erasure. Today
-there is no fine-grained erasure mechanism, complete subject index, or proof that
-all operator-controlled copies were deleted; the two candidate designs above are
-not shipped. A deployer with GDPR obligations should keep special-category and
-irreplaceable personal data out of the store, minimize and inventory what is
-recorded, apply explicit backup retention, and involve counsel before relying on
-Nahuali for personal-data processing. Store disposal is a coarse operator action,
-not a verified erasure workflow.
+`nahuali forget` removes content from the authoritative ledger and the derived
+SurrealDB tiers while keeping the history verifiable, but there is no complete
+subject index and no report proving that every operator-controlled copy was
+deleted. Finding all memory about a person still depends on searching recall,
+scopes, and entities. A deployer with GDPR obligations should keep
+special-category and irreplaceable personal data out of the store, minimize and
+inventory what is recorded, apply explicit backup retention, rebuild the
+semantic index after erasure, and involve counsel before relying on Nahuali for
+personal-data processing.
 
-Last reviewed: 2026-07-17.
+Last reviewed: 2026-10-11.

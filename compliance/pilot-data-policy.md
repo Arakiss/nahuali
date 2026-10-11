@@ -27,8 +27,9 @@ pilot inherits those rules and makes them concrete.
   secrets. Nahuali is not a secret manager (`SECURITY.md:29-30`).
 - **No special-category personal data**, and no irreplaceable personal data. If
   personal data is unavoidable for the evaluation, keep it minimal and scoped,
-  and read `compliance/gdpr-position.md` first — Nahuali ships no per-subject
-  erasure mechanism today.
+  and read `compliance/gdpr-position.md` first. `nahuali forget` erases memory
+  by id from the ledger and derived SurrealDB tiers, but it does not reach
+  backups, exports, receipts, or an unrebuilt semantic index.
 - **No data the operator is not authorized to process** under its own contracts
   or applicable law.
 

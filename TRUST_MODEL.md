@@ -152,6 +152,29 @@ checkpoints. It has no peer-to-peer consensus, mining, token, replicated public
 state, or automatic global ordering. Calling it a blockchain would overstate
 both the implementation and its guarantees.
 
+## Erasure and redaction
+
+The ledger is append-only for content: no command edits a recorded payload.
+The one exception is erasure, and it is constrained so it cannot hide history.
+`nahuali forget` replaces the records holding the erased memory with `redacted`
+stubs and appends a `memory_forgotten` record, in one transaction. A stub keeps
+the record's sequence, envelope id, checksum, previous-hash link, and chained
+hash, so the hash chain, Merkle roots, inclusion and consistency proofs, and
+earlier checkpoints still verify. The payload is gone; the history still shows
+that a record of that kind existed at that position and was erased, by whom,
+when, and why.
+
+Redaction fails closed. Every stub must be listed by a later forget record, and
+every record a forget record lists must be a stub; otherwise reads, `validate`,
+and `backup-validate` reject the ledger. Someone with write access to the
+database can still destroy data, as with any store, but cannot make a silent
+redaction look like a legitimate one. A previously signed checkpoint proves
+that the redacted position once held committed content, not what that content
+was.
+
+Erasure is an explicit operator command. It is not exposed through MCP or the
+HTTP API, and self-inspection never proposes or performs it.
+
 ## Recovery and derived data
 
 Current projections, graph tables, optional snapshots, and Qdrant vectors are

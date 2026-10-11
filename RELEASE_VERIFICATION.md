@@ -18,6 +18,15 @@ export PATH="$HOME/.nahuali/bin:$PATH"
 nahuali demo
 ```
 
+The install summary always ends with a `Signature:` line, so a skipped check is
+not lost in earlier output:
+
+| Summary line | Meaning |
+|---|---|
+| `Signature: verified (Sigstore, <tag>).` | Checksum and Sigstore bundle both verified. |
+| `Signature: NOT verified (cosign not installed); only the SHA-256 checksum was checked.` | Integrity against the release checksum only; authenticity was not checked. |
+| `Signature: NOT verified (no Sigstore bundle for this release); …` | The release had no bundle for this archive; only the checksum was checked. |
+
 The script never edits a shell profile. To require Sigstore verification rather
 than treating an unavailable `cosign` command as a warning:
 

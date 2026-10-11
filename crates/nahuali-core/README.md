@@ -97,7 +97,16 @@ private during pre-release development.
 - Claims, links, procedures, and intentions can cite source episodes as
   evidence.
 - Recall returns scored candidates with matched terms and evidence IDs when
-  available.
+  available. Ranking follows an explicit `RecallRankingPolicy` (relevance plus
+  weighted confidence, an evidence bonus, and recency decayed from the newest
+  match), and each result carries its `score_breakdown`, timestamps, and, for
+  claims, a ledger-derived `ClaimLifecycle`. Superseded claims rank after
+  current memory; `RecallOptions::exclude_superseded` hides them.
+- Claim objects are literal values; they do not create entities.
+- `MemoryEngine::forget` erases memory by id (and its derived memory) by
+  replacing the ledger records with chain-preserving `Redacted` stubs authorized
+  by an appended `MemoryForgotten` record; `verify_redactions` rejects
+  unauthorized stubs.
 - Graph traversal returns deterministic neighborhoods around entities or memory
   items with nodes, edges, depth, evidence IDs, authority, and health/review
   overlays.
