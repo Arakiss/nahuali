@@ -113,20 +113,10 @@ fn source_last_operator_path_produces_supported_memory() {
     let self_inspected = run_ok(&store, &["self-inspect", "--json"]);
     let report: Value = serde_json::from_str(&self_inspected).expect("self-inspect output is JSON");
     assert_eq!(report["write_back_policy"]["automatic_write_back"], false);
-    assert_eq!(report["summary"]["finding_count"], 1);
-    assert_eq!(report["summary"]["source_coverage_count"], 1);
-    assert!(report["findings"].as_array().unwrap().iter().any(|finding| {
-        finding["kind"] == "source_coverage"
-            && finding["detail"]
-                .as_str()
-                .is_some_and(|detail| detail.contains("1 episode(s) lack source records"))
-    }));
-    assert!(report["review_queue"].as_array().unwrap().iter().any(|item| {
-        item["action"] == "capture_evidence"
-            && item["finding_id"]
-                .as_str()
-                .is_some_and(|id| id.contains("source_coverage"))
-    }));
+    assert_eq!(report["summary"]["finding_count"], 0, "{report}");
+    assert_eq!(report["summary"]["source_coverage_count"], 0);
+    assert_eq!(report["findings"], serde_json::json!([]));
+    assert_eq!(report["review_queue"], serde_json::json!([]));
 
     let validated = run_ok(&store, &["validate", "--json"]);
     let validation: Value = serde_json::from_str(&validated).expect("validate output is JSON");
