@@ -1303,6 +1303,14 @@
             "type": "integer",
             "minimum": 0,
             "description": "Inclusive lower bound: only memory created at or after this epoch-ms timestamp (exclude stale memory at query time)."
+          },
+          "exclude_superseded": {
+            "type": "boolean",
+            "default": false,
+            "description": "Hide claims replaced by a newer evidence-backed value."
+          },
+          "ranking": {
+            "$ref": "#/components/schemas/RecallRankingPolicy"
           }
         }
       },
@@ -1639,7 +1647,7 @@
           },
           "score": {
             "type": "number",
-            "description": "Deterministic lexical score, including confidence and evidence bonuses."
+            "description": "Deterministic score: relevance plus confidence, evidence, and recency components (see score_breakdown)."
           },
           "excerpt": {
             "type": "string",
@@ -1664,6 +1672,31 @@
           },
           "trust": {
             "$ref": "#/components/schemas/RecallResultTrust"
+          },
+          "created_at_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "When the item was first recorded, in epoch milliseconds."
+          },
+          "updated_at_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "When the item last changed or was last observed, when that differs from created_at_ms."
+          },
+          "observed_at_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "When the cited evidence episode was observed."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "Recorded confidence for claims, links, and procedures."
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/ClaimLifecycle"
+          },
+          "score_breakdown": {
+            "$ref": "#/components/schemas/RecallScoreBreakdown"
           }
         }
       },
@@ -2295,6 +2328,106 @@
           },
           "briefing": {
             "$ref": "#/components/schemas/MemoryBriefingReport"
+          }
+        }
+      },
+      "RecallRankingPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Recall ranking weights. Omitted fields keep their defaults.",
+        "properties": {
+          "confidence_weight": {
+            "type": "number",
+            "minimum": 0,
+            "default": 1.0,
+            "description": "Multiplier applied to recorded confidence."
+          },
+          "evidence_bonus": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.25,
+            "description": "Bonus for results that cite a source episode."
+          },
+          "recency_weight": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5,
+            "description": "Maximum recency contribution, earned by the newest matching result."
+          },
+          "recency_half_life_ms": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2592000000,
+            "description": "Age, relative to the newest matching result, at which the recency contribution halves."
+          }
+        }
+      },
+      "ClaimStatus": {
+        "type": "string",
+        "enum": [
+          "current",
+          "superseded",
+          "contested"
+        ]
+      },
+      "ClaimLifecycle": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status"
+        ],
+        "description": "Claim lifecycle derived from the ledger on every read; review decisions never change it.",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ClaimStatus"
+          },
+          "superseded_by": {
+            "type": "string",
+            "description": "Claim that replaced this one, when superseded."
+          },
+          "superseded_at_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "When the superseding claim was recorded, when superseded."
+          },
+          "supersedes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Older claims this claim replaced."
+          },
+          "contested_with": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Claims that disagree with this one without a clear winner."
+          }
+        }
+      },
+      "RecallScoreBreakdown": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relevance",
+          "confidence",
+          "evidence",
+          "recency"
+        ],
+        "description": "Additive components of a recall score; relevance + confidence + evidence + recency equals score.",
+        "properties": {
+          "relevance": {
+            "type": "number"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "evidence": {
+            "type": "number"
+          },
+          "recency": {
+            "type": "number"
           }
         }
       }

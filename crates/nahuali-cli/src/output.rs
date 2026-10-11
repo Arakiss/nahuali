@@ -24,6 +24,7 @@ pub(crate) fn issue_kind_name(kind: &RecordLedgerIssueKind) -> &'static str {
         RecordLedgerIssueKind::ChecksumMismatch => "checksum_mismatch",
         RecordLedgerIssueKind::HashChainBroken => "hash_chain_broken",
         RecordLedgerIssueKind::HashChainMissing => "hash_chain_missing",
+        RecordLedgerIssueKind::UnauthorizedRedaction => "unauthorized_redaction",
     }
 }
 
@@ -47,6 +48,7 @@ pub(crate) fn backup_issue_kind_name(kind: &BackupIssueKind) -> &'static str {
         BackupIssueKind::RecordChecksumMismatch => "record_checksum_mismatch",
         BackupIssueKind::RecordHashChainBroken => "record_hash_chain_broken",
         BackupIssueKind::RecordHashChainMissing => "record_hash_chain_missing",
+        BackupIssueKind::RecordRedactionUnauthorized => "record_redaction_unauthorized",
         BackupIssueKind::TargetNotEmpty => "target_not_empty",
         BackupIssueKind::RestoreVerificationMismatch => "restore_verification_mismatch",
         BackupIssueKind::GraphProjectionRebuildFailed => "graph_projection_rebuild_failed",
@@ -515,8 +517,13 @@ pub(crate) fn print_operator_review(report: &OperatorReviewReport) {
             item.title,
             item.action
         );
+        println!("   Id: {}", item.id);
         println!("   {}", item.detail);
         println!("   Next action: {}", item.operator_guidance);
+        println!(
+            "   Resolve: nahuali review-resolve {} --note \"<why>\"",
+            item.id
+        );
         if !item.evidence_ids.is_empty() {
             println!("   Evidence: {}", item.evidence_ids.join(", "));
         }

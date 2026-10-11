@@ -564,6 +564,120 @@ mod tests {
     }
 
     #[test]
+    fn silent_redaction_without_a_forget_record_fails_closed() {
+        let path = temp_path("silent_redaction");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        memory
+            .remember("Petru lives at Calle Luna 12", Vec::new())
+            .unwrap();
+        memory.remember("Petru likes hiking", Vec::new()).unwrap();
+        let stub = memory.events()[0].redacted("forget_forged");
+        drop(memory);
+
+        let write_path = path.clone();
+        block_on_database(async move {
+            let db = open_database(&write_path).await?;
+            db.query_with_retry(
+                &write_path,
+                "UPDATE memory_record SET envelope = $stub WHERE sequence = 1",
+                vec![("stub".to_string(), serde_json::to_value(&stub).unwrap())],
+            )
+            .await
+            .map(|_| ())
+        })
+        .unwrap();
+
+        let error = MemoryEngine::open(&path).expect_err("unauthorized redaction is rejected");
+        assert!(
+            matches!(&error, NahualiError::InvalidRecordLedger { record: 1, message, .. }
+                if message.contains("no authorizing forget record")),
+            "{error}"
+        );
+        let validation = MemoryEngine::validate_store(&path).unwrap();
+        assert!(!validation.valid);
+        assert_eq!(
+            validation.issues[0].kind,
+            crate::RecordLedgerIssueKind::UnauthorizedRedaction
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn forget_transaction_aborts_when_a_record_changed_underneath_it() {
+        let path = temp_path("forget_guard");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        memory.remember("Petru lives at Calle Luna 12", Vec::new()).unwrap();
+        memory.remember("Petru likes hiking", Vec::new()).unwrap();
+        let mut stale_stub = memory.events()[0].redacted("forget_1");
+        stale_stub.id = memory.events()[1].id.clone();
+        let forget_event = EventEnvelope::new(
+            3,
+            3,
+            MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                id: "episode_after".to_string(),
+                content: "Appended only if the transaction commits.".to_string(),
+                tags: Vec::new(),
+                mentions: Vec::new(),
+                source_id: None,
+                source_position: None,
+                source_role: None,
+                scope: None,
+            }),
+        );
+        drop(memory);
+
+        let write_path = path.clone();
+        let result = block_on_database(async move {
+            super::write_forget(&write_path, &[stale_stub], &forget_event).await
+        });
+        assert!(result.is_err(), "a mismatched record id must abort the erasure");
+
+        let reopened = MemoryEngine::open(&path).unwrap();
+        assert_eq!(reopened.events().len(), 2, "nothing was appended");
+        assert!(!reopened.events()[0].is_redacted(), "nothing was redacted");
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn forget_redacts_in_one_transaction_and_survives_reopen() {
+        let path = temp_path("forget_reopen");
+        let _ = fs::remove_file(&path);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let secret = memory
+            .remember("Petru lives at Calle Luna 12", Vec::new())
+            .unwrap();
+        memory.remember("Petru likes hiking", Vec::new()).unwrap();
+
+        let report = memory
+            .forget(&crate::ForgetOptions {
+                targets: vec![secret.id.clone()],
+                reason: "GDPR art. 17 request".to_string(),
+                requested_by: Some("petru".to_string()),
+                dry_run: false,
+            })
+            .unwrap();
+        assert_eq!(report.forgotten_ids, vec![secret.id.clone()]);
+        assert!(report.graph_projection_rebuilt);
+        drop(memory);
+
+        let reopened = MemoryEngine::open(&path).unwrap();
+        assert_eq!(reopened.events().len(), 3);
+        assert!(reopened.events()[0].is_redacted());
+        assert_eq!(reopened.data().episodes.len(), 1);
+        assert_eq!(reopened.data().forgotten[0].requested_by.as_deref(), Some("petru"));
+        let encoded = serde_json::to_string(reopened.events()).unwrap();
+        assert!(!encoded.contains("Calle Luna"));
+        assert!(MemoryEngine::validate_store(&path).unwrap().valid);
+        assert!(reopened.projection_validate().unwrap().valid);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn synchronizes_only_changed_rows_after_a_large_projection() {
         const BASE_EVENT_COUNT: u64 = 300;
 

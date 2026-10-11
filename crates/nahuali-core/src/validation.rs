@@ -121,6 +121,9 @@ pub enum RecordLedgerIssueKind {
     /// Only produced when the `tamper-evidence` feature is enabled and strict
     /// validation requested `require_chained`.
     HashChainMissing,
+    /// A record's content was redacted without a matching later forget record,
+    /// or a forget record lists a record that still holds content.
+    UnauthorizedRedaction,
 }
 
 /// Record-ledger validation issue severity.
@@ -278,6 +281,17 @@ pub fn validate_record_ledger_events_with_options(
         }
         expected_sequence += 1;
         accepted_events.push(event);
+    }
+
+    if report.valid
+        && let Some(violation) = crate::event::verify_redactions(&accepted_events)
+    {
+        report.valid = false;
+        report.issues.push(error_issue(
+            violation.record,
+            RecordLedgerIssueKind::UnauthorizedRedaction,
+            violation.message,
+        ));
     }
 
     report.observed_event_versions = observed_versions.into_iter().collect();

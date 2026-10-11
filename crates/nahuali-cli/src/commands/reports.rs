@@ -1,8 +1,8 @@
 use nahuali_core::{
     BriefingOptions, ConsolidationPlanOptions, IntentionReconciliationOptions, MemoryEngine,
     MemoryHookOptions, MemoryKind, OperatorReviewOptions, ProactiveOptions, ProjectViewOptions,
-    RecallOptions, ReflectionOptions, SelfInspectionReviewAction, SelfInspectionReviewPriority,
-    SleepModeOptions,
+    RecallOptions, RecallRankingPolicy, ReflectionOptions, SelfInspectionReviewAction,
+    SelfInspectionReviewPriority, SleepModeOptions,
 };
 
 use crate::commands::scope::parse_scope;
@@ -151,6 +151,8 @@ pub(crate) struct RecallArgs {
     pub(crate) as_of_ms: Option<u64>,
     pub(crate) max_age_days: Option<u64>,
     pub(crate) archive: bool,
+    pub(crate) exclude_superseded: bool,
+    pub(crate) ranking: RecallRankingPolicy,
     pub(crate) json: bool,
 }
 
@@ -299,6 +301,8 @@ pub(crate) fn recall(memory: &mut MemoryEngine, args: RecallArgs) -> anyhow::Res
         require_evidence: args.require_evidence,
         as_of_ms,
         since_ms,
+        exclude_superseded: args.exclude_superseded,
+        ranking: args.ranking,
     };
 
     if args.semantic {
@@ -1162,6 +1166,9 @@ fn print_recall_results(results: Vec<nahuali_core::RecallResult>) {
         if let Some(evidence_id) = result.evidence_id {
             println!("  evidence: {evidence_id}");
         }
+        if let Some(lifecycle) = result.lifecycle.as_ref().and_then(lifecycle_line) {
+            println!("  lifecycle: {lifecycle}");
+        }
         if let Some(trust) = result.trust {
             println!(
                 "  trust: {} (score {:.2})",
@@ -1175,6 +1182,27 @@ fn print_recall_results(results: Vec<nahuali_core::RecallResult>) {
         if let Some(scope) = result.scope {
             println!("  scope: {}", scope.key);
         }
+    }
+}
+
+fn lifecycle_line(lifecycle: &nahuali_core::ClaimLifecycle) -> Option<String> {
+    match lifecycle.status {
+        nahuali_core::ClaimStatus::Superseded => Some(format!(
+            "superseded by {}",
+            lifecycle
+                .superseded_by
+                .as_deref()
+                .unwrap_or("a newer claim")
+        )),
+        nahuali_core::ClaimStatus::Contested => Some(format!(
+            "contested with {}",
+            lifecycle.contested_with.join(", ")
+        )),
+        nahuali_core::ClaimStatus::Current if !lifecycle.supersedes.is_empty() => Some(format!(
+            "current (supersedes {})",
+            lifecycle.supersedes.join(", ")
+        )),
+        nahuali_core::ClaimStatus::Current => None,
     }
 }
 
@@ -1197,6 +1225,9 @@ fn print_hybrid_recall_results(results: Vec<nahuali_core::HybridRecallResult>) {
         println!("  {}", result.excerpt);
         if let Some(evidence_id) = result.evidence_id {
             println!("  evidence: {evidence_id}");
+        }
+        if let Some(lifecycle) = result.lifecycle.as_ref().and_then(lifecycle_line) {
+            println!("  lifecycle: {lifecycle}");
         }
         if let Some(trust) = result.trust {
             println!(

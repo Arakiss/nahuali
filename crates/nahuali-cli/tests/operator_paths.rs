@@ -1,11 +1,12 @@
 #[path = "operator_path_cases/support.rs"]
 mod operator_path_support;
 
-use std::fs;
+use std::{fs, path::Path};
 
 use operator_path_support::{
     QdrantCollectionGuard, run, run_at_endpoint, run_ok, run_ok_at_endpoint,
-    run_ok_with_semantic_collection, run_with_semantic_collection, temp_database, temp_store,
+    run_ok_with_semantic_collection, run_with_env, run_with_semantic_collection, temp_database,
+    temp_store,
 };
 use serde_json::Value;
 
@@ -45,6 +46,10 @@ include!("operator_path_cases/checkpoint.rs");
 include!("operator_path_cases/receipt.rs");
 include!("operator_path_cases/trust_report.rs");
 include!("operator_path_cases/memory.rs");
+include!("operator_path_cases/lifecycle.rs");
+include!("operator_path_cases/concurrency.rs");
+include!("operator_path_cases/literals.rs");
+include!("operator_path_cases/forget.rs");
 include!("operator_path_cases/scopes.rs");
 include!("operator_path_cases/ingestion.rs");
 include!("operator_path_cases/migration.rs");

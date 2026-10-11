@@ -6,7 +6,7 @@ use crate::error::{NahualiError, Result};
 use crate::self_repair::{AutonomyLevel, RepairKind};
 
 /// Current deterministic projection schema version.
-pub const MEMORY_DATA_VERSION: u32 = 7;
+pub const MEMORY_DATA_VERSION: u32 = 8;
 
 /// Fully projected memory state derived from an record ledger.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -36,6 +36,9 @@ pub struct MemoryData {
     /// Audit trail of applied self-repairs.
     #[serde(default)]
     pub repairs: Vec<MemoryRepair>,
+    /// Audit trail of explicit forget requests. Names erased records, never their content.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forgotten: Vec<ForgottenRecord>,
     /// Compatibility mirror for `claims`.
     pub facts: Vec<Fact>,
     /// Compatibility mirror for `links`.
@@ -57,6 +60,7 @@ impl Default for MemoryData {
             intentions: Vec::new(),
             review_decisions: Vec::new(),
             repairs: Vec::new(),
+            forgotten: Vec::new(),
             facts: Vec::new(),
             relations: Vec::new(),
         }
@@ -541,6 +545,28 @@ pub struct MemoryRepair {
     pub created_at_ms: u64,
 }
 
+/// Projected audit record of one explicit forget request.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ForgottenRecord {
+    /// Stable forget-request identifier.
+    pub id: String,
+    /// Event identifier that recorded the request.
+    pub event_id: String,
+    /// When the memory was forgotten, in milliseconds since the Unix epoch.
+    pub forgotten_at_ms: u64,
+    /// Operator-supplied reason.
+    pub reason: String,
+    /// Person or process that requested the erasure, when given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<String>,
+    /// Memory identifiers the operator asked to forget.
+    pub targets: Vec<String>,
+    /// Every memory identifier erased, including cascaded derived memory.
+    pub forgotten_ids: Vec<String>,
+    /// Number of ledger records whose content was redacted.
+    pub redacted_event_count: usize,
+}
+
 /// Kind of memory item returned by recall.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -619,4 +645,96 @@ pub struct RecallResult {
     /// Query-local trust context, attached when callers request authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trust: Option<RecallResultTrust>,
+    /// When the item was first recorded (entity: first seen), in milliseconds
+    /// since the Unix epoch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at_ms: Option<u64>,
+    /// When the item last changed or was last observed, when that differs from
+    /// `created_at_ms` (entity: last seen; intention: last update).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at_ms: Option<u64>,
+    /// When the cited evidence episode was observed, if the evidence resolves
+    /// to a projected episode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_at_ms: Option<u64>,
+    /// Recorded confidence for claims, links, and procedures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f32>,
+    /// Whether a claim is the current value, was superseded by a newer
+    /// evidence-backed value, or is contested. Derived from the ledger on every
+    /// read and never changed by review decisions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<ClaimLifecycle>,
+    /// Additive components of `score`, so callers can see why a result ranked
+    /// where it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_breakdown: Option<RecallScoreBreakdown>,
+}
+
+/// Lifecycle state of a claim relative to other claims with the same scope,
+/// subject, and predicate.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ClaimStatus {
+    /// No other claim disagrees, or this claim is the newest evidence-backed
+    /// value that replaced older ones.
+    Current,
+    /// A newer evidence-backed claim from a different observation replaced
+    /// this value. Kept for history and audit; ranked after current memory.
+    Superseded,
+    /// Another claim disagrees and there is no unambiguous newest
+    /// evidence-backed value. Both sides stay visible and none is demoted.
+    Contested,
+}
+
+/// Lifecycle of one claim, with pointers to the claims that explain it.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ClaimLifecycle {
+    /// Lifecycle status.
+    pub status: ClaimStatus,
+    /// Claim that replaced this one, when superseded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub superseded_by: Option<String>,
+    /// When the superseding claim was recorded, when superseded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub superseded_at_ms: Option<u64>,
+    /// Older claims this claim replaced.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supersedes: Vec<String>,
+    /// Claims that disagree with this one without a clear winner.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contested_with: Vec<String>,
+}
+
+impl ClaimLifecycle {
+    /// A claim with no disagreeing peers.
+    pub fn current() -> Self {
+        Self {
+            status: ClaimStatus::Current,
+            superseded_by: None,
+            superseded_at_ms: None,
+            supersedes: Vec::new(),
+            contested_with: Vec::new(),
+        }
+    }
+
+    /// Whether a newer evidence-backed value replaced this claim.
+    pub fn is_superseded(&self) -> bool {
+        self.status == ClaimStatus::Superseded
+    }
+}
+
+/// Additive score components for one recall result. `relevance + confidence +
+/// evidence + recency` equals the result's `score`.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RecallScoreBreakdown {
+    /// Matched query terms plus match density (plus kind-specific bonuses such
+    /// as entity mention count or intention status).
+    pub relevance: f32,
+    /// Recorded confidence multiplied by the policy's confidence weight.
+    pub confidence: f32,
+    /// Bonus for citing a source episode.
+    pub evidence: f32,
+    /// Recency weight decayed by age relative to the newest matching result.
+    pub recency: f32,
 }

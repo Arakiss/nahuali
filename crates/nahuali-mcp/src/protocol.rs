@@ -284,6 +284,9 @@ pub(crate) struct RecallArgs {
     /// Inclusive lower bound: only memory created at or after this epoch-ms
     /// timestamp (exclude stale memory at query time).
     pub(crate) since_ms: Option<u64>,
+    /// Hide claims replaced by a newer evidence-backed value. By default they
+    /// are returned, marked `superseded`, and ranked last.
+    pub(crate) exclude_superseded: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

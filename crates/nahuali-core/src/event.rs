@@ -80,7 +80,14 @@ impl EventEnvelope {
     /// the FNV-1a digest, accepting both the version-in-body form and the
     /// pre-version form, so the append-only ledger keeps historical records
     /// valid.
+    ///
+    /// A redacted record cannot recompute its original checksum; it passes when
+    /// its id still binds the recorded checksum, and the ledger validators
+    /// require a later forget event to authorize it ([`verify_redactions`]).
     pub fn validate_checksum(&self) -> bool {
+        if matches!(self.payload, MemoryEvent::Redacted(_)) {
+            return self.id == format!("event_{}_{}", self.sequence, self.checksum);
+        }
         if self.version > LEGACY_FNV_CHECKSUM_MAX_VERSION {
             self.checksum
                 == sha256_checksum_for(
@@ -100,6 +107,43 @@ impl EventEnvelope {
                 || self.checksum
                     == legacy_checksum_for(self.sequence, self.timestamp_ms, &self.payload)
         }
+    }
+
+    /// Whether this record's content was erased by a forget request.
+    pub fn is_redacted(&self) -> bool {
+        matches!(self.payload, MemoryEvent::Redacted(_))
+    }
+
+    /// Copy of this record with its payload replaced by a redaction stub.
+    ///
+    /// Envelope id, sequence, timestamp, checksum, and chain link are kept, and
+    /// the stub records the original chained hash, so the hash chain and every
+    /// commitment over it are unchanged.
+    pub fn redacted(&self, forget_id: &str) -> Self {
+        Self {
+            payload: MemoryEvent::Redacted(RedactedRecord {
+                forget_id: forget_id.to_string(),
+                kind: self.payload.kind(),
+                chain_hash: self.link_hash(),
+            }),
+            ..self.clone()
+        }
+    }
+
+    /// Chained hash of this record, or `None` for an unchained record.
+    pub(crate) fn link_hash(&self) -> Option<String> {
+        if let MemoryEvent::Redacted(stub) = &self.payload {
+            return stub.chain_hash.clone();
+        }
+        self.prev_hash.as_deref().map(|prev_hash| {
+            chain_hash_for(
+                self.version,
+                self.sequence,
+                self.timestamp_ms,
+                &self.payload,
+                prev_hash,
+            )
+        })
     }
 }
 
@@ -140,6 +184,13 @@ impl EventEnvelope {
     /// value the *next* event must carry in its `prev_hash`, and the value
     /// exposed as the ledger tip for anchoring.
     pub fn chain_hash(&self) -> String {
+        if let MemoryEvent::Redacted(RedactedRecord {
+            chain_hash: Some(chain_hash),
+            ..
+        }) = &self.payload
+        {
+            return chain_hash.clone();
+        }
         chain_hash_for(
             self.version,
             self.sequence,
@@ -220,6 +271,140 @@ pub enum MemoryEvent {
     ReviewRecorded(ReviewRecorded),
     /// An LLM-proposed repair was validated, classified, and applied.
     RepairApplied(RepairApplied),
+    /// Operator explicitly forgot memory; names the erased records, never their content.
+    MemoryForgotten(MemoryForgotten),
+    /// Placeholder left where a forgotten record's content used to be.
+    Redacted(RedactedRecord),
+}
+
+impl MemoryEvent {
+    /// Serialized `type` token of this payload, e.g. `episode_recorded`.
+    pub fn kind(&self) -> String {
+        serde_json::to_value(self)
+            .ok()
+            .and_then(|value| value.get("type")?.as_str().map(str::to_owned))
+            .unwrap_or_default()
+    }
+}
+
+/// Payload for an explicit forget (erasure) request.
+///
+/// The event is the audit trail: who asked, when (the envelope timestamp), why,
+/// and which records were redacted. It deliberately carries identifiers only,
+/// so the trail survives without retaining the erased content.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct MemoryForgotten {
+    /// Stable forget-request identifier.
+    pub id: String,
+    /// Operator-supplied reason. Must not repeat the erased content.
+    pub reason: String,
+    /// Person or process that requested the erasure, when given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<String>,
+    /// Memory identifiers the operator asked to forget.
+    pub targets: Vec<String>,
+    /// Every memory identifier erased, including derived memory cascaded from the targets.
+    pub forgotten_ids: Vec<String>,
+    /// Ledger records whose payload was replaced by a [`RedactedRecord`].
+    pub redacted_records: Vec<RedactedRecordRef>,
+}
+
+/// Ledger position of one record redacted by a [`MemoryForgotten`] event.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RedactedRecordRef {
+    /// Sequence of the redacted record.
+    pub sequence: u64,
+    /// Envelope identifier of the redacted record (unchanged by redaction).
+    pub event_id: String,
+    /// Payload type the record held before redaction.
+    pub kind: String,
+    /// Chained hash of the original record, when the ledger is chained.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_hash: Option<String>,
+}
+
+/// Payload that replaces a forgotten record's content in place.
+///
+/// The envelope keeps its id, sequence, timestamp, checksum, and chain link, and
+/// the stub keeps the original chained hash, so later links, Merkle roots, and
+/// signed checkpoints stay valid. The original checksum can no longer be
+/// recomputed, so a stub is only accepted when a later [`MemoryForgotten`]
+/// event authorizes it (see [`verify_redactions`]).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RedactedRecord {
+    /// Identifier of the [`MemoryForgotten`] event that authorized the redaction.
+    pub forget_id: String,
+    /// Payload type the record held before redaction.
+    pub kind: String,
+    /// Chained hash of the original record, when the ledger is chained.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_hash: Option<String>,
+}
+
+/// A redacted record without a matching authorization, or an authorization
+/// whose record still holds content.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RedactionViolation {
+    /// One-based position of the offending record.
+    pub record: usize,
+    /// Sequence number of the offending record.
+    pub sequence: u64,
+    /// Human-readable description.
+    pub message: String,
+}
+
+/// Verify that every redacted record is authorized by a later forget event and
+/// that every authorization points at a redacted record.
+///
+/// Returns the first violation, or `None` when the ledger's redactions are
+/// consistent. Ledgers without redactions always pass.
+pub fn verify_redactions(events: &[EventEnvelope]) -> Option<RedactionViolation> {
+    let mut authorizations = BTreeMap::new();
+    for event in events {
+        if let MemoryEvent::MemoryForgotten(forgotten) = &event.payload {
+            for redacted in &forgotten.redacted_records {
+                authorizations.insert(redacted.sequence, (event.sequence, forgotten, redacted));
+            }
+        }
+    }
+
+    for (index, event) in events.iter().enumerate() {
+        let violation = |message: String| RedactionViolation {
+            record: index + 1,
+            sequence: event.sequence,
+            message,
+        };
+        let authorization = authorizations.get(&event.sequence);
+        match (&event.payload, authorization) {
+            (MemoryEvent::Redacted(stub), Some((forget_sequence, forgotten, redacted))) => {
+                if *forget_sequence <= event.sequence
+                    || stub.forget_id != forgotten.id
+                    || redacted.event_id != event.id
+                    || redacted.kind != stub.kind
+                    || redacted.chain_hash != stub.chain_hash
+                {
+                    return Some(violation(format!(
+                        "redacted record does not match forget record '{}'",
+                        forgotten.id
+                    )));
+                }
+            }
+            (MemoryEvent::Redacted(stub), None) => {
+                return Some(violation(format!(
+                    "redacted record has no authorizing forget record (claims '{}')",
+                    stub.forget_id
+                )));
+            }
+            (_, Some((_, forgotten, _))) => {
+                return Some(violation(format!(
+                    "forget record '{}' lists this record, but it still holds content",
+                    forgotten.id
+                )));
+            }
+            (_, None) => {}
+        }
+    }
+    None
 }
 
 /// Payload for a source-recorded event.
@@ -736,7 +921,6 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 /// sequence number). SHA-256 then makes the chain collision-resistant: an
 /// attacker cannot rewrite an event without changing every subsequent chained
 /// hash, which a verifier detects at the first mismatch.
-#[cfg(feature = "tamper-evidence")]
 fn chain_hash_for(
     version: u32,
     sequence: u64,
@@ -773,7 +957,6 @@ fn chain_hash_for(
 
 /// Absorb a length-prefixed field into the hasher to keep field boundaries
 /// unambiguous (prevents concatenation ambiguity between adjacent components).
-#[cfg(feature = "tamper-evidence")]
 fn absorb_field(hasher: &mut sha2::Sha256, bytes: &[u8]) {
     use sha2::Digest;
     hasher.update((bytes.len() as u64).to_be_bytes());

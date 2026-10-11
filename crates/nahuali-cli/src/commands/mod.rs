@@ -8,6 +8,7 @@ mod config;
 mod demo;
 #[cfg(feature = "tui")]
 mod explore;
+mod forget;
 mod init;
 mod migration;
 mod migration_legacy;
@@ -28,13 +29,17 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use nahuali_core::{
-    LedgerAuditOptions, MemoryEngine, NahualiError, ResolvedValue, TrustReportOptions,
+    LedgerAuditOptions, MemoryEngine, NahualiError, RecallRankingPolicy, ResolvedValue,
+    TrustReportOptions,
 };
 
 use crate::cli::{Cli, Command};
 
 pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
     let verbose = cli.verbose;
+    if let Some(store) = cli.store.as_deref() {
+        nahuali_core::set_store_location(store).map_err(anyhow::Error::msg)?;
+    }
     let database_flag = cli
         .database
         .as_deref()
@@ -74,7 +79,14 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
 
     // One resolution point: flag > env > default, refusing a path-like name
     // rather than silently mangling it into a different database.
-    let resolved = nahuali_core::resolve_database_name(database_flag)?;
+    let resolved = nahuali_core::resolve_database_name(database_flag).map_err(|error| {
+        let path_hint = if database_flag.is_some_and(|name| name.contains(['/', '\\'])) {
+            "\n--database names a database inside the store; choose where the store lives with --store <PATH>."
+        } else {
+            ""
+        };
+        anyhow::anyhow!("{error}{path_hint}")
+    })?;
     let database = PathBuf::from(&resolved.value);
     if preopen::handle(&cli.command, &database)? {
         return Ok(());
@@ -468,6 +480,10 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             as_of_ms,
             max_age_days,
             archive,
+            exclude_superseded,
+            recency_weight,
+            recency_half_life_days,
+            confidence_weight,
             json,
         } => reports::recall(
             &mut memory,
@@ -482,6 +498,14 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
                 as_of_ms,
                 max_age_days,
                 archive,
+                exclude_superseded,
+                ranking: RecallRankingPolicy {
+                    confidence_weight,
+                    recency_weight,
+                    recency_half_life_ms: (recency_half_life_days * 86_400_000.0).round().max(1.0)
+                        as u64,
+                    ..RecallRankingPolicy::default()
+                },
                 json,
             },
         )?,
@@ -551,6 +575,24 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             action,
             json,
         } => reports::review(&mut memory, limit, min_priority, action, json)?,
+        Command::Forget {
+            ids,
+            reason,
+            requested_by,
+            dry_run,
+            rebuild_semantic,
+            json,
+        } => forget::forget(
+            &mut memory,
+            nahuali_core::ForgetOptions {
+                targets: ids,
+                reason,
+                requested_by,
+                dry_run,
+            },
+            rebuild_semantic,
+            json,
+        )?,
         Command::ReviewResolve {
             review_id,
             note,
@@ -833,6 +875,7 @@ fn open_store(database: &std::path::Path, verbose: bool) -> anyhow::Result<Memor
 enum OpenFailureKind {
     Connection,
     Integrity,
+    Busy,
     Other,
 }
 
@@ -842,6 +885,7 @@ fn classify_open_failure(error: &NahualiError) -> OpenFailureKind {
             OpenFailureKind::Integrity
         }
         NahualiError::Database { .. } | NahualiError::Runtime { .. } => OpenFailureKind::Connection,
+        NahualiError::StoreBusy { .. } => OpenFailureKind::Busy,
         _ => OpenFailureKind::Other,
     }
 }
@@ -859,6 +903,23 @@ fn report_open_failure(
             eprintln!("  Reason: {error}");
             eprintln!("  Preserve the store and inspect the reported record before retrying.");
             Err(error).context("the Nahuali store failed recorded-history validation")
+        }
+        OpenFailureKind::Busy => {
+            eprintln!("\u{2717} The local Nahuali store at {endpoint} is busy.");
+            eprintln!("  Reason: {error}");
+            eprintln!(
+                "  Another process kept it open. Short CLI commands queue automatically; a running"
+            );
+            eprintln!(
+                "  `nahuali-mcp`, `nahuali-api`, or `nahuali explore` holds it until it exits."
+            );
+            eprintln!(
+                "  Wait longer with NAHUALI_STORE_LOCK_TIMEOUT_MS=<ms>, stop the long-lived process,"
+            );
+            eprintln!(
+                "  or run a SurrealDB server and set NAHUALI_DB_URL=ws://... for concurrent access."
+            );
+            Err(error).context("the local Nahuali store is locked by another process")
         }
         OpenFailureKind::Connection if endpoint.starts_with("surrealkv://") => {
             eprintln!("\u{2717} Cannot open the local Nahuali store at {endpoint}.");

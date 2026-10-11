@@ -4,8 +4,8 @@ use reqwest::blocking::{Client, Response};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
-    AuthorityDecision, AuthorityMode, MEMORY_DATA_VERSION, MemoryData, MemoryKind, MemoryScope,
-    RecallOptions, RecallResult, RecallResultTrust,
+    AuthorityDecision, AuthorityMode, ClaimLifecycle, MEMORY_DATA_VERSION, MemoryData, MemoryKind,
+    MemoryScope, RecallOptions, RecallResult, RecallResultTrust,
     error::{NahualiError, Result},
     recall,
 };

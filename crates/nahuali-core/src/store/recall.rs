@@ -39,6 +39,7 @@ impl MemoryEngine {
         if query.trim().is_empty() {
             return Err(NahualiError::EmptyQuery);
         }
+        options.ranking.validate()?;
 
         Ok(recall::recall_with_options(&self.data, query, options))
     }

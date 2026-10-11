@@ -66,6 +66,13 @@ curl -X POST http://127.0.0.1:7070/v1/recall \
   -d '{"query":"Lena release","limit":10,"semantic":true}'
 ```
 
+`exclude_superseded: true` hides claims replaced by a newer evidence-backed
+value, and an optional `ranking` object (`confidence_weight`, `evidence_bonus`,
+`recency_weight`, `recency_half_life_ms`) overrides the ranking weights; omitted
+fields keep their defaults. Results carry `lifecycle`, `score_breakdown`,
+timestamps, and confidence. Erasure is CLI-only (`nahuali forget`); the HTTP API
+has no endpoint for it.
+
 Request bodies reject unknown fields (matching `additionalProperties: false` in the
 OpenAPI contract), so a typo such as `"authority":true` returns a `400` with code
 `validation_error` rather than being silently ignored.

@@ -213,6 +213,8 @@ fn print_counts(report: &LedgerAudit) {
         ("intention status changes", counts.intention_status_changes),
         ("reviews", counts.reviews_recorded),
         ("repairs", counts.repairs_applied),
+        ("forget requests", counts.memories_forgotten),
+        ("redacted", counts.records_redacted),
     ];
     let summary = rows
         .iter()
@@ -236,6 +238,8 @@ fn kind_label(kind: LedgerAuditEventKind) -> &'static str {
         LedgerAuditEventKind::IntentionStatusChanged => "intention-status",
         LedgerAuditEventKind::ReviewRecorded => "review",
         LedgerAuditEventKind::RepairApplied => "repair",
+        LedgerAuditEventKind::MemoryForgotten => "forget",
+        LedgerAuditEventKind::Redacted => "redacted",
     }
 }
 

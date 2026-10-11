@@ -44,7 +44,8 @@ alive beside the build identity. When the command is captured or redirected, it
 emits the stable `nahuali <semver>` line expected by agents, install checks, and
 benchmark tooling.
 
-Record an observation, derive a claim from it, and require evidence at recall:
+Record an observation, derive a claim from it (`--source-last` cites the episode
+just recorded), and require evidence at recall:
 
 ```bash
 nahuali remember "Lena owns the release notes" --mention Lena --tag product
@@ -169,10 +170,11 @@ interface, supports batch commands without an MCP tool-call round trip, and
 makes the exact database and JSON contract explicit in every invocation. MCP is
 an adapter for clients whose integration boundary is a tool protocol. Both
 interfaces have the same trust semantics; choosing the CLI does not bypass
-validation. An embedded database has one process owner, so do not point a
-running MCP server and CLI processes at the same embedded database
-simultaneously. Use remote SurrealDB when independent processes need shared
-access.
+validation. An embedded store has one process owner at a time: short CLI
+commands queue for it (bounded by `NAHUALI_STORE_LOCK_TIMEOUT_MS`, default 30
+seconds), but a running MCP server, HTTP API, or TUI holds it for its whole
+lifetime. Use remote SurrealDB (`--store ws://…`) when independent long-lived
+processes need shared access.
 
 Run `nahuali init` to install the bundled agent skill where supported and print
 a native MCP configuration. Nahuali is also published as
@@ -206,8 +208,18 @@ graph tables, snapshots, and semantic vectors are derived and rebuildable.
 - Semantic validators detect vector-index drift before that derived tier is trusted.
 - Backup restore replays the ledger and rebuilds derived state.
 
-The embedded store has one process owner. A second process fails clearly rather
-than waiting indefinitely or risking concurrent writes.
+The embedded store has one process owner. A second process waits for the lock
+with bounded backoff, so parallel short commands queue instead of failing, and
+fails clearly after `NAHUALI_STORE_LOCK_TIMEOUT_MS` rather than waiting
+indefinitely or risking concurrent writes. `--store <PATH|URL>` chooses where
+the store lives; `--database <NAME>` chooses a database inside it.
+
+`nahuali forget <id> --reason ...` erases memory by id with an auditable trace:
+the ledger records holding it (and memory derived from it) become redacted
+stubs that keep the hash chain verifiable, and a `memory_forgotten` record
+states who asked, when, and why. It does not reach backups, exports, receipts,
+or an unrebuilt semantic index. See the
+[GDPR position](compliance/gdpr-position.md) for the exact limits.
 
 ## Evidence and evaluation limits
 
@@ -248,6 +260,8 @@ NAHUALI_VERIFY_GITHUB_SETTINGS=1 bash scripts/security-supply-chain-check.sh
 - Detecting rollback or a fully re-chained history requires retaining an external checkpoint and policy.
 - Scope labels organize contexts; they are not access-control boundaries.
 - Self-inspection proposes work but never rewrites memory autonomously.
+- `forget` removes content from the store and its derived tiers, not from copies
+  made earlier; it is not proof of complete erasure.
 - Accounts, hosted sync, billing, and a managed control plane are not included.
 - APIs and storage behavior may still change before 1.0.
 

@@ -3033,6 +3033,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clap_complete",
+ "fs2",
  "nahuali-core",
  "nahuali-ui",
  "reqwest",

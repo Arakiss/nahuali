@@ -1,13 +1,17 @@
-use crate::inspection::{HealthSeverity, HealthSignal, HealthSignalKind, KnowledgeHealth};
+use std::collections::BTreeMap;
+
+use crate::inspection::{
+    HealthSeverity, HealthSignal, HealthSignalKind, KnowledgeHealth, claim_lifecycles,
+};
 use crate::model::{
-    Claim, IntentionStatus, Link, MemoryData, MemoryKind, MemoryScope, RecallResult,
-    RecallResultTrust, RecallResultTrustMode,
+    Claim, ClaimLifecycle, IntentionStatus, Link, MemoryData, MemoryKind, MemoryScope,
+    RecallResult, RecallResultTrust, RecallResultTrustMode, RecallScoreBreakdown,
 };
 use crate::{AuthorityDecision, AuthorityRecall, NahualiError, Result};
 use serde::{Deserialize, Serialize};
 
 /// Options for lexical recall over projected memory.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RecallOptions {
     /// Maximum number of results returned after filtering and scoring.
     pub limit: usize,
@@ -25,6 +29,14 @@ pub struct RecallOptions {
     /// at or after this millisecond timestamp. Set to `now - threshold` to
     /// exclude stale memory at query time instead of only flagging it.
     pub since_ms: Option<u64>,
+    /// Drop claims whose lifecycle is `superseded`. By default they are
+    /// returned, marked, and ranked after every non-superseded result.
+    #[serde(default)]
+    pub exclude_superseded: bool,
+    /// Weights that turn relevance, confidence, evidence, and recency into one
+    /// deterministic score.
+    #[serde(default)]
+    pub ranking: RecallRankingPolicy,
 }
 
 impl Default for RecallOptions {
@@ -36,7 +48,83 @@ impl Default for RecallOptions {
             require_evidence: false,
             as_of_ms: None,
             since_ms: None,
+            exclude_superseded: false,
+            ranking: RecallRankingPolicy::default(),
         }
+    }
+}
+
+/// Default recency half-life: 30 days.
+pub const DEFAULT_RECENCY_HALF_LIFE_MS: u64 = 30 * 24 * 60 * 60 * 1000;
+
+/// Tunable, deterministic recall ranking policy.
+///
+/// A result's score is `relevance + confidence + evidence + recency`:
+///
+/// - `relevance`: matched query terms plus match density (plus the entity
+///   mention bonus or the intention status bonus).
+/// - `confidence`: `confidence_weight × recorded confidence` for claims, links,
+///   and procedures.
+/// - `evidence`: `evidence_bonus` when a claim, link, or procedure cites a
+///   source episode.
+/// - `recency`: `recency_weight × 0.5^(age / recency_half_life_ms)`, where age
+///   is measured from the newest matching result, not the wall clock, so the
+///   same store and query always rank the same way.
+///
+/// With the default `recency_weight` below `1.0`, recency reorders results that
+/// match the same number of query terms but never outranks an additional
+/// matched term. Ties break by newer timestamp, then by id. Superseded claims
+/// are ranked after every non-superseded result regardless of score.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(default)]
+pub struct RecallRankingPolicy {
+    /// Multiplier applied to recorded confidence.
+    pub confidence_weight: f32,
+    /// Bonus for results that cite a source episode.
+    pub evidence_bonus: f32,
+    /// Maximum recency contribution, earned by the newest matching result.
+    pub recency_weight: f32,
+    /// Age, relative to the newest matching result, at which the recency
+    /// contribution halves. Must be greater than zero.
+    pub recency_half_life_ms: u64,
+}
+
+impl Default for RecallRankingPolicy {
+    fn default() -> Self {
+        Self {
+            confidence_weight: 1.0,
+            evidence_bonus: 0.25,
+            recency_weight: 0.5,
+            recency_half_life_ms: DEFAULT_RECENCY_HALF_LIFE_MS,
+        }
+    }
+}
+
+impl RecallRankingPolicy {
+    /// Reject weights that are negative or not finite and a zero half-life.
+    pub fn validate(&self) -> Result<()> {
+        for (name, value) in [
+            ("confidence_weight", self.confidence_weight),
+            ("evidence_bonus", self.evidence_bonus),
+            ("recency_weight", self.recency_weight),
+        ] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(NahualiError::InvalidRecallRanking {
+                    message: format!("{name} must be a finite number >= 0 (got {value})"),
+                });
+            }
+        }
+        if self.recency_half_life_ms == 0 {
+            return Err(NahualiError::InvalidRecallRanking {
+                message: "recency_half_life_ms must be greater than zero".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    fn recency(&self, age_ms: u64) -> f32 {
+        let half_lives = age_ms as f64 / self.recency_half_life_ms as f64;
+        (f64::from(self.recency_weight) * 0.5_f64.powf(half_lives)) as f32
     }
 }
 
@@ -69,6 +157,16 @@ fn recall_scoped(
     )
 }
 
+/// Scoring inputs for one candidate before the recency reference is known.
+struct Candidate {
+    relevance: f32,
+    confidence: Option<f32>,
+    has_evidence: bool,
+    created_at_ms: u64,
+    updated_at_ms: Option<u64>,
+    lifecycle: Option<ClaimLifecycle>,
+}
+
 pub(crate) fn recall_with_options(
     data: &MemoryData,
     query: &str,
@@ -79,6 +177,12 @@ pub(crate) fn recall_with_options(
         return Vec::new();
     }
 
+    let lifecycles = claim_lifecycles(data);
+    let episode_times = data
+        .episodes
+        .iter()
+        .map(|episode| (episode.id.as_str(), episode.created_at_ms))
+        .collect::<BTreeMap<_, _>>();
     let mut results = Vec::new();
 
     for entity in &data.entities {
@@ -96,15 +200,29 @@ pub(crate) fn recall_with_options(
 
         push_result(
             &mut results,
+            Candidate {
+                relevance: score(&haystack, &matched_terms) + entity.mention_count as f32 * 0.05,
+                confidence: None,
+                has_evidence: false,
+                created_at_ms: entity.first_seen_at_ms,
+                updated_at_ms: Some(entity.last_seen_at_ms),
+                lifecycle: None,
+            },
             RecallResult {
                 kind: MemoryKind::Entity,
                 id: entity.id.clone(),
-                score: score(&haystack, &matched_terms) + entity.mention_count as f32 * 0.05,
+                score: 0.0,
                 excerpt: entity.name.clone(),
                 evidence_id: entity.source_event_ids.first().cloned(),
                 matched_terms,
                 scope: entity.scope.clone(),
                 trust: None,
+                created_at_ms: None,
+                updated_at_ms: None,
+                observed_at_ms: None,
+                confidence: None,
+                lifecycle: None,
+                score_breakdown: None,
             },
             &options,
         );
@@ -125,15 +243,29 @@ pub(crate) fn recall_with_options(
 
         push_result(
             &mut results,
+            Candidate {
+                relevance: score(&haystack, &matched_terms),
+                confidence: None,
+                has_evidence: false,
+                created_at_ms: episode.created_at_ms,
+                updated_at_ms: None,
+                lifecycle: None,
+            },
             RecallResult {
                 kind: MemoryKind::Episode,
                 id: episode.id.clone(),
-                score: score(&haystack, &matched_terms),
+                score: 0.0,
                 excerpt: episode.content.clone(),
                 evidence_id: Some(episode.id.clone()),
                 matched_terms,
                 scope: episode.scope.clone(),
+                observed_at_ms: Some(episode.created_at_ms),
                 trust: None,
+                created_at_ms: None,
+                updated_at_ms: None,
+                confidence: None,
+                lifecycle: None,
+                score_breakdown: None,
             },
             &options,
         );
@@ -152,23 +284,36 @@ pub(crate) fn recall_with_options(
             continue;
         }
 
-        let evidence_bonus = if claim.source_episode_id.is_some() {
-            0.25
-        } else {
-            0.0
-        };
-
         push_result(
             &mut results,
+            Candidate {
+                relevance: score(&haystack, &matched_terms),
+                confidence: Some(claim.confidence),
+                has_evidence: claim.source_episode_id.is_some(),
+                created_at_ms: claim.created_at_ms,
+                updated_at_ms: None,
+                lifecycle: Some(
+                    lifecycles
+                        .get(&claim.id)
+                        .cloned()
+                        .unwrap_or_else(ClaimLifecycle::current),
+                ),
+            },
             RecallResult {
                 kind: MemoryKind::Claim,
                 id: claim.id.clone(),
-                score: score(&haystack, &matched_terms) + claim.confidence + evidence_bonus,
+                score: 0.0,
                 excerpt: format!("{} {} {}", claim.subject, claim.predicate, claim.object),
                 evidence_id: claim.source_episode_id.clone(),
                 matched_terms,
                 scope: claim.scope.clone(),
+                observed_at_ms: observed_at(&episode_times, claim.source_episode_id.as_deref()),
                 trust: None,
+                created_at_ms: None,
+                updated_at_ms: None,
+                confidence: None,
+                lifecycle: None,
+                score_breakdown: None,
             },
             &options,
         );
@@ -187,23 +332,31 @@ pub(crate) fn recall_with_options(
             continue;
         }
 
-        let evidence_bonus = if link.source_episode_id.is_some() {
-            0.25
-        } else {
-            0.0
-        };
-
         push_result(
             &mut results,
+            Candidate {
+                relevance: score(&haystack, &matched_terms),
+                confidence: Some(link.confidence),
+                has_evidence: link.source_episode_id.is_some(),
+                created_at_ms: link.created_at_ms,
+                updated_at_ms: None,
+                lifecycle: None,
+            },
             RecallResult {
                 kind: MemoryKind::Link,
                 id: link.id.clone(),
-                score: score(&haystack, &matched_terms) + link.confidence + evidence_bonus,
+                score: 0.0,
                 excerpt: format!("{} {} {}", link.from, link.relation, link.to),
                 evidence_id: link.source_episode_id.clone(),
                 matched_terms,
                 scope: link.scope.clone(),
+                observed_at_ms: observed_at(&episode_times, link.source_episode_id.as_deref()),
                 trust: None,
+                created_at_ms: None,
+                updated_at_ms: None,
+                confidence: None,
+                lifecycle: None,
+                score_breakdown: None,
             },
             &options,
         );
@@ -222,23 +375,31 @@ pub(crate) fn recall_with_options(
             continue;
         }
 
-        let evidence_bonus = if procedure.source_episode_id.is_some() {
-            0.25
-        } else {
-            0.0
-        };
-
         push_result(
             &mut results,
+            Candidate {
+                relevance: score(&haystack, &matched_terms),
+                confidence: Some(procedure.confidence),
+                has_evidence: procedure.source_episode_id.is_some(),
+                created_at_ms: procedure.created_at_ms,
+                updated_at_ms: None,
+                lifecycle: None,
+            },
             RecallResult {
                 kind: MemoryKind::Procedure,
                 id: procedure.id.clone(),
-                score: score(&haystack, &matched_terms) + procedure.confidence + evidence_bonus,
+                score: 0.0,
                 excerpt: format!("{}: {}", procedure.name, procedure.body),
                 evidence_id: procedure.source_episode_id.clone(),
                 matched_terms,
                 scope: procedure.scope.clone(),
+                observed_at_ms: observed_at(&episode_times, procedure.source_episode_id.as_deref()),
                 trust: None,
+                created_at_ms: None,
+                updated_at_ms: None,
+                confidence: None,
+                lifecycle: None,
+                score_breakdown: None,
             },
             &options,
         );
@@ -268,29 +429,113 @@ pub(crate) fn recall_with_options(
 
         push_result(
             &mut results,
+            Candidate {
+                relevance: score(&haystack, &matched_terms) + status_bonus,
+                confidence: None,
+                has_evidence: false,
+                created_at_ms: intention.created_at_ms,
+                updated_at_ms: Some(intention.updated_at_ms),
+                lifecycle: None,
+            },
             RecallResult {
                 kind: MemoryKind::Intention,
                 id: intention.id.clone(),
-                score: score(&haystack, &matched_terms) + status_bonus,
+                score: 0.0,
                 excerpt: intention.description.clone(),
                 evidence_id: intention.source_episode_id.clone(),
                 matched_terms,
                 scope: intention.scope.clone(),
+                observed_at_ms: observed_at(&episode_times, intention.source_episode_id.as_deref()),
                 trust: None,
+                created_at_ms: None,
+                updated_at_ms: None,
+                confidence: None,
+                lifecycle: None,
+                score_breakdown: None,
             },
             &options,
         );
     }
 
-    results.sort_by(|left, right| {
-        right
-            .score
-            .partial_cmp(&left.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| left.id.cmp(&right.id))
-    });
+    let mut results = rank(results, &options.ranking);
     results.truncate(options.limit.max(1));
     results
+}
+
+/// Turn candidates into scored results and order them: non-superseded before
+/// superseded, then score, then newer timestamp, then id.
+fn rank(
+    candidates: Vec<(Candidate, RecallResult)>,
+    policy: &RecallRankingPolicy,
+) -> Vec<RecallResult> {
+    let reference_ms = candidates
+        .iter()
+        .map(|(candidate, _)| recency_timestamp(candidate))
+        .max()
+        .unwrap_or_default();
+    let mut ranked = candidates
+        .into_iter()
+        .map(|(candidate, mut result)| {
+            let breakdown = RecallScoreBreakdown {
+                relevance: candidate.relevance,
+                confidence: candidate
+                    .confidence
+                    .map(|confidence| confidence * policy.confidence_weight)
+                    .unwrap_or_default(),
+                evidence: if candidate.has_evidence {
+                    policy.evidence_bonus
+                } else {
+                    0.0
+                },
+                recency: policy.recency(reference_ms.saturating_sub(recency_timestamp(&candidate))),
+            };
+            result.score =
+                breakdown.relevance + breakdown.confidence + breakdown.evidence + breakdown.recency;
+            result.score_breakdown = Some(breakdown);
+            result.confidence = candidate.confidence;
+            result.created_at_ms = Some(candidate.created_at_ms);
+            result.updated_at_ms = candidate
+                .updated_at_ms
+                .filter(|updated| *updated != candidate.created_at_ms);
+            result.lifecycle = candidate.lifecycle;
+            (recency_timestamp_of(&result), result)
+        })
+        .collect::<Vec<_>>();
+    ranked.sort_by(|(left_ts, left), (right_ts, right)| {
+        is_superseded(left)
+            .cmp(&is_superseded(right))
+            .then_with(|| {
+                right
+                    .score
+                    .partial_cmp(&left.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| right_ts.cmp(left_ts))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    ranked.into_iter().map(|(_, result)| result).collect()
+}
+
+fn recency_timestamp(candidate: &Candidate) -> u64 {
+    candidate.updated_at_ms.unwrap_or(candidate.created_at_ms)
+}
+
+fn recency_timestamp_of(result: &RecallResult) -> u64 {
+    result
+        .updated_at_ms
+        .or(result.created_at_ms)
+        .unwrap_or_default()
+}
+
+pub(crate) fn is_superseded(result: &RecallResult) -> bool {
+    result
+        .lifecycle
+        .as_ref()
+        .is_some_and(ClaimLifecycle::is_superseded)
+}
+
+fn observed_at(episode_times: &BTreeMap<&str, u64>, episode_id: Option<&str>) -> Option<u64> {
+    episode_id.and_then(|id| episode_times.get(id).copied())
 }
 
 /// Recall directly from an already projected memory state and attach the same
@@ -310,6 +555,7 @@ pub fn recall_projection_with_authority(
     if query.trim().is_empty() {
         return Err(NahualiError::EmptyQuery);
     }
+    options.ranking.validate()?;
 
     let scope = options.scope.clone();
     let mut results = recall_with_options(data, query, options);
@@ -435,6 +681,12 @@ pub(crate) fn attach_hybrid_result_trust(
             matched_terms: result.matched_terms.clone(),
             scope: None,
             trust: None,
+            created_at_ms: None,
+            updated_at_ms: None,
+            observed_at_ms: None,
+            confidence: None,
+            lifecycle: result.lifecycle.clone(),
+            score_breakdown: None,
         };
         result.trust = Some(result_trust(data, health, &proxy));
     }
@@ -446,6 +698,12 @@ fn result_trust(
     result: &RecallResult,
 ) -> RecallResultTrust {
     let source_event_id = source_event_id_for_result(data, result);
+    // A supersession signal cites both the retired and the replacing claim; it
+    // weakens only the retired one. The replacing claim is the current value.
+    let replaced_an_older_value = result
+        .lifecycle
+        .as_ref()
+        .is_some_and(|lifecycle| !lifecycle.is_superseded());
     let local_signals = source_event_id
         .as_deref()
         .map(|event_id| {
@@ -453,12 +711,37 @@ fn result_trust(
                 .signals
                 .iter()
                 .filter(|signal| signal.evidence_ids.iter().any(|id| id == event_id))
+                .filter(|signal| {
+                    !(replaced_an_older_value && signal.kind == HealthSignalKind::SupersededFact)
+                })
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
 
     if !local_signals.is_empty() {
         return trust_from_signals(local_signals);
+    }
+
+    if let Some(superseded_by) = result
+        .lifecycle
+        .as_ref()
+        .filter(|lifecycle| lifecycle.is_superseded())
+        .and_then(|lifecycle| lifecycle.superseded_by.as_deref())
+    {
+        let replacement = projected_claims(data)
+            .iter()
+            .find(|claim| claim.id == superseded_by)
+            .map(|claim| format!("{} {} {}", claim.subject, claim.predicate, claim.object))
+            .unwrap_or_else(|| superseded_by.to_string());
+        return RecallResultTrust {
+            mode: RecallResultTrustMode::Advisory,
+            score: 0.75,
+            can_trust: false,
+            reasons: vec![format!(
+                "Superseded by '{replacement}' ({superseded_by}); kept as history, not current memory."
+            )],
+            signal_kinds: vec![signal_kind_name(&HealthSignalKind::SupersededFact).into()],
+        };
     }
 
     match result.kind {
@@ -564,6 +847,24 @@ fn severity_rank(severity: &HealthSeverity) -> u8 {
     }
 }
 
+/// Whether a recall hit from a derived index (such as the semantic tier) still
+/// names an item in the ledger projection. Derived indexes can lag the ledger;
+/// recall must never surface an item the projection no longer contains.
+pub(crate) fn projection_contains(data: &MemoryData, kind: &MemoryKind, id: &str) -> bool {
+    match kind {
+        MemoryKind::Entity => data.entities.iter().any(|entity| entity.id == id),
+        MemoryKind::Episode => data.episodes.iter().any(|episode| episode.id == id),
+        MemoryKind::Claim | MemoryKind::Fact => {
+            projected_claims(data).iter().any(|claim| claim.id == id)
+        }
+        MemoryKind::Link | MemoryKind::Relation => {
+            projected_links(data).iter().any(|link| link.id == id)
+        }
+        MemoryKind::Procedure => data.procedures.iter().any(|procedure| procedure.id == id),
+        MemoryKind::Intention => data.intentions.iter().any(|intention| intention.id == id),
+    }
+}
+
 fn source_event_id_for_result(data: &MemoryData, result: &RecallResult) -> Option<String> {
     match result.kind {
         MemoryKind::Entity => data
@@ -610,14 +911,27 @@ fn signal_kind_name(kind: &HealthSignalKind) -> &'static str {
     }
 }
 
-fn push_result(results: &mut Vec<RecallResult>, result: RecallResult, options: &RecallOptions) {
+fn push_result(
+    results: &mut Vec<(Candidate, RecallResult)>,
+    candidate: Candidate,
+    result: RecallResult,
+    options: &RecallOptions,
+) {
     if !kind_allowed(&result.kind, &options.kinds) {
         return;
     }
     if options.require_evidence && result.evidence_id.is_none() {
         return;
     }
-    results.push(result);
+    if options.exclude_superseded
+        && candidate
+            .lifecycle
+            .as_ref()
+            .is_some_and(ClaimLifecycle::is_superseded)
+    {
+        return;
+    }
+    results.push((candidate, result));
 }
 
 fn kind_allowed(kind: &MemoryKind, allowed: &[MemoryKind]) -> bool {
@@ -757,11 +1071,12 @@ fn normalize(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use crate::model::{
-        Claim, Episode, Link, MemoryData, MemoryKind, MemoryScope, MemoryScopeKind,
+        Claim, ClaimStatus, Episode, Link, MemoryData, MemoryKind, MemoryScope, MemoryScopeKind,
     };
 
     use super::{
-        RecallOptions, recall, recall_projection_with_authority, recall_scoped, recall_with_options,
+        RecallOptions, RecallRankingPolicy, recall, recall_projection_with_authority,
+        recall_scoped, recall_with_options,
     };
 
     #[test]
@@ -863,6 +1178,7 @@ mod tests {
                 evidence_id: result.evidence_id.clone(),
                 matched_terms: result.matched_terms.clone(),
                 explanations: Vec::new(),
+                lifecycle: result.lifecycle.clone(),
             })
             .collect();
         attach_hybrid_result_trust(&data, &health, &mut hybrid);
@@ -1298,5 +1614,320 @@ mod tests {
         );
 
         assert!(results.is_empty());
+    }
+
+    fn sourced_claim(id: &str, episode: &str, object: &str, confidence: f32, at: u64) -> Claim {
+        Claim {
+            id: id.to_string(),
+            event_id: format!("event_{id}"),
+            subject: "Arnold".to_string(),
+            predicate: "editor".to_string(),
+            object: object.to_string(),
+            source_episode_id: Some(episode.to_string()),
+            confidence,
+            scope: None,
+            created_at_ms: at,
+        }
+    }
+
+    fn observed_episode(id: &str, content: &str, at: u64) -> Episode {
+        Episode {
+            id: id.to_string(),
+            event_id: format!("event_{id}"),
+            content: content.to_string(),
+            tags: Vec::new(),
+            mentions: Vec::new(),
+            source_id: None,
+            source_position: None,
+            source_role: None,
+            scope: None,
+            created_at_ms: at,
+        }
+    }
+
+    const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+    // Far enough in the future that staleness checks never fire.
+    const FRESH_MS: u64 = u64::MAX / 4;
+
+    fn editor_switch(old_confidence: f32, new_confidence: f32) -> MemoryData {
+        let day = DAY_MS;
+        MemoryData {
+            event_count: 4,
+            last_event_id: Some("event_claim_helix".to_string()),
+            episodes: vec![
+                observed_episode("episode_vim", "Arnold uses Vim", FRESH_MS + 10 * day),
+                observed_episode(
+                    "episode_helix",
+                    "Arnold switched to Helix",
+                    FRESH_MS + 70 * day,
+                ),
+            ],
+            claims: vec![
+                sourced_claim(
+                    "claim_vim",
+                    "episode_vim",
+                    "Vim",
+                    old_confidence,
+                    FRESH_MS + 10 * day,
+                ),
+                sourced_claim(
+                    "claim_helix",
+                    "episode_helix",
+                    "Helix",
+                    new_confidence,
+                    FRESH_MS + 70 * day,
+                ),
+            ],
+            ..MemoryData::default()
+        }
+    }
+
+    #[test]
+    fn superseded_claim_ranks_after_current_even_with_higher_confidence() {
+        let data = editor_switch(1.0, 0.5);
+        let results = recall_with_options(
+            &data,
+            "Arnold editor",
+            RecallOptions {
+                kinds: vec![MemoryKind::Claim],
+                ..RecallOptions::default()
+            },
+        );
+
+        assert_eq!(
+            results
+                .iter()
+                .map(|result| result.id.as_str())
+                .collect::<Vec<_>>(),
+            ["claim_helix", "claim_vim"]
+        );
+        assert!(results[1].score > results[0].score, "tier wins over score");
+        let vim = results[1]
+            .lifecycle
+            .as_ref()
+            .expect("claims carry lifecycle");
+        assert_eq!(vim.status, ClaimStatus::Superseded);
+        assert_eq!(vim.superseded_by.as_deref(), Some("claim_helix"));
+        assert_eq!(vim.superseded_at_ms, Some(FRESH_MS + 70 * DAY_MS));
+        let helix = results[0]
+            .lifecycle
+            .as_ref()
+            .expect("claims carry lifecycle");
+        assert_eq!(helix.status, ClaimStatus::Current);
+        assert_eq!(helix.supersedes, ["claim_vim"]);
+        assert_eq!(results[0].observed_at_ms, Some(FRESH_MS + 70 * DAY_MS));
+        assert_eq!(results[1].confidence, Some(1.0));
+
+        let current_only = recall_with_options(
+            &data,
+            "Arnold editor",
+            RecallOptions {
+                kinds: vec![MemoryKind::Claim],
+                exclude_superseded: true,
+                ..RecallOptions::default()
+            },
+        );
+        assert_eq!(current_only.len(), 1);
+        assert_eq!(current_only[0].id, "claim_helix");
+    }
+
+    #[test]
+    fn recency_decays_by_half_life_from_the_newest_match() {
+        let data = editor_switch(0.8, 0.8);
+        let results = recall_with_options(
+            &data,
+            "Arnold editor",
+            RecallOptions {
+                kinds: vec![MemoryKind::Claim],
+                ..RecallOptions::default()
+            },
+        );
+        let helix = results[0].score_breakdown.as_ref().unwrap();
+        let vim = results[1].score_breakdown.as_ref().unwrap();
+        // 60 days apart with a 30-day half-life: two halvings of the 0.5 weight.
+        assert!((helix.recency - 0.5).abs() < 1e-6);
+        assert!((vim.recency - 0.125).abs() < 1e-6);
+        assert!((helix.confidence - 0.8).abs() < 1e-6);
+        assert!((helix.evidence - 0.25).abs() < 1e-6);
+        let total = helix.relevance + helix.confidence + helix.evidence + helix.recency;
+        assert!((results[0].score - total).abs() < 1e-6);
+    }
+
+    #[test]
+    fn recency_reorders_equal_matches_but_never_beats_an_extra_matched_term() {
+        let day = 24 * 60 * 60 * 1000;
+        let data = MemoryData {
+            event_count: 2,
+            last_event_id: Some("event_new".to_string()),
+            episodes: vec![
+                observed_episode("episode_old", "release checklist Lena", day),
+                observed_episode("episode_new", "release owner is Mateo now", 400 * day),
+            ],
+            ..MemoryData::default()
+        };
+
+        let both_terms = recall(&data, "release checklist", 10);
+        assert_eq!(
+            both_terms[0].id, "episode_old",
+            "two matched terms beat recency"
+        );
+
+        let one_term = recall(&data, "release", 10);
+        assert_eq!(one_term[0].id, "episode_new", "same match, newer wins");
+
+        let no_recency = recall_with_options(
+            &data,
+            "release",
+            RecallOptions {
+                ranking: RecallRankingPolicy {
+                    recency_weight: 0.0,
+                    ..RecallRankingPolicy::default()
+                },
+                ..RecallOptions::default()
+            },
+        );
+        // Without recency the shorter (denser) old episode wins on relevance.
+        assert_eq!(no_recency[0].id, "episode_old");
+    }
+
+    #[test]
+    fn ranking_is_independent_of_unrelated_newer_memory() {
+        let data = editor_switch(0.8, 0.8);
+        let baseline = recall(&data, "Arnold editor", 10);
+
+        let mut with_unrelated = data.clone();
+        with_unrelated.episodes.push(observed_episode(
+            "episode_unrelated",
+            "Mateo bought coffee",
+            u64::MAX / 2,
+        ));
+        let again = recall(&with_unrelated, "Arnold editor", 10);
+
+        assert_eq!(baseline, again);
+    }
+
+    #[test]
+    fn confidence_weight_is_tunable() {
+        let data = MemoryData {
+            event_count: 2,
+            last_event_id: Some("event_b".to_string()),
+            claims: vec![
+                Claim {
+                    subject: "Lena".to_string(),
+                    predicate: "owns".to_string(),
+                    object: "billing".to_string(),
+                    ..sourced_claim("claim_a", "episode_1", "", 0.9, 5)
+                },
+                Claim {
+                    subject: "Lena".to_string(),
+                    predicate: "owns".to_string(),
+                    object: "billing".to_string(),
+                    ..sourced_claim("claim_b", "episode_1", "", 0.3, 5)
+                },
+            ],
+            ..MemoryData::default()
+        };
+        let weighted = recall(&data, "billing", 10);
+        assert_eq!(weighted[0].id, "claim_a");
+        assert!((weighted[0].score - weighted[1].score - 0.6).abs() < 1e-5);
+
+        let unweighted = recall_with_options(
+            &data,
+            "billing",
+            RecallOptions {
+                ranking: RecallRankingPolicy {
+                    confidence_weight: 0.0,
+                    ..RecallRankingPolicy::default()
+                },
+                ..RecallOptions::default()
+            },
+        );
+        assert!((unweighted[0].score - unweighted[1].score).abs() < 1e-6);
+        assert_eq!(unweighted[0].id, "claim_a", "exact ties break by id");
+    }
+
+    #[test]
+    fn invalid_ranking_policy_is_rejected() {
+        let data = editor_switch(0.8, 0.8);
+        for ranking in [
+            RecallRankingPolicy {
+                recency_weight: -0.1,
+                ..RecallRankingPolicy::default()
+            },
+            RecallRankingPolicy {
+                confidence_weight: f32::NAN,
+                ..RecallRankingPolicy::default()
+            },
+            RecallRankingPolicy {
+                recency_half_life_ms: 0,
+                ..RecallRankingPolicy::default()
+            },
+        ] {
+            let error = recall_projection_with_authority(
+                &data,
+                "Arnold editor",
+                RecallOptions {
+                    ranking,
+                    ..RecallOptions::default()
+                },
+            )
+            .unwrap_err();
+            assert!(matches!(
+                error,
+                crate::NahualiError::InvalidRecallRanking { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn current_value_is_not_weakened_by_the_supersession_it_caused() {
+        use crate::RecallResultTrustMode;
+
+        let data = editor_switch(0.8, 0.8);
+        let report =
+            recall_projection_with_authority(&data, "Arnold editor", RecallOptions::default())
+                .unwrap();
+        let trust_of = |id: &str| {
+            report
+                .results
+                .iter()
+                .find(|result| result.id == id)
+                .and_then(|result| result.trust.clone())
+                .expect("trust attached")
+        };
+        assert_eq!(trust_of("claim_helix").mode, RecallResultTrustMode::Certify);
+        let vim = trust_of("claim_vim");
+        assert_eq!(vim.mode, RecallResultTrustMode::Warn);
+        assert_eq!(vim.signal_kinds, ["superseded_fact"]);
+    }
+
+    #[test]
+    fn projection_contains_rejects_items_missing_from_the_ledger() {
+        let data = editor_switch(0.8, 0.8);
+        assert!(super::projection_contains(
+            &data,
+            &MemoryKind::Claim,
+            "claim_vim"
+        ));
+        assert!(super::projection_contains(
+            &data,
+            &MemoryKind::Fact,
+            "claim_vim"
+        ));
+        assert!(!super::projection_contains(
+            &data,
+            &MemoryKind::Claim,
+            "claim_gone"
+        ));
+        assert!(super::projection_contains(
+            &data,
+            &MemoryKind::Episode,
+            "episode_vim"
+        ));
+        assert!(!super::projection_contains(
+            &data,
+            &MemoryKind::Episode,
+            "episode_gone"
+        ));
     }
 }

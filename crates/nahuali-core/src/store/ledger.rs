@@ -41,6 +41,14 @@ async fn read_records(path: &Path) -> Result<Vec<EventEnvelope>> {
         events.push(record.envelope);
     }
 
+    if let Some(violation) = crate::event::verify_redactions(&events) {
+        return Err(NahualiError::InvalidRecordLedger {
+            path: path.to_path_buf(),
+            record: violation.record,
+            message: violation.message,
+        });
+    }
+
     Ok(events)
 }
 

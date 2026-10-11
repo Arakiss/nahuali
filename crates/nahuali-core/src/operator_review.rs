@@ -263,7 +263,7 @@ fn severity_score(severity: &HealthSeverity) -> u32 {
 fn operator_guidance(action: &SelfInspectionReviewAction) -> &'static str {
     match action {
         SelfInspectionReviewAction::CaptureEvidence => {
-            "Record or attach source evidence before relying on this memory."
+            "Record the supporting observation as an episode (`remember`), then derive the memory from it with `--source-last` (for example `claim … --source-last`) or `--source-episode <id>`."
         }
         SelfInspectionReviewAction::ResolveContradiction => {
             "Review the conflicting evidence, record the resolution as a new episode, then add corrected claims explicitly."

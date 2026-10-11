@@ -111,6 +111,23 @@ pub enum NahualiError {
         /// Database path that could not be used.
         path: PathBuf,
     },
+    /// Another process kept the embedded store locked for longer than the
+    /// configured wait.
+    #[error(
+        "the embedded store at {endpoint} is locked by another process (waited {waited_ms} ms); embedded SurrealKV admits one process at a time"
+    )]
+    StoreBusy {
+        /// Embedded store endpoint that stayed locked.
+        endpoint: String,
+        /// Milliseconds spent waiting before giving up.
+        waited_ms: u64,
+    },
+    /// `NAHUALI_STORE_LOCK_TIMEOUT_MS` was not a whole number of milliseconds.
+    #[error("NAHUALI_STORE_LOCK_TIMEOUT_MS must be a whole number of milliseconds (got {value:?})")]
+    InvalidStoreLockTimeout {
+        /// Rejected value.
+        value: String,
+    },
     /// A short-lived runtime could not be created for embedded database work.
     #[error("failed to create async runtime: {source}")]
     Runtime {
@@ -191,6 +208,25 @@ pub enum NahualiError {
     InvalidSemanticConfig {
         /// Human-readable configuration failure.
         message: String,
+    },
+    /// A recall ranking policy carried a weight or half-life that cannot rank
+    /// deterministically.
+    #[error("invalid recall ranking policy: {message}")]
+    InvalidRecallRanking {
+        /// Human-readable validation failure.
+        message: String,
+    },
+    /// A forget request could not be planned.
+    #[error("invalid forget request: {message}")]
+    InvalidForgetRequest {
+        /// Human-readable validation failure.
+        message: String,
+    },
+    /// A forget target names no live memory in this store.
+    #[error("cannot forget '{id}': no memory with that id (unknown or already forgotten)")]
+    UnknownForgetTarget {
+        /// Requested memory identifier.
+        id: String,
     },
     /// A local embedding model could not be loaded or produced no vectors.
     #[error("local embedding model error: {message}")]

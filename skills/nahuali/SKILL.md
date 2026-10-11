@@ -82,11 +82,15 @@ nahuali intention-complete <intention-id> --reason "landed in 0.6.1"
 nahuali recall "ledger backend" --authority       # rank by governance authority
 nahuali recall "who owns billing" --semantic       # fuzzy match by meaning (needs the semantic index)
 nahuali recall roadmap --kind intention --require-evidence --limit 25
+nahuali recall "billing owner" --exclude-superseded   # hide values replaced by newer evidence
 ```
 
 Add `--json` to any command for clean machine output (colour and extras are
 human-only and never pollute the JSON). Every command accepts `--database
-<name>` to target a store other than the default.
+<name>` (a database *name* inside the store, never a path) and `--store
+<path|url>` (where the store lives). Parallel short commands against the
+embedded store queue for its lock; a running MCP server or TUI holds it until it
+exits.
 
 ## The four memory types — and *when* to write each
 
@@ -114,8 +118,15 @@ Each `recall` result prints a trust line. Branch on it:
 - **`ADVISORY`** (score 0.75) — observed but not an evidence-backed assertion on
   its own (e.g. a bare entity). State it as a lead ("memory suggests…"), not a
   settled fact.
-- **`WARN`** (score 0.50) — relevant but missing support, stale, or superseded.
-  Do not act through it without confirming against the repo/git/tests.
+- **`WARN`** (score 0.50) — relevant but missing support, stale, or superseded
+  before an operator reviewed it. Do not act through it without confirming
+  against the repo/git/tests.
+
+Claims also print a `lifecycle:` line. `superseded by <id>` means a newer
+evidence-backed value replaced this one; use the replacement, and treat the old
+value as history even after the review item was resolved (it then reads
+`ADVISORY`). Results are ranked by relevance, confidence, evidence, and recency;
+`--json` shows `score_breakdown` for each result.
 - **`BLOCK`** (score 0.00) — a high-risk signal such as a contradiction. Do not
   rely on it.
 
@@ -143,6 +154,12 @@ tests before acting.
 **Repairs are explicit and conservative.** Apply only safe, evidence-supported
 corrections surfaced by `self-inspect`; never invent facts, delete memory, or
 rewrite history. The ledger is appended to, never edited in place.
+
+`nahuali forget <id> --reason ...` (erasure, e.g. a GDPR request) is an
+**operator-only** command. Never run it on your own initiative or to "clean up"
+memory; do so only when the human explicitly asks to erase specific memory,
+preview with `--dry-run` first, and do not repeat the erased content in
+`--reason`.
 
 ## Data safety (non-negotiable)
 

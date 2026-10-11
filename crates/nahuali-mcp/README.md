@@ -108,7 +108,15 @@ to produce it, so clients can distinguish `certify`, `advisory`, `warn`, and
 `block` outcomes without issuing separate calls. Authority JSON includes stable
 `mode`, `score`, `can_trust`, and deduplicated `signal_kinds` fields.
 The tool also accepts `kinds` and `requireEvidence` when a host needs a narrow,
-evidence-backed recall surface before acting.
+evidence-backed recall surface before acting, and `excludeSuperseded` to hide
+claims replaced by a newer evidence-backed value. Claim results carry a
+`lifecycle` (`current`, `superseded` with `superseded_by`, or `contested`) and
+every result carries a `score_breakdown`, timestamps, and confidence; superseded
+claims rank after current memory.
+
+Erasure (`nahuali forget`) is intentionally not an MCP tool: it is an explicit
+operator action on the CLI, so an agent cannot erase memory through its tool
+surface.
 The `graph` tool returns a deterministic graph neighborhood around a seed,
 including nodes, edges, depth, evidence IDs, authority, and health/review
 overlays.

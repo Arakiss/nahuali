@@ -303,6 +303,7 @@ ok "sha256 matches"
 # ---------------------------------------------------------------------------
 step "Verifying signature"
 REQUIRE_SIGSTORE="${NAHUALI_REQUIRE_SIGSTORE:-0}"
+SIGNATURE_STATUS=""
 if ! have cosign; then
   if [ "$REQUIRE_SIGSTORE" = "1" ]; then
     fail "NAHUALI_REQUIRE_SIGSTORE=1 but 'cosign' was not found on PATH." \
@@ -310,17 +311,20 @@ if ! have cosign; then
       "or unset NAHUALI_REQUIRE_SIGSTORE to install with checksum-only verification."
   fi
   warn "cosign not found. SIGNATURE NOT VERIFIED (checksum verified). Install cosign and set NAHUALI_REQUIRE_SIGSTORE=1 to require it."
+  SIGNATURE_STATUS="NOT verified (cosign not installed); only the SHA-256 checksum was checked."
 elif ! fetch_to "$BUNDLE_URL" "$BUNDLE_PATH" 2>/dev/null || [ ! -s "$BUNDLE_PATH" ]; then
   if [ "$REQUIRE_SIGSTORE" = "1" ]; then
     fail "NAHUALI_REQUIRE_SIGSTORE=1 but no Sigstore bundle was published for this release." \
       "URL: ${BUNDLE_URL}"
   fi
   warn "no Sigstore bundle published for this release. SIGNATURE NOT VERIFIED (checksum verified)."
+  SIGNATURE_STATUS="NOT verified (no Sigstore bundle for this release); only the SHA-256 checksum was checked."
 elif cosign verify-blob "$ARCHIVE_PATH" \
   --bundle "$BUNDLE_PATH" \
   --certificate-identity "$SIGNER_IDENTITY" \
   --certificate-oidc-issuer "$OIDC_ISSUER" >/dev/null 2>&1; then
   ok "signature verified (${TAG})"
+  SIGNATURE_STATUS="verified (Sigstore, ${TAG})."
 else
   fail "Sigstore signature verification FAILED. Refusing to install." \
     "The archive was not signed by the expected release identity, or it was altered in transit." \
@@ -393,6 +397,17 @@ case ":${PATH}:" in
 esac
 
 printf '\n%s%sNahuali v%s is installed.%s\n' "${C_GREEN}${C_BOLD}" "" "${VERSION}" "${C_RESET}"
+# Repeat the signature outcome here: the in-step warning scrolls away, and an
+# unverified signature must not read like a fully verified install.
+case "$SIGNATURE_STATUS" in
+  verified*)
+    printf 'Signature: %s\n' "$SIGNATURE_STATUS"
+    ;;
+  *)
+    printf '%sSignature: %s%s\n' "${C_YELLOW}${C_BOLD}" "$SIGNATURE_STATUS" "${C_RESET}"
+    printf '%sTo verify release signatures, install cosign (https://docs.sigstore.dev/cosign/system_config/installation/) and re-run with NAHUALI_REQUIRE_SIGSTORE=1.%s\n' "${C_DIM}" "${C_RESET}"
+    ;;
+esac
 
 # Replacing a binary does not replace code already loaded by a long-lived MCP
 # process. Mixing engine versions against one embedded store can fail while the

@@ -4,7 +4,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use nahuali_core::{
     DEFAULT_INTENTION_STALE_AFTER_MS, DEFAULT_PROACTIVE_DEADLINE_HORIZON_MS,
     DEFAULT_TEXT_CHUNK_BYTES, IntentionKind, IntentionPriority, IntentionStatus, MemoryHookKind,
-    MemoryKind, SelfInspectionReviewAction, SelfInspectionReviewPriority, SourceKind, TextChunking,
+    MemoryKind, RecallRankingPolicy, SelfInspectionReviewAction, SelfInspectionReviewPriority,
+    SourceKind, TextChunking,
 };
 
 /// Custom help template for the root command. clap renders every subcommand in a
@@ -40,6 +41,7 @@ Capture:
   intention-complete    Mark an intention completed
   intention-block       Mark an intention blocked
   intention-defer       Mark an intention deferred
+  forget                Erase memory by id, keeping an audit trace without the content
 
 Recall & inspect:
   recall                Recall matching memory with optional authority context
@@ -140,6 +142,26 @@ fn parse_confidence(raw: &str) -> Result<f32, String> {
     Ok(value)
 }
 
+fn parse_ranking_weight(raw: &str) -> Result<f32, String> {
+    let value: f32 = raw
+        .parse()
+        .map_err(|_| format!("`{raw}` is not a valid number"))?;
+    if !value.is_finite() || value < 0.0 {
+        return Err(format!("weight must be a finite number >= 0 (got {raw})"));
+    }
+    Ok(value)
+}
+
+fn parse_half_life_days(raw: &str) -> Result<f64, String> {
+    let value: f64 = raw
+        .parse()
+        .map_err(|_| format!("`{raw}` is not a valid number"))?;
+    if !value.is_finite() || value <= 0.0 {
+        return Err(format!("half-life must be greater than 0 days (got {raw})"));
+    }
+    Ok(value)
+}
+
 #[derive(Debug, Parser)]
 #[command(name = "nahuali")]
 #[command(version)]
@@ -152,9 +174,17 @@ pub(crate) struct Cli {
         long = "database",
         global = true,
         value_name = "NAME",
-        help = "SurrealDB database name. Defaults to $NAHUALI_DB_DATABASE or memory"
+        help = "Database name inside the store (not a path), e.g. project_nahuali. Defaults to $NAHUALI_DB_DATABASE or memory"
     )]
     pub(crate) database: Option<PathBuf>,
+
+    #[arg(
+        long = "store",
+        global = true,
+        value_name = "PATH|URL",
+        help = "Where the store lives: a directory for the embedded store, or a SurrealDB URL. Overrides $NAHUALI_DB_URL; defaults to ~/.nahuali/data"
+    )]
+    pub(crate) store: Option<String>,
 
     #[arg(
         long,
@@ -190,6 +220,7 @@ pub(crate) enum Command {
     },
     #[command(about = "Print operational memory status.")]
     Status {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -226,6 +257,7 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         about = "Re-verify the ledger and rebuild the derived tiers (graph + semantic) from it."
     )]
     Reconcile {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -295,79 +327,117 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     },
     #[command(about = "Record a compatibility fact.")]
     Fact {
+        /// Subject entity the fact is about.
         subject: String,
+        /// Predicate or attribute name.
         predicate: String,
+        /// Literal value of the fact (joined).
         object: Vec<String>,
+        /// Attribute it to an existing episode by id.
         #[arg(long = "source-episode")]
         source_episode_id: Option<String>,
+        /// Attribute it to the most recent episode.
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
+        /// Confidence between 0.0 and 1.0.
         #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
         confidence: f32,
+        /// Scope to a KIND:NAME entity, e.g. project:nahuali.
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Record a canonical typed link between entities.")]
     Link {
+        /// Source entity of the link.
         from: String,
+        /// Relation name, e.g. owns or depends_on.
         relation: String,
+        /// Target entity of the link (joined); use `claim` for a literal value.
         to: Vec<String>,
+        /// Attribute it to an existing episode by id.
         #[arg(long = "source-episode")]
         source_episode_id: Option<String>,
+        /// Attribute it to the most recent episode.
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
+        /// Confidence between 0.0 and 1.0.
         #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
         confidence: f32,
+        /// Scope to a KIND:NAME entity, e.g. project:nahuali.
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Record a compatibility relation between entities.")]
     Relate {
+        /// Source entity of the relation.
         from: String,
+        /// Relation name, e.g. owns or depends_on.
         relation: String,
+        /// Target entity of the relation (joined).
         to: Vec<String>,
+        /// Attribute it to an existing episode by id.
         #[arg(long = "source-episode")]
         source_episode_id: Option<String>,
+        /// Attribute it to the most recent episode.
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
+        /// Confidence between 0.0 and 1.0.
         #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
         confidence: f32,
+        /// Scope to a KIND:NAME entity, e.g. project:nahuali.
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Record a reusable procedure.")]
     Procedure {
+        /// Procedure name.
         name: String,
+        /// Procedure steps (joined).
         body: Vec<String>,
+        /// Attribute it to an existing episode by id.
         #[arg(long = "source-episode")]
         source_episode_id: Option<String>,
+        /// Attribute it to the most recent episode.
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
+        /// Confidence between 0.0 and 1.0.
         #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
         confidence: f32,
+        /// Scope to a KIND:NAME entity, e.g. project:nahuali.
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Record a reusable preference.")]
     Preference {
+        /// What the preference applies to, e.g. Release Notes.
         name: String,
+        /// The preference itself (joined).
         body: Vec<String>,
+        /// Attribute it to an existing episode by id.
         #[arg(long = "source-episode")]
         source_episode_id: Option<String>,
+        /// Attribute it to the most recent episode.
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
+        /// Confidence between 0.0 and 1.0.
         #[arg(long, short = 'c', default_value_t = 0.8, value_parser = parse_confidence)]
         confidence: f32,
+        /// Scope to a KIND:NAME entity, e.g. project:nahuali.
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -376,142 +446,195 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         after_help = "Examples:\n  nahuali intention \"Ship shell completions\" --priority high\n  nahuali intention \"Reach 80% test coverage\" --kind goal --scope project:nahuali\n  nahuali intention \"Renew the TLS cert\" --kind reminder --priority critical"
     )]
     Intention {
+        /// What needs to happen (joined).
         description: Vec<String>,
+        /// Intention kind.
         #[arg(long, value_enum, default_value_t = CliIntentionKind::Task)]
         kind: CliIntentionKind,
+        /// Priority of the intention.
         #[arg(long, value_enum, default_value_t = CliIntentionPriority::Medium)]
         priority: CliIntentionPriority,
+        /// Attribute it to an existing episode by id.
         #[arg(long = "source-episode")]
         source_episode_id: Option<String>,
+        /// Attribute it to the most recent episode.
         #[arg(long = "source-last", conflicts_with = "source_episode_id")]
         source_last: bool,
+        /// Scope to a KIND:NAME entity, e.g. project:nahuali.
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Update an existing intention lifecycle state.")]
     IntentionStatus {
+        /// Intention identifier, e.g. intention_...
         id: String,
+        /// New lifecycle status.
         #[arg(value_enum)]
         status: CliIntentionStatus,
+        /// Optional explanation recorded with the status change.
         #[arg(long)]
         reason: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Update intention metadata without changing lifecycle state.")]
     IntentionUpdate {
+        /// Intention identifier, e.g. intention_...
         id: String,
+        /// New description text.
         #[arg(long)]
         description: Option<String>,
+        /// New priority.
         #[arg(long, value_enum)]
         priority: Option<CliIntentionPriority>,
+        /// Deadline as an epoch-millisecond timestamp.
         #[arg(long = "deadline-at-ms", conflicts_with = "clear_deadline")]
         deadline_at_ms: Option<u64>,
+        /// Remove the deadline.
         #[arg(long = "clear-deadline")]
         clear_deadline: bool,
+        /// Intention id this one depends on (repeatable; replaces the list).
         #[arg(long = "depends-on", value_name = "ID")]
         depends_on: Vec<String>,
+        /// Remove all dependencies.
         #[arg(long = "clear-dependencies")]
         clear_dependencies: bool,
+        /// Goal intention id this one contributes to.
         #[arg(long, conflicts_with = "clear_goal")]
         goal: Option<String>,
+        /// Remove the goal.
         #[arg(long = "clear-goal")]
         clear_goal: bool,
+        /// Progress percentage from 0 to 100.
         #[arg(long, conflicts_with = "clear_progress")]
         progress: Option<u8>,
+        /// Remove the progress value.
         #[arg(long = "clear-progress")]
         clear_progress: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Mark an intention completed.")]
     IntentionComplete {
+        /// Intention identifier, e.g. intention_...
         id: String,
+        /// Optional explanation recorded with the status change.
         #[arg(long)]
         reason: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Mark an intention blocked.")]
     IntentionBlock {
+        /// Intention identifier, e.g. intention_...
         id: String,
+        /// Optional explanation recorded with the status change.
         #[arg(long)]
         reason: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Mark an intention deferred.")]
     IntentionDefer {
+        /// Intention identifier, e.g. intention_...
         id: String,
+        /// Optional explanation recorded with the status change.
         #[arg(long)]
         reason: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Print a non-mutating intention reconciliation report.")]
     ReconcileIntentions {
+        /// Evaluate as of this epoch-millisecond time instead of now (reproducible reports).
         #[arg(long = "now-ms")]
         now_ms: Option<u64>,
+        /// Treat an active intention as stale after this many milliseconds without updates.
         #[arg(long = "stale-after-ms", default_value_t = DEFAULT_INTENTION_STALE_AFTER_MS)]
         stale_after_ms: u64,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Print non-mutating progress for goal intentions.")]
     GoalProgress {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Print a non-mutating proactive operator report.")]
     Proactive {
+        /// Evaluate as of this epoch-millisecond time instead of now (reproducible reports).
         #[arg(long = "now-ms")]
         now_ms: Option<u64>,
+        /// Report deadlines due within this many milliseconds.
         #[arg(
             long = "deadline-horizon-ms",
             default_value_t = DEFAULT_PROACTIVE_DEADLINE_HORIZON_MS
         )]
         deadline_horizon_ms: u64,
+        /// Treat an active intention as stale after this many milliseconds without updates.
         #[arg(long = "stale-after-ms", default_value_t = DEFAULT_INTENTION_STALE_AFTER_MS)]
         stale_after_ms: u64,
+        /// Maximum number of operator review items to include.
         #[arg(long = "review-limit", default_value_t = 20)]
         review_limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Print non-mutating proactive deadline signals.")]
     Deadlines {
+        /// Evaluate as of this epoch-millisecond time instead of now (reproducible reports).
         #[arg(long = "now-ms")]
         now_ms: Option<u64>,
+        /// Report deadlines due within this many milliseconds.
         #[arg(
             long = "horizon-ms",
             default_value_t = DEFAULT_PROACTIVE_DEADLINE_HORIZON_MS
         )]
         horizon_ms: u64,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Print non-mutating proactive anomaly alerts.")]
     Anomalies {
+        /// Evaluate as of this epoch-millisecond time instead of now (reproducible reports).
         #[arg(long = "now-ms")]
         now_ms: Option<u64>,
+        /// Report deadlines due within this many milliseconds.
         #[arg(long = "deadline-horizon-ms", default_value_t = 0)]
         deadline_horizon_ms: u64,
+        /// Treat an active intention as stale after this many milliseconds without updates.
         #[arg(long = "stale-after-ms", default_value_t = DEFAULT_INTENTION_STALE_AFTER_MS)]
         stale_after_ms: u64,
+        /// Maximum number of operator review items to include.
         #[arg(long = "review-limit", default_value_t = 20)]
         review_limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Acknowledge a proactive anomaly with an explicit audit note.")]
     AnomalyAcknowledge {
+        /// Anomaly identifier from `nahuali anomalies`.
         id: String,
+        /// Audit note explaining why the anomaly is acknowledged (required).
         #[arg(long)]
         note: String,
+        /// Preview the result without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -520,54 +643,73 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         after_help = "Examples:\n  nahuali briefing\n  nahuali briefing --episode-limit 10 --review-limit 10\n  nahuali briefing --json"
     )]
     Briefing {
+        /// Maximum number of recent episodes to include.
         #[arg(long = "episode-limit", default_value_t = 5)]
         episode_limit: usize,
+        /// Maximum number of pending intentions to include.
         #[arg(long = "intention-limit", default_value_t = 5)]
         intention_limit: usize,
+        /// Maximum number of operator review items to include.
         #[arg(long = "review-limit", default_value_t = 5)]
         review_limit: usize,
+        /// Maximum number of graph seed entities to expand.
         #[arg(long = "graph-seed-limit", default_value_t = 8)]
         graph_seed_limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Resume a session with briefing, authority, and review context.")]
     SessionResume {
+        /// Maximum number of recent episodes to include.
         #[arg(long = "episode-limit", default_value_t = 5)]
         episode_limit: usize,
+        /// Maximum number of pending intentions to include.
         #[arg(long = "intention-limit", default_value_t = 5)]
         intention_limit: usize,
+        /// Maximum number of operator review items to include.
         #[arg(long = "review-limit", default_value_t = 5)]
         review_limit: usize,
+        /// Maximum number of graph seed entities to expand.
         #[arg(long = "graph-seed-limit", default_value_t = 8)]
         graph_seed_limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Read recent memory timeline from the SurrealDB projection.")]
     Timeline {
+        /// Maximum number of episodes to return.
         #[arg(long, short = 'l', default_value_t = 20)]
         limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Read pending intentions from the SurrealDB projection.")]
     Pending {
+        /// Maximum number of pending intentions to return.
         #[arg(long, short = 'l', default_value_t = 20)]
         limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Run a non-mutating memory sleep pass.")]
     Sleep {
+        /// Maximum number of recent episodes to include.
         #[arg(long = "episode-limit", default_value_t = 8)]
         episode_limit: usize,
+        /// Maximum number of consolidation candidates to consider.
         #[arg(long = "candidate-limit", default_value_t = 12)]
         candidate_limit: usize,
+        /// Maximum number of reflection cycles to plan.
         #[arg(long = "cycle-limit", default_value_t = 8)]
         cycle_limit: usize,
+        /// Maximum number of evidence items per reflection cycle.
         #[arg(long = "evidence-limit", default_value_t = 8)]
         evidence_limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -575,39 +717,55 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         about = "Plan replay, review gates, and write-back eligibility without mutating memory."
     )]
     ConsolidationPlan {
+        /// Maximum number of recent episodes to include.
         #[arg(long = "episode-limit", default_value_t = 8)]
         episode_limit: usize,
+        /// Maximum number of consolidation candidates to consider.
         #[arg(long = "candidate-limit", default_value_t = 12)]
         candidate_limit: usize,
+        /// Maximum number of reflection cycles to plan.
         #[arg(long = "cycle-limit", default_value_t = 8)]
         cycle_limit: usize,
+        /// Maximum number of evidence items per reflection cycle.
         #[arg(long = "evidence-limit", default_value_t = 8)]
         evidence_limit: usize,
+        /// Maximum number of operator review items to include.
         #[arg(long = "review-limit", default_value_t = 20)]
         review_limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Run a non-mutating memory hook for a host execution point.")]
     Hook {
+        /// Host execution point the hook runs for.
         #[arg(value_enum)]
         kind: CliMemoryHookKind,
+        /// Optional prompt or task text the host is about to act on.
         #[arg(long)]
         input: Option<String>,
+        /// Maximum number of recall results to include.
         #[arg(long = "recall-limit", default_value_t = 10)]
         recall_limit: usize,
+        /// Maximum number of recent episodes to include.
         #[arg(long = "episode-limit", default_value_t = 5)]
         episode_limit: usize,
+        /// Maximum number of pending intentions to include.
         #[arg(long = "intention-limit", default_value_t = 5)]
         intention_limit: usize,
+        /// Maximum number of operator review items to include.
         #[arg(long = "review-limit", default_value_t = 5)]
         review_limit: usize,
+        /// Maximum number of graph seed entities to expand.
         #[arg(long = "graph-seed-limit", default_value_t = 8)]
         graph_seed_limit: usize,
+        /// Maximum number of reflection cycles to plan.
         #[arg(long = "cycle-limit", default_value_t = 8)]
         cycle_limit: usize,
+        /// Maximum number of evidence items per reflection cycle.
         #[arg(long = "evidence-limit", default_value_t = 8)]
         evidence_limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -670,38 +828,79 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
             help = "Also consult the read-only archive store ($NAHUALI_ARCHIVE_DB, default ts-archive) as low-authority reference; never written to"
         )]
         archive: bool,
+        #[arg(
+            long = "exclude-superseded",
+            help = "Hide claims replaced by a newer evidence-backed value (shown last and marked by default)"
+        )]
+        exclude_superseded: bool,
+        #[arg(
+            long = "recency-weight",
+            value_name = "WEIGHT",
+            default_value_t = RecallRankingPolicy::default().recency_weight,
+            value_parser = parse_ranking_weight,
+            help = "Score bonus for the newest matching result; decays with age. 0 disables recency"
+        )]
+        recency_weight: f32,
+        #[arg(
+            long = "recency-half-life-days",
+            value_name = "DAYS",
+            default_value_t = 30.0,
+            value_parser = parse_half_life_days,
+            help = "Age (relative to the newest match) at which the recency bonus halves"
+        )]
+        recency_half_life_days: f64,
+        #[arg(
+            long = "confidence-weight",
+            value_name = "WEIGHT",
+            default_value_t = RecallRankingPolicy::default().confidence_weight,
+            value_parser = parse_ranking_weight,
+            help = "Multiplier applied to recorded confidence when scoring claims, links, and procedures"
+        )]
+        confidence_weight: f32,
         #[arg(long, help = "Emit machine-readable JSON instead of text")]
         json: bool,
     },
     #[command(about = "Traverse the projected memory graph around a seed.")]
     Graph {
+        /// Entity name to start from (joined).
         seed: Vec<String>,
+        /// Maximum number of hops from the seed.
         #[arg(long, default_value_t = 2)]
         depth: usize,
+        /// Maximum number of nodes to return.
         #[arg(long, short = 'l', default_value_t = 100)]
         limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Print a focused project or entity dashboard.")]
     Project {
+        /// Project or entity name (joined).
         #[arg(required = true)]
         entity: Vec<String>,
+        /// Maximum graph hops around the entity.
         #[arg(long = "graph-depth", default_value_t = 2)]
         graph_depth: usize,
+        /// Maximum number of graph nodes.
         #[arg(long = "graph-limit", default_value_t = 100)]
         graph_limit: usize,
+        /// Maximum number of items per section.
         #[arg(long = "item-limit", short = 'l', default_value_t = 10)]
         item_limit: usize,
+        /// Maximum number of recall results to include.
         #[arg(long = "recall-limit", default_value_t = 10)]
         recall_limit: usize,
+        /// Maximum number of operator review items to include.
         #[arg(long = "review-limit", default_value_t = 10)]
         review_limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Rebuild the derived Qdrant semantic index from the Rust projection.")]
     SemanticRebuild {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -709,55 +908,69 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         about = "Synchronize the Qdrant semantic index without dropping it (non-destructive upsert)."
     )]
     SemanticSync {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Inspect the derived Qdrant semantic index status.")]
     SemanticStatus {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Inspect the SurrealDB graph projection status.")]
     ProjectionStatus {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Rebuild the SurrealDB graph projection from the record ledger.")]
     ProjectionRebuild {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Validate the SurrealDB graph projection without mutating it.")]
     ProjectionValidate {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Read projected entities from SurrealDB graph tables.")]
     ProjectionEntities {
+        /// Optional entity name filter.
         query: Vec<String>,
+        /// Maximum number of items to return.
         #[arg(long, short = 'l', default_value_t = 20)]
         limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Read projected episode timeline from SurrealDB graph tables.")]
     ProjectionTimeline {
+        /// Maximum number of episodes to return.
         #[arg(long, short = 'l', default_value_t = 20)]
         limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Read projected pending intentions from SurrealDB graph tables.")]
     ProjectionPending {
+        /// Maximum number of items to return.
         #[arg(long, short = 'l', default_value_t = 20)]
         limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Read projected health signals from SurrealDB graph tables.")]
     ProjectionHealth {
+        /// Maximum number of items to return.
         #[arg(long, short = 'l', default_value_t = 20)]
         limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -766,6 +979,7 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         after_help = "Examples:\n  nahuali inspect\n  nahuali inspect --json"
     )]
     Inspect {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -774,15 +988,19 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         after_help = "Examples:\n  nahuali self-inspect\n  nahuali self-inspect --json"
     )]
     SelfInspect {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Plan a non-mutating reflection cycle for operator approval.")]
     Reflect {
+        /// Maximum number of reflection cycles to plan.
         #[arg(long = "cycle-limit", default_value_t = 8)]
         cycle_limit: usize,
+        /// Maximum number of evidence items per reflection cycle.
         #[arg(long = "evidence-limit", default_value_t = 8)]
         evidence_limit: usize,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -791,22 +1009,63 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         after_help = "Examples:\n  nahuali review\n  nahuali review --min-priority high --limit 10\n  nahuali review --action resolve-contradiction"
     )]
     Review {
+        /// Maximum number of review items to show.
         #[arg(long, short = 'l', default_value_t = 20)]
         limit: usize,
+        /// Only show items at or above this priority.
         #[arg(long = "min-priority", value_enum)]
         min_priority: Option<CliReviewPriority>,
+        /// Only show items with this recommended action.
         #[arg(long, value_enum)]
         action: Option<CliReviewAction>,
+        /// Emit machine-readable JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(
+        about = "Erase memory by id, keeping an audit trace without the content.",
+        after_help = "Forgetting redacts the ledger records that hold the memory and every memory derived from it \
+(a source takes its episodes; an episode takes the claims, links, procedures, intentions, \
+repairs, and review decisions that cite it), then records who asked, when, and why. Recall, \
+inspection, and the graph projection stop surfacing it immediately. The hash chain, Merkle \
+roots, and signed checkpoints stay valid.\n\n\
+Not erased by this command: backups, snapshots, exports, and receipts written earlier; the \
+Qdrant semantic index until `--rebuild-semantic` or `nahuali semantic-rebuild`; and old \
+bytes the storage engine keeps until it compacts.\n\n\
+Examples:\n  nahuali forget episode_123 --reason \"GDPR art. 17 request\" --requested-by petru --dry-run\n  \
+nahuali forget episode_123 --reason \"GDPR art. 17 request\" --requested-by petru"
+    )]
+    Forget {
+        /// Memory ids to forget (sources, episodes, claims, links, procedures, intentions, reviews, or repairs).
+        #[arg(required = true, value_name = "ID")]
+        ids: Vec<String>,
+        /// Why the memory is forgotten (required, recorded in the audit trail; do not repeat the erased content).
+        #[arg(long)]
+        reason: String,
+        /// Person or process that requested the erasure, recorded in the audit trail.
+        #[arg(long = "requested-by", value_name = "WHO")]
+        requested_by: Option<String>,
+        /// Show what would be erased, including cascaded derived memory, without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+        /// Also rebuild the Qdrant semantic index so it no longer holds the erased text.
+        #[arg(long = "rebuild-semantic")]
+        rebuild_semantic: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Resolve an operator review item with an explicit audit note.")]
     ReviewResolve {
+        /// Review item id, shown as `Id:` in `nahuali review` (or `items[].id` in --json).
         review_id: String,
+        /// Audit note explaining the resolution (required, recorded in the ledger).
         #[arg(long)]
         note: String,
+        /// Preview the resolution without writing a review decision.
         #[arg(long)]
         dry_run: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -823,6 +1082,7 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         /// Preview the verdict without writing a record.
         #[arg(long)]
         dry_run: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -834,6 +1094,7 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         #[cfg(feature = "tamper-evidence")]
         #[arg(long = "allow-unchained")]
         allow_unchained: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -867,6 +1128,7 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         #[cfg(feature = "tamper-evidence")]
         #[arg(long = "inclusion-proof", value_name = "SEQUENCE")]
         inclusion_proof: Option<u64>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -885,22 +1147,27 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         /// Also write a self-contained HTML dossier of the report to this path.
         #[arg(long, value_name = "PATH")]
         html: Option<PathBuf>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[cfg(feature = "attestation")]
     #[command(about = "Sign the current tamper-evident chain tip with an Ed25519 key.")]
     AttestSign {
+        /// Ed25519 signing key file (32 raw bytes or hex).
         #[arg(long = "key-file", value_name = "PATH")]
         key_file: PathBuf,
+        /// Write the signed attestation to this file instead of stdout.
         #[arg(long, short = 'o', value_name = "PATH")]
         output: Option<PathBuf>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[cfg(feature = "attestation")]
     #[command(about = "Verify a ledger tip attestation against the current ledger.")]
     AttestVerify {
+        /// Signed attestation file to verify.
         #[arg(value_name = "PATH")]
         attestation: PathBuf,
         #[arg(
@@ -909,6 +1176,7 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
             help = "Trusted-key ring (JSON) to authorize the receipt against; rejects a revoked or unknown signing key even when its signature verifies"
         )]
         keyring: Option<PathBuf>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -950,6 +1218,7 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     #[cfg(feature = "attestation")]
     #[command(about = "Verify a signed checkpoint against the ledger and an external policy.")]
     CheckpointVerify {
+        /// Signed checkpoint file to verify.
         #[arg(value_name = "CHECKPOINT")]
         checkpoint: PathBuf,
         /// External operator trust policy. The checkpoint never supplies its own trust root.
@@ -958,6 +1227,7 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         /// Require the current ledger tip or allow a fully verified historical prefix.
         #[arg(long, value_enum, default_value = "current")]
         mode: CliCheckpointMode,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -980,6 +1250,7 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     #[cfg(feature = "attestation")]
     #[command(about = "Verify a claim receipt offline under an external policy.")]
     ReceiptVerify {
+        /// Claim receipt file to verify.
         #[arg(value_name = "RECEIPT")]
         receipt: PathBuf,
         /// External operator policy. The receipt never supplies its own trust root.
@@ -995,41 +1266,52 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
             default_value_t = nahuali_core::DEFAULT_CHECKPOINT_FUTURE_SKEW_MS
         )]
         max_future_skew_ms: u64,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Print a non-destructive maintenance report.")]
     Maintenance {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Write or dry-run an optional projection snapshot.")]
     Snapshot {
+        /// Snapshot file to write.
         #[arg(long, short = 'o', value_name = "PATH")]
         output: PathBuf,
+        /// Preview the result without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Validate an optional snapshot against record replay.")]
     SnapshotValidate {
+        /// Snapshot file to validate against record replay.
         #[arg(value_name = "PATH")]
         path: PathBuf,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Write or dry-run a local record-ledger backup.")]
     Backup {
+        /// Backup file to write.
         #[arg(long, short = 'o', value_name = "PATH")]
         output: PathBuf,
+        /// Preview the result without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Validate a local record-ledger backup.")]
     BackupValidate {
+        /// Backup file to validate.
         #[arg(value_name = "PATH")]
         path: PathBuf,
         /// Accept unchained (legacy) backup records instead of failing closed on
@@ -1038,24 +1320,31 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         #[cfg(feature = "tamper-evidence")]
         #[arg(long = "allow-unchained")]
         allow_unchained: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Validate a backup and dry-run restore into a target database.")]
     BackupDrill {
+        /// Backup file to validate and dry-run restore.
         #[arg(value_name = "PATH")]
         path: PathBuf,
+        /// Empty SurrealDB database name to restore into.
         #[arg(long = "target-database", value_name = "NAME")]
         target_database: PathBuf,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Restore a backup into an empty SurrealDB database.")]
     Restore {
+        /// Backup file to restore.
         #[arg(value_name = "PATH")]
         path: PathBuf,
+        /// Empty SurrealDB database name to restore into.
         #[arg(long = "target-database", value_name = "NAME")]
         target_database: PathBuf,
+        /// Preview the result without writing anything.
         #[arg(long)]
         dry_run: bool,
         #[arg(
@@ -1063,22 +1352,28 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
             help = "Rebuild and verify the derived semantic index before reporting operational readiness."
         )]
         rebuild_semantic: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Export a source-neutral memory interchange document.")]
     Export {
+        /// Interchange document to write (stdout when omitted).
         #[arg(long, short = 'o', value_name = "PATH")]
         output: Option<PathBuf>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Import a source-neutral memory interchange document.")]
     Import {
+        /// Interchange document to import.
         #[arg(value_name = "PATH")]
         path: PathBuf,
+        /// Validate and preview the import without writing.
         #[arg(long)]
         dry_run: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -1086,12 +1381,16 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         about = "Convert a projected memory export into a source-neutral interchange document."
     )]
     ConvertProjectionExport {
+        /// Projected memory export file to convert.
         #[arg(value_name = "PATH")]
         path: PathBuf,
+        /// Interchange document to write.
         #[arg(long, short = 'o', value_name = "PATH")]
         output: PathBuf,
+        /// Scope every converted item to a KIND:NAME entity.
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -1099,82 +1398,115 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         about = "Convert a historical structured or SurrealQL export into a source-neutral interchange document."
     )]
     ConvertLegacyExport {
+        /// Historical export file to convert.
         #[arg(value_name = "PATH")]
         path: PathBuf,
+        /// Interchange document to write.
         #[arg(long, short = 'o', value_name = "PATH")]
         output: PathBuf,
+        /// Scope every converted item to a KIND:NAME entity.
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Ingest a provenance-aware source document.")]
     Ingest {
+        /// Provenance-aware source document (JSON) to ingest.
         #[arg(value_name = "PATH")]
         path: PathBuf,
+        /// Preview the result without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Ingest a local text file as provenance-preserving source episodes.")]
     IngestText {
+        /// Local text file to ingest.
         #[arg(value_name = "PATH")]
         path: PathBuf,
+        /// Source kind recorded for provenance.
         #[arg(long, value_enum, default_value_t = CliSourceKind::Document)]
         kind: CliSourceKind,
+        /// Source title (defaults to the file name).
         #[arg(long)]
         title: Option<String>,
+        /// How to split the text into episodes.
         #[arg(long, value_enum, default_value_t = CliTextChunking::Document)]
         chunking: CliTextChunking,
+        /// Tag to attach to every episode (repeatable).
         #[arg(long = "tag", short = 't')]
         tags: Vec<String>,
+        /// Entity mentioned by every episode (repeatable).
         #[arg(long = "mention", short = 'm')]
         mentions: Vec<String>,
+        /// Source metadata as KEY=VALUE (repeatable).
         #[arg(long = "metadata", value_name = "KEY=VALUE")]
         metadata: Vec<String>,
+        /// Role of the source author, e.g. user or assistant.
         #[arg(long = "role")]
         source_role: Option<String>,
+        /// Scope to a KIND:NAME entity, e.g. project:nahuali.
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
+        /// Maximum bytes per episode chunk.
         #[arg(long = "max-chunk-bytes", default_value_t = DEFAULT_TEXT_CHUNK_BYTES)]
         max_chunk_bytes: usize,
+        /// Preview the result without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Ingest a directory of local text files after full batch preflight.")]
     IngestDir {
+        /// Directory of text files to ingest.
         #[arg(value_name = "PATH")]
         path: PathBuf,
+        /// Descend into subdirectories.
         #[arg(long)]
         recursive: bool,
+        /// File extension to include (repeatable), e.g. md.
         #[arg(long = "extension", value_name = "EXT")]
         extensions: Vec<String>,
+        /// Source kind recorded for provenance.
         #[arg(long, value_enum, default_value_t = CliSourceKind::Document)]
         kind: CliSourceKind,
+        /// How to split the text into episodes.
         #[arg(long, value_enum, default_value_t = CliTextChunking::Document)]
         chunking: CliTextChunking,
+        /// Tag to attach to every episode (repeatable).
         #[arg(long = "tag", short = 't')]
         tags: Vec<String>,
+        /// Entity mentioned by every episode (repeatable).
         #[arg(long = "mention", short = 'm')]
         mentions: Vec<String>,
+        /// Source metadata as KEY=VALUE (repeatable).
         #[arg(long = "metadata", value_name = "KEY=VALUE")]
         metadata: Vec<String>,
+        /// Role of the source author, e.g. user or assistant.
         #[arg(long = "role")]
         source_role: Option<String>,
+        /// Scope to a KIND:NAME entity, e.g. project:nahuali.
         #[arg(long, value_name = "KIND:NAME")]
         scope: Option<String>,
+        /// Maximum bytes per episode chunk.
         #[arg(long = "max-chunk-bytes", default_value_t = DEFAULT_TEXT_CHUNK_BYTES)]
         max_chunk_bytes: usize,
+        /// Preview the result without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
     #[command(about = "Print the projected memory data.")]
     Data {
+        /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -1432,6 +1764,32 @@ mod tests {
             .expect("spawn wide-stack test thread")
             .join()
             .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+    }
+
+    /// Every positional argument and option of every subcommand explains
+    /// itself in `--help`; an undocumented flag is a support ticket.
+    #[test]
+    fn every_subcommand_argument_has_help_text() {
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            command.build();
+            let mut missing = Vec::new();
+            for subcommand in command.get_subcommands() {
+                for argument in subcommand.get_arguments() {
+                    let id = argument.get_id().as_str();
+                    if matches!(id, "help" | "version") || argument.is_global_set() {
+                        continue;
+                    }
+                    if argument.get_help().is_none() && argument.get_long_help().is_none() {
+                        missing.push(format!("{} {id}", subcommand.get_name()));
+                    }
+                }
+            }
+            assert!(
+                missing.is_empty(),
+                "arguments without help text: {missing:#?}"
+            );
+        });
     }
 
     #[test]

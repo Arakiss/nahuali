@@ -53,6 +53,10 @@ pub enum LedgerAuditEventKind {
     ReviewRecorded,
     /// An LLM-proposed repair was applied.
     RepairApplied,
+    /// An operator explicitly forgot memory.
+    MemoryForgotten,
+    /// A record whose content was erased by a forget request.
+    Redacted,
 }
 
 /// A single change appended within the audited range.
@@ -96,6 +100,12 @@ pub struct LedgerAuditCounts {
     pub reviews_recorded: usize,
     /// LLM-proposed repairs applied.
     pub repairs_applied: usize,
+    /// Explicit forget requests.
+    #[serde(default)]
+    pub memories_forgotten: usize,
+    /// Records whose content was erased by a forget request.
+    #[serde(default)]
+    pub records_redacted: usize,
 }
 
 /// Restated integrity of the history through the upper bound of the audit.
@@ -335,6 +345,8 @@ fn count_event(counts: &mut LedgerAuditCounts, payload: &MemoryEvent) {
         MemoryEvent::IntentionStatusChanged(_) => counts.intention_status_changes += 1,
         MemoryEvent::ReviewRecorded(_) => counts.reviews_recorded += 1,
         MemoryEvent::RepairApplied(_) => counts.repairs_applied += 1,
+        MemoryEvent::MemoryForgotten(_) => counts.memories_forgotten += 1,
+        MemoryEvent::Redacted(_) => counts.records_redacted += 1,
     }
 }
 
@@ -350,6 +362,8 @@ fn event_kind(payload: &MemoryEvent) -> LedgerAuditEventKind {
         MemoryEvent::IntentionStatusChanged(_) => LedgerAuditEventKind::IntentionStatusChanged,
         MemoryEvent::ReviewRecorded(_) => LedgerAuditEventKind::ReviewRecorded,
         MemoryEvent::RepairApplied(_) => LedgerAuditEventKind::RepairApplied,
+        MemoryEvent::MemoryForgotten(_) => LedgerAuditEventKind::MemoryForgotten,
+        MemoryEvent::Redacted(_) => LedgerAuditEventKind::Redacted,
     }
 }
 
@@ -366,7 +380,10 @@ fn event_scope(payload: &MemoryEvent) -> Option<MemoryScope> {
             RepairMaterialization::Claim(claim) => claim.scope.clone(),
             RepairMaterialization::Link(link) => link.scope.clone(),
         },
-        MemoryEvent::IntentionUpdated(_) | MemoryEvent::IntentionStatusChanged(_) => None,
+        MemoryEvent::IntentionUpdated(_)
+        | MemoryEvent::IntentionStatusChanged(_)
+        | MemoryEvent::MemoryForgotten(_)
+        | MemoryEvent::Redacted(_) => None,
     }
 }
 
@@ -402,6 +419,12 @@ fn summarize(payload: &MemoryEvent) -> String {
                 link.from, link.relation, link.to
             )),
         },
+        MemoryEvent::MemoryForgotten(event) => truncate(format!(
+            "forgot {} memory id(s): {}",
+            event.forgotten_ids.len(),
+            event.reason
+        )),
+        MemoryEvent::Redacted(event) => format!("{} redacted by {}", event.kind, event.forget_id),
     }
 }
 

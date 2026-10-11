@@ -47,6 +47,7 @@ mod consolidation_plan;
 mod database;
 mod error;
 mod event;
+mod forget;
 mod graph;
 mod hooks;
 mod ingestion;
@@ -125,9 +126,9 @@ pub use consolidation_plan::{
     MEMORY_CONSOLIDATION_PLAN_VERSION, MemoryConsolidationPlanReport,
 };
 pub use database::{
-    ConfigSource, DatabaseNameError, ResolvedConfig, ResolvedValue, resolve_archive_database,
-    resolve_config, resolve_database_name, resolve_endpoint, resolve_namespace,
-    validate_database_name,
+    ConfigSource, DEFAULT_STORE_LOCK_TIMEOUT_MS, DatabaseNameError, ResolvedConfig, ResolvedValue,
+    resolve_archive_database, resolve_config, resolve_database_name, resolve_endpoint,
+    resolve_namespace, set_store_location, validate_database_name,
 };
 pub use error::{NahualiError, Result};
 #[cfg(feature = "tamper-evidence")]
@@ -140,6 +141,10 @@ pub use event::{
     RepairClaimMaterialization, RepairLinkMaterialization, RepairMaterialization, ReviewRecorded,
     ReviewRecordedAction, ReviewRecordedOutcome, SourceRecorded, SourceRecordedKind,
 };
+pub use event::{
+    MemoryForgotten, RedactedRecord, RedactedRecordRef, RedactionViolation, verify_redactions,
+};
+pub use forget::{ForgetOptions, ForgetReport};
 pub use graph::{
     GraphTraversalOptions, MEMORY_GRAPH_VERSION, MemoryGraphEdge, MemoryGraphEdgeKind,
     MemoryGraphNode, MemoryGraphNodeKind, MemoryGraphReport, MemoryGraphSummary,
@@ -184,10 +189,11 @@ pub use merkle::{
     verify_merkle_consistency_proof, verify_merkle_proof,
 };
 pub use model::{
-    Claim, Entity, Episode, Fact, Intention, IntentionKind, IntentionPriority, IntentionStatus,
-    Link, MEMORY_DATA_VERSION, MemoryData, MemoryKind, MemoryRepair, MemoryScope, MemoryScopeKind,
-    Procedure, ProcedureKind, RecallResult, RecallResultTrust, RecallResultTrustMode, Relation,
-    ReviewDecision, ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
+    Claim, ClaimLifecycle, ClaimStatus, Entity, Episode, Fact, ForgottenRecord, Intention,
+    IntentionKind, IntentionPriority, IntentionStatus, Link, MEMORY_DATA_VERSION, MemoryData,
+    MemoryKind, MemoryRepair, MemoryScope, MemoryScopeKind, Procedure, ProcedureKind, RecallResult,
+    RecallResultTrust, RecallResultTrustMode, RecallScoreBreakdown, Relation, ReviewDecision,
+    ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
 };
 pub use operator_review::{
     OPERATOR_REVIEW_VERSION, OperatorReviewItem, OperatorReviewOptions, OperatorReviewReport,
@@ -205,7 +211,7 @@ pub use project::{
     MEMORY_PROJECT_VIEW_VERSION, MemoryProjectReport, ProjectViewOptions, ProjectViewSummary,
 };
 pub use projection::project_validated_events;
-pub use recall::{RecallOptions, recall_projection_with_authority};
+pub use recall::{RecallOptions, RecallRankingPolicy, recall_projection_with_authority};
 #[cfg(feature = "attestation")]
 pub use receipt::{
     MAX_CLAIM_RECEIPT_BYTES, MAX_RECEIPT_MERKLE_SIBLINGS, MEMORY_CLAIM_RECEIPT_FORMAT,
