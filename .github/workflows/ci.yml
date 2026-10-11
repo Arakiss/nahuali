@@ -158,6 +158,9 @@ jobs:
         env:
           NAHUALI_VALIDATE_SKIP_DEV_STACK: "1"
           NAHUALI_VERIFY_INSTALL_BIN_DIR: target/release
+      - name: Verify installer signature reporting
+        timeout-minutes: 1
+        run: bash scripts/verify-installer-signature-notice.sh
       - name: Verify CLI coexistence
         timeout-minutes: 5
         run: bash scripts/verify-cli-coexistence.sh
