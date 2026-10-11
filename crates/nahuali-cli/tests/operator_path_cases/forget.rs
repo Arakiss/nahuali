@@ -205,3 +205,47 @@ fn forget_rejects_unknown_ids_and_requires_a_reason() {
 
     assert_eq!(json_of(&store, &["audit", "--json"])["total_event_count"], 1);
 }
+
+#[test]
+fn checkpoint_signed_before_forget_stays_trusted_as_history() {
+    let store = temp_database("forget-checkpoint");
+    let seed_path = temp_store("forget-checkpoint-seed");
+    let policy_path = temp_store("forget-checkpoint-policy");
+    let checkpoint_path = temp_store("forget-checkpoint-signed");
+    fs::write(&seed_path, "33".repeat(32)).expect("write synthetic signing seed");
+    let seed = seed_path.to_str().expect("seed path is UTF-8");
+    let policy = policy_path.to_str().expect("policy path is UTF-8");
+    let checkpoint = checkpoint_path.to_str().expect("checkpoint path is UTF-8");
+
+    let episode = json_of(&store, &["remember", "Petru vive en Calle Luna 12", "--json"]);
+    run_ok(&store, &["remember", "Petru prefiere te"]);
+    run_ok(
+        &store,
+        &[
+            "checkpoint-policy-init", "--origin", "forget-test", "--key-id", "operator",
+            "--key-file", seed, "--output", policy,
+        ],
+    );
+    run_ok(
+        &store,
+        &[
+            "checkpoint-sign", "--policy", policy, "--key-id", "operator", "--key-file", seed,
+            "--output", checkpoint,
+        ],
+    );
+
+    run_ok(
+        &store,
+        &["forget", episode["id"].as_str().unwrap(), "--reason", "erasure request"],
+    );
+
+    let historical = json_of(
+        &store,
+        &["checkpoint-verify", checkpoint, "--policy", policy, "--mode", "historical", "--json"],
+    );
+    assert_eq!(historical["trusted"], true, "{historical}");
+    assert_eq!(historical["appended_event_count"], 1);
+    for path in [&seed_path, &policy_path, &checkpoint_path] {
+        let _ = fs::remove_file(path);
+    }
+}
