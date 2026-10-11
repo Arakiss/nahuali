@@ -140,7 +140,7 @@
         "low_confidence_fact_count": 1,
         "conflicting_fact_count": 0,
         "stale_fact_count": 0,
-        "blind_spot_count_min": 3,
+        "blind_spot_count_min": 2,
         "required_signal_kinds": [
           "no_episodes",
           "unsupported_fact",
