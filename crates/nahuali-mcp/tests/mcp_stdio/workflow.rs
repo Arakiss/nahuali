@@ -695,7 +695,9 @@ fn assert_validation(server: &mut McpProcess) {
         validated["result"]["structuredContent"]["issues"],
         json!([])
     );
-    assert_eq!(validated["result"]["structuredContent"]["entity_count"], 3);
+    // Lena and Release Notes; the claim value "concise release notes" is a
+    // literal, not an entity.
+    assert_eq!(validated["result"]["structuredContent"]["entity_count"], 2);
     assert_eq!(validated["result"]["structuredContent"]["claim_count"], 2);
     assert_eq!(validated["result"]["structuredContent"]["link_count"], 2);
     assert_eq!(

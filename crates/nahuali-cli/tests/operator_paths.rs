@@ -48,6 +48,7 @@ include!("operator_path_cases/trust_report.rs");
 include!("operator_path_cases/memory.rs");
 include!("operator_path_cases/lifecycle.rs");
 include!("operator_path_cases/concurrency.rs");
+include!("operator_path_cases/literals.rs");
 include!("operator_path_cases/scopes.rs");
 include!("operator_path_cases/ingestion.rs");
 include!("operator_path_cases/migration.rs");

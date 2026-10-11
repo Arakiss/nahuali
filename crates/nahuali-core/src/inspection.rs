@@ -648,17 +648,27 @@ fn entity_graph(
         entities.entry(entity_key(&entity.name)).or_insert(0);
     }
 
+    // A claim object is a literal value, so it is never an isolation candidate
+    // on its own. It still connects an entity of the same name that exists for
+    // another reason (a mention, a link endpoint, or a claim subject).
     for fact in facts {
-        let subject = entity_key(&fact.subject);
-        let object = entity_key(&fact.object);
+        entities.entry(entity_key(&fact.subject)).or_insert(0);
+    }
+    for relation in relations {
+        entities.entry(entity_key(&relation.from)).or_insert(0);
+        entities.entry(entity_key(&relation.to)).or_insert(0);
+    }
+    for fact in facts {
         let supported = fact.source_episode_id.is_some()
             || evidence_reviewed(&[fact.event_id.as_str()], resolved_review_evidence);
-        if supported {
-            *entities.entry(subject).or_insert(0) += 1;
-            *entities.entry(object).or_insert(0) += 1;
-        } else {
-            entities.entry(subject).or_insert(0);
-            entities.entry(object).or_insert(0);
+        if !supported {
+            continue;
+        }
+        if let Some(count) = entities.get_mut(&entity_key(&fact.subject)) {
+            *count += 1;
+        }
+        if let Some(count) = entities.get_mut(&entity_key(&fact.object)) {
+            *count += 1;
         }
     }
 
@@ -811,13 +821,43 @@ mod tests {
         let health = KnowledgeHealth::inspect_at(&data, now);
 
         assert_eq!(health.stale_fact_count, 1);
-        assert_eq!(health.isolated_entity_count, 2);
+        // Only the subject: the unsupported claim's value "Roadmap" is a literal.
+        assert_eq!(health.isolated_entity_count, 1);
         assert!(
             health
                 .signals
                 .iter()
                 .any(|signal| signal.kind == HealthSignalKind::StaleFact)
         );
+    }
+
+    #[test]
+    fn claim_value_connects_an_entity_known_from_elsewhere() {
+        let mut supported = fact(
+            "fact_1", "event_1", "Petru", "neighbor", "Dolores", 1000, 0.9,
+        );
+        supported.source_episode_id = Some("episode_1".to_string());
+        let mention = |name: &str| Entity {
+            id: format!("entity_{name}"),
+            name: name.to_string(),
+            mention_count: 1,
+            first_seen_at_ms: 1000,
+            last_seen_at_ms: 1000,
+            source_event_ids: vec!["episode_event_1".to_string()],
+            scope: None,
+        };
+        let data = MemoryData {
+            event_count: 2,
+            last_event_id: Some("event_1".to_string()),
+            facts: vec![supported],
+            entities: vec![mention("Petru"), mention("Dolores")],
+            ..MemoryData::default()
+        };
+
+        let health = KnowledgeHealth::inspect_at(&data, 1000);
+
+        assert_eq!(health.entity_count, 2);
+        assert_eq!(health.isolated_entity_count, 0);
     }
 
     #[test]
@@ -906,7 +946,8 @@ mod tests {
 
         let health = KnowledgeHealth::inspect_at(&data, 1000);
 
-        assert_eq!(health.entity_count, 2);
+        // "Release Notes" is the claim's literal value, not an entity.
+        assert_eq!(health.entity_count, 1);
         assert_eq!(health.isolated_entity_count, 0);
         assert!(health.signals.is_empty());
     }
@@ -1277,8 +1318,8 @@ mod tests {
     #[test]
     fn blind_spot_count_is_the_coverage_subset_of_signal_count() {
         // Two unsourced conflicting facts: the store raises a no-episodes signal,
-        // two unsupported-fact signals, one conflict, and isolated-entity signals
-        // for the three entities. blind_spot_count counts only the coverage
+        // two unsupported-fact signals, one conflict, and an isolated-entity
+        // signal for the subject (the values are literals). blind_spot_count counts only the coverage
         // family (no-episodes + isolated); signal_count counts them all.
         let data = MemoryData {
             event_count: 2,
@@ -1300,9 +1341,10 @@ mod tests {
 
         let health = KnowledgeHealth::inspect_at(&data, 1001);
 
-        // Entities Atlas, draft, published are all isolated (3), plus no-episodes.
-        assert_eq!(health.isolated_entity_count, 3);
-        assert_eq!(health.blind_spot_count, 4);
+        // Atlas is isolated; "draft" and "published" are claim values. Plus
+        // no-episodes.
+        assert_eq!(health.isolated_entity_count, 1);
+        assert_eq!(health.blind_spot_count, 2);
         assert_eq!(health.conflicting_fact_count, 1);
         // The total is strictly larger: it also carries the conflict and the two
         // unsupported-fact signals.

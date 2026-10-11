@@ -48,7 +48,8 @@ fn assert_summary_resource(server: &mut McpProcess) {
     let summary = server.read_json_resource(10, "nahuali://database/summary");
     assert_eq!(summary["event_count"], 10);
     assert_eq!(summary["source_count"], 0);
-    assert_eq!(summary["entity_count"], 3);
+    // Claim values are literals, so only Lena and Release Notes are entities.
+    assert_eq!(summary["entity_count"], 2);
     assert_eq!(summary["episode_count"], 1);
     assert_eq!(summary["claim_count"], 2);
     assert_eq!(summary["link_count"], 2);
@@ -79,7 +80,13 @@ fn assert_projected_resources(server: &mut McpProcess, episode_id: &str) {
     assert_eq!(episodes[0]["mentions"], json!(["Lena", "Release Notes"]));
 
     let entities = server.read_json_resource(27, "nahuali://database/entities");
-    assert_eq!(entities.as_array().expect("entities array").len(), 3);
+    let entity_names = entities
+        .as_array()
+        .expect("entities array")
+        .iter()
+        .map(|entity| entity["name"].as_str().unwrap_or_default())
+        .collect::<Vec<_>>();
+    assert_eq!(entity_names, ["Lena", "Release Notes"]);
 
     let claims = server.read_json_resource(28, "nahuali://database/claims");
     assert_eq!(claims.as_array().expect("claims array").len(), 2);

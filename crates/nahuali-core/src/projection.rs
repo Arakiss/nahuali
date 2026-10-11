@@ -87,16 +87,12 @@ pub(crate) fn project_event(data: &mut MemoryData, event: &EventEnvelope) {
                 scope: payload.scope.clone(),
                 created_at_ms: event.timestamp_ms,
             };
+            // A claim's object is a literal attribute value ("41", "2 podencos y 5
+            // gatos"), not a graph node. Only the subject becomes an entity; record
+            // a `link` when the object is itself an entity.
             record_entity(
                 &mut data.entities,
                 &claim.subject,
-                event.timestamp_ms,
-                &event.id,
-                claim.scope.as_ref(),
-            );
-            record_entity(
-                &mut data.entities,
-                &claim.object,
                 event.timestamp_ms,
                 &event.id,
                 claim.scope.as_ref(),
@@ -241,13 +237,6 @@ pub(crate) fn project_event(data: &mut MemoryData, event: &EventEnvelope) {
                     record_entity(
                         &mut data.entities,
                         &projected.subject,
-                        event.timestamp_ms,
-                        &event.id,
-                        projected.scope.as_ref(),
-                    );
-                    record_entity(
-                        &mut data.entities,
-                        &projected.object,
                         event.timestamp_ms,
                         &event.id,
                         projected.scope.as_ref(),
@@ -739,7 +728,7 @@ mod tests {
     }
 
     #[test]
-    fn projects_entities_from_episode_mentions_claims_and_links() {
+    fn projects_entities_from_mentions_claim_subjects_and_links() {
         let events = vec![
             EventEnvelope::new(
                 1,
@@ -788,8 +777,10 @@ mod tests {
         assert_eq!(data.entities.len(), 2);
         assert_eq!(data.entities[0].name, "Lena");
         assert_eq!(data.entities[0].mention_count, 3);
+        // The claim object "release notes" is a literal value: it does not count
+        // as an occurrence of the entity; the mention and the link endpoint do.
         assert_eq!(data.entities[1].name, "Release Notes");
-        assert_eq!(data.entities[1].mention_count, 3);
+        assert_eq!(data.entities[1].mention_count, 2);
         assert_eq!(data.claims, data.facts);
         assert_eq!(data.links, data.relations);
     }

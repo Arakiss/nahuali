@@ -6,7 +6,7 @@ use crate::error::{NahualiError, Result};
 use crate::self_repair::{AutonomyLevel, RepairKind};
 
 /// Current deterministic projection schema version.
-pub const MEMORY_DATA_VERSION: u32 = 7;
+pub const MEMORY_DATA_VERSION: u32 = 8;
 
 /// Fully projected memory state derived from an record ledger.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
