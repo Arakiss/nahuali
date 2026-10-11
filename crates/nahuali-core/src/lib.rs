@@ -47,6 +47,7 @@ mod consolidation_plan;
 mod database;
 mod error;
 mod event;
+mod forget;
 mod graph;
 mod hooks;
 mod ingestion;
@@ -140,6 +141,10 @@ pub use event::{
     RepairClaimMaterialization, RepairLinkMaterialization, RepairMaterialization, ReviewRecorded,
     ReviewRecordedAction, ReviewRecordedOutcome, SourceRecorded, SourceRecordedKind,
 };
+pub use event::{
+    MemoryForgotten, RedactedRecord, RedactedRecordRef, RedactionViolation, verify_redactions,
+};
+pub use forget::{ForgetOptions, ForgetReport};
 pub use graph::{
     GraphTraversalOptions, MEMORY_GRAPH_VERSION, MemoryGraphEdge, MemoryGraphEdgeKind,
     MemoryGraphNode, MemoryGraphNodeKind, MemoryGraphReport, MemoryGraphSummary,
@@ -184,9 +189,9 @@ pub use merkle::{
     verify_merkle_consistency_proof, verify_merkle_proof,
 };
 pub use model::{
-    Claim, ClaimLifecycle, ClaimStatus, Entity, Episode, Fact, Intention, IntentionKind,
-    IntentionPriority, IntentionStatus, Link, MEMORY_DATA_VERSION, MemoryData, MemoryKind,
-    MemoryRepair, MemoryScope, MemoryScopeKind, Procedure, ProcedureKind, RecallResult,
+    Claim, ClaimLifecycle, ClaimStatus, Entity, Episode, Fact, ForgottenRecord, Intention,
+    IntentionKind, IntentionPriority, IntentionStatus, Link, MEMORY_DATA_VERSION, MemoryData,
+    MemoryKind, MemoryRepair, MemoryScope, MemoryScopeKind, Procedure, ProcedureKind, RecallResult,
     RecallResultTrust, RecallResultTrustMode, RecallScoreBreakdown, Relation, ReviewDecision,
     ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
 };

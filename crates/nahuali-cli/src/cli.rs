@@ -41,6 +41,7 @@ Capture:
   intention-complete    Mark an intention completed
   intention-block       Mark an intention blocked
   intention-defer       Mark an intention deferred
+  forget                Erase memory by id, keeping an audit trace without the content
 
 Recall & inspect:
   recall                Recall matching memory with optional authority context
@@ -1017,6 +1018,39 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         /// Only show items with this recommended action.
         #[arg(long, value_enum)]
         action: Option<CliReviewAction>,
+        /// Emit machine-readable JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(
+        about = "Erase memory by id, keeping an audit trace without the content.",
+        after_help = "Forgetting redacts the ledger records that hold the memory and every memory derived from it \
+(a source takes its episodes; an episode takes the claims, links, procedures, intentions, \
+repairs, and review decisions that cite it), then records who asked, when, and why. Recall, \
+inspection, and the graph projection stop surfacing it immediately. The hash chain, Merkle \
+roots, and signed checkpoints stay valid.\n\n\
+Not erased by this command: backups, snapshots, exports, and receipts written earlier; the \
+Qdrant semantic index until `--rebuild-semantic` or `nahuali semantic-rebuild`; and old \
+bytes the storage engine keeps until it compacts.\n\n\
+Examples:\n  nahuali forget episode_123 --reason \"GDPR art. 17 request\" --requested-by petru --dry-run\n  \
+nahuali forget episode_123 --reason \"GDPR art. 17 request\" --requested-by petru"
+    )]
+    Forget {
+        /// Memory ids to forget (sources, episodes, claims, links, procedures, intentions, reviews, or repairs).
+        #[arg(required = true, value_name = "ID")]
+        ids: Vec<String>,
+        /// Why the memory is forgotten (required, recorded in the audit trail; do not repeat the erased content).
+        #[arg(long)]
+        reason: String,
+        /// Person or process that requested the erasure, recorded in the audit trail.
+        #[arg(long = "requested-by", value_name = "WHO")]
+        requested_by: Option<String>,
+        /// Show what would be erased, including cascaded derived memory, without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+        /// Also rebuild the Qdrant semantic index so it no longer holds the erased text.
+        #[arg(long = "rebuild-semantic")]
+        rebuild_semantic: bool,
         /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,

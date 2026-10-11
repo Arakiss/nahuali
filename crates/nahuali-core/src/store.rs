@@ -28,6 +28,7 @@ use crate::{
         IntentionStatusChanged, IntentionUpdated, MemoryEvent, ProcedureRecorded,
         ProcedureRecordedKind, RelationRecorded, SourceRecorded, SourceRecordedKind,
     },
+    forget::{self, ForgetOptions, ForgetReport},
     graph, hooks, ingestion,
     inspection::KnowledgeHealth,
     intention,
@@ -140,6 +141,7 @@ include!("store/records.rs");
 include!("store/import_records.rs");
 include!("store/recall.rs");
 include!("store/services.rs");
+include!("store/forget.rs");
 include!("store/ledger.rs");
 include!("store/graph_projection.rs");
 include!("store/tests.rs");

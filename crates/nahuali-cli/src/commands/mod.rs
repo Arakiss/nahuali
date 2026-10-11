@@ -8,6 +8,7 @@ mod config;
 mod demo;
 #[cfg(feature = "tui")]
 mod explore;
+mod forget;
 mod init;
 mod migration;
 mod migration_legacy;
@@ -574,6 +575,24 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             action,
             json,
         } => reports::review(&mut memory, limit, min_priority, action, json)?,
+        Command::Forget {
+            ids,
+            reason,
+            requested_by,
+            dry_run,
+            rebuild_semantic,
+            json,
+        } => forget::forget(
+            &mut memory,
+            nahuali_core::ForgetOptions {
+                targets: ids,
+                reason,
+                requested_by,
+                dry_run,
+            },
+            rebuild_semantic,
+            json,
+        )?,
         Command::ReviewResolve {
             review_id,
             note,

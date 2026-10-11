@@ -7,9 +7,9 @@ use crate::{
         ReviewRecordedOutcome, SourceRecordedKind,
     },
     model::{
-        Claim, Entity, Episode, Intention, IntentionKind, IntentionPriority, IntentionStatus, Link,
-        MemoryData, MemoryRepair, MemoryScope, Procedure, ProcedureKind, ReviewDecision,
-        ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
+        Claim, Entity, Episode, ForgottenRecord, Intention, IntentionKind, IntentionPriority,
+        IntentionStatus, Link, MemoryData, MemoryRepair, MemoryScope, Procedure, ProcedureKind,
+        ReviewDecision, ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
     },
 };
 
@@ -290,6 +290,19 @@ pub(crate) fn project_event(data: &mut MemoryData, event: &EventEnvelope) {
                 created_at_ms: event.timestamp_ms,
             });
         }
+        MemoryEvent::MemoryForgotten(payload) => {
+            data.forgotten.push(ForgottenRecord {
+                id: payload.id.clone(),
+                event_id: event.id.clone(),
+                forgotten_at_ms: event.timestamp_ms,
+                reason: payload.reason.clone(),
+                requested_by: payload.requested_by.clone(),
+                targets: payload.targets.clone(),
+                forgotten_ids: payload.forgotten_ids.clone(),
+                redacted_event_count: payload.redacted_records.len(),
+            });
+        }
+        MemoryEvent::Redacted(_) => {}
     }
 }
 

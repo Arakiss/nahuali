@@ -36,6 +36,9 @@ pub struct MemoryData {
     /// Audit trail of applied self-repairs.
     #[serde(default)]
     pub repairs: Vec<MemoryRepair>,
+    /// Audit trail of explicit forget requests. Names erased records, never their content.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forgotten: Vec<ForgottenRecord>,
     /// Compatibility mirror for `claims`.
     pub facts: Vec<Fact>,
     /// Compatibility mirror for `links`.
@@ -57,6 +60,7 @@ impl Default for MemoryData {
             intentions: Vec::new(),
             review_decisions: Vec::new(),
             repairs: Vec::new(),
+            forgotten: Vec::new(),
             facts: Vec::new(),
             relations: Vec::new(),
         }
@@ -539,6 +543,28 @@ pub struct MemoryRepair {
     pub scope: Option<MemoryScope>,
     /// Event timestamp in milliseconds since the Unix epoch.
     pub created_at_ms: u64,
+}
+
+/// Projected audit record of one explicit forget request.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ForgottenRecord {
+    /// Stable forget-request identifier.
+    pub id: String,
+    /// Event identifier that recorded the request.
+    pub event_id: String,
+    /// When the memory was forgotten, in milliseconds since the Unix epoch.
+    pub forgotten_at_ms: u64,
+    /// Operator-supplied reason.
+    pub reason: String,
+    /// Person or process that requested the erasure, when given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<String>,
+    /// Memory identifiers the operator asked to forget.
+    pub targets: Vec<String>,
+    /// Every memory identifier erased, including cascaded derived memory.
+    pub forgotten_ids: Vec<String>,
+    /// Number of ledger records whose content was redacted.
+    pub redacted_event_count: usize,
 }
 
 /// Kind of memory item returned by recall.

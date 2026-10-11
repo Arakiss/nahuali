@@ -301,6 +301,9 @@ pub enum BackupIssueKind {
     /// An included record did not carry a hash-chain link while validation
     /// required every record to be chained.
     RecordHashChainMissing,
+    /// An included record was redacted without a matching later forget record,
+    /// or a forget record lists a record that still holds content.
+    RecordRedactionUnauthorized,
     /// The target database already contains records.
     TargetNotEmpty,
     /// The restored target did not match the backup after writing.
@@ -561,6 +564,15 @@ pub(crate) fn validate_backup_with_options(
         {
             last_chained = Some(event.chain_hash());
         }
+    }
+
+    if records_valid && let Some(violation) = crate::event::verify_redactions(&backup.records) {
+        records_valid = false;
+        issues.push(error_issue(
+            Some(violation.record),
+            BackupIssueKind::RecordRedactionUnauthorized,
+            violation.message,
+        ));
     }
 
     BackupValidation {

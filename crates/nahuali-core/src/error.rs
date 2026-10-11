@@ -216,6 +216,18 @@ pub enum NahualiError {
         /// Human-readable validation failure.
         message: String,
     },
+    /// A forget request could not be planned.
+    #[error("invalid forget request: {message}")]
+    InvalidForgetRequest {
+        /// Human-readable validation failure.
+        message: String,
+    },
+    /// A forget target names no live memory in this store.
+    #[error("cannot forget '{id}': no memory with that id (unknown or already forgotten)")]
+    UnknownForgetTarget {
+        /// Requested memory identifier.
+        id: String,
+    },
     /// A local embedding model could not be loaded or produced no vectors.
     #[error("local embedding model error: {message}")]
     LocalEmbeddingModel {
