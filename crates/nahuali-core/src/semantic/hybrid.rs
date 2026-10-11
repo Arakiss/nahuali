@@ -7,6 +7,7 @@ struct HybridAccumulator {
     excerpt: String,
     evidence_id: Option<String>,
     matched_terms: Vec<String>,
+    lifecycle: Option<ClaimLifecycle>,
 }
 
 impl HybridAccumulator {
@@ -19,6 +20,7 @@ impl HybridAccumulator {
             excerpt: result.excerpt.clone(),
             evidence_id: result.evidence_id.clone(),
             matched_terms: result.matched_terms.clone(),
+            lifecycle: result.lifecycle.clone(),
         }
     }
 
@@ -31,6 +33,7 @@ impl HybridAccumulator {
             excerpt: result.excerpt.clone(),
             evidence_id: result.evidence_id.clone(),
             matched_terms: Vec::new(),
+            lifecycle: None,
         }
     }
 
@@ -89,6 +92,7 @@ impl HybridAccumulator {
             // Per-result trust is grafted on later by the store layer, which holds
             // the knowledge-health context the verdict needs.
             trust: None,
+            lifecycle: self.lifecycle,
             excerpt: self.excerpt,
             evidence_id: self.evidence_id,
             matched_terms: self.matched_terms,

@@ -326,6 +326,9 @@ pub struct HybridRecallResult {
     /// a record that certifies lexically certifies here too.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trust: Option<RecallResultTrust>,
+    /// Claim lifecycle, computed by the same policy lexical recall uses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<ClaimLifecycle>,
     /// Human-readable excerpt.
     pub excerpt: String,
     /// Optional evidence episode identifier.

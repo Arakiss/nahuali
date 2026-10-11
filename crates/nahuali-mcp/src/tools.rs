@@ -706,6 +706,8 @@ impl NahualiMcpServer {
                 require_evidence: args.require_evidence.unwrap_or(false),
                 as_of_ms: args.as_of_ms,
                 since_ms: args.since_ms,
+                exclude_superseded: args.exclude_superseded.unwrap_or(false),
+                ..RecallOptions::default()
             };
             memory
                 .recall_with_authority_options(&args.query, options)

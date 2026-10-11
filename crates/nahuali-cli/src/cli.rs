@@ -4,7 +4,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use nahuali_core::{
     DEFAULT_INTENTION_STALE_AFTER_MS, DEFAULT_PROACTIVE_DEADLINE_HORIZON_MS,
     DEFAULT_TEXT_CHUNK_BYTES, IntentionKind, IntentionPriority, IntentionStatus, MemoryHookKind,
-    MemoryKind, SelfInspectionReviewAction, SelfInspectionReviewPriority, SourceKind, TextChunking,
+    MemoryKind, RecallRankingPolicy, SelfInspectionReviewAction, SelfInspectionReviewPriority,
+    SourceKind, TextChunking,
 };
 
 /// Custom help template for the root command. clap renders every subcommand in a
@@ -136,6 +137,26 @@ fn parse_confidence(raw: &str) -> Result<f32, String> {
         return Err(format!(
             "confidence must be between 0.0 and 1.0 (got {raw})"
         ));
+    }
+    Ok(value)
+}
+
+fn parse_ranking_weight(raw: &str) -> Result<f32, String> {
+    let value: f32 = raw
+        .parse()
+        .map_err(|_| format!("`{raw}` is not a valid number"))?;
+    if !value.is_finite() || value < 0.0 {
+        return Err(format!("weight must be a finite number >= 0 (got {raw})"));
+    }
+    Ok(value)
+}
+
+fn parse_half_life_days(raw: &str) -> Result<f64, String> {
+    let value: f64 = raw
+        .parse()
+        .map_err(|_| format!("`{raw}` is not a valid number"))?;
+    if !value.is_finite() || value <= 0.0 {
+        return Err(format!("half-life must be greater than 0 days (got {raw})"));
     }
     Ok(value)
 }
@@ -670,6 +691,35 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
             help = "Also consult the read-only archive store ($NAHUALI_ARCHIVE_DB, default ts-archive) as low-authority reference; never written to"
         )]
         archive: bool,
+        #[arg(
+            long = "exclude-superseded",
+            help = "Hide claims replaced by a newer evidence-backed value (shown last and marked by default)"
+        )]
+        exclude_superseded: bool,
+        #[arg(
+            long = "recency-weight",
+            value_name = "WEIGHT",
+            default_value_t = RecallRankingPolicy::default().recency_weight,
+            value_parser = parse_ranking_weight,
+            help = "Score bonus for the newest matching result; decays with age. 0 disables recency"
+        )]
+        recency_weight: f32,
+        #[arg(
+            long = "recency-half-life-days",
+            value_name = "DAYS",
+            default_value_t = 30.0,
+            value_parser = parse_half_life_days,
+            help = "Age (relative to the newest match) at which the recency bonus halves"
+        )]
+        recency_half_life_days: f64,
+        #[arg(
+            long = "confidence-weight",
+            value_name = "WEIGHT",
+            default_value_t = RecallRankingPolicy::default().confidence_weight,
+            value_parser = parse_ranking_weight,
+            help = "Multiplier applied to recorded confidence when scoring claims, links, and procedures"
+        )]
+        confidence_weight: f32,
         #[arg(long, help = "Emit machine-readable JSON instead of text")]
         json: bool,
     },

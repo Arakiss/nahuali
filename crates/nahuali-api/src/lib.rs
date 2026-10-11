@@ -30,7 +30,7 @@ use nahuali_core::{
     IntentionStatus, IntentionUpdateOptions, KnowledgeHealth, LedgerAudit, LedgerAuditOptions,
     Link, MemoryBriefingReport, MemoryEngine, MemoryGraphReport, MemoryKind, MemoryProactiveReport,
     MemoryScope, MemoryTrustReport, NahualiError, ProactiveOptions, Procedure, RecallOptions,
-    ReviewResolutionReport, SemanticIndexReport, SemanticIndexStatus,
+    RecallRankingPolicy, ReviewResolutionReport, SemanticIndexReport, SemanticIndexStatus,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, RwLockMappedWriteGuard, RwLockReadGuard, RwLockWriteGuard};
@@ -733,6 +733,8 @@ async fn recall(
         require_evidence: request.require_evidence,
         as_of_ms: request.as_of_ms,
         since_ms: request.since_ms,
+        exclude_superseded: request.exclude_superseded,
+        ranking: request.ranking,
     };
 
     let authority_recall = memory.recall_with_authority_options(&request.query, options.clone())?;
@@ -1071,6 +1073,12 @@ struct RecallRequest {
     /// timestamp (exclude stale memory at query time).
     #[serde(default)]
     since_ms: Option<u64>,
+    /// Hide claims replaced by a newer evidence-backed value.
+    #[serde(default)]
+    exclude_superseded: bool,
+    /// Ranking weights; omitted fields keep their defaults.
+    #[serde(default)]
+    ranking: RecallRankingPolicy,
 }
 
 #[derive(Deserialize)]

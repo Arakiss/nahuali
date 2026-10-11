@@ -273,15 +273,40 @@ pub(crate) fn hybrid_recall_with_options(
             .merge_semantic(result);
     }
 
+    let lifecycles = crate::inspection::claim_lifecycles(data);
     let mut results = merged
         .into_values()
-        .map(|accumulator| accumulator.finish(&authority))
+        .filter(|accumulator| recall::projection_contains(data, &accumulator.kind, &accumulator.id))
+        .map(|accumulator| {
+            let mut result = accumulator.finish(&authority);
+            if matches!(result.kind, MemoryKind::Claim | MemoryKind::Fact) {
+                result.lifecycle = lifecycles.get(&result.id).cloned();
+            }
+            result
+        })
+        .filter(|result| {
+            !(options.exclude_superseded
+                && result
+                    .lifecycle
+                    .as_ref()
+                    .is_some_and(ClaimLifecycle::is_superseded))
+        })
         .collect::<Vec<_>>();
     results.sort_by(|left, right| {
-        right
-            .score
-            .partial_cmp(&left.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        let superseded = |result: &HybridRecallResult| {
+            result
+                .lifecycle
+                .as_ref()
+                .is_some_and(ClaimLifecycle::is_superseded)
+        };
+        superseded(left)
+            .cmp(&superseded(right))
+            .then_with(|| {
+                right
+                    .score
+                    .partial_cmp(&left.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .then_with(|| left.id.cmp(&right.id))
     });
     results.truncate(bounded_limit);

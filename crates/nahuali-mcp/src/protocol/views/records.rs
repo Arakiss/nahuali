@@ -301,6 +301,40 @@ pub(crate) struct RecallResultView {
     scope: Option<ScopeView>,
     #[serde(skip_serializing_if = "Option::is_none")]
     trust: Option<RecallResultTrustView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    created_at_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    updated_at_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    observed_at_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    confidence: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lifecycle: Option<ClaimLifecycleView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    score_breakdown: Option<RecallScoreBreakdownView>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ClaimLifecycleView {
+    /// `current`, `superseded`, or `contested`.
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    superseded_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    superseded_at_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    supersedes: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    contested_with: Vec<String>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct RecallScoreBreakdownView {
+    relevance: f32,
+    confidence: f32,
+    evidence: f32,
+    recency: f32,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -329,6 +363,25 @@ impl From<RecallResult> for RecallResultView {
                 reasons: trust.reasons,
                 signal_kinds: trust.signal_kinds,
             }),
+            created_at_ms: result.created_at_ms,
+            updated_at_ms: result.updated_at_ms,
+            observed_at_ms: result.observed_at_ms,
+            confidence: result.confidence,
+            lifecycle: result.lifecycle.map(|lifecycle| ClaimLifecycleView {
+                status: json_string(&lifecycle.status),
+                superseded_by: lifecycle.superseded_by,
+                superseded_at_ms: lifecycle.superseded_at_ms,
+                supersedes: lifecycle.supersedes,
+                contested_with: lifecycle.contested_with,
+            }),
+            score_breakdown: result
+                .score_breakdown
+                .map(|breakdown| RecallScoreBreakdownView {
+                    relevance: breakdown.relevance,
+                    confidence: breakdown.confidence,
+                    evidence: breakdown.evidence,
+                    recency: breakdown.recency,
+                }),
         }
     }
 }

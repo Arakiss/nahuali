@@ -28,7 +28,8 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use nahuali_core::{
-    LedgerAuditOptions, MemoryEngine, NahualiError, ResolvedValue, TrustReportOptions,
+    LedgerAuditOptions, MemoryEngine, NahualiError, RecallRankingPolicy, ResolvedValue,
+    TrustReportOptions,
 };
 
 use crate::cli::{Cli, Command};
@@ -468,6 +469,10 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             as_of_ms,
             max_age_days,
             archive,
+            exclude_superseded,
+            recency_weight,
+            recency_half_life_days,
+            confidence_weight,
             json,
         } => reports::recall(
             &mut memory,
@@ -482,6 +487,14 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
                 as_of_ms,
                 max_age_days,
                 archive,
+                exclude_superseded,
+                ranking: RecallRankingPolicy {
+                    confidence_weight,
+                    recency_weight,
+                    recency_half_life_ms: (recency_half_life_days * 86_400_000.0).round().max(1.0)
+                        as u64,
+                    ..RecallRankingPolicy::default()
+                },
                 json,
             },
         )?,

@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Fact, MemoryData, Relation, ReviewDecisionOutcome};
+use crate::model::{
+    ClaimLifecycle, ClaimStatus, Fact, MemoryData, Relation, ReviewDecisionOutcome,
+};
 
 const STALE_AFTER_DAYS: u64 = 90;
 const DAY_MS: u64 = 24 * 60 * 60 * 1000;
@@ -427,6 +429,13 @@ struct FactConflict {
     predicate: String,
     values: BTreeSet<String>,
     evidence_ids: BTreeSet<String>,
+    members: Vec<ConflictMember>,
+}
+
+#[derive(Debug)]
+struct ConflictMember {
+    claim_id: String,
+    value: String,
 }
 
 #[derive(Debug)]
@@ -435,6 +444,8 @@ struct Supersession {
     predicate: String,
     current_value: String,
     current_event_id: String,
+    current_claim_id: String,
+    current_created_at_ms: u64,
     retired: Vec<RetiredFact>,
 }
 
@@ -442,6 +453,7 @@ struct Supersession {
 struct RetiredFact {
     value: String,
     event_id: String,
+    claim_id: String,
 }
 
 /// Partition `(scope, subject, predicate)` groups that disagree on the object
@@ -534,6 +546,7 @@ fn classify_fact_groups(facts: &[Fact]) -> (Vec<FactConflict>, Vec<Supersession>
                     .map(|fact| RetiredFact {
                         value: fact.object.clone(),
                         event_id: fact.event_id.clone(),
+                        claim_id: fact.id.clone(),
                     })
                     .collect::<Vec<_>>();
                 if !retired.is_empty() {
@@ -542,6 +555,8 @@ fn classify_fact_groups(facts: &[Fact]) -> (Vec<FactConflict>, Vec<Supersession>
                         predicate: predicate.to_string(),
                         current_value: winner.object.clone(),
                         current_event_id: winner.event_id.clone(),
+                        current_claim_id: winner.id.clone(),
+                        current_created_at_ms: winner.created_at_ms,
                         retired,
                     });
                     continue;
@@ -553,15 +568,72 @@ fn classify_fact_groups(facts: &[Fact]) -> (Vec<FactConflict>, Vec<Supersession>
             .iter()
             .map(|fact| fact.event_id.clone())
             .collect::<BTreeSet<_>>();
+        let members = group
+            .iter()
+            .map(|fact| ConflictMember {
+                claim_id: fact.id.clone(),
+                value: fact.object.clone(),
+            })
+            .collect();
         conflicts.push(FactConflict {
             subject: subject.to_string(),
             predicate: predicate.to_string(),
             values,
             evidence_ids,
+            members,
         });
     }
 
     (conflicts, supersessions)
+}
+
+/// Derive the lifecycle of every projected claim from the ledger alone.
+///
+/// Uses the same supersession/conflict classification as [`KnowledgeHealth`],
+/// but ignores review decisions: resolving a review item acknowledges a
+/// supersession, it does not make the retired value current again. Claims in
+/// no disagreeing group are `Current`.
+pub(crate) fn claim_lifecycles(data: &MemoryData) -> BTreeMap<String, ClaimLifecycle> {
+    let facts = projected_facts(data);
+    let mut lifecycles = facts
+        .iter()
+        .map(|fact| (fact.id.clone(), ClaimLifecycle::current()))
+        .collect::<BTreeMap<_, _>>();
+    let (conflicts, supersessions) = classify_fact_groups(facts);
+
+    for supersession in supersessions {
+        for retired in &supersession.retired {
+            if let Some(lifecycle) = lifecycles.get_mut(&retired.claim_id) {
+                lifecycle.status = ClaimStatus::Superseded;
+                lifecycle.superseded_by = Some(supersession.current_claim_id.clone());
+                lifecycle.superseded_at_ms = Some(supersession.current_created_at_ms);
+            }
+        }
+        if let Some(lifecycle) = lifecycles.get_mut(&supersession.current_claim_id) {
+            lifecycle.supersedes.extend(
+                supersession
+                    .retired
+                    .iter()
+                    .map(|retired| retired.claim_id.clone()),
+            );
+        }
+    }
+
+    for conflict in conflicts {
+        for member in &conflict.members {
+            if let Some(lifecycle) = lifecycles.get_mut(&member.claim_id) {
+                lifecycle.status = ClaimStatus::Contested;
+                lifecycle.contested_with = conflict
+                    .members
+                    .iter()
+                    .filter(|other| other.value != member.value)
+                    .map(|other| other.claim_id.clone())
+                    .collect();
+            }
+        }
+    }
+
+    lifecycles
 }
 
 fn entity_graph(

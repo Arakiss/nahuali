@@ -192,6 +192,13 @@ pub enum NahualiError {
         /// Human-readable configuration failure.
         message: String,
     },
+    /// A recall ranking policy carried a weight or half-life that cannot rank
+    /// deterministically.
+    #[error("invalid recall ranking policy: {message}")]
+    InvalidRecallRanking {
+        /// Human-readable validation failure.
+        message: String,
+    },
     /// A local embedding model could not be loaded or produced no vectors.
     #[error("local embedding model error: {message}")]
     LocalEmbeddingModel {

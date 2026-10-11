@@ -184,10 +184,11 @@ pub use merkle::{
     verify_merkle_consistency_proof, verify_merkle_proof,
 };
 pub use model::{
-    Claim, Entity, Episode, Fact, Intention, IntentionKind, IntentionPriority, IntentionStatus,
-    Link, MEMORY_DATA_VERSION, MemoryData, MemoryKind, MemoryRepair, MemoryScope, MemoryScopeKind,
-    Procedure, ProcedureKind, RecallResult, RecallResultTrust, RecallResultTrustMode, Relation,
-    ReviewDecision, ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
+    Claim, ClaimLifecycle, ClaimStatus, Entity, Episode, Fact, Intention, IntentionKind,
+    IntentionPriority, IntentionStatus, Link, MEMORY_DATA_VERSION, MemoryData, MemoryKind,
+    MemoryRepair, MemoryScope, MemoryScopeKind, Procedure, ProcedureKind, RecallResult,
+    RecallResultTrust, RecallResultTrustMode, RecallScoreBreakdown, Relation, ReviewDecision,
+    ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
 };
 pub use operator_review::{
     OPERATOR_REVIEW_VERSION, OperatorReviewItem, OperatorReviewOptions, OperatorReviewReport,
@@ -205,7 +206,7 @@ pub use project::{
     MEMORY_PROJECT_VIEW_VERSION, MemoryProjectReport, ProjectViewOptions, ProjectViewSummary,
 };
 pub use projection::project_validated_events;
-pub use recall::{RecallOptions, recall_projection_with_authority};
+pub use recall::{RecallOptions, RecallRankingPolicy, recall_projection_with_authority};
 #[cfg(feature = "attestation")]
 pub use receipt::{
     MAX_CLAIM_RECEIPT_BYTES, MAX_RECEIPT_MERKLE_SIBLINGS, MEMORY_CLAIM_RECEIPT_FORMAT,
