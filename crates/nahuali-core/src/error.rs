@@ -111,6 +111,23 @@ pub enum NahualiError {
         /// Database path that could not be used.
         path: PathBuf,
     },
+    /// Another process kept the embedded store locked for longer than the
+    /// configured wait.
+    #[error(
+        "the embedded store at {endpoint} is locked by another process (waited {waited_ms} ms); embedded SurrealKV admits one process at a time"
+    )]
+    StoreBusy {
+        /// Embedded store endpoint that stayed locked.
+        endpoint: String,
+        /// Milliseconds spent waiting before giving up.
+        waited_ms: u64,
+    },
+    /// `NAHUALI_STORE_LOCK_TIMEOUT_MS` was not a whole number of milliseconds.
+    #[error("NAHUALI_STORE_LOCK_TIMEOUT_MS must be a whole number of milliseconds (got {value:?})")]
+    InvalidStoreLockTimeout {
+        /// Rejected value.
+        value: String,
+    },
     /// A short-lived runtime could not be created for embedded database work.
     #[error("failed to create async runtime: {source}")]
     Runtime {

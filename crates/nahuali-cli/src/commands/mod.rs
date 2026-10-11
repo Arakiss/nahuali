@@ -846,6 +846,7 @@ fn open_store(database: &std::path::Path, verbose: bool) -> anyhow::Result<Memor
 enum OpenFailureKind {
     Connection,
     Integrity,
+    Busy,
     Other,
 }
 
@@ -855,6 +856,7 @@ fn classify_open_failure(error: &NahualiError) -> OpenFailureKind {
             OpenFailureKind::Integrity
         }
         NahualiError::Database { .. } | NahualiError::Runtime { .. } => OpenFailureKind::Connection,
+        NahualiError::StoreBusy { .. } => OpenFailureKind::Busy,
         _ => OpenFailureKind::Other,
     }
 }
@@ -872,6 +874,23 @@ fn report_open_failure(
             eprintln!("  Reason: {error}");
             eprintln!("  Preserve the store and inspect the reported record before retrying.");
             Err(error).context("the Nahuali store failed recorded-history validation")
+        }
+        OpenFailureKind::Busy => {
+            eprintln!("\u{2717} The local Nahuali store at {endpoint} is busy.");
+            eprintln!("  Reason: {error}");
+            eprintln!(
+                "  Another process kept it open. Short CLI commands queue automatically; a running"
+            );
+            eprintln!(
+                "  `nahuali-mcp`, `nahuali-api`, or `nahuali explore` holds it until it exits."
+            );
+            eprintln!(
+                "  Wait longer with NAHUALI_STORE_LOCK_TIMEOUT_MS=<ms>, stop the long-lived process,"
+            );
+            eprintln!(
+                "  or run a SurrealDB server and set NAHUALI_DB_URL=ws://... for concurrent access."
+            );
+            Err(error).context("the local Nahuali store is locked by another process")
         }
         OpenFailureKind::Connection if endpoint.starts_with("surrealkv://") => {
             eprintln!("\u{2717} Cannot open the local Nahuali store at {endpoint}.");

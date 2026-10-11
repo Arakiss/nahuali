@@ -125,9 +125,9 @@ pub use consolidation_plan::{
     MEMORY_CONSOLIDATION_PLAN_VERSION, MemoryConsolidationPlanReport,
 };
 pub use database::{
-    ConfigSource, DatabaseNameError, ResolvedConfig, ResolvedValue, resolve_archive_database,
-    resolve_config, resolve_database_name, resolve_endpoint, resolve_namespace,
-    validate_database_name,
+    ConfigSource, DEFAULT_STORE_LOCK_TIMEOUT_MS, DatabaseNameError, ResolvedConfig, ResolvedValue,
+    resolve_archive_database, resolve_config, resolve_database_name, resolve_endpoint,
+    resolve_namespace, validate_database_name,
 };
 pub use error::{NahualiError, Result};
 #[cfg(feature = "tamper-evidence")]

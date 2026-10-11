@@ -44,6 +44,8 @@ local-embeddings = ["nahuali-core/local-embeddings"]
 [dev-dependencies]
 # Used by the operator-path test support to drop per-test Qdrant collections.
 reqwest.workspace = true
+# Holds the embedded store's LOCK file to exercise the busy-store timeout.
+fs2 = "0.4"
 
 [dependencies]
 anyhow.workspace = true

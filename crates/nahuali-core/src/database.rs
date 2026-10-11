@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use fs2::FileExt;
@@ -440,9 +440,7 @@ fn store_runtime(endpoint: &str, path: &Path) -> CoreResult<Arc<StoreRuntime>> {
             .enable_all()
             .build()
             .map_err(|source| NahualiError::Runtime { source })?;
-        let root = runtime
-            .block_on(async { connect(&endpoint_owned).await })
-            .map_err(|source| database_error(&path_owned, source))?;
+        let root = connect_waiting_for_store_lock(&runtime, &endpoint_owned, &path_owned)?;
         if !is_embedded_endpoint(&endpoint_owned) {
             let username =
                 std::env::var("NAHUALI_DB_USERNAME").unwrap_or_else(|_| "root".to_string());
@@ -465,6 +463,56 @@ fn store_runtime(endpoint: &str, path: &Path) -> CoreResult<Arc<StoreRuntime>> {
     });
     runtimes.insert(endpoint.to_string(), Arc::clone(&owner));
     Ok(owner)
+}
+
+/// Default time a process waits for another process to release an embedded
+/// store before failing with [`NahualiError::StoreBusy`].
+pub const DEFAULT_STORE_LOCK_TIMEOUT_MS: u64 = 30_000;
+
+/// Embedded SurrealKV admits one process per data directory and holds the
+/// directory lock until that process exits. Short-lived commands (CLI reads and
+/// writes) therefore queue behind each other instead of failing on the first
+/// contended open; the wait is bounded by `NAHUALI_STORE_LOCK_TIMEOUT_MS`
+/// (`0` fails immediately).
+fn connect_waiting_for_store_lock(
+    runtime: &Runtime,
+    endpoint: &str,
+    path: &Path,
+) -> CoreResult<Surreal<Any>> {
+    let timeout = Duration::from_millis(store_lock_timeout_ms()?);
+    let started = Instant::now();
+    let mut delay = Duration::from_millis(10);
+    loop {
+        match runtime.block_on(async { connect(endpoint).await }) {
+            Ok(root) => return Ok(root),
+            Err(source) if is_store_locked(&source) => {
+                let waited = started.elapsed();
+                if waited >= timeout {
+                    return Err(NahualiError::StoreBusy {
+                        endpoint: endpoint.to_string(),
+                        waited_ms: waited.as_millis() as u64,
+                    });
+                }
+                thread::sleep(delay.min(timeout - waited));
+                delay = (delay * 2).min(Duration::from_millis(200));
+            }
+            Err(source) => return Err(database_error(path, source)),
+        }
+    }
+}
+
+fn store_lock_timeout_ms() -> CoreResult<u64> {
+    match std::env::var("NAHUALI_STORE_LOCK_TIMEOUT_MS") {
+        Ok(raw) if !raw.trim().is_empty() => raw
+            .trim()
+            .parse()
+            .map_err(|_| NahualiError::InvalidStoreLockTimeout { value: raw.clone() }),
+        _ => Ok(DEFAULT_STORE_LOCK_TIMEOUT_MS),
+    }
+}
+
+fn is_store_locked(source: &surrealdb::Error) -> bool {
+    source.to_string().contains("is already locked")
 }
 
 fn run_on<F, T>(owner: &Arc<StoreRuntime>, future: F) -> CoreResult<T>

@@ -34,6 +34,17 @@ pub fn run(store: &Path, args: &[&str]) -> Output {
     run_at_endpoint(store, store, args)
 }
 
+pub fn run_with_env(store: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_nahuali"));
+    command
+        .arg("--database")
+        .arg(store)
+        .env("NAHUALI_DB_URL", test_endpoint(store))
+        .envs(envs.iter().copied());
+    command.args(args);
+    command.output().expect("nahuali-cli runs")
+}
+
 pub fn run_at_endpoint(database: &Path, endpoint_store: &Path, args: &[&str]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_nahuali"));
     command
@@ -131,7 +142,7 @@ pub fn temp_database(name: &str) -> TempDatabase {
     TempDatabase { name, endpoint }
 }
 
-fn endpoint_path(store: &Path) -> PathBuf {
+pub fn endpoint_path(store: &Path) -> PathBuf {
     std::env::temp_dir()
         .join("nahuali-cli-test-stores")
         .join(store.as_os_str())
