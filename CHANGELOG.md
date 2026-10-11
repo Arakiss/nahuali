@@ -7,50 +7,30 @@ release histories.
 
 ## Unreleased
 
-Planned as **0.8.0-beta.11** (next beta on the approved 0.8.0 train). Release
-Please adds the commit list for that version when it opens the release pull
-request; the notes below are the upgrade and migration guidance it cannot
-generate.
+## [0.8.0-beta.11](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.10...v0.8.0-beta.11) (2026-10-11)
+
 
 ### New
 
-- `nahuali forget <id>... --reason ... [--requested-by WHO] [--dry-run]`
-  erases memory by id together with the memory derived from it, with an
-  auditable `memory_forgotten` trace (who, when, why, which ids and records) that
-  never contains the erased content. Redacted records keep their chained hash,
-  so validation, Merkle proofs, and earlier checkpoints still verify; an
-  unauthorized redaction fails closed. CLI-only by design. Backups, exports,
-  receipts, the Qdrant index until rebuilt, and storage-engine compaction are
-  outside its reach; see `compliance/gdpr-position.md`.
-- Recall ranking is an explicit, tunable policy (relevance, confidence weight,
-  evidence bonus, recency with a half-life) exposed as `--confidence-weight`,
-  `--recency-weight`, and `--recency-half-life-days`, the HTTP `ranking`
-  object, and `RecallRankingPolicy`. Each result reports its `score_breakdown`,
-  timestamps, and confidence.
-- `--store <PATH|URL>` chooses where the store lives, separately from
-  `--database <NAME>`, which names a database inside it.
+* **cli:** add --store to choose the store location ([13ab68a](https://github.com/Arakiss/nahuali/commit/13ab68a33a210165ee2bb2d46bc31513f143c265))
+* **core:** forget memory with an auditable redaction trail ([2f05b25](https://github.com/Arakiss/nahuali/commit/2f05b258e98c981d197f641b049d7b2e1fdbb626))
+
 
 ### Fixed
 
-- A claim replaced by a newer evidence-backed value stays marked as
-  `superseded` in recall after its review item is resolved. It ranks after
-  current memory, carries `lifecycle.superseded_by`, and is hidden with
-  `--exclude-superseded` (MCP `excludeSuperseded`, HTTP `exclude_superseded`).
-- Parallel commands against the embedded store queue on its lock (bounded by
-  `NAHUALI_STORE_LOCK_TIMEOUT_MS`, default 30000) instead of failing at once
-  with `LOCK is already locked`.
-- Claim values are literals and no longer create entities, so values such as
-  `"2 podencos y 5 gatos"` stop raising "Isolated entity" review items.
-- First-hand episodes no longer raise a "Source coverage gap" item; only
-  derived memory without a source episode does.
-- Human `review` output shows each item's id and the exact `review-resolve`
-  command. Every subcommand option has help text.
-- Review guidance for unsourced memory names the command that derives memory
-  from an episode (`--source-last` / `--source-episode <id>`).
-- The installer summary always ends with a `Signature:` line stating whether
-  the Sigstore signature was verified or only the checksum was checked.
+* **cli:** document every subcommand option ([8218c2d](https://github.com/Arakiss/nahuali/commit/8218c2dc741d982726c30acd58c09b400595ca1c))
+* **cli:** show the review item id and resolve command in human review output ([c33415e](https://github.com/Arakiss/nahuali/commit/c33415e00813cd8b6e68ca88e174cc7e956cd989))
+* **core:** keep claim supersession visible in recall and rank by recency ([7a3191f](https://github.com/Arakiss/nahuali/commit/7a3191fb3ba195e4ee0661a3520749b897f739ce))
+* **core:** name the command that derives memory from an episode in review guidance ([2c2d14b](https://github.com/Arakiss/nahuali/commit/2c2d14bfa5498ac57f418debe2eaf2ffdae1886a))
+* **core:** queue concurrent processes on the embedded store lock ([11c7715](https://github.com/Arakiss/nahuali/commit/11c771587ecdadee2a516824ced67f89b4ff28aa))
+* **core:** stop flagging first-hand episodes as a source coverage gap ([1ec5695](https://github.com/Arakiss/nahuali/commit/1ec5695800951a76797285c4a97d0956e4916cc4))
+* **core:** treat claim values as literals instead of entities ([63ae626](https://github.com/Arakiss/nahuali/commit/63ae62648c8741246f75c80913bdd750dd65f649))
+* **install:** repeat the signature outcome in the install summary ([6aaed5d](https://github.com/Arakiss/nahuali/commit/6aaed5d9ac4e735ce8f9ff2065b59b7bc9f1b376))
+* resolve logged daily-use friction (recall lifecycle, ranking, store lock, forget, literals, CLI polish) ([0e9cfa0](https://github.com/Arakiss/nahuali/commit/0e9cfa00f6ce561aea1314ee557180cedc07e055))
 
-### Breaking changes and migration
+### Upgrade notes
+
+#### Breaking changes and migration
 
 - **Ledger.** Two new record types, `memory_forgotten` and `redacted`, appear
   only after `nahuali forget` runs. 0.8.0-beta.10 and older binaries refuse to
@@ -87,26 +67,43 @@ generate.
   `RecallResult` and `MemoryData` gain fields. Exhaustive matches and struct
   literals need updating.
 
-## [0.8.0-beta.11](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.10...v0.8.0-beta.11) (2026-10-11)
+#### New in detail
 
+- `nahuali forget <id>... --reason ... [--requested-by WHO] [--dry-run]`
+  erases memory by id together with the memory derived from it, with an
+  auditable `memory_forgotten` trace (who, when, why, which ids and records) that
+  never contains the erased content. Redacted records keep their chained hash,
+  so validation, Merkle proofs, and earlier checkpoints still verify; an
+  unauthorized redaction fails closed. CLI-only by design. Backups, exports,
+  receipts, the Qdrant index until rebuilt, and storage-engine compaction are
+  outside its reach; see `compliance/gdpr-position.md`.
+- Recall ranking is an explicit, tunable policy (relevance, confidence weight,
+  evidence bonus, recency with a half-life) exposed as `--confidence-weight`,
+  `--recency-weight`, and `--recency-half-life-days`, the HTTP `ranking`
+  object, and `RecallRankingPolicy`. Each result reports its `score_breakdown`,
+  timestamps, and confidence.
+- `--store <PATH|URL>` chooses where the store lives, separately from
+  `--database <NAME>`, which names a database inside it.
 
-### New
+#### Fixed in detail
 
-* **cli:** add --store to choose the store location ([13ab68a](https://github.com/Arakiss/nahuali/commit/13ab68a33a210165ee2bb2d46bc31513f143c265))
-* **core:** forget memory with an auditable redaction trail ([2f05b25](https://github.com/Arakiss/nahuali/commit/2f05b258e98c981d197f641b049d7b2e1fdbb626))
-
-
-### Fixed
-
-* **cli:** document every subcommand option ([8218c2d](https://github.com/Arakiss/nahuali/commit/8218c2dc741d982726c30acd58c09b400595ca1c))
-* **cli:** show the review item id and resolve command in human review output ([c33415e](https://github.com/Arakiss/nahuali/commit/c33415e00813cd8b6e68ca88e174cc7e956cd989))
-* **core:** keep claim supersession visible in recall and rank by recency ([7a3191f](https://github.com/Arakiss/nahuali/commit/7a3191fb3ba195e4ee0661a3520749b897f739ce))
-* **core:** name the command that derives memory from an episode in review guidance ([2c2d14b](https://github.com/Arakiss/nahuali/commit/2c2d14bfa5498ac57f418debe2eaf2ffdae1886a))
-* **core:** queue concurrent processes on the embedded store lock ([11c7715](https://github.com/Arakiss/nahuali/commit/11c771587ecdadee2a516824ced67f89b4ff28aa))
-* **core:** stop flagging first-hand episodes as a source coverage gap ([1ec5695](https://github.com/Arakiss/nahuali/commit/1ec5695800951a76797285c4a97d0956e4916cc4))
-* **core:** treat claim values as literals instead of entities ([63ae626](https://github.com/Arakiss/nahuali/commit/63ae62648c8741246f75c80913bdd750dd65f649))
-* **install:** repeat the signature outcome in the install summary ([6aaed5d](https://github.com/Arakiss/nahuali/commit/6aaed5d9ac4e735ce8f9ff2065b59b7bc9f1b376))
-* resolve logged daily-use friction (recall lifecycle, ranking, store lock, forget, literals, CLI polish) ([0e9cfa0](https://github.com/Arakiss/nahuali/commit/0e9cfa00f6ce561aea1314ee557180cedc07e055))
+- A claim replaced by a newer evidence-backed value stays marked as
+  `superseded` in recall after its review item is resolved. It ranks after
+  current memory, carries `lifecycle.superseded_by`, and is hidden with
+  `--exclude-superseded` (MCP `excludeSuperseded`, HTTP `exclude_superseded`).
+- Parallel commands against the embedded store queue on its lock (bounded by
+  `NAHUALI_STORE_LOCK_TIMEOUT_MS`, default 30000) instead of failing at once
+  with `LOCK is already locked`.
+- Claim values are literals and no longer create entities, so values such as
+  `"2 podencos y 5 gatos"` stop raising "Isolated entity" review items.
+- First-hand episodes no longer raise a "Source coverage gap" item; only
+  derived memory without a source episode does.
+- Human `review` output shows each item's id and the exact `review-resolve`
+  command. Every subcommand option has help text.
+- Review guidance for unsourced memory names the command that derives memory
+  from an episode (`--source-last` / `--source-episode <id>`).
+- The installer summary always ends with a `Signature:` line stating whether
+  the Sigstore signature was verified or only the checksum was checked.
 
 ## [0.8.0-beta.10](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.9...v0.8.0-beta.10) (2026-07-30)
 
