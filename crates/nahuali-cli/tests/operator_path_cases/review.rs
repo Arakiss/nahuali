@@ -511,3 +511,40 @@ fn fresh_store_with_first_hand_episodes_has_no_source_coverage_noise() {
         "2 episode(s) lack source records and 1 derived memory item(s) lack source episode evidence."
     );
 }
+
+/// Mirrors the logged friction: review said "Record or attach source evidence"
+/// for a claim recorded without a source, but never named the command that
+/// derives a claim from an episode.
+#[test]
+fn unsourced_claim_guidance_names_the_derive_command() {
+    let store = temp_database("derive-guidance");
+    run_ok(&store, &["remember", "Petru tiene 41 anos"]);
+    run_ok(&store, &["claim", "Petru", "edad", "41"]);
+    let derive = "derive the memory from it with `--source-last` (for example `claim … --source-last`) or `--source-episode <id>`";
+
+    let review: Value =
+        serde_json::from_str(&run_ok(&store, &["review", "--json"])).expect("review is JSON");
+    let weak = review["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["title"] == "Memory without source evidence")
+        .unwrap_or_else(|| panic!("unsourced claim is reported: {review}"));
+    assert_eq!(
+        weak["operator_guidance"],
+        format!("Record the supporting observation as an episode (`remember`), then {derive}.")
+    );
+
+    let inspected: Value =
+        serde_json::from_str(&run_ok(&store, &["self-inspect", "--json"])).expect("JSON");
+    let finding = inspected["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|finding| finding["title"] == "Memory without source evidence")
+        .unwrap_or_else(|| panic!("unsourced claim is a finding: {inspected}"));
+    assert_eq!(
+        finding["suggested_action"],
+        format!("Record the supporting observation as an episode (`remember`), then {derive}.")
+    );
+}

@@ -415,12 +415,12 @@ fn finding_from_health_signal(signal: &HealthSignal) -> SelfInspectionFinding {
         HealthSignalKind::NoEpisodes => (
             SelfInspectionFindingKind::BlindSpot,
             "No observed episodes",
-            "Record source episodes before deriving memory.",
+            "Record observations as episodes (`remember`) before deriving memory from them with `--source-last`.",
         ),
         HealthSignalKind::UnsupportedFact => (
             SelfInspectionFindingKind::WeakEvidence,
             "Memory without source evidence",
-            "Attach an episode or record evidence that supports this memory.",
+            "Record the supporting observation as an episode (`remember`), then derive the memory from it with `--source-last` (for example `claim … --source-last`) or `--source-episode <id>`.",
         ),
         HealthSignalKind::LowConfidenceFact => (
             SelfInspectionFindingKind::LowConfidence,

@@ -553,12 +553,12 @@ fn append_health_alerts(
             HealthSignalKind::NoEpisodes => (
                 AnomalyKind::NoEpisodes,
                 "No observed episodes",
-                "Record source episodes before deriving or trusting memory.",
+                "Record observations as episodes (`remember`) and derive memory from them with `--source-last` before trusting it.",
             ),
             HealthSignalKind::UnsupportedFact => (
                 AnomalyKind::UnsupportedMemory,
                 "Memory lacks source evidence",
-                "Record or attach source evidence before relying on this memory.",
+                "Record the supporting observation as an episode (`remember`), then derive the memory from it with `--source-last` (for example `claim … --source-last`) or `--source-episode <id>`.",
             ),
             HealthSignalKind::LowConfidenceFact => (
                 AnomalyKind::LowConfidenceMemory,
