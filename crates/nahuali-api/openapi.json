@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Nahuali Beta API",
-    "version": "0.8.0-beta.10",
+    "version": "0.8.0-beta.11",
     "description": "Local HTTP API for evidence-backed agent memory. Recorded history is authoritative; query views and optional semantic indexes are rebuildable."
   },
   "paths": {
@@ -2339,7 +2339,7 @@
           "confidence_weight": {
             "type": "number",
             "minimum": 0,
-            "default": 1.0,
+            "default": 1,
             "description": "Multiplier applied to recorded confidence."
           },
           "evidence_bonus": {
