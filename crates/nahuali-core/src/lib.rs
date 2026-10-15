@@ -54,6 +54,8 @@ mod ingestion;
 mod inspection;
 mod intention;
 mod interchange;
+#[cfg(any(kani, test))]
+mod laws;
 #[cfg(feature = "attestation")]
 mod livr;
 mod maintenance;

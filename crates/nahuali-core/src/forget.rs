@@ -211,7 +211,7 @@ pub(crate) fn plan_forget(events: &[EventEnvelope], options: &ForgetOptions) -> 
 }
 
 /// Memory identifiers whose content a record carries.
-fn memory_ids(payload: &MemoryEvent) -> Vec<&str> {
+pub(crate) fn memory_ids(payload: &MemoryEvent) -> Vec<&str> {
     match payload {
         MemoryEvent::SourceRecorded(event) => vec![&event.id],
         MemoryEvent::EpisodeRecorded(event) => vec![&event.id],
@@ -228,7 +228,7 @@ fn memory_ids(payload: &MemoryEvent) -> Vec<&str> {
 }
 
 /// Identifiers a record's memory was derived from or cites as evidence.
-fn derived_from(payload: &MemoryEvent) -> Vec<&str> {
+pub(crate) fn derived_from(payload: &MemoryEvent) -> Vec<&str> {
     match payload {
         MemoryEvent::EpisodeRecorded(event) => event.source_id.as_deref().into_iter().collect(),
         MemoryEvent::FactAsserted(event) => {
