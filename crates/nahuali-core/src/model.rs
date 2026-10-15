@@ -752,3 +752,9 @@ pub struct RecallScoreBreakdown {
     /// Recency weight decayed by age relative to the newest matching result.
     pub recency: f32,
 }
+
+impl RecallScoreBreakdown {
+    pub(crate) fn total(&self) -> f32 {
+        self.relevance + self.confidence + self.evidence + self.recency
+    }
+}
