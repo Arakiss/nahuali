@@ -61,7 +61,7 @@ grep -qE "^test result: ok\. ${test_count} passed; 0 failed; 0 ignored;" "$test_
 # filtered, cfg'd out, or silently skipped also fails the gate.
 kani_log="$LOG_DIR/kani.log"
 set +e
-cargo kani -p nahuali-core --lib --output-format terse 2>&1 | tee "$kani_log"
+cargo kani -p nahuali-core --lib -Z stubbing --output-format terse 2>&1 | tee "$kani_log"
 kani_status="${PIPESTATUS[0]}"
 set -e
 [[ "$kani_status" == "0" ]] || fail "cargo kani exited with status $kani_status"
