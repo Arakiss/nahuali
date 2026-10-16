@@ -359,7 +359,8 @@ impl MemoryEngine {
                 status.checkpoint_event_id, status.latest_event_id
             ));
         }
-        for (table, expected) in expected_graph_projection_counts(&self.data) {
+        let derived = DerivedProjectionRows::derive(&self.data, &self.events);
+        for (table, expected) in expected_graph_projection_counts(&self.data, &derived) {
             let actual = status.table_counts.get(&table).copied().unwrap_or(0);
             if actual != expected {
                 issues.push(format!(
@@ -587,6 +588,7 @@ async fn rebuild_graph_projection_locked(
     let event_meta = event_meta(events);
     let entity_ids = entity_id_lookup(data);
     let intention_ids = intention_id_lookup(data);
+    let derived = DerivedProjectionRows::derive(data, events);
     let mut manifest = ProjectionManifestBuilder::new();
     let mut mutation_batch = ProjectionMutationBatch::new(existing);
     let mut node_rows_written: usize = 0;
@@ -797,7 +799,7 @@ async fn rebuild_graph_projection_locked(
         node_rows_written += 1;
     }
 
-    for signal in KnowledgeHealth::inspect(data).signals {
+    for signal in &derived.health_signals {
         let memory_id = projected_hash_id(
             "health_signal",
             &[
@@ -827,7 +829,7 @@ async fn rebuild_graph_projection_locked(
         node_rows_written += 1;
     }
 
-    for item in operator_review::operator_review(data, OperatorReviewOptions::default()).items {
+    for item in &derived.review_items {
         create_projected_record(
             path,
             &db,
@@ -886,7 +888,7 @@ async fn rebuild_graph_projection_locked(
         node_rows_written += 1;
     }
 
-    for alert in proactive::anomaly_report(data, ProactiveOptions::default()).alerts {
+    for alert in &derived.anomaly_alerts {
         let alert_id = alert.id.clone();
         create_projected_record(
             path,
@@ -1138,7 +1140,7 @@ async fn rebuild_graph_projection_locked(
     relation_rows_written =
         relation_rows_written.saturating_sub(mutation_batch.unchanged_relation_rows);
     let expected_manifest = manifest.finish();
-    let status_counts = expected_graph_projection_counts(data);
+    let status_counts = expected_graph_projection_counts(data, &derived);
     create_single_projected_record(
         path,
         &db,
@@ -1434,7 +1436,8 @@ async fn graph_projection_status_with_db(
     table_counts.extend(manifest_table_counts);
     let latest_sequence = events.last().map(|event| event.sequence);
     let latest_event_id = data.last_event_id.clone();
-    let expected_counts = expected_graph_projection_counts(data);
+    let expected_counts =
+        expected_graph_projection_counts(data, &DerivedProjectionRows::derive(data, events));
     let counts_match = expected_counts
         .iter()
         .all(|(table, expected)| table_counts.get(table).copied().unwrap_or(0) == *expected);
@@ -2100,7 +2103,56 @@ fn projected_tables() -> impl Iterator<Item = &'static str> {
         .copied()
 }
 
-fn expected_graph_projection_counts(data: &MemoryData) -> BTreeMap<String, usize> {
+/// Instant at which the graph projection ages time-dependent rows.
+///
+/// The latest ledger event timestamp makes the projection a pure function of
+/// the ledger, so the writer and a later read-time validation derive the same
+/// rows however much wall-clock time separates them. An empty ledger has
+/// nothing to age and is evaluated at zero.
+fn graph_projection_now_ms(events: &[EventEnvelope]) -> u64 {
+    events
+        .iter()
+        .map(|event| event.timestamp_ms)
+        .max()
+        .unwrap_or(0)
+}
+
+/// Rows the graph projection derives from inspections instead of copying
+/// them from the ledger. Writer and validator both build them here, at
+/// [`graph_projection_now_ms`], so their row counts cannot drift apart.
+struct DerivedProjectionRows {
+    health_signals: Vec<crate::HealthSignal>,
+    review_items: Vec<crate::OperatorReviewItem>,
+    anomaly_alerts: Vec<crate::AnomalyAlert>,
+}
+
+impl DerivedProjectionRows {
+    fn derive(data: &MemoryData, events: &[EventEnvelope]) -> Self {
+        let now_ms = graph_projection_now_ms(events);
+        Self {
+            health_signals: KnowledgeHealth::inspect_at(data, now_ms).signals,
+            review_items: operator_review::operator_review_at(
+                data,
+                OperatorReviewOptions::default(),
+                now_ms,
+            )
+            .items,
+            anomaly_alerts: proactive::anomaly_report(
+                data,
+                ProactiveOptions {
+                    now_ms,
+                    ..ProactiveOptions::default()
+                },
+            )
+            .alerts,
+        }
+    }
+}
+
+fn expected_graph_projection_counts(
+    data: &MemoryData,
+    derived: &DerivedProjectionRows,
+) -> BTreeMap<String, usize> {
     let mut counts = BTreeMap::new();
     for table in projected_tables() {
         counts.insert(table.to_string(), 0);
@@ -2114,19 +2166,10 @@ fn expected_graph_projection_counts(data: &MemoryData) -> BTreeMap<String, usize
     counts.insert("claim".to_string(), data.claims.len());
     counts.insert("procedure".to_string(), data.procedures.len());
     counts.insert("intention".to_string(), data.intentions.len());
-    counts.insert(
-        "health_signal".to_string(),
-        KnowledgeHealth::inspect(data).signals.len(),
-    );
-    counts.insert(
-        "review_item".to_string(),
-        operator_review::operator_review(data, OperatorReviewOptions::default()).items.len(),
-    );
+    counts.insert("health_signal".to_string(), derived.health_signals.len());
+    counts.insert("review_item".to_string(), derived.review_items.len());
     counts.insert("review_decision".to_string(), data.review_decisions.len());
-    counts.insert(
-        "anomaly_alert".to_string(),
-        proactive::anomaly_report(data, ProactiveOptions::default()).alerts.len(),
-    );
+    counts.insert("anomaly_alert".to_string(), derived.anomaly_alerts.len());
 
     let entity_ids = entity_id_lookup(data);
     let mention_count = data

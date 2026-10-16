@@ -2157,6 +2157,84 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    #[test]
+    fn graph_projection_time_is_the_latest_ledger_timestamp() {
+        let event = |sequence, timestamp_ms| {
+            EventEnvelope::new(
+                sequence,
+                timestamp_ms,
+                MemoryEvent::EpisodeRecorded(EpisodeRecorded {
+                    id: format!("episode_clock_{sequence}"),
+                    content: "Clock probe.".to_string(),
+                    tags: Vec::new(),
+                    mentions: Vec::new(),
+                    source_id: None,
+                    source_position: None,
+                    source_role: None,
+                    scope: None,
+                }),
+            )
+        };
+
+        assert_eq!(super::graph_projection_now_ms(&[]), 0);
+        // Imports may append an older timestamp after a newer one; the
+        // projection still ages against the newest moment the ledger knows.
+        assert_eq!(
+            super::graph_projection_now_ms(&[event(1, 500), event(2, 900), event(3, 700)]),
+            900
+        );
+    }
+
+    #[test]
+    fn graph_projection_ages_derived_rows_at_the_last_ledger_event() {
+        const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+        let path = temp_path("projection_ledger_clock");
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let context = |timestamp_ms| super::ImportEvidenceContext {
+            source_episode_id: None,
+            confidence: 0.9,
+            scope: None,
+            timestamp_ms,
+        };
+        // The ledger ended decades ago, so at the real clock both claims are
+        // past the staleness threshold. At the ledger's own last event only the
+        // first one is: the second was asserted at that very instant.
+        let stale = memory
+            .import_claim_at("Atlas", "status", "archived", context(DAY_MS))
+            .unwrap();
+        memory
+            .import_claim_at("Lena", "owns", "release notes", context(100 * DAY_MS))
+            .unwrap();
+
+        let wall_clock_stale = memory
+            .inspect()
+            .signals
+            .iter()
+            .filter(|signal| signal.kind == crate::HealthSignalKind::StaleFact)
+            .count();
+        assert_eq!(wall_clock_stale, 2, "read-time views keep the real clock");
+
+        let validation = memory.projection_validate().unwrap();
+        assert!(validation.valid, "{:?}", validation.issues);
+        assert_eq!(
+            validation.status.table_counts["health_signal"],
+            crate::KnowledgeHealth::inspect_at(memory.data(), 100 * DAY_MS)
+                .signals
+                .len()
+        );
+
+        let projected_stale = memory
+            .projection_health_signals(100)
+            .unwrap()
+            .into_iter()
+            .filter(|signal| signal.signal_kind == "stale_fact")
+            .collect::<Vec<_>>();
+        assert_eq!(projected_stale.len(), 1, "{projected_stale:?}");
+        assert_eq!(projected_stale[0].evidence_ids, vec![stale.event_id]);
+
+        let _ = fs::remove_file(path);
+    }
+
     fn temp_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
