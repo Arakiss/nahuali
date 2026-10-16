@@ -24,16 +24,19 @@ inputs.
 
 | # | Law | Status | Kani bounds | Kani CBMC time |
 | - | --- | ------ | ----------- | -------------- |
-| 1 | Admitted confidence is a finite number in `0.0..=1.0` | PROVEN | all 2³² `f32` values | KANI_TIME_1 |
-| 2 | Recall scores are bounded and monotone in confidence | PROVEN (arithmetic) + TESTED (recency decay) | all valid policies, all `f32` relevance/confidence/recency | KANI_TIME_2 |
-| 3 | A superseded claim never ranks above current memory | PROVEN (3 results) + TESTED (≤ 64 results) | 3 candidates, every field symbolic | KANI_TIME_3 |
-| 4 | Supersession always points to a current, newer, evidence-backed claim | PROVEN (3 claims) + TESTED (≤ 12 claims) | 3 claims, 2 values, 3 provenance options, 2 scopes, any `u64` timestamps | KANI_TIME_4 |
-| 5 | Forgetting leaves no orphan provenance and never erases the audit trail | PROVEN (3 records, 2 targets) + TESTED (≤ 10 records, engine end-to-end) | 3 records × 7 record shapes × 3 ids × 7 citations, 2 targets | KANI_TIME_5 |
+| 1 | Admitted confidence is a finite number in `0.0..=1.0` | PROVEN | all 2³² `f32` values | 0.3 s |
+| 2 | Recall scores are bounded and monotone in confidence | PROVEN (bounds, score ≥ relevance, admission and addition monotone) + TESTED (multiplication step, recency decay) | all valid policies, all `f32` relevance/confidence/recency | 100 s (4 harnesses: 86.1 + 1.4 + 12.3 + 0.2) |
+| 3 | A superseded claim never ranks above current memory | PROVEN (3 results) + TESTED (≤ 64 results) | 3 candidates, every field symbolic | 69 s |
+| 4 | Supersession always points to a current, newer, evidence-backed claim | PROVEN (group rule, 4 facts) + TESTED (≤ 12 claims, grouping and lifecycles) | 4 facts, any `u8` value, any `Option<u8>` episode, any `u64` timestamp | 117 s |
+| 5 | Forgetting leaves no orphan provenance and never erases the audit trail | PROVEN (cascade, 4 records) + TESTED (≤ 10 ledger records, engine end-to-end) | 4 records × 2 of 4 ids × 2 of 9 citations, 1–2 targets, all 16 rival subsets | 250 s |
 | 6 | The ledger is append-only, even under forget | TESTED | not model-checked (SHA-256, SurrealKV) | n/a |
 
 Times are measured CBMC verification time per harness on a 4-vCPU, 16 GB Linux VM
 with Kani 0.68.0 and CBMC 6.11.0, running one harness at a time. Building the
-crate under Kani adds a few minutes on a cold cache. KANI_TOTAL
+crate under Kani adds a few minutes on a cold cache. The whole gate,
+`scripts/verify-laws.sh` (law tests, then all 8 harnesses one after another),
+took 9 min 41 s wall time on a warm build cache, of which 536 s was CBMC. Peak
+memory was under 3 GB per harness.
 
 ## Running the laws
 
@@ -41,7 +44,7 @@ crate under Kani adds a few minutes on a cold cache. KANI_TOTAL
 cargo install --locked kani-verifier --version 0.68.0
 cargo kani setup
 bash scripts/verify-laws.sh            # CI gate: every harness and law test
-cargo kani -p nahuali-core --lib --harness laws::proofs::law_confidence_admission
+cargo kani -p nahuali-core --lib -Z stubbing --harness laws::proofs::law_confidence_admission
 cargo test -p nahuali-core --lib laws::
 ```
 
@@ -93,7 +96,7 @@ For every ranking policy that `RecallRankingPolicy::validate` accepts:
 - raising confidence, with everything else equal, never lowers the score;
 - a missing or NaN confidence contributes exactly `0`.
 
-These hold under IEEE-754 rounding, not just in real arithmetic. Ranking
+The proven parts hold under IEEE-754 rounding, not just in real arithmetic. Ranking
 applies the same admission rule as the ledger (law 1), so caller-supplied
 projections passed to `recall_projection_with_authority` with an out-of-range
 or NaN confidence cannot outrank well-formed memory. The sort now uses
@@ -102,17 +105,30 @@ or NaN confidence cannot outrank well-formed memory. The sort now uses
 - kani: `law_score_components_bounded`. Covers every valid policy, every finite
   non-negative relevance, every `Option<f32>` confidence, and every recency in
   `[0, recency_weight]`.
-- kani: `law_score_confidence_component_monotone`. For any non-NaN
-  `lower <= higher`, the confidence part does not decrease.
-- kani: `law_score_total_monotone_and_at_least_relevance`. `total()` is monotone
-  in the confidence part and is never below relevance. Together with the two
-  harnesses above, and because `rank` sets `score = score_breakdown(..).total()`,
-  this gives the full monotonicity statement. Splitting it this way keeps each
-  SAT query small; the single combined query did not finish in 10 minutes.
+- kani: `law_score_total_at_least_relevance`. `total()` is never below
+  relevance, for any components inside the bounds above.
+- kani: `law_confidence_admission_is_monotone`. For any non-NaN
+  `lower <= higher`, `admitted_confidence(lower) <= admitted_confidence(higher)`.
+- kani: `law_score_addition_is_monotone`. For finite `0 <= lower <= higher` and
+  a finite non-negative term, `lower + term <= higher + term`, and addition
+  commutes. `total()` is `((relevance + confidence) + evidence) + recency`, so
+  three applications of this step (with commutativity for the first) show that
+  a larger confidence part never gives a smaller total. That composition is
+  done by hand, not by Kani.
 - test: `law_recency_bounded_and_non_increasing_in_age`. The recency decay
   calls `f64::powf`.
 - test: `law_score_bounded_and_monotone_in_confidence`. End to end through the
-  real `recency`, with arbitrary `f32` confidences, including NaN and ±∞.
+  real `recency`, with arbitrary `f32` confidences, including NaN and ±∞. This
+  is the only check of monotonicity of the confidence part itself.
+
+**What is not proven.** The confidence part is `admitted(c) * confidence_weight`,
+and "multiplying by the same non-negative weight preserves order" is the one
+step Kani could not finish: that query alone, and the direct
+`total()`-is-monotone query, ran 17 to 30 minutes with CaDiCaL and Kissat
+without an answer. IEEE-754 multiplication by a non-negative number is
+monotone (rounding is monotone), and the property test checks it, but within
+this PR it is TESTED, so law 2's end-to-end monotonicity is TESTED while the
+bounds and the "never below relevance" part are PROVEN.
 - test: `validate_agrees_with_the_kani_policy_domain`. Pins the inline policy
   domain the harnesses assume to `validate()`, over every combination of
   boundary weights.
@@ -137,7 +153,12 @@ results are ordered by non-increasing score. That last part is TESTED only.
 - kani: `law_superseded_never_outranks_current`. Runs `recall::rank` on 3
   candidates, each with symbolic relevance, `Option<f32>` confidence, evidence
   flag, `u64` timestamps, and lifecycle (none, current, superseded, or
-  contested), under any valid policy.
+  contested), under any valid policy. `recency` is stubbed
+  (`-Z stubbing`) with "any value in `[0, recency_weight]`", the bound law 2
+  tests: run through CBMC's `pow` model, the unstubbed harness reports a NaN
+  score that native execution cannot produce (see law 2). The order this law
+  states does not depend on the decay curve, so the stub only widens the
+  inputs.
 - test: `law_superseded_never_outranks_current`. Up to 64 candidates. This
   matters because Rust's `sort_by` switches from insertion sort to its general
   algorithm above 20 elements, which a 3-element proof does not exercise.
@@ -158,12 +179,29 @@ A claim that is not superseded carries no `superseded_by` and no
 lifecycles from this same function (`inspection::claim_lifecycles`), so this
 law is what keeps "returned as current" honest.
 
-- kani: `law_supersession_points_to_current_claim`. 3 claims covering 2 values,
-  no provenance or one of 2 source episodes, 2 scopes, and any `u64`
-  timestamps. This includes timestamp ties, same-episode observations, and
-  cross-scope pairs.
-- test: `law_supersession_points_to_current_claim`. Up to 12 claims over 2
-  subjects, 3 values, 4 provenance options, 3 scopes, and dense timestamp ties.
+The rule lives in `inspection::resolve_group`, which decides one
+scope/subject/predicate group: settled (the values agree, or every fact comes
+from one source episode), superseded (a unique newest fact with provenance
+retires every fact that disagrees with it and comes from another episode), or
+contested. `classify_fact_groups` only groups facts and turns each decision into
+a report, and `claim_lifecycles` turns the reports into lifecycles.
+`resolve_group` is generic over `Observation`, meaning the value, episode, and
+time it reads, so Kani can check the same code on integers; production
+instantiates it with `Claim`.
+
+- kani: `law_supersession_points_to_current_claim`. `resolve_group` on a group
+  of 4 facts, each with any `u8` value, any `Option<u8>` episode, and any `u64`
+  timestamp. That covers every equality pattern of values and episodes over 4
+  facts, timestamp ties anywhere, and missing provenance. The check:
+  supersession has a unique, strictly newest winner with provenance and
+  retires exactly the facts that differ from it in both value and episode;
+  settled groups agree or are one observation; contested groups have no clean
+  winner.
+- test: `law_supersession_points_to_current_claim`. The same group check on
+  every group, plus the full statement above through `claim_lifecycles`, on up
+  to 12 real `Claim`s over 2 subjects, 3 values, 4 provenance options, 3
+  scopes, and dense timestamp ties. Grouping, scope separation, and the
+  mapping to lifecycles are covered here, not by Kani.
 
 ## 5. Forgetting leaves no orphan provenance and never erases the audit trail
 
@@ -177,8 +215,11 @@ law is what keeps "returned as current" honest.
   evidence an erased memory id or the event id of an erased record;
 - only records holding live memory are redacted. A `memory_forgotten` audit
   record or an earlier redaction stub is never redacted;
-- `forgotten_ids` names exactly the memory held by the redacted records,
-  neither more nor less.
+- nothing is redacted that the references do not force: the redacted records
+  are the least set closed under the cascade, so unrelated memory survives
+  even when it sits in a citation cycle;
+- `forgotten_ids` names exactly the targets and the memory held by the
+  redacted records, neither more nor less.
 
 "Provenance" here means the references `forget::derived_from` follows: an
 episode's source, a claim, link, procedure, or intention's source episode,
@@ -187,15 +228,33 @@ planning references, not provenance. Forgetting an intention leaves a dependent
 intention in place, and inspection reports it as `MissingDependency`. That is
 deliberate, not an orphan.
 
-- kani: `law_forget_leaves_no_orphan_provenance`. Runs `forget::plan_forget` on
-  3 records. Each record has one of 7 shapes: source, episode, claim, review,
-  intention update (which shares the intention id), repair (which carries two
-  ids), or an already-redacted stub. Each holds one of 3 memory ids and cites
-  nothing, one of the 3 memory ids, or one of the 3 event ids, including
-  forward and self references. There are 2 targets, covering whitespace,
-  blank, and unknown cases.
-- test: `law_forget_leaves_no_orphan_provenance`. Up to 10 records, 6 memory
-  ids, and up to 2 targets.
+The cascade lives in `forget::redaction_closure`, which takes each live record
+reduced to its index, event id, held ids, and citations. `plan_forget` only
+validates the request, extracts those references with `memory_ids` and
+`derived_from`, and converts the result back to ledger indexes. The cascade is
+generic over the id type, the id list, and the id set (`IdSet`), so Kani checks
+the same code over small integers, fixed arrays, and a bitset; production
+instantiates it with `&str`, `Vec`, and `BTreeSet`. The check also proves the
+redaction is the *least* one: any set of records that the cascade cannot
+escape contains every redacted record, so nothing is erased that the
+references do not force.
+
+- kani: `law_forget_leaves_no_orphan_provenance`. `redaction_closure` on 4
+  records. Each holds 2 ids out of 4 memory ids, and cites 2 references out
+  of the 4 memory ids, the 4 event ids, and one id nobody holds. Repeats and
+  the unheld id stand for "one id" and "no citation", so this covers every
+  record with one or two ids and zero to two citations, including forward,
+  self, and cyclic references, and every request for one or two targets. The
+  rival set is any of the 16 subsets of records.
+- test: `law_forget_cascade_is_closed_and_least`. The same check with
+  `BTreeSet`, up to 8 records with up to 3 citations each, against every
+  rival subset.
+- test: `law_forget_leaves_no_orphan_provenance`. End to end through
+  `plan_forget` on up to 10 real ledger records over all 7 record shapes
+  (source, episode, claim, review, intention update, repair, and redaction
+  stub), with up to 2 targets including padded, blank, unknown, and repair ids.
+  It checks request validation, that only live records are redacted, and the
+  cascade check against every rival subset.
 - test: `law_ledger_is_append_only_even_under_forget`. Also asserts, through
   the real engine and store, that after `MemoryEngine::forget` the projection
   holds no erased episode or claim and no claim cites an erased episode (law 6).
@@ -224,20 +283,71 @@ of the prefix makes both checks fail.
 **Why TESTED only.** The ledger lives in SurrealKV and its commitments are
 SHA-256. Neither is within reach of a bounded model checker.
 
+## How the proofs were made tractable
+
+The first harnesses ran the engine functions on real `Claim`s and ledger
+records and never finished: supersession was still in symbolic execution after
+17 minutes, and forget ran out of memory at 6.5 GB with a single target. The
+causes were in the data structures, not the laws. Symbolic keys in a
+`BTreeMap` or `BTreeSet` make every node shift a symbolic-offset copy, and
+`collect` bulk-sorts first. `String` comparisons unroll `memcmp`, because the
+length stays symbolic. Iterator adapters that hold a reference in their state
+merge pointers across iterations, so CBMC loses every slice bound.
+
+So the decision logic was separated from the collections it runs on. This is
+refactoring, not a behaviour change, and every existing test still passes:
+
+- `inspection::resolve_group` decides one group and is generic over
+  `Observation`. `classify_fact_groups` keeps the grouping.
+- `forget::redaction_closure` computes the cascade and is generic over the id,
+  the id list, and the `IdSet`. Its fixpoint loop is bounded by
+  `live.len() + 1` passes, which it provably needs, instead of `loop`.
+  `plan_forget` keeps validation and extraction.
+
+Kani checks the generic code on integers, arrays, and a bitset. The property
+tests run the production instance (`Claim`, `&str`, `Vec`, `BTreeSet`) through
+the same checks. What Kani does not see is std's `BTreeSet`, `Vec`, and `str`
+equality, and the extraction of references from ledger payloads, which the
+tests cover.
+
+Each checker was also validated against deliberate bugs:
+
+| Mutant | Caught by |
+| ------ | --------- |
+| `confidence.clamp(0.0, 1.0)` restored (NaN admitted) | Kani `law_confidence_admission`, regression test |
+| ranking sorts by score before lifecycle | property test `law_superseded_never_outranks_current` |
+| supersession ignores the different-episode rule | Kani and property test `law_supersession_points_to_current_claim` |
+| supersession accepts a tie at the newest timestamp | Kani `law_supersession_points_to_current_claim` |
+| forget cascade skips event-id citations | property test `law_forget_leaves_no_orphan_provenance` |
+| forget cascade redacts two records citing each other with no target reaching them | Kani `law_forget_leaves_no_orphan_provenance`, property test `law_forget_cascade_is_closed_and_least` (the 256-case end-to-end test alone missed it) |
+
 ## Honest limits
 
-- **Bounds are small.** Kani covers 3 results, 3 claims, and 3 records. Bugs
-  that need more elements are reachable only by the property tests. Those
-  cover larger sizes but are random samples, not proofs.
+- **Bounds are small.** Kani covers 3 ranked results, groups of 4 facts, and
+  4 records with 2 ids and 2 citations each. Bugs that need more elements are
+  reachable only by the property tests. Those cover larger sizes but are
+  random samples, not proofs.
 - **Proofs are over the functions, not the whole engine.** Kani verifies
   `admitted_confidence`, `score_breakdown`, `RecallScoreBreakdown::total`,
-  `rank`, `claim_lifecycles`, and `plan_forget`. The glue that calls them, such
-  as candidate collection, scope and time filters, and truncation, is covered
-  by the existing unit tests and the end-to-end law tests, not by Kani.
+  `rank`, `resolve_group`, and `redaction_closure`. It does not verify the
+  grouping in `classify_fact_groups`, the mapping to lifecycles in
+  `claim_lifecycles`, reference extraction and validation in `plan_forget`,
+  candidate collection, scope and time filters, or truncation. Those are
+  covered by the property tests, the existing unit tests, and the end-to-end
+  law tests.
+- **Kani sees model instances.** The supersession and forget proofs run the
+  production generic code on integers, arrays, and a bitset instead of
+  `String`, `Vec`, and `BTreeSet`. They rely on those std types behaving as
+  sets and lists, which the property tests exercise but Kani does not prove.
 - **Assumed preconditions.** The harnesses assume relevance is finite and
   non-negative. `recall_with_options` builds it from term counts and bonuses,
-  so this holds, but it is not proven. Claim ids are distinct within a
-  projection, as the engine's id generator guarantees.
+  so this holds, but it is not proven. Within a group, facts are told apart by
+  identity, and the property tests use distinct claim and event ids, as the
+  engine's id generator guarantees.
+- **Assume-guarantee step in law 3.** The ranking proof replaces `recency` with
+  its tested contract (a value in `[0, recency_weight]`). If the real decay
+  ever left that range, law 3's proof would not notice; the law 2 property
+  test would.
 - **Not covered.** The hybrid (Qdrant) recall path is not covered. It has its
   own superseded-last sort and was left unchanged. Concurrency is not covered:
   this PR does not claim "concurrent reads never observe partial writes". The
