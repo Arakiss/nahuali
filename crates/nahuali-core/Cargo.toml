@@ -64,12 +64,12 @@ ed25519-dalek = { version = "2.2", default-features = false, features = ["std", 
 [dev-dependencies]
 proptest = { version = "1", default-features = false, features = ["std"] }
 
-# Narrated walkthrough of the tamper-evidence wedge: hash chain catches in-place
-# rewrites, tip signature catches a full suffix re-chain. Build/run only with the
-# feature: `cargo run -p nahuali-core --example tamper_evidence --features attestation`.
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
+# Narrated walkthrough of the tamper-evidence wedge: hash chain catches in-place
+# rewrites, tip signature catches a full suffix re-chain. Build/run only with the
+# feature: `cargo run -p nahuali-core --example tamper_evidence --features attestation`.
 [[example]]
 name = "tamper_evidence"
 required-features = ["attestation"]

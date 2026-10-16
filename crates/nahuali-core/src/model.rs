@@ -321,7 +321,8 @@ pub(crate) fn admitted_confidence(value: f32) -> Option<f32> {
 
 pub(crate) fn admit_confidence(value: f32) -> Result<f32> {
     admitted_confidence(value).ok_or_else(|| NahualiError::InvalidConfidence {
-        message: "confidence must be a number in 0.0..=1.0 (got NaN)".to_string(),
+        message: "confidence must be a number (got NaN); values outside 0.0..=1.0 are clamped"
+            .to_string(),
     })
 }
 
