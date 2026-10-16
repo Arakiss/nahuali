@@ -144,7 +144,7 @@ impl MemoryEngine {
             predicate,
             object,
             source_episode_id: context.source_episode_id,
-            confidence: context.confidence.clamp(0.0, 1.0),
+            confidence: admit_confidence(context.confidence)?,
             scope,
         });
         self.append_at(context.timestamp_ms, payload)?;
@@ -182,7 +182,7 @@ impl MemoryEngine {
             relation,
             to,
             source_episode_id: context.source_episode_id,
-            confidence: context.confidence.clamp(0.0, 1.0),
+            confidence: admit_confidence(context.confidence)?,
             scope,
         });
         self.append_at(context.timestamp_ms, payload)?;
@@ -223,7 +223,7 @@ impl MemoryEngine {
             name,
             body,
             source_episode_id: context.source_episode_id,
-            confidence: context.confidence.clamp(0.0, 1.0),
+            confidence: admit_confidence(context.confidence)?,
             scope,
         });
         self.append_at(context.timestamp_ms, payload)?;
