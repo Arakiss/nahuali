@@ -493,98 +493,131 @@ fn classify_fact_groups(facts: &[Fact]) -> (Vec<FactConflict>, Vec<Supersession>
     let mut supersessions = Vec::new();
 
     for ((_, subject, predicate), group) in groups {
-        let values = group
-            .iter()
-            .map(|fact| fact.object.clone())
-            .collect::<BTreeSet<_>>();
-        if values.len() <= 1 {
-            continue;
-        }
-
-        // Same-observation exemption: if every disagreeing fact carries a source
-        // episode and they are all the same episode, the differing values were
-        // recorded together in one deliberate observation, not contradicted
-        // across observations. Skip the group — it is neither a conflict nor a
-        // supersession. Any missing provenance or any differing episode falls
-        // through to the conflict/supersession split below.
-        let source_episodes = group
-            .iter()
-            .map(|fact| fact.source_episode_id.as_deref())
-            .collect::<Option<Vec<_>>>();
-        if let Some(episodes) = source_episodes
-            && let Some((first, rest)) = episodes.split_first()
-            && rest.iter().all(|episode| episode == first)
-        {
-            continue;
-        }
-
-        let max_ts = group
-            .iter()
-            .map(|fact| fact.created_at_ms)
-            .max()
-            .unwrap_or_default();
-        let newest = group
-            .iter()
-            .filter(|fact| fact.created_at_ms == max_ts)
-            .collect::<Vec<_>>();
-
-        if newest.len() == 1 {
-            let winner = newest[0];
-            if let Some(winner_episode) = winner.source_episode_id.as_deref() {
-                // A supersession is a *new observation* replacing an old claim,
-                // so the retired value must come from a different source episode
-                // than the winner. (Groups whose facts all share one episode are
-                // already handled by the same-observation exemption above and
-                // never reach here.)
-                let retired = group
+        match resolve_group(&group) {
+            GroupOutcome::Settled => {}
+            GroupOutcome::Superseded { winner, retired } => supersessions.push(Supersession {
+                subject: subject.to_string(),
+                predicate: predicate.to_string(),
+                current_value: winner.object.clone(),
+                current_event_id: winner.event_id.clone(),
+                current_claim_id: winner.id.clone(),
+                current_created_at_ms: winner.created_at_ms,
+                retired: retired
                     .iter()
-                    .filter(|fact| {
-                        fact.event_id != winner.event_id
-                            && fact.object != winner.object
-                            && fact.source_episode_id.as_deref() != Some(winner_episode)
-                    })
                     .map(|fact| RetiredFact {
                         value: fact.object.clone(),
                         event_id: fact.event_id.clone(),
                         claim_id: fact.id.clone(),
                     })
-                    .collect::<Vec<_>>();
-                if !retired.is_empty() {
-                    supersessions.push(Supersession {
-                        subject: subject.to_string(),
-                        predicate: predicate.to_string(),
-                        current_value: winner.object.clone(),
-                        current_event_id: winner.event_id.clone(),
-                        current_claim_id: winner.id.clone(),
-                        current_created_at_ms: winner.created_at_ms,
-                        retired,
-                    });
-                    continue;
-                }
-            }
+                    .collect(),
+            }),
+            GroupOutcome::Contested => conflicts.push(FactConflict {
+                subject: subject.to_string(),
+                predicate: predicate.to_string(),
+                values: group.iter().map(|fact| fact.object.clone()).collect(),
+                evidence_ids: group.iter().map(|fact| fact.event_id.clone()).collect(),
+                members: group
+                    .iter()
+                    .map(|fact| ConflictMember {
+                        claim_id: fact.id.clone(),
+                        value: fact.object.clone(),
+                    })
+                    .collect(),
+            }),
         }
-
-        let evidence_ids = group
-            .iter()
-            .map(|fact| fact.event_id.clone())
-            .collect::<BTreeSet<_>>();
-        let members = group
-            .iter()
-            .map(|fact| ConflictMember {
-                claim_id: fact.id.clone(),
-                value: fact.object.clone(),
-            })
-            .collect();
-        conflicts.push(FactConflict {
-            subject: subject.to_string(),
-            predicate: predicate.to_string(),
-            values,
-            evidence_ids,
-            members,
-        });
     }
 
     (conflicts, supersessions)
+}
+
+/// What the supersession rule reads from a fact. The rule is generic over it
+/// so Kani can verify it on small integer observations: string comparisons on
+/// real claims exhaust a bounded model checker at three facts.
+pub(crate) trait Observation {
+    type Key: Eq + ?Sized;
+    fn value(&self) -> &Self::Key;
+    fn episode(&self) -> Option<&Self::Key>;
+    fn observed_at_ms(&self) -> u64;
+}
+
+impl Observation for Fact {
+    type Key = str;
+
+    fn value(&self) -> &str {
+        &self.object
+    }
+
+    fn episode(&self) -> Option<&str> {
+        self.source_episode_id.as_deref()
+    }
+
+    fn observed_at_ms(&self) -> u64 {
+        self.created_at_ms
+    }
+}
+
+/// How one `(scope, subject, predicate)` group of facts resolves.
+pub(crate) enum GroupOutcome<'a, F> {
+    /// The facts agree, or they are one observation recorded together.
+    Settled,
+    /// `winner` replaces every fact in `retired`.
+    Superseded {
+        winner: &'a F,
+        retired: Vec<&'a F>,
+    },
+    Contested,
+}
+
+/// Resolve one group of facts that share a scope, subject, and predicate, as
+/// described on [`classify_fact_groups`].
+pub(crate) fn resolve_group<'a, F: Observation>(group: &[&'a F]) -> GroupOutcome<'a, F> {
+    let Some((first, rest)) = group.split_first() else {
+        return GroupOutcome::Settled;
+    };
+    if rest.iter().all(|fact| fact.value() == first.value()) {
+        return GroupOutcome::Settled;
+    }
+
+    // Same-observation exemption: if every disagreeing fact carries a source
+    // episode and they are all the same episode, the differing values were
+    // recorded together in one deliberate observation, not contradicted
+    // across observations. Any missing provenance or any differing episode
+    // falls through to the conflict/supersession split below.
+    if first.episode().is_some() && rest.iter().all(|fact| fact.episode() == first.episode()) {
+        return GroupOutcome::Settled;
+    }
+
+    let max_ts = group
+        .iter()
+        .map(|fact| fact.observed_at_ms())
+        .max()
+        .unwrap_or_default();
+    let newest = group
+        .iter()
+        .filter(|fact| fact.observed_at_ms() == max_ts)
+        .collect::<Vec<_>>();
+
+    if let [&winner] = newest[..]
+        && let Some(winner_episode) = winner.episode()
+    {
+        // A supersession is a *new observation* replacing an old claim, so the
+        // retired value must come from a different source episode than the
+        // winner. (Groups whose facts all share one episode are already
+        // handled by the same-observation exemption above.)
+        let retired = group
+            .iter()
+            .copied()
+            .filter(|fact| {
+                !std::ptr::eq(*fact, winner)
+                    && fact.value() != winner.value()
+                    && fact.episode() != Some(winner_episode)
+            })
+            .collect::<Vec<_>>();
+        if !retired.is_empty() {
+            return GroupOutcome::Superseded { winner, retired };
+        }
+    }
+    GroupOutcome::Contested
 }
 
 /// Derive the lifecycle of every projected claim from the ledger alone.
