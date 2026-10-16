@@ -316,6 +316,33 @@ fn briefing_is_scriptable() {
     assert!(human.contains("Store trust: BLOCK"));
     assert!(human.contains("Graph seeds"));
 
+    let zero_limits = [
+        "briefing",
+        "--episode-limit",
+        "0",
+        "--intention-limit",
+        "0",
+        "--review-limit",
+        "0",
+        "--graph-seed-limit",
+        "0",
+    ];
+    let human = run_ok(&store, &zero_limits);
+    assert!(human.contains("Session briefing"));
+    assert!(!human.contains("Graph seeds"), "{human}");
+    assert!(!human.contains("Review items"), "{human}");
+    assert!(!human.contains("Recent episodes"), "{human}");
+    assert!(!human.contains("Active intentions"), "{human}");
+    let json = run_ok(&store, &[&zero_limits[..], &["--json"]].concat());
+    let json: Value = serde_json::from_str(&json).expect("briefing output is JSON");
+    assert_eq!(json["report"]["graph_seeds"], serde_json::json!([]));
+    assert_eq!(json["report"]["review_items"], serde_json::json!([]));
+    assert_eq!(json["report"]["summary"]["graph_seed_count"], 0);
+    assert_eq!(
+        json["report"]["summary"]["high_priority_review_count"],
+        1
+    );
+
     let _ = fs::remove_file(store);
 }
 

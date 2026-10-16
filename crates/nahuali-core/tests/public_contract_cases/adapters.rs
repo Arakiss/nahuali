@@ -133,6 +133,24 @@ fn public_api_returns_session_briefing() {
     assert!(briefing.graph_seeds.iter().any(|seed| seed.label == "Lena"));
     assert_eq!(memory.events().len(), before_events);
 
+    // A zero limit omits the section entirely instead of returning one item,
+    // while the summary keeps counting the full projection.
+    let empty = memory.briefing_with_options(BriefingOptions {
+        episode_limit: 0,
+        intention_limit: 0,
+        review_limit: 0,
+        graph_seed_limit: 0,
+    });
+    assert!(empty.recent_episodes.is_empty());
+    assert!(empty.active_intentions.is_empty());
+    assert!(empty.review_items.is_empty());
+    assert!(empty.graph_seeds.is_empty());
+    assert_eq!(empty.summary.graph_seed_count, 0);
+    assert_eq!(empty.summary.returned_review_count, 0);
+    assert_eq!(empty.summary.episode_count, 1);
+    assert_eq!(empty.summary.active_intention_count, 1);
+    assert_eq!(empty.summary.high_priority_review_count, 1);
+
     let _ = fs::remove_file(path);
 }
 

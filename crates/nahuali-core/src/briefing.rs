@@ -161,25 +161,24 @@ pub(crate) fn briefing_at(
     options: BriefingOptions,
     generated_at_ms: u64,
 ) -> MemoryBriefingReport {
-    let episode_limit = options.episode_limit.max(1);
-    let intention_limit = options.intention_limit.max(1);
-    let review_limit = options.review_limit.max(1);
-    let graph_seed_limit = options.graph_seed_limit.max(1);
-
+    // A limit of 0 means "omit this section"; the summary counts still cover
+    // the full projection.
     let health = KnowledgeHealth::inspect_at(data, generated_at_ms);
     let authority = AuthorityDecision::evaluate(&health);
-    let recent_episodes = recent_episodes(data, episode_limit);
-    let active_intentions = active_intentions(data, intention_limit);
-    let review = operator_review::operator_review_at(
+    let recent_episodes = recent_episodes(data, options.episode_limit);
+    let active_intentions = active_intentions(data, options.intention_limit);
+    let mut review = operator_review::operator_review_at(
         data,
         OperatorReviewOptions {
-            limit: review_limit,
+            limit: options.review_limit,
             min_priority: Some(SelfInspectionReviewPriority::High),
             ..OperatorReviewOptions::default()
         },
         generated_at_ms,
     );
-    let graph_seeds = graph_seeds(data, graph_seed_limit);
+    // The operator review queue never returns fewer than one item on its own.
+    review.items.truncate(options.review_limit);
+    let graph_seeds = graph_seeds(data, options.graph_seed_limit);
     let active_intention_count = data
         .intentions
         .iter()
