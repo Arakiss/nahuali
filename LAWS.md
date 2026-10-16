@@ -52,7 +52,11 @@ cargo test -p nahuali-core --lib laws::
 fails, and also when the harnesses or tests in `laws.rs` differ from the
 `kani:` and `test:` entries in this file, when a law test is `#[ignore]`d, or
 when Kani's summary does not account for every harness. A law cannot silently
-stop being checked. The CI job `laws` runs it, and `CI (all)` requires it.
+stop being checked. The CI job `laws` runs it, and `CI (all)` requires it. On a
+pull request that touches nothing a law depends on (`crates/nahuali-core/`,
+this file, the gate script, the CI workflow, `Cargo.toml`, `Cargo.lock`, or the
+toolchain), the job passes without running Kani; the law tests still run in the
+workspace test job. Pushes to `main` always run the full gate.
 
 ## 1. Admitted confidence is a finite number in `0.0..=1.0`
 
@@ -176,8 +180,14 @@ claim that:
 
 A claim that is not superseded carries no `superseded_by` and no
 `superseded_at_ms`, and every projected claim gets a lifecycle. Recall reads
-lifecycles from this same function (`inspection::claim_lifecycles`), so this
-law is what keeps "returned as current" honest.
+lifecycles from this same function (`inspection::claim_lifecycles`).
+
+"Current" does not mean "the only value". One episode may record several values
+for the same subject and predicate, and the engine keeps them all. So when a
+newer episode supersedes older ones, a claim that disagrees with the winner
+stays current only if the winner's own episode recorded it. For example, with
+`x` from episode 1 at t=1, `y` from episode 2 at t=2, and `z` from episode 2 at
+t=3, `x` is superseded by `z`, and `y` and `z` are both current.
 
 The rule lives in `inspection::resolve_group`, which decides one
 scope/subject/predicate group: settled (the values agree, or every fact comes
@@ -200,8 +210,9 @@ instantiates it with `Claim`.
 - test: `law_supersession_points_to_current_claim`. The same group check on
   every group, plus the full statement above through `claim_lifecycles`, on up
   to 12 real `Claim`s over 2 subjects, 3 values, 4 provenance options, 3
-  scopes, and dense timestamp ties. Grouping, scope separation, and the
-  mapping to lifecycles are covered here, not by Kani.
+  scopes, and dense timestamp ties, including the rule that a current claim
+  disagreeing with a winner comes from the winner's episode. Grouping, scope
+  separation, and the mapping to lifecycles are covered here, not by Kani.
 
 ## 5. Forgetting leaves no orphan provenance and never erases the audit trail
 
@@ -318,11 +329,21 @@ Each checker was also validated against deliberate bugs:
 | ranking sorts by score before lifecycle | property test `law_superseded_never_outranks_current` |
 | supersession ignores the different-episode rule | Kani and property test `law_supersession_points_to_current_claim` |
 | supersession accepts a tie at the newest timestamp | Kani `law_supersession_points_to_current_claim` |
+| lifecycles mark only the first retired claim of a group as superseded | property test `law_supersession_points_to_current_claim` (the current-claim rule) |
 | forget cascade skips event-id citations | property test `law_forget_leaves_no_orphan_provenance` |
 | forget cascade redacts two records citing each other with no target reaching them | Kani `law_forget_leaves_no_orphan_provenance`, property test `law_forget_cascade_is_closed_and_least` (the 256-case end-to-end test alone missed it) |
 
 ## Honest limits
 
+- **Not every PROVEN is equally strong.** The checks for laws 1 and 5 are
+  independent specifications: admission is stated without reference to its
+  code, and the cascade is checked as a fixpoint that is also the least one.
+  Others are narrower. `law_score_addition_is_monotone` is a lemma about
+  IEEE-754 addition and does not run Nahuali code. Law 3's proof shows that
+  `rank` keeps its first sort key across every score. Law 4's Kani check
+  restates the group rule in different terms, so it pins the rule's behaviour
+  rather than deriving it from the law; the lifecycle statement itself is
+  TESTED.
 - **Bounds are small.** Kani covers 3 ranked results, groups of 4 facts, and
   4 records with 2 ids and 2 citations each. Bugs that need more elements are
   reachable only by the property tests. Those cover larger sizes but are

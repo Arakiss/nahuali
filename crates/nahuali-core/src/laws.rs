@@ -37,7 +37,7 @@ fn check_superseded_ranked_last(input_ids: &[&str], ranked: &[RecallResult]) {
     }
     for (position, earlier) in ranked.iter().enumerate() {
         for later in &ranked[position + 1..] {
-            assert!(!(is_superseded(earlier) && !is_superseded(later)));
+            assert!(!is_superseded(earlier) || is_superseded(later));
         }
     }
 }
@@ -72,6 +72,25 @@ fn check_supersession_points_to_current(
         assert!(winner.created_at_ms > retired.created_at_ms);
         assert!(winner.source_episode_id.is_some());
         assert!(winner.source_episode_id != retired.source_episode_id);
+    }
+    // "Current" is not "unique": a claim that disagrees with a winner stays
+    // current only when the winner's own observation recorded it.
+    for winner in claims
+        .iter()
+        .filter(|claim| !lifecycles[&claim.id].supersedes.is_empty())
+    {
+        for other in claims.iter().filter(|other| {
+            other.scope == winner.scope
+                && other.subject == winner.subject
+                && other.predicate == winner.predicate
+        }) {
+            if lifecycles[&other.id].status == ClaimStatus::Current {
+                assert!(
+                    other.object == winner.object
+                        || other.source_episode_id == winner.source_episode_id
+                );
+            }
+        }
     }
 }
 
