@@ -5,8 +5,10 @@
 //! `check_*` function; Kani drives it with exhaustive symbolic inputs inside a
 //! small bound, and proptest drives the same check with larger random inputs.
 
+#[cfg(test)]
 use std::collections::BTreeMap;
 
+#[cfg(test)]
 use crate::{
     error::Result,
     event::{
@@ -16,11 +18,14 @@ use crate::{
         SourceRecordedKind,
     },
     forget::{ForgetOptions, ForgetPlan, derived_from, memory_ids},
-    model::{
-        Claim, ClaimLifecycle, ClaimStatus, MemoryKind, MemoryScope, MemoryScopeKind, RecallResult,
-    },
-    recall::{Candidate, is_superseded},
+    model::{Claim, MemoryScope, MemoryScopeKind},
     self_repair::{AutonomyLevel, RepairKind},
+};
+use crate::{
+    forget::{IdSet, LiveRecord},
+    inspection::{GroupOutcome, Observation},
+    model::{ClaimLifecycle, ClaimStatus, MemoryKind, RecallResult},
+    recall::{Candidate, is_superseded},
 };
 
 /// Law 3: ranking is a permutation that never places a superseded claim ahead
@@ -37,6 +42,7 @@ fn check_superseded_ranked_last(input_ids: &[&str], ranked: &[RecallResult]) {
     }
 }
 
+#[cfg(test)]
 /// Law 4: a superseded claim always names a current, strictly newer,
 /// evidence-backed replacement for the same scope, subject, and predicate.
 fn check_supersession_points_to_current(
@@ -69,9 +75,131 @@ fn check_supersession_points_to_current(
     }
 }
 
+/// Law 4, group core: within one scope, subject, and predicate, a settled
+/// group agrees or is one observation; a supersession has a unique newest
+/// winner with provenance and retires exactly the facts that disagree with it
+/// and come from another observation; anything else stays contested.
+fn check_group_resolution<F: Observation>(group: &[&F], outcome: &GroupOutcome<F>) {
+    let agrees = group.iter().all(|fact| fact.value() == group[0].value());
+    let one_observation = group[0].episode().is_some()
+        && group
+            .iter()
+            .all(|fact| fact.episode() == group[0].episode());
+    let replaceable_by = |winner: &F, fact: &F| {
+        !std::ptr::eq(fact, winner)
+            && fact.value() != winner.value()
+            && fact.episode() != winner.episode()
+    };
+    let clean_winner = |winner: &F| {
+        winner.episode().is_some()
+            && group.iter().all(|fact| {
+                std::ptr::eq(*fact, winner) || fact.observed_at_ms() < winner.observed_at_ms()
+            })
+            && group.iter().any(|fact| replaceable_by(winner, fact))
+    };
+    match outcome {
+        GroupOutcome::Settled => {
+            assert!(agrees || one_observation);
+        }
+        GroupOutcome::Superseded { winner, retired } => {
+            assert!(!agrees && !one_observation);
+            assert!(group.iter().any(|fact| std::ptr::eq(*fact, *winner)));
+            assert!(clean_winner(winner));
+            for fact in group {
+                let is_retired = retired.iter().any(|other| std::ptr::eq(*other, *fact));
+                assert!(is_retired == replaceable_by(winner, fact));
+            }
+            assert!(
+                retired
+                    .iter()
+                    .all(|fact| group.iter().any(|other| std::ptr::eq(*other, *fact)))
+            );
+        }
+        GroupOutcome::Contested => {
+            assert!(!agrees && !one_observation);
+            assert!(!group.iter().any(|winner| clean_winner(winner)));
+        }
+    }
+}
+
+/// `slice::contains`, without the integer specialization: its chunked fold
+/// multiplies the loops Kani must unwind.
+fn holds<T: PartialEq>(items: &[T], item: &T) -> bool {
+    items.iter().any(|candidate| candidate == item)
+}
+
+/// Law 5, cascade core: the redacted records are exactly those the erased
+/// memory reaches (no surviving record holds or cites erased memory or a
+/// redacted record, and nothing is redacted without cause), the erased ids are
+/// exactly the targets plus what the redacted records hold, and the redaction
+/// is the least closed one: any `rival` set of positions (a bitmask) that the
+/// cascade cannot escape contains every redacted record.
+fn check_redaction_closure<Id: Eq + Copy, List: AsRef<[Id]>>(
+    live: &[LiveRecord<Id, List>],
+    targets: &[Id],
+    forgotten: &impl IdSet<Id>,
+    redacted: &[bool],
+    rival: u32,
+) {
+    let records = live.len();
+    assert!(redacted.len() == records);
+    // Reachability is tabulated once, flat: recomputing it per query through
+    // nested slice scans is what makes this check intractable under Kani.
+    let refers = |record: &LiveRecord<Id, List>, id: &Id| {
+        holds(record.ids.as_ref(), id) || holds(record.parents.as_ref(), id)
+    };
+    let exposed = live
+        .iter()
+        .map(|record| targets.iter().any(|target| refers(record, target)))
+        .collect::<Vec<_>>();
+    let mut exposed_by = Vec::with_capacity(records * records);
+    for record in live {
+        for erased in live {
+            exposed_by.push(
+                holds(record.parents.as_ref(), &erased.event_id)
+                    || erased.ids.as_ref().iter().any(|id| refers(record, id)),
+            );
+        }
+    }
+    let reached = |chosen: &dyn Fn(usize) -> bool, position: usize| {
+        exposed[position]
+            || (0..records).any(|other| chosen(other) && exposed_by[position * records + other])
+    };
+
+    let is_redacted = |position: usize| redacted[position];
+    for position in 0..records {
+        assert!(reached(&is_redacted, position) == is_redacted(position));
+    }
+
+    let erased = |id: &Id| {
+        holds(targets, id)
+            || (0..records)
+                .any(|position| is_redacted(position) && holds(live[position].ids.as_ref(), id))
+    };
+    let check_erased = |ids: &[Id]| {
+        for id in ids {
+            assert!(forgotten.contains(id) == erased(id));
+        }
+    };
+    check_erased(targets);
+    for record in live {
+        check_erased(record.ids.as_ref());
+        check_erased(record.parents.as_ref());
+        check_erased(&[record.event_id]);
+    }
+
+    let in_rival = |position: usize| rival >> position & 1 == 1;
+    let rival_closed =
+        (0..records).all(|position| in_rival(position) || !reached(&in_rival, position));
+    if rival_closed {
+        assert!((0..records).all(|position| !is_redacted(position) || in_rival(position)));
+    }
+}
+
 /// Law 5: a forget plan erases every target, leaves no surviving record citing
 /// erased memory or an erased record, never redacts the audit trail, and names
 /// exactly the memory it erases.
+#[cfg(test)]
 fn check_forget_closure(
     events: &[EventEnvelope],
     options: &ForgetOptions,
@@ -133,8 +261,38 @@ fn check_forget_closure(
                 .any(|&index| memory_ids(&events[index].payload).contains(&id.as_str()))
         );
     }
+
+    let live = events
+        .iter()
+        .enumerate()
+        .map(|(index, event)| LiveRecord {
+            index,
+            event_id: event.id.as_str(),
+            ids: memory_ids(&event.payload),
+            parents: derived_from(&event.payload),
+        })
+        .filter(|record| !record.ids.is_empty())
+        .collect::<Vec<_>>();
+    let forgotten = plan
+        .forgotten_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(
+        plan.redacted_indexes
+            .windows(2)
+            .all(|pair| pair[0] < pair[1])
+    );
+    let redacted = live
+        .iter()
+        .map(|record| plan.redacted_indexes.contains(&record.index))
+        .collect::<Vec<_>>();
+    for rival in 0..1_u32 << live.len() {
+        check_redaction_closure(&live, &requested, &forgotten, &redacted, rival);
+    }
 }
 
+#[cfg(test)]
 fn claim(
     id: &str,
     event_id: &str,
@@ -194,10 +352,12 @@ fn recall_result(id: &str) -> RecallResult {
 }
 
 /// Number of record shapes [`record`] can build.
+#[cfg(test)]
 const RECORD_KINDS: u8 = 7;
 
 /// One ledger record of shape `kind`, carrying memory `id` and citing `parent`.
 /// Checksums are left empty: forget planning reads only ids and citations.
+#[cfg(test)]
 fn record(
     sequence: u64,
     event_id: &str,
@@ -313,21 +473,15 @@ fn candidate(
 #[cfg(kani)]
 mod proofs {
     use super::{
-        RECORD_KINDS, candidate, check_forget_closure, check_superseded_ranked_last,
-        check_supersession_points_to_current, claim, lifecycle, recall_result, record,
+        candidate, check_group_resolution, check_redaction_closure, check_superseded_ranked_last,
+        lifecycle, recall_result,
     };
     use crate::{
-        forget::{ForgetOptions, plan_forget},
-        inspection::claim_lifecycles,
-        model::{MemoryData, RecallScoreBreakdown, admitted_confidence},
+        forget::{IdSet, LiveRecord, redaction_closure},
+        inspection::{Observation, resolve_group},
+        model::{RecallScoreBreakdown, admitted_confidence},
         recall::{RecallRankingPolicy, rank, score_breakdown},
     };
-
-    fn pick<T: Copy>(options: &[T]) -> T {
-        let index: usize = kani::any();
-        kani::assume(index < options.len());
-        options[index]
-    }
 
     /// Any policy `RecallRankingPolicy::validate` accepts. The rule is mirrored
     /// inline because the rejection path formats floats, which Kani cannot
@@ -362,7 +516,9 @@ mod proofs {
                     assert!(admitted == value);
                 }
             }
-            None => assert!(value.is_nan()),
+            None => {
+                assert!(value.is_nan());
+            }
         }
     }
 
@@ -400,32 +556,13 @@ mod proofs {
     }
 
     #[kani::proof]
-    fn law_score_confidence_component_monotone() {
+    fn law_score_total_at_least_relevance() {
         let policy = any_valid_policy();
-        let lower: f32 = kani::any();
-        let higher: f32 = kani::any();
-        kani::assume(!lower.is_nan() && !higher.is_nan() && lower <= higher);
-        let component = |confidence| {
-            score_breakdown(
-                &policy,
-                &candidate(0.0, Some(confidence), false, 0, None, None),
-                0.0,
-            )
-            .confidence
-        };
-
-        assert!(component(lower) <= component(higher));
-    }
-
-    #[kani::proof]
-    fn law_score_total_monotone_and_at_least_relevance() {
-        let policy = any_valid_policy();
-        let lower: f32 = kani::any();
-        let higher: f32 = kani::any();
-        kani::assume(0.0 <= lower && lower <= higher && higher <= policy.confidence_weight);
-        let low = RecallScoreBreakdown {
+        let confidence: f32 = kani::any();
+        kani::assume(0.0 <= confidence && confidence <= policy.confidence_weight);
+        let breakdown = RecallScoreBreakdown {
             relevance: any_relevance(),
-            confidence: lower,
+            confidence,
             evidence: if kani::any() {
                 policy.evidence_bonus
             } else {
@@ -433,17 +570,47 @@ mod proofs {
             },
             recency: any_recency(&policy),
         };
-        let high = RecallScoreBreakdown {
-            confidence: higher,
-            ..low.clone()
-        };
 
-        assert!(low.total() >= low.relevance);
-        assert!(low.total() <= high.total());
+        assert!(breakdown.total() >= breakdown.relevance);
+    }
+
+    /// One step of the monotonicity argument in LAWS.md: adding the same
+    /// non-negative term preserves order. Checking `total()` directly, or the
+    /// multiplication in the confidence part, did not finish in 17 to 30
+    /// minutes with either CaDiCaL or Kissat.
+    #[kani::proof]
+    fn law_score_addition_is_monotone() {
+        let lower: f32 = kani::any();
+        let higher: f32 = kani::any();
+        let term: f32 = kani::any();
+        kani::assume(0.0 <= lower && lower <= higher && higher.is_finite());
+        kani::assume(0.0 <= term && term.is_finite());
+
+        assert!(lower + term <= higher + term);
+        assert!(lower + term == term + lower);
+    }
+
+    #[kani::proof]
+    fn law_confidence_admission_is_monotone() {
+        let lower: f32 = kani::any();
+        let higher: f32 = kani::any();
+        kani::assume(!lower.is_nan() && !higher.is_nan() && lower <= higher);
+
+        assert!(admitted_confidence(lower) <= admitted_confidence(higher));
+    }
+
+    /// Any recency within the bound `law_recency_bounded_and_non_increasing_in_age`
+    /// tests. CBMC's model of `f64::powf` is unfaithful (it reports NaN scores
+    /// that native execution cannot produce), and the order this law states
+    /// does not depend on the decay curve.
+    #[allow(dead_code, reason = "referenced only by `kani::stub`")]
+    fn recency_within_tested_bound(policy: &RecallRankingPolicy, _age_ms: u64) -> f32 {
+        any_recency(policy)
     }
 
     #[kani::proof]
     #[kani::unwind(5)]
+    #[kani::stub(RecallRankingPolicy::recency, recency_within_tested_bound)]
     fn law_superseded_never_outranks_current() {
         const IDS: [&str; 3] = ["a", "b", "c"];
         let policy = any_valid_policy();
@@ -467,70 +634,99 @@ mod proofs {
         check_superseded_ranked_last(&IDS, &rank(candidates, &policy));
     }
 
-    #[kani::proof]
-    #[kani::unwind(4)]
-    fn law_supersession_points_to_current_claim() {
-        let any_claim = |id, event_id| {
-            claim(
-                id,
-                event_id,
-                "s",
-                pick(&["x", "y"]),
-                pick(&[None, Some("1"), Some("2")]),
-                pick(&[None, Some("a")]),
-                kani::any(),
-            )
-        };
-        let claims = vec![
-            any_claim("0", "e0"),
-            any_claim("1", "e1"),
-            any_claim("2", "e2"),
-        ];
-        let data = MemoryData {
-            claims: claims.clone(),
-            ..MemoryData::default()
-        };
+    /// A fact reduced to what the supersession rule reads. Kani checks the
+    /// rule over these; the `Claim` instance production uses runs the same
+    /// generic code under the property tests.
+    struct Observed {
+        value: u8,
+        episode: Option<u8>,
+        at_ms: u64,
+    }
 
-        check_supersession_points_to_current(&claims, &claim_lifecycles(&data));
+    impl Observation for Observed {
+        type Key = u8;
+
+        fn value(&self) -> &u8 {
+            &self.value
+        }
+
+        fn episode(&self) -> Option<&u8> {
+            self.episode.as_ref()
+        }
+
+        fn observed_at_ms(&self) -> u64 {
+            self.at_ms
+        }
     }
 
     #[kani::proof]
-    #[kani::unwind(8)]
-    fn law_forget_leaves_no_orphan_provenance() {
-        const EVENT_IDS: [&str; 3] = ["e0", "e1", "e2"];
-        const REPAIR_IDS: [&str; 3] = ["r0", "r1", "r2"];
-        let any_record = |index: usize| {
-            let kind: u8 = kani::any();
-            kani::assume(kind < RECORD_KINDS);
-            record(
-                index as u64 + 1,
-                EVENT_IDS[index],
-                REPAIR_IDS[index],
-                kind,
-                pick(&["m0", "m1", "m2"]),
-                pick(&[
-                    None,
-                    Some("m0"),
-                    Some("m1"),
-                    Some("m2"),
-                    Some("e0"),
-                    Some("e1"),
-                    Some("e2"),
-                ]),
-            )
-        };
-        let events = vec![any_record(0), any_record(1), any_record(2)];
-        let options = ForgetOptions {
-            targets: vec![
-                pick(&["m0", "m1", "r1", " m2 ", "x"]).to_string(),
-                pick(&["m0", "m2", "r2", ""]).to_string(),
-            ],
-            reason: "law".to_string(),
-            requested_by: None,
-            dry_run: false,
-        };
+    #[kani::unwind(6)]
+    fn law_supersession_points_to_current_claim() {
+        const FACTS: usize = 4;
+        let facts = (0..FACTS)
+            .map(|_| Observed {
+                value: kani::any(),
+                episode: kani::any(),
+                at_ms: kani::any(),
+            })
+            .collect::<Vec<_>>();
+        let group = facts.iter().collect::<Vec<_>>();
 
-        check_forget_closure(&events, &options, plan_forget(&events, &options));
+        check_group_resolution(&group, &resolve_group(&group));
+    }
+
+    /// A set of ids below 32. Kani checks the cascade over this set; the
+    /// `BTreeSet` instance production uses runs the same generic code under the
+    /// property tests. Ids are `u16` because `[u8]::contains` specializes to a
+    /// word-at-a-time `memchr` that is costly to model.
+    #[derive(Default)]
+    struct Bits(u32);
+
+    impl IdSet<u16> for Bits {
+        fn contains(&self, id: &u16) -> bool {
+            self.0 >> id & 1 == 1
+        }
+
+        fn insert(&mut self, id: u16) {
+            self.0 |= 1 << id;
+        }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn law_forget_leaves_no_orphan_provenance() {
+        const RECORDS: usize = 4;
+        // Memory ids are 0..4. Id 4 is held by no record and targeted by
+        // none, so citing it is the same as citing nothing; a repeated id is
+        // the same as one id. Fixed-length lists therefore still cover every
+        // record with one or two ids and zero to two citations, and every
+        // request for one or two targets, without symbolic lengths.
+        const UNHELD_ID: u16 = 4;
+        const FIRST_EVENT_ID: u16 = 16;
+        let memory_id = || {
+            let id: u16 = kani::any();
+            kani::assume(id < UNHELD_ID);
+            id
+        };
+        let citation = || {
+            let id: u16 = kani::any();
+            kani::assume(
+                id <= UNHELD_ID || (FIRST_EVENT_ID..FIRST_EVENT_ID + RECORDS as u16).contains(&id),
+            );
+            id
+        };
+        let live: [_; RECORDS] = std::array::from_fn(|index| LiveRecord {
+            index,
+            event_id: FIRST_EVENT_ID + index as u16,
+            ids: [memory_id(), memory_id()],
+            parents: [citation(), citation()],
+        });
+        let targets = [memory_id(), memory_id()];
+        let rival: u32 = kani::any();
+        kani::assume(rival < 1 << RECORDS);
+
+        let (forgotten, redacted) = redaction_closure::<_, _, Bits>(&live, &targets);
+        check_redaction_closure(&live, &targets, &forgotten, &redacted, rival);
     }
 }
 
@@ -554,15 +750,16 @@ mod properties {
     use proptest::prelude::*;
 
     use super::{
-        RECORD_KINDS, candidate, check_forget_closure, check_superseded_ranked_last,
+        RECORD_KINDS, candidate, check_forget_closure, check_group_resolution,
+        check_redaction_closure, check_superseded_ranked_last,
         check_supersession_points_to_current, claim, lifecycle, policy_in_kani_domain,
         recall_result, record,
     };
     use crate::{
         MemoryEngine, NahualiError,
         event::{EventEnvelope, verify_redactions},
-        forget::{ForgetOptions, plan_forget},
-        inspection::claim_lifecycles,
+        forget::{ForgetOptions, LiveRecord, plan_forget, redaction_closure},
+        inspection::{claim_lifecycles, resolve_group},
         model::MemoryData,
         recall::{RecallRankingPolicy, rank, score_breakdown},
     };
@@ -723,6 +920,20 @@ mod properties {
                     )
                 })
                 .collect::<Vec<_>>();
+            for subject in SUBJECTS {
+                for scope in SCOPES {
+                    let group = claims
+                        .iter()
+                        .filter(|claim| {
+                            claim.subject == subject
+                                && claim.scope.as_ref().map(|scope| scope.key.as_str()) == scope
+                        })
+                        .collect::<Vec<_>>();
+                    if !group.is_empty() {
+                        check_group_resolution(&group, &resolve_group(&group));
+                    }
+                }
+            }
             let data = MemoryData { claims: claims.clone(), ..MemoryData::default() };
             check_supersession_points_to_current(&claims, &claim_lifecycles(&data));
         }
@@ -764,6 +975,35 @@ mod properties {
                 dry_run: false,
             };
             check_forget_closure(&events, &options, plan_forget(&events, &options));
+        }
+
+        #[test]
+        fn law_forget_cascade_is_closed_and_least(
+            records in proptest::collection::vec(
+                (
+                    proptest::collection::vec(0_u8..6, 1..=2),
+                    proptest::collection::vec(0_u8..6 + 8, 0..=3),
+                ),
+                0..=8,
+            ),
+            targets in proptest::collection::vec(0_u8..6, 1..=2),
+        ) {
+            // Memory ids are 0..6 and event ids 6..14, so citations hit both.
+            let live = records
+                .into_iter()
+                .enumerate()
+                .map(|(index, (ids, parents))| LiveRecord {
+                    index,
+                    event_id: 6 + index as u8,
+                    ids,
+                    parents,
+                })
+                .collect::<Vec<_>>();
+            let (forgotten, redacted) =
+                redaction_closure::<_, _, std::collections::BTreeSet<_>>(&live, &targets);
+            for rival in 0..1_u32 << live.len() {
+                check_redaction_closure(&live, &targets, &forgotten, &redacted, rival);
+            }
         }
     }
 
