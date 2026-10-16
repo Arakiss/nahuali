@@ -89,11 +89,17 @@ pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
         "{}",
         crate::style::store_trust_line(&report.authority.mode, report.authority.score)
     );
-    // One compact counts line instead of eight stacked lines.
+    if let Some(cause) =
+        crate::style::store_trust_cause_line(&report.authority.mode, &report.health.signals)
+    {
+        println!("{cause}");
+    }
+    // One compact counts line instead of eight stacked lines. `ingested sources`
+    // counts source documents brought in by `ingest*`, not episode provenance.
     println!(
         "{}",
         crate::style::dim(&format!(
-            "{} events · {} episodes · {} entities · {} sources · {} health signals · {} intentions · {} review",
+            "{} events · {} episodes · {} entities · {} ingested sources · {} health signals · {} intentions · {} review",
             report.event_count,
             report.summary.episode_count,
             report.summary.entity_count,

@@ -314,6 +314,14 @@ fn briefing_is_scriptable() {
     let human = run_ok(&store, &["briefing", "--episode-limit", "1"]);
     assert!(human.contains("Session briefing"));
     assert!(human.contains("Store trust: BLOCK"));
+    // The medium unsupported-fact signal did not set BLOCK; the contradiction did.
+    assert!(
+        human.contains(
+            "Why: conflicting_fact ×1 (high) · next: nahuali review --action resolve-contradiction"
+        ),
+        "{human}"
+    );
+    assert!(human.contains("0 ingested sources"), "{human}");
     assert!(human.contains("Graph seeds"));
 
     let zero_limits = [
