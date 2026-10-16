@@ -697,11 +697,17 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Read pending intentions from the SurrealDB projection.")]
+    #[command(
+        about = "Read pending intentions from the SurrealDB projection.",
+        after_help = "Examples:\n  nahuali pending\n  nahuali pending --stale 30\n  nahuali pending --stale 90 --limit 50 --json"
+    )]
     Pending {
         /// Maximum number of pending intentions to return.
         #[arg(long, short = 'l', default_value_t = 20)]
         limit: usize,
+        /// Only show active intentions not updated in more than this many days.
+        #[arg(long, value_name = "DAYS", value_parser = clap::value_parser!(u64).range(1..))]
+        stale: Option<u64>,
         /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,

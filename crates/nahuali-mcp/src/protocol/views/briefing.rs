@@ -13,6 +13,7 @@ pub(crate) struct BriefingSummaryView {
     episode_count: usize,
     entity_count: usize,
     active_intention_count: usize,
+    stale_intention_count: usize,
     high_priority_review_count: usize,
     critical_review_count: usize,
     high_review_count: usize,
@@ -29,6 +30,7 @@ impl From<BriefingSummary> for BriefingSummaryView {
             episode_count: summary.episode_count,
             entity_count: summary.entity_count,
             active_intention_count: summary.active_intention_count,
+            stale_intention_count: summary.stale_intention_count,
             high_priority_review_count: summary.high_priority_review_count,
             critical_review_count: summary.critical_review_count,
             high_review_count: summary.high_review_count,
@@ -84,6 +86,7 @@ pub(crate) struct BriefingIntentionView {
     status_reason: Option<String>,
     created_at_ms: u64,
     updated_at_ms: u64,
+    stale: bool,
 }
 
 impl From<BriefingIntention> for BriefingIntentionView {
@@ -100,6 +103,7 @@ impl From<BriefingIntention> for BriefingIntentionView {
             status_reason: intention.status_reason,
             created_at_ms: intention.created_at_ms,
             updated_at_ms: intention.updated_at_ms,
+            stale: intention.stale,
         }
     }
 }

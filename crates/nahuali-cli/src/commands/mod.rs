@@ -405,8 +405,8 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
         Command::Timeline { limit, json } => {
             reports::projection_timeline(&mut memory, &database, limit, json)?
         }
-        Command::Pending { limit, json } => {
-            reports::projection_pending(&mut memory, &database, limit, json)?
+        Command::Pending { limit, stale, json } => {
+            reports::projection_pending(&mut memory, &database, limit, stale, json)?
         }
         Command::Sleep {
             episode_limit,
@@ -557,7 +557,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             reports::projection_timeline(&mut memory, &database, limit, json)?
         }
         Command::ProjectionPending { limit, json } => {
-            reports::projection_pending(&mut memory, &database, limit, json)?
+            reports::projection_pending(&mut memory, &database, limit, None, json)?
         }
         Command::ProjectionHealth { limit, json } => {
             reports::projection_health(&mut memory, &database, limit, json)?

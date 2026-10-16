@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AuthorityDecision, IntentionKind, IntentionPriority, IntentionStatus, KnowledgeHealth,
-    MemoryData, OperatorReviewItem, OperatorReviewOptions, SelfInspectionReviewPriority,
-    operator_review,
+    AuthorityDecision, DEFAULT_INTENTION_STALE_AFTER_MS, IntentionKind, IntentionPriority,
+    IntentionStatus, KnowledgeHealth, MemoryData, OperatorReviewItem, OperatorReviewOptions,
+    SelfInspectionReviewPriority, intention_is_stale, operator_review,
 };
 
 /// Current session-briefing report format version.
@@ -50,7 +50,8 @@ pub struct MemoryBriefingReport {
     pub summary: BriefingSummary,
     /// Most recent observed episodes.
     pub recent_episodes: Vec<BriefingEpisode>,
-    /// Active intentions sorted by priority.
+    /// Active intentions: fresh ones first, then stale ones, each group sorted
+    /// by priority and then most recently updated.
     pub active_intentions: Vec<BriefingIntention>,
     /// Critical or high-priority operator review items.
     pub review_items: Vec<OperatorReviewItem>,
@@ -69,6 +70,10 @@ pub struct BriefingSummary {
     pub entity_count: usize,
     /// Number of active intentions in the full projection.
     pub active_intention_count: usize,
+    /// Number of active intentions in the full projection not updated within
+    /// [`DEFAULT_INTENTION_STALE_AFTER_MS`].
+    #[serde(default)]
+    pub stale_intention_count: usize,
     /// Number of critical or high-priority review items before display limiting.
     pub high_priority_review_count: usize,
     /// Number of critical review items before display limiting.
@@ -133,6 +138,11 @@ pub struct BriefingIntention {
     pub created_at_ms: u64,
     /// Timestamp for the latest lifecycle event.
     pub updated_at_ms: u64,
+    /// Whether the intention has gone longer than
+    /// [`DEFAULT_INTENTION_STALE_AFTER_MS`] without an update, the same
+    /// threshold `reconcile-intentions` uses by default.
+    #[serde(default)]
+    pub stale: bool,
 }
 
 /// Entity seed included in a session briefing for graph traversal.
@@ -166,7 +176,7 @@ pub(crate) fn briefing_at(
     let health = KnowledgeHealth::inspect_at(data, generated_at_ms);
     let authority = AuthorityDecision::evaluate(&health);
     let recent_episodes = recent_episodes(data, options.episode_limit);
-    let active_intentions = active_intentions(data, options.intention_limit);
+    let active_intentions = active_intentions(data, options.intention_limit, generated_at_ms);
     let mut review = operator_review::operator_review_at(
         data,
         OperatorReviewOptions {
@@ -179,16 +189,20 @@ pub(crate) fn briefing_at(
     // The operator review queue never returns fewer than one item on its own.
     review.items.truncate(options.review_limit);
     let graph_seeds = graph_seeds(data, options.graph_seed_limit);
-    let active_intention_count = data
+    let active = data
         .intentions
         .iter()
-        .filter(|intention| intention.status == IntentionStatus::Active)
+        .filter(|intention| intention.status == IntentionStatus::Active);
+    let active_intention_count = active.clone().count();
+    let stale_intention_count = active
+        .filter(|intention| is_stale(intention.updated_at_ms, generated_at_ms))
         .count();
     let summary = BriefingSummary {
         source_count: data.sources.len(),
         episode_count: data.episodes.len(),
         entity_count: data.entities.len(),
         active_intention_count,
+        stale_intention_count,
         high_priority_review_count: review.total_items,
         critical_review_count: review.summary.critical_count,
         high_review_count: review.summary.high_count,
@@ -238,16 +252,28 @@ fn recent_episodes(data: &MemoryData, limit: usize) -> Vec<BriefingEpisode> {
         .collect()
 }
 
-fn active_intentions(data: &MemoryData, limit: usize) -> Vec<BriefingIntention> {
+/// Whether an active intention is stale under the default reconciliation
+/// threshold, so the briefing and `reconcile-intentions` agree.
+fn is_stale(updated_at_ms: u64, now_ms: u64) -> bool {
+    intention_is_stale(updated_at_ms, now_ms, DEFAULT_INTENTION_STALE_AFTER_MS)
+}
+
+fn active_intentions(data: &MemoryData, limit: usize, now_ms: u64) -> Vec<BriefingIntention> {
     let mut intentions = data
         .intentions
         .iter()
         .filter(|intention| intention.status == IntentionStatus::Active)
         .cloned()
         .collect::<Vec<_>>();
+    // Fresh work first: an old critical intention nobody touched in months
+    // should not crowd out the high-priority work in flight.
     intentions.sort_by(|left, right| {
-        intention_priority_rank(&left.priority)
-            .cmp(&intention_priority_rank(&right.priority))
+        is_stale(left.updated_at_ms, now_ms)
+            .cmp(&is_stale(right.updated_at_ms, now_ms))
+            .then_with(|| {
+                intention_priority_rank(&left.priority)
+                    .cmp(&intention_priority_rank(&right.priority))
+            })
             .then_with(|| right.updated_at_ms.cmp(&left.updated_at_ms))
             .then_with(|| left.id.cmp(&right.id))
     });
@@ -256,6 +282,7 @@ fn active_intentions(data: &MemoryData, limit: usize) -> Vec<BriefingIntention> 
         .into_iter()
         .take(limit)
         .map(|intention| BriefingIntention {
+            stale: is_stale(intention.updated_at_ms, now_ms),
             id: intention.id,
             event_id: intention.event_id,
             updated_event_id: intention.updated_event_id,
@@ -310,4 +337,123 @@ fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BriefingOptions, briefing_at};
+    use crate::{
+        DEFAULT_INTENTION_STALE_AFTER_MS, Intention, IntentionKind, IntentionPriority,
+        IntentionStatus, MemoryData,
+    };
+
+    const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+    const NOW_MS: u64 = 400 * DAY_MS;
+
+    fn intention(id: &str, priority: IntentionPriority, age_days: u64) -> Intention {
+        Intention {
+            id: id.to_string(),
+            event_id: format!("event_{id}"),
+            updated_event_id: format!("event_{id}"),
+            kind: IntentionKind::Task,
+            status: IntentionStatus::Active,
+            priority,
+            description: id.to_string(),
+            source_episode_id: None,
+            status_reason: None,
+            deadline_at_ms: None,
+            depends_on: Vec::new(),
+            goal_id: None,
+            progress_percent: None,
+            scope: None,
+            created_at_ms: 0,
+            updated_at_ms: NOW_MS - age_days * DAY_MS,
+        }
+    }
+
+    fn data(intentions: Vec<Intention>) -> MemoryData {
+        MemoryData {
+            intentions,
+            ..MemoryData::default()
+        }
+    }
+
+    fn options(intention_limit: usize) -> BriefingOptions {
+        BriefingOptions {
+            intention_limit,
+            ..BriefingOptions::default()
+        }
+    }
+
+    #[test]
+    fn fresh_intentions_lead_and_stale_ones_follow_in_priority_order() {
+        let data = data(vec![
+            intention("old_critical", IntentionPriority::Critical, 92),
+            intention("older_critical", IntentionPriority::Critical, 120),
+            intention("fresh_low", IntentionPriority::Low, 1),
+            intention("fresh_high", IntentionPriority::High, 3),
+            intention("fresh_high_newer", IntentionPriority::High, 2),
+            intention("old_high", IntentionPriority::High, 61),
+        ]);
+
+        let report = briefing_at(&data, options(10), NOW_MS);
+        let order = report
+            .active_intentions
+            .iter()
+            .map(|intention| (intention.id.as_str(), intention.stale))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            order,
+            vec![
+                ("fresh_high_newer", false),
+                ("fresh_high", false),
+                ("fresh_low", false),
+                ("old_critical", true),
+                ("older_critical", true),
+                ("old_high", true),
+            ]
+        );
+        assert_eq!(report.summary.active_intention_count, 6);
+        assert_eq!(report.summary.stale_intention_count, 3);
+    }
+
+    #[test]
+    fn stale_count_covers_intentions_hidden_by_the_limit() {
+        let data = data(vec![
+            intention("fresh", IntentionPriority::Medium, 0),
+            intention("stale_a", IntentionPriority::Critical, 45),
+            intention("stale_b", IntentionPriority::Critical, 46),
+        ]);
+
+        let report = briefing_at(&data, options(1), NOW_MS);
+        assert_eq!(report.active_intentions.len(), 1);
+        assert_eq!(report.active_intentions[0].id, "fresh");
+        assert_eq!(report.summary.stale_intention_count, 2);
+    }
+
+    #[test]
+    fn stale_uses_the_reconciliation_threshold_exclusively() {
+        let at_threshold = Intention {
+            updated_at_ms: NOW_MS - DEFAULT_INTENTION_STALE_AFTER_MS,
+            ..intention("at_threshold", IntentionPriority::Medium, 0)
+        };
+        let past_threshold = Intention {
+            updated_at_ms: NOW_MS - DEFAULT_INTENTION_STALE_AFTER_MS - 1,
+            ..intention("past_threshold", IntentionPriority::Medium, 0)
+        };
+        let report = briefing_at(
+            &data(vec![at_threshold, past_threshold]),
+            options(5),
+            NOW_MS,
+        );
+        let stale = |id: &str| {
+            report
+                .active_intentions
+                .iter()
+                .find(|intention| intention.id == id)
+                .map(|intention| intention.stale)
+        };
+        assert_eq!(stale("at_threshold"), Some(false));
+        assert_eq!(stale("past_threshold"), Some(true));
+    }
 }

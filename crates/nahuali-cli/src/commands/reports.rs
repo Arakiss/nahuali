@@ -1,8 +1,9 @@
 use nahuali_core::{
-    BriefingOptions, ConsolidationPlanOptions, IntentionReconciliationOptions, MemoryEngine,
-    MemoryHookOptions, MemoryKind, OperatorReviewOptions, ProactiveOptions, ProjectViewOptions,
-    RecallOptions, RecallRankingPolicy, ReflectionOptions, SelfInspectionReviewAction,
-    SelfInspectionReviewPriority, SleepModeOptions,
+    BriefingOptions, ConsolidationPlanOptions, DEFAULT_INTENTION_STALE_AFTER_MS,
+    IntentionReconciliationOptions, MemoryEngine, MemoryHookOptions, MemoryKind,
+    OperatorReviewOptions, ProactiveOptions, ProjectViewOptions, RecallOptions,
+    RecallRankingPolicy, ReflectionOptions, SelfInspectionReviewAction,
+    SelfInspectionReviewPriority, SleepModeOptions, intention_is_stale,
 };
 
 use crate::commands::scope::parse_scope;
@@ -919,23 +920,48 @@ pub(crate) fn projection_pending(
     memory: &mut MemoryEngine,
     database: &std::path::Path,
     limit: usize,
+    stale_after_days: Option<u64>,
     json: bool,
 ) -> anyhow::Result<()> {
-    let intentions = memory.projection_pending(limit)?;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0);
+    let stale_after_ms = stale_after_days
+        .map(|days| days.saturating_mul(output::DAY_MS))
+        .unwrap_or(DEFAULT_INTENTION_STALE_AFTER_MS);
+    let intentions = match stale_after_days {
+        Some(_) => memory.projection_stale_pending(stale_after_ms, now_ms, limit)?,
+        None => memory.projection_pending(limit)?,
+    };
     if json {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
                 "database": database.display().to_string(),
                 "projection_role": "derived_from_memory_record",
+                "stale_after_days": stale_after_days,
                 "intentions": intentions,
             }))?
         );
     } else {
+        if intentions.is_empty() && stale_after_days.is_some() {
+            println!("No active intentions are older than the stale threshold.");
+        }
         for intention in intentions {
             println!(
                 "- [{}/{}] {}",
                 intention.priority, intention.status, intention.description
+            );
+            let stale = intention_is_stale(intention.updated_at_ms, now_ms, stale_after_ms);
+            println!(
+                "  {}",
+                crate::style::dim(&output::intention_meta(
+                    &intention.memory_id,
+                    intention.updated_at_ms,
+                    now_ms,
+                    stale,
+                ))
             );
         }
     }

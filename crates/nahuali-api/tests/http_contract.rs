@@ -391,6 +391,26 @@ async fn api_reads_projection_timeline_pending_and_session_resume() {
     let pending = get_json(app.clone(), "/v1/pending?limit=5").await;
     assert_eq!(pending["projection_role"], "derived_from_memory_record");
     assert_eq!(pending["intentions"][0]["memory_id"], intention["id"]);
+    assert_eq!(pending["stale_after_days"], Value::Null);
+
+    // The intention was just written, so nothing is older than 30 days.
+    let stale = get_json(app.clone(), "/v1/pending?limit=5&stale_days=30").await;
+    assert_eq!(stale["stale_after_days"], 30);
+    assert_eq!(stale["intentions"], json!([]));
+
+    let zero_days = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/pending?stale_days=0")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(zero_days.status(), StatusCode::BAD_REQUEST);
+    let body = response_json(zero_days).await;
+    assert_eq!(body["error"]["code"], "validation_error");
 
     let audit = get_json(app.clone(), "/v1/audit").await;
     assert_eq!(audit["integrity"]["verified"], true);

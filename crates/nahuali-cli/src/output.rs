@@ -1,12 +1,12 @@
 use std::path::Path;
 
 use nahuali_core::{
-    AnomalyAcknowledgementReport, AnomalyReport, BackupIssueKind, DeadlineReport,
-    GoalProgressReport, IngestionReport, IntentionReconciliationReport, InterchangeImportReport,
-    MemoryBriefingReport, MemoryConsolidationPlanReport, MemoryGraphReport, MemoryHookReport,
-    MemoryProactiveReport, MemoryProjectReport, MemoryReflectionReport, MemorySleepReport,
-    OperatorReviewReport, RecordLedgerIssueKind, RepairReport, ReviewResolutionReport,
-    SnapshotIssueKind,
+    AnomalyAcknowledgementReport, AnomalyReport, BackupIssueKind, DEFAULT_INTENTION_STALE_AFTER_MS,
+    DeadlineReport, GoalProgressReport, IngestionReport, IntentionReconciliationReport,
+    InterchangeImportReport, MemoryBriefingReport, MemoryConsolidationPlanReport,
+    MemoryGraphReport, MemoryHookReport, MemoryProactiveReport, MemoryProjectReport,
+    MemoryReflectionReport, MemorySleepReport, OperatorReviewReport, RecordLedgerIssueKind,
+    RepairReport, ReviewResolutionReport, SnapshotIssueKind,
 };
 use serde::Serialize;
 
@@ -83,6 +83,24 @@ fn print_episode_line(content: &str, id: &str, mentions: &[String], tags: &[Stri
     println!("    {}", meta.join("  "));
 }
 
+pub(crate) const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+const HOUR_MS: u64 = 60 * 60 * 1000;
+
+/// Dimmed metadata line for an intention: its id, how long ago it last
+/// changed, and a `stale` mark, e.g. `intention_42 · updated 61d ago · stale`.
+pub(crate) fn intention_meta(id: &str, updated_at_ms: u64, now_ms: u64, stale: bool) -> String {
+    let elapsed = now_ms.saturating_sub(updated_at_ms);
+    let age = if elapsed >= DAY_MS {
+        format!("{}d", elapsed / DAY_MS)
+    } else if elapsed >= HOUR_MS {
+        format!("{}h", elapsed / HOUR_MS)
+    } else {
+        "<1h".to_string()
+    };
+    let mark = if stale { " · stale" } else { "" };
+    format!("{id} · updated {age} ago{mark}")
+}
+
 pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
     println!("{}", crate::style::heading("Session briefing"));
     println!(
@@ -124,6 +142,34 @@ pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
                 "  · [{:?}] {}",
                 intention.priority,
                 one_line(&intention.description, 88)
+            );
+            println!(
+                "    {}",
+                crate::style::dim(&intention_meta(
+                    &intention.id,
+                    intention.updated_at_ms,
+                    report.generated_at_ms,
+                    intention.stale,
+                ))
+            );
+        }
+        // Stale intentions sort last, so the limit hides them first; say so.
+        let shown_stale = report
+            .active_intentions
+            .iter()
+            .filter(|intention| intention.stale)
+            .count();
+        let hidden_stale = report
+            .summary
+            .stale_intention_count
+            .saturating_sub(shown_stale);
+        if hidden_stale > 0 {
+            let days = DEFAULT_INTENTION_STALE_AFTER_MS / DAY_MS;
+            println!(
+                "  {}",
+                crate::style::dim(&format!(
+                    "+{hidden_stale} stale active intentions not shown (no update in {days}d) · review: nahuali pending --stale {days}"
+                ))
             );
         }
     }
@@ -962,5 +1008,27 @@ fn print_anomaly_rows(report: &AnomalyReport) {
         if !alert.evidence_ids.is_empty() {
             println!("  evidence: {}", alert.evidence_ids.join(", "));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DAY_MS, intention_meta};
+
+    #[test]
+    fn intention_meta_shows_id_age_and_stale_mark() {
+        let now = 100 * DAY_MS;
+        assert_eq!(
+            intention_meta("intention_7", now - 61 * DAY_MS, now, true),
+            "intention_7 · updated 61d ago · stale"
+        );
+        assert_eq!(
+            intention_meta("intention_8", now - 5 * 60 * 60 * 1000, now, false),
+            "intention_8 · updated 5h ago"
+        );
+        assert_eq!(
+            intention_meta("intention_9", now, now, false),
+            "intention_9 · updated <1h ago"
+        );
     }
 }
