@@ -39,7 +39,7 @@ use crate::{
     model::{
         Claim, Episode, Fact, Intention, IntentionKind, IntentionPriority, IntentionStatus, Link,
         MEMORY_DATA_VERSION, MemoryData, MemoryScope, Procedure, ProcedureKind, RecallResult,
-        Relation, SourceDocument, SourceKind,
+        Relation, SourceDocument, SourceKind, admit_confidence,
     },
     operator_review::{self, OperatorReviewOptions, OperatorReviewReport},
     proactive,

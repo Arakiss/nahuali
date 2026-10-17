@@ -338,7 +338,7 @@ impl MemoryEngine {
     /// Assert a canonical derived claim, optionally linked to a source episode.
     ///
     /// Empty fields are rejected after trimming. Confidence is clamped to the
-    /// `0.0..=1.0` range.
+    /// `0.0..=1.0` range; NaN is rejected with `InvalidConfidence`.
     pub fn add_claim(
         &mut self,
         subject: impl Into<String>,
@@ -378,7 +378,8 @@ impl MemoryEngine {
     /// Assert a compatibility fact, optionally linked to a source episode.
     ///
     /// New public code should prefer [`Self::add_claim`]. Empty fields are
-    /// rejected after trimming. Confidence is clamped to the `0.0..=1.0` range.
+    /// rejected after trimming. Confidence is clamped to the `0.0..=1.0` range;
+    /// NaN is rejected with `InvalidConfidence`.
     pub fn add_fact(
         &mut self,
         subject: impl Into<String>,
@@ -441,7 +442,7 @@ impl MemoryEngine {
             predicate,
             object,
             source_episode_id: context.source_episode_id,
-            confidence: context.confidence.clamp(0.0, 1.0),
+            confidence: admit_confidence(context.confidence)?,
             scope,
         });
         self.append(payload)?;
@@ -458,7 +459,7 @@ impl MemoryEngine {
     /// Record a canonical derived link, optionally linked to a source episode.
     ///
     /// Empty fields are rejected after trimming. Confidence is clamped to the
-    /// `0.0..=1.0` range.
+    /// `0.0..=1.0` range; NaN is rejected with `InvalidConfidence`.
     pub fn add_link(
         &mut self,
         from: impl Into<String>,
@@ -498,7 +499,8 @@ impl MemoryEngine {
     /// Record a compatibility relation, optionally linked to a source episode.
     ///
     /// New public code should prefer [`Self::add_link`]. Empty fields are
-    /// rejected after trimming. Confidence is clamped to the `0.0..=1.0` range.
+    /// rejected after trimming. Confidence is clamped to the `0.0..=1.0` range;
+    /// NaN is rejected with `InvalidConfidence`.
     pub fn relate(
         &mut self,
         from: impl Into<String>,
@@ -561,7 +563,7 @@ impl MemoryEngine {
             relation,
             to,
             source_episode_id: context.source_episode_id,
-            confidence: context.confidence.clamp(0.0, 1.0),
+            confidence: admit_confidence(context.confidence)?,
             scope,
         });
         self.append(payload)?;
@@ -578,7 +580,7 @@ impl MemoryEngine {
     /// Record a reusable procedure.
     ///
     /// Empty names or bodies are rejected after trimming. Confidence is clamped
-    /// to the `0.0..=1.0` range.
+    /// to the `0.0..=1.0` range; NaN is rejected with `InvalidConfidence`.
     pub fn add_procedure(
         &mut self,
         name: impl Into<String>,
@@ -616,7 +618,7 @@ impl MemoryEngine {
     /// Record a reusable behavioral preference.
     ///
     /// Empty names or bodies are rejected after trimming. Confidence is clamped
-    /// to the `0.0..=1.0` range.
+    /// to the `0.0..=1.0` range; NaN is rejected with `InvalidConfidence`.
     pub fn add_preference(
         &mut self,
         name: impl Into<String>,
@@ -676,7 +678,7 @@ impl MemoryEngine {
             name,
             body,
             source_episode_id: context.source_episode_id,
-            confidence: context.confidence.clamp(0.0, 1.0),
+            confidence: admit_confidence(context.confidence)?,
             scope,
         });
         self.append(payload)?;
