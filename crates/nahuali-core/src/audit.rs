@@ -75,6 +75,9 @@ pub struct LedgerAuditEntry {
     /// Memory scope carried by the event, when present.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<MemoryScope>,
+    /// Episode the event cites as its evidence, when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_episode_id: Option<String>,
 }
 
 /// Per-category counts of changes within the audited range.
@@ -243,6 +246,7 @@ pub fn audit_events(events: &[EventEnvelope], options: &LedgerAuditOptions) -> L
             kind: event_kind(&event.payload),
             summary: summarize(&event.payload),
             scope: event_scope(&event.payload),
+            source_episode_id: event_source_episode(&event.payload).map(str::to_string),
         });
     }
 
@@ -350,7 +354,7 @@ fn count_event(counts: &mut LedgerAuditCounts, payload: &MemoryEvent) {
     }
 }
 
-fn event_kind(payload: &MemoryEvent) -> LedgerAuditEventKind {
+pub(crate) fn event_kind(payload: &MemoryEvent) -> LedgerAuditEventKind {
     match payload {
         MemoryEvent::SourceRecorded(_) => LedgerAuditEventKind::SourceRecorded,
         MemoryEvent::EpisodeRecorded(_) => LedgerAuditEventKind::EpisodeRecorded,
@@ -387,7 +391,27 @@ fn event_scope(payload: &MemoryEvent) -> Option<MemoryScope> {
     }
 }
 
-fn summarize(payload: &MemoryEvent) -> String {
+fn event_source_episode(payload: &MemoryEvent) -> Option<&str> {
+    match payload {
+        MemoryEvent::FactAsserted(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::RelationRecorded(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::ProcedureRecorded(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::IntentionRecorded(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::IntentionUpdated(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::IntentionStatusChanged(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::RepairApplied(event) => match &event.materialized {
+            RepairMaterialization::Claim(claim) => claim.source_episode_id.as_deref(),
+            RepairMaterialization::Link(link) => link.source_episode_id.as_deref(),
+        },
+        MemoryEvent::SourceRecorded(_)
+        | MemoryEvent::EpisodeRecorded(_)
+        | MemoryEvent::ReviewRecorded(_)
+        | MemoryEvent::MemoryForgotten(_)
+        | MemoryEvent::Redacted(_) => None,
+    }
+}
+
+pub(crate) fn summarize(payload: &MemoryEvent) -> String {
     match payload {
         MemoryEvent::SourceRecorded(event) => {
             truncate(event.title.clone().unwrap_or_else(|| event.id.clone()))
@@ -430,7 +454,7 @@ fn summarize(payload: &MemoryEvent) -> String {
 
 /// Render a serde enum as its serialized string token without coupling to its
 /// variants (e.g. `IntentionRecordedStatus::Completed` -> `"completed"`).
-fn token<T: Serialize>(value: &T) -> String {
+pub(crate) fn token<T: Serialize>(value: &T) -> String {
     serde_json::to_value(value)
         .ok()
         .and_then(|value| value.as_str().map(str::to_owned))

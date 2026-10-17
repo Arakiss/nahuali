@@ -29,8 +29,9 @@ use nahuali_core::{
     IntentionPriority, IntentionReconciliationOptions, IntentionReconciliationReport,
     IntentionStatus, IntentionUpdateOptions, KnowledgeHealth, LedgerAudit, LedgerAuditOptions,
     Link, MemoryBriefingReport, MemoryEngine, MemoryGraphReport, MemoryKind, MemoryProactiveReport,
-    MemoryScope, MemoryTrustReport, NahualiError, ProactiveOptions, Procedure, RecallOptions,
-    RecallRankingPolicy, ReviewResolutionReport, SemanticIndexReport, SemanticIndexStatus,
+    MemoryScope, MemoryTrustReport, NahualiError, ProactiveOptions, Procedure, ProjectScopeSummary,
+    RecallOptions, RecallRankingPolicy, ReviewResolutionReport, SemanticIndexReport,
+    SemanticIndexStatus,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, RwLockMappedWriteGuard, RwLockReadGuard, RwLockWriteGuard};
@@ -631,6 +632,7 @@ async fn update_intention(
             depends_on: request.depends_on,
             goal_id: request.goal_id,
             progress_percent: request.progress_percent,
+            source_episode_id: request.source_episode_id,
         },
     )?))
 }
@@ -640,10 +642,11 @@ async fn update_intention_status(
     Json(request): Json<IntentionStatusRequest>,
 ) -> ApiResult<Intention> {
     let mut memory = write_engine(&state).await?;
-    Ok(Json(memory.set_intention_status(
+    Ok(Json(memory.set_intention_status_with_source(
         request.id,
         request.status,
         request.reason,
+        request.source_episode_id,
     )?))
 }
 
@@ -758,7 +761,11 @@ async fn session_resume(
     Json(request): Json<SessionResumeRequest>,
 ) -> ApiResult<SessionResumeResponse> {
     let memory = read_engine(&state).await?;
-    let briefing = memory.briefing_with_options(request.into());
+    let project = request.project.clone();
+    let briefing = match project.as_deref() {
+        Some(project) => memory.briefing_for_project(request.into(), project)?,
+        None => memory.briefing_with_options(request.into()),
+    };
     let health = memory.inspect();
     let authority = AuthorityDecision::evaluate(&health);
 
@@ -837,20 +844,29 @@ async fn pending(
         None => None,
     };
     let memory = read_engine(&state).await?;
-    let intentions = match stale_after_ms {
-        Some(stale_after_ms) => {
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|elapsed| elapsed.as_millis() as u64)
-                .unwrap_or(0);
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0);
+    let scope = query
+        .project
+        .as_deref()
+        .map(|project| memory.project_scope(project))
+        .transpose()?;
+    let intentions = match (&scope, stale_after_ms) {
+        (Some(scope), stale_after_ms) => {
+            memory.projection_project_pending(scope, stale_after_ms, now_ms, limit)?
+        }
+        (None, Some(stale_after_ms)) => {
             memory.projection_stale_pending(stale_after_ms, now_ms, limit)?
         }
-        None => memory.projection_pending(limit)?,
+        (None, None) => memory.projection_pending(limit)?,
     };
     Ok(Json(PendingResponse {
         database: state.database.display().to_string(),
         projection_role: "derived_from_memory_record",
         stale_after_days: query.stale_days,
+        project_scope: scope.map(|scope| scope.summary().clone()),
         intentions,
     }))
 }
@@ -1022,6 +1038,8 @@ struct IntentionUpdateRequest {
         deserialize_with = "nahuali_core::deserialize_nullable_update"
     )]
     progress_percent: Option<Option<u8>>,
+    #[serde(default)]
+    source_episode_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1031,6 +1049,8 @@ struct IntentionStatusRequest {
     status: IntentionStatus,
     #[serde(default)]
     reason: Option<String>,
+    #[serde(default)]
+    source_episode_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1124,6 +1144,9 @@ struct SessionResumeRequest {
     review_limit: usize,
     #[serde(default = "default_graph_seed_limit")]
     graph_seed_limit: usize,
+    /// Limit episodes and intentions to memory attributed to this project.
+    #[serde(default)]
+    project: Option<String>,
 }
 
 impl From<SessionResumeRequest> for nahuali_core::BriefingOptions {
@@ -1175,6 +1198,9 @@ struct PendingQuery {
     /// Only active intentions not updated in more than this many days.
     #[serde(default)]
     stale_days: Option<u64>,
+    /// Only intentions attributed to this project.
+    #[serde(default)]
+    project: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1367,6 +1393,8 @@ struct PendingResponse {
     database: String,
     projection_role: &'static str,
     stale_after_days: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_scope: Option<ProjectScopeSummary>,
     intentions: Vec<GraphProjectionPendingIntention>,
 }
 

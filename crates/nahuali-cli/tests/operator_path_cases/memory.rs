@@ -686,6 +686,83 @@ fn intention_lifecycle_is_scriptable() {
 }
 
 #[test]
+fn intention_changes_cite_their_evidence_episode() {
+    let store = temp_database("intention-changes-cite-evidence");
+
+    let intention: Value = serde_json::from_str(&run_ok(
+        &store,
+        &["intention", "Ship release notes", "--json"],
+    ))
+    .expect("intention output is JSON");
+    let intention_id = intention["id"].as_str().unwrap().to_string();
+    let drafted: Value = serde_json::from_str(&run_ok(
+        &store,
+        &["remember", "Release notes drafted", "--json"],
+    ))
+    .expect("episode output is JSON");
+    let drafted_id = drafted["id"].as_str().unwrap().to_string();
+
+    run_ok(
+        &store,
+        &[
+            "intention-update",
+            intention_id.as_str(),
+            "--progress",
+            "60",
+            "--source-episode",
+            drafted_id.as_str(),
+        ],
+    );
+    let published: Value = serde_json::from_str(&run_ok(
+        &store,
+        &["remember", "Release notes published", "--json"],
+    ))
+    .expect("episode output is JSON");
+    let published_id = published["id"].as_str().unwrap().to_string();
+    let completed: Value = serde_json::from_str(&run_ok(
+        &store,
+        &[
+            "intention-complete",
+            intention_id.as_str(),
+            "--source-last",
+            "--json",
+        ],
+    ))
+    .expect("completed output is JSON");
+    assert_eq!(completed["status"], "completed");
+
+    let conflicting = run(
+        &store,
+        &[
+            "intention-block",
+            intention_id.as_str(),
+            "--source-last",
+            "--source-episode",
+            drafted_id.as_str(),
+        ],
+    );
+    assert!(!conflicting.status.success());
+
+    let audit: Value = serde_json::from_str(&run_ok(&store, &["audit", "--json"]))
+        .expect("audit output is JSON");
+    let cited = audit["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|entry| {
+            entry["kind"] == "intention_updated" || entry["kind"] == "intention_status_changed"
+        })
+        .map(|entry| entry["source_episode_id"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(cited, vec![drafted_id.clone(), published_id.clone()]);
+
+    let human = run_ok(&store, &["audit"]);
+    assert!(human.contains(&format!("· evidence {published_id}")));
+
+    let _ = fs::remove_file(store);
+}
+
+#[test]
 fn project_view_is_scriptable() {
     let store = temp_database("project-view-scriptable");
 

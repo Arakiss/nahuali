@@ -225,6 +225,7 @@ fn briefing_for_hook(
         return Some(briefing::briefing_at(
             data,
             options.briefing.clone(),
+            None,
             generated_at_ms,
         ));
     }

@@ -234,7 +234,9 @@ instantiates it with `Claim`.
 
 "Provenance" here means the references `forget::derived_from` follows: an
 episode's source, a claim, link, procedure, or intention's source episode,
-review evidence, and repair evidence. Intention `depends_on` and `goal_id` are
+the source episode an intention update or lifecycle change cites, review
+evidence, and repair evidence. A cited update holds its intention's id, so
+forgetting its source erases that intention rather than rolling it back. Intention `depends_on` and `goal_id` are
 planning references, not provenance. Forgetting an intention leaves a dependent
 intention in place, and inspection reports it as `MissingDependency`. That is
 deliberate, not an orphan.
@@ -262,8 +264,8 @@ references do not force.
   rival subset.
 - test: `law_forget_leaves_no_orphan_provenance`. End to end through
   `plan_forget` on up to 10 real ledger records over all 7 record shapes
-  (source, episode, claim, review, intention update, repair, and redaction
-  stub), with up to 2 targets including padded, blank, unknown, and repair ids.
+  (source, episode, claim, review, intention update citing its source
+  episode, repair, and redaction stub), with up to 2 targets including padded, blank, unknown, and repair ids.
   It checks request validation, that only live records are redacted, and the
   cascade check against every rival subset.
 - test: `law_ledger_is_append_only_even_under_forget`. Also asserts, through
