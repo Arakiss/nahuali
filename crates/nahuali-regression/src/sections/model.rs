@@ -103,6 +103,10 @@ fn check_min(
 }
 
 fn temp_database(fixture_id: &str) -> PathBuf {
+    // Every fixture run starts here; unit tests must never reach
+    // `NAHUALI_DB_URL` or `~/.nahuali`.
+    #[cfg(test)]
+    nahuali_core::isolate_test_store();
     let count = RUN_COUNTER.fetch_add(1, Ordering::Relaxed);
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

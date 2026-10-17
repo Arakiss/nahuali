@@ -6,7 +6,11 @@ use std::{
 
 use nahuali_core::SemanticConfig;
 
+/// A unique logical database for one test. The physical store is pinned to a
+/// per-process temp directory first, so no test reaches `NAHUALI_DB_URL` or
+/// `~/.nahuali`.
 pub fn temp_store(name: &str) -> PathBuf {
+    nahuali_core::isolate_test_store();
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system clock is after epoch")
