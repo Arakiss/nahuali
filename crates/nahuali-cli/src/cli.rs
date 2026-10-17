@@ -488,6 +488,12 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         /// Optional explanation recorded with the status change.
         #[arg(long)]
         reason: Option<String>,
+        /// Cite an existing episode by id as evidence for the change.
+        #[arg(long = "source-episode")]
+        source_episode_id: Option<String>,
+        /// Cite the most recent episode as evidence for the change.
+        #[arg(long = "source-last", conflicts_with = "source_episode_id")]
+        source_last: bool,
         /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -526,17 +532,32 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         /// Remove the progress value.
         #[arg(long = "clear-progress")]
         clear_progress: bool,
+        /// Cite an existing episode by id as evidence for the update.
+        #[arg(long = "source-episode")]
+        source_episode_id: Option<String>,
+        /// Cite the most recent episode as evidence for the update.
+        #[arg(long = "source-last", conflicts_with = "source_episode_id")]
+        source_last: bool,
         /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Mark an intention completed.")]
+    #[command(
+        about = "Mark an intention completed.",
+        after_help = "Examples:\n  nahuali intention-complete intention_... --reason \"Published\" --source-last\n  nahuali intention-complete intention_... --source-episode <episode-id>"
+    )]
     IntentionComplete {
         /// Intention identifier, e.g. intention_...
         id: String,
         /// Optional explanation recorded with the status change.
         #[arg(long)]
         reason: Option<String>,
+        /// Cite an existing episode by id as evidence for the change.
+        #[arg(long = "source-episode")]
+        source_episode_id: Option<String>,
+        /// Cite the most recent episode as evidence for the change.
+        #[arg(long = "source-last", conflicts_with = "source_episode_id")]
+        source_last: bool,
         /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -548,6 +569,12 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         /// Optional explanation recorded with the status change.
         #[arg(long)]
         reason: Option<String>,
+        /// Cite an existing episode by id as evidence for the change.
+        #[arg(long = "source-episode")]
+        source_episode_id: Option<String>,
+        /// Cite the most recent episode as evidence for the change.
+        #[arg(long = "source-last", conflicts_with = "source_episode_id")]
+        source_last: bool,
         /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -559,6 +586,12 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         /// Optional explanation recorded with the status change.
         #[arg(long)]
         reason: Option<String>,
+        /// Cite an existing episode by id as evidence for the change.
+        #[arg(long = "source-episode")]
+        source_episode_id: Option<String>,
+        /// Cite the most recent episode as evidence for the change.
+        #[arg(long = "source-last", conflicts_with = "source_episode_id")]
+        source_last: bool,
         /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
