@@ -416,6 +416,9 @@
           },
           {
             "$ref": "#/components/parameters/StaleDays"
+          },
+          {
+            "$ref": "#/components/parameters/Project"
           }
         ],
         "responses": {
@@ -623,6 +626,16 @@
           "minimum": 1
         },
         "description": "Only return active intentions not updated in more than this many days."
+      },
+      "Project": {
+        "name": "project",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Only return intentions attributed to this project: scoped to project:<name>, citing an episode that mentions or names it, naming it in their description, or under such a goal. The response then carries project_scope with what matched."
       }
     },
     "requestBodies": {
@@ -1097,6 +1110,10 @@
           },
           "reason": {
             "type": "string"
+          },
+          "source_episode_id": {
+            "type": "string",
+            "description": "Recorded episode that justifies the lifecycle change."
           }
         }
       },
@@ -1143,6 +1160,10 @@
             ],
             "minimum": 0,
             "maximum": 100
+          },
+          "source_episode_id": {
+            "type": "string",
+            "description": "Recorded episode that justifies the update. Not an update by itself; at least one other field must change."
           }
         }
       },
@@ -1372,6 +1393,11 @@
             "type": "integer",
             "minimum": 1,
             "default": 8
+          },
+          "project": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Limit recent episodes and active intentions to memory attributed to this project; briefing.project_scope then reports what matched. Health, review items, and graph seeds stay store-wide."
           }
         }
       },

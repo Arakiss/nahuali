@@ -1,14 +1,14 @@
 use nahuali_core::{
     BriefingOptions, ConsolidationPlanOptions, DEFAULT_INTENTION_STALE_AFTER_MS,
-    IntentionReconciliationOptions, MemoryEngine, MemoryHookOptions, MemoryKind,
-    OperatorReviewOptions, ProactiveOptions, ProjectViewOptions, RecallOptions,
+    IntentionClosureOptions, IntentionReconciliationOptions, MemoryEngine, MemoryHookOptions,
+    MemoryKind, OperatorReviewOptions, ProactiveOptions, ProjectViewOptions, RecallOptions,
     RecallRankingPolicy, ReflectionOptions, SelfInspectionReviewAction,
     SelfInspectionReviewPriority, SleepModeOptions, intention_is_stale,
 };
 
 use crate::commands::scope::parse_scope;
 use crate::{
-    cli::{CliMemoryHookKind, CliRecallKind, CliReviewAction, CliReviewPriority},
+    cli::{CliClosureStatus, CliMemoryHookKind, CliRecallKind, CliReviewAction, CliReviewPriority},
     output,
 };
 
@@ -68,22 +68,18 @@ pub(crate) fn status(
 
 pub(crate) fn briefing(
     memory: &mut MemoryEngine,
-    episode_limit: usize,
-    intention_limit: usize,
-    review_limit: usize,
-    graph_seed_limit: usize,
+    options: BriefingOptions,
+    project: Option<&str>,
     json: bool,
     database: &std::path::Path,
 ) -> anyhow::Result<()> {
     // Human view only: the bounded release check runs while the report is
     // built and never reaches JSON, MCP, or HTTP output.
     let update_notice = (!json).then(|| std::thread::spawn(crate::update_check::notice_line));
-    let report = memory.briefing_with_options(BriefingOptions {
-        episode_limit,
-        intention_limit,
-        review_limit,
-        graph_seed_limit,
-    });
+    let report = match project {
+        Some(project) => memory.briefing_for_project(options, project)?,
+        None => memory.briefing_with_options(options),
+    };
     if json {
         let mut envelope = serde_json::json!({
             "database": database.display().to_string(),
@@ -520,6 +516,16 @@ pub(crate) fn project(
     Ok(())
 }
 
+pub(crate) fn show(memory: &mut MemoryEngine, id: &str, json: bool) -> anyhow::Result<()> {
+    let view = memory.show_record(id)?;
+    if json {
+        output::print_json(&view)?;
+    } else {
+        output::print_record_view(&view)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn reconcile_intentions(
     memory: &mut MemoryEngine,
     database: &std::path::Path,
@@ -547,6 +553,74 @@ pub(crate) fn reconcile_intentions(
         output::print_intention_reconciliation_report(&report);
     }
     Ok(())
+}
+
+pub(crate) struct ClosureArgs {
+    pub(crate) status: CliClosureStatus,
+    pub(crate) ids: Vec<String>,
+    pub(crate) ids_from: Option<std::path::PathBuf>,
+    pub(crate) reason: String,
+    pub(crate) apply: bool,
+}
+
+pub(crate) fn close_intentions(
+    memory: &mut MemoryEngine,
+    args: ClosureArgs,
+    json: bool,
+) -> anyhow::Result<()> {
+    let mut ids = args.ids;
+    if let Some(path) = &args.ids_from {
+        ids.extend(read_id_list(path)?);
+    }
+    let report = memory.close_intentions(IntentionClosureOptions {
+        ids,
+        status: args.status.into(),
+        reason: args.reason,
+        dry_run: !args.apply,
+    })?;
+    if json {
+        output::print_json(&report)?;
+    } else {
+        output::print_intention_closure(&report);
+    }
+    if let Some(failure) = &report.failure {
+        anyhow::bail!(
+            "closure stopped at {} after {} written: {} ({} not closed)",
+            failure.id,
+            report.changes.len(),
+            failure.message,
+            failure.not_closed.len()
+        );
+    }
+    Ok(())
+}
+
+/// Read intention ids from a file, or stdin for `-`.
+fn read_id_list(path: &std::path::Path) -> anyhow::Result<Vec<String>> {
+    let text = if path == std::path::Path::new("-") {
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+            .map_err(|error| anyhow::anyhow!("failed to read ids from stdin: {error}"))?;
+        text
+    } else {
+        std::fs::read_to_string(path).map_err(|error| {
+            anyhow::anyhow!("failed to read ids from {}: {error}", path.display())
+        })?
+    };
+    Ok(parse_id_list(&text))
+}
+
+/// One id per line: the first token before any `#` comment; blank lines are
+/// ignored, so annotated lists like `intention_1  # old roadmap item` work.
+fn parse_id_list(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| {
+            line.split('#')
+                .next()
+                .and_then(|content| content.split_whitespace().next())
+                .map(str::to_owned)
+        })
+        .collect()
 }
 
 pub(crate) fn goal_progress(
@@ -928,6 +1002,7 @@ pub(crate) fn projection_pending(
     database: &std::path::Path,
     limit: usize,
     stale_after_days: Option<u64>,
+    project: Option<&str>,
     json: bool,
 ) -> anyhow::Result<()> {
     let now_ms = std::time::SystemTime::now()
@@ -937,23 +1012,53 @@ pub(crate) fn projection_pending(
     let stale_after_ms = stale_after_days
         .map(|days| days.saturating_mul(output::DAY_MS))
         .unwrap_or(DEFAULT_INTENTION_STALE_AFTER_MS);
-    let intentions = match stale_after_days {
-        Some(_) => memory.projection_stale_pending(stale_after_ms, now_ms, limit)?,
-        None => memory.projection_pending(limit)?,
+    let scope = project
+        .map(|project| memory.project_scope(project))
+        .transpose()?;
+    let intentions = match (&scope, stale_after_days) {
+        (Some(scope), stale) => memory.projection_project_pending(
+            scope,
+            stale.map(|_| stale_after_ms),
+            now_ms,
+            limit,
+        )?,
+        (None, Some(_)) => memory.projection_stale_pending(stale_after_ms, now_ms, limit)?,
+        (None, None) => memory.projection_pending(limit)?,
     };
     if json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "database": database.display().to_string(),
-                "projection_role": "derived_from_memory_record",
-                "stale_after_days": stale_after_days,
-                "intentions": intentions,
-            }))?
-        );
+        let mut envelope = serde_json::json!({
+            "database": database.display().to_string(),
+            "projection_role": "derived_from_memory_record",
+            "stale_after_days": stale_after_days,
+            "intentions": intentions,
+        });
+        if let Some(scope) = &scope {
+            envelope["project_scope"] = serde_json::to_value(scope.summary())?;
+        }
+        println!("{}", serde_json::to_string_pretty(&envelope)?);
     } else {
-        if intentions.is_empty() && stale_after_days.is_some() {
-            println!("No active intentions are older than the stale threshold.");
+        if let Some(scope) = &scope {
+            println!(
+                "{}",
+                crate::style::dim(&output::project_scope_line(scope.summary()))
+            );
+        }
+        if intentions.is_empty() {
+            match (&scope, stale_after_days) {
+                (Some(scope), _) => println!(
+                    "No {}active intentions are attributed to project {}.",
+                    if stale_after_days.is_some() {
+                        "stale "
+                    } else {
+                        ""
+                    },
+                    scope.summary().project
+                ),
+                (None, Some(_)) => {
+                    println!("No active intentions are older than the stale threshold.")
+                }
+                (None, None) => {}
+            }
         }
         for intention in intentions {
             println!(
@@ -1275,5 +1380,19 @@ fn print_hybrid_recall_results(results: Vec<nahuali_core::HybridRecallResult>) {
         if !result.explanations.is_empty() {
             println!("  explanations: {}", result.explanations.join(", "));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_id_list;
+
+    #[test]
+    fn id_lists_take_the_first_token_per_line_and_skip_comments() {
+        let text = "intention_1\n\n  intention_2   # old roadmap item\n# whole-line note\nintention_3 extra words\n";
+        assert_eq!(
+            parse_id_list(text),
+            vec!["intention_1", "intention_2", "intention_3"]
+        );
     }
 }

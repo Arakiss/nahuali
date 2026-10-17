@@ -5,7 +5,7 @@ use nahuali_core::{
 
 use crate::commands::scope::parse_scope;
 use crate::{
-    cli::{CliIntentionKind, CliIntentionPriority, CliIntentionStatus},
+    cli::{CliIntentionKind, CliIntentionPriority},
     output,
 };
 
@@ -337,11 +337,14 @@ pub(crate) fn intention(
 pub(crate) fn intention_status(
     memory: &mut MemoryEngine,
     id: String,
-    status: CliIntentionStatus,
-    reason: Option<String>,
+    status: IntentionStatus,
+    args: StatusChangeArgs,
     json: bool,
 ) -> anyhow::Result<()> {
-    let intention = memory.set_intention_status(id, IntentionStatus::from(status), reason)?;
+    let source_episode_id =
+        resolve_source_episode_id(memory, args.source_episode_id, args.source_last)?;
+    let intention =
+        memory.set_intention_status_with_source(id, status, args.reason, source_episode_id)?;
     if json {
         output::print_json(&intention)?;
     } else {
@@ -365,6 +368,8 @@ pub(crate) fn intention_update(
     if args.clear_dependencies && !args.depends_on.is_empty() {
         bail!("--clear-dependencies cannot be used with --depends-on");
     }
+    let source_episode_id =
+        resolve_source_episode_id(memory, args.source_episode_id, args.source_last)?;
 
     let intention = memory.update_intention(
         args.id,
@@ -393,6 +398,7 @@ pub(crate) fn intention_update(
             } else {
                 args.progress.map(Some)
             },
+            source_episode_id,
         },
     )?;
     if json {
@@ -406,53 +412,10 @@ pub(crate) fn intention_update(
     Ok(())
 }
 
-pub(crate) fn intention_complete(
-    memory: &mut MemoryEngine,
-    id: String,
-    reason: Option<String>,
-    json: bool,
-) -> anyhow::Result<()> {
-    let intention = memory.complete_intention(id, reason)?;
-    print_intention_status_update(intention, json)
-}
-
-pub(crate) fn intention_block(
-    memory: &mut MemoryEngine,
-    id: String,
-    reason: Option<String>,
-    json: bool,
-) -> anyhow::Result<()> {
-    let intention = memory.block_intention(id, reason)?;
-    print_intention_status_update(intention, json)
-}
-
-pub(crate) fn intention_defer(
-    memory: &mut MemoryEngine,
-    id: String,
-    reason: Option<String>,
-    json: bool,
-) -> anyhow::Result<()> {
-    let intention = memory.defer_intention(id, reason)?;
-    print_intention_status_update(intention, json)
-}
-
-fn print_intention_status_update(
-    intention: nahuali_core::Intention,
-    json: bool,
-) -> anyhow::Result<()> {
-    if json {
-        output::print_json(&intention)?;
-    } else {
-        println!(
-            "{}",
-            crate::style::confirm(
-                &format!("Intention {:?}", intention.status),
-                "",
-                &intention.id
-            )
-        );
-    }
-    Ok(())
+pub(crate) struct StatusChangeArgs {
+    pub(crate) reason: Option<String>,
+    pub(crate) source_episode_id: Option<String>,
+    pub(crate) source_last: bool,
 }
 
 pub(crate) struct EvidenceArgs {
@@ -505,6 +468,8 @@ pub(crate) struct IntentionUpdateArgs {
     pub(crate) clear_goal: bool,
     pub(crate) progress: Option<u8>,
     pub(crate) clear_progress: bool,
+    pub(crate) source_episode_id: Option<String>,
+    pub(crate) source_last: bool,
 }
 
 /// Truncate `text` to at most `max` characters for a one-line confirmation.

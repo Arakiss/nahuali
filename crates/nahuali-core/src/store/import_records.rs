@@ -300,6 +300,7 @@ impl MemoryEngine {
             id: id.clone(),
             status: intention_event_status(status),
             reason: clean_optional_string(reason),
+            source_episode_id: None,
         });
         self.append_at(timestamp_ms, payload)?;
 

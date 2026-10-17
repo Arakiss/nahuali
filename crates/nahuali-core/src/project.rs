@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AuthorityDecision, Claim, Entity, Episode, Intention, IntentionStatus, KnowledgeHealth, Link,
-    MemoryData, MemoryGraphReport, OperatorReviewItem, OperatorReviewOptions, Procedure,
-    RecallOptions, RecallResult, Result, SelfInspectionReviewPriority, graph, operator_review,
-    recall,
+    MemoryData, MemoryGraphReport, MemoryScope, MemoryScopeKind, NahualiError, OperatorReviewItem,
+    OperatorReviewOptions, Procedure, RecallOptions, RecallResult, Result,
+    SelfInspectionReviewPriority, graph, operator_review, recall,
 };
 
 /// Current project/entity view report format version.
@@ -241,6 +241,134 @@ pub(crate) fn project_view(
     })
 }
 
+/// How memory is attributed to a project, reported with every scoped result.
+pub const PROJECT_SCOPE_RULE: &str = "episodes scoped to project:<name>, mentioning the project \
+or its matched entity, or naming it in their content; intentions scoped to it, citing an \
+attributed episode, naming it in their description, or contributing to an attributed goal. \
+Content and description matches skip memory explicitly scoped to another project.";
+
+/// What a project scope matched, reported wherever a scope is active.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ProjectScopeSummary {
+    /// Project name as the operator gave it.
+    pub project: String,
+    /// Scope key memory recorded with `--scope project:<name>` carries.
+    pub scope_key: String,
+    /// Best matching projected entity, when one exists.
+    pub matched_entity: Option<String>,
+    /// Number of episodes attributed to the project.
+    pub episode_count: usize,
+    /// Number of intentions (any status) attributed to the project.
+    pub intention_count: usize,
+    /// Attribution rule, so readers know what "in this project" means.
+    pub rule: String,
+}
+
+/// Memory attributed to one project, used to scope briefings and pending
+/// lists without hiding how the attribution was made.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProjectScope {
+    summary: ProjectScopeSummary,
+    episode_ids: BTreeSet<String>,
+    intention_ids: BTreeSet<String>,
+}
+
+impl ProjectScope {
+    /// What the scope matched.
+    pub fn summary(&self) -> &ProjectScopeSummary {
+        &self.summary
+    }
+
+    /// Whether the episode is attributed to the project.
+    pub fn includes_episode(&self, id: &str) -> bool {
+        self.episode_ids.contains(id)
+    }
+
+    /// Whether the intention is attributed to the project.
+    pub fn includes_intention(&self, id: &str) -> bool {
+        self.intention_ids.contains(id)
+    }
+}
+
+pub(crate) fn project_scope(data: &MemoryData, project: &str) -> Result<ProjectScope> {
+    let project = project.split_whitespace().collect::<Vec<_>>().join(" ");
+    if project.is_empty() {
+        return Err(NahualiError::InvalidScope {
+            message: "project name cannot be empty".to_string(),
+        });
+    }
+    let scope_key = MemoryScope::new(MemoryScopeKind::Project, project.as_str())?.key;
+    let matched_entity = focused_entity(data, &project);
+    let focus = Focus::new(&project, matched_entity.as_ref());
+    let in_project =
+        |scope: &Option<MemoryScope>| scope.as_ref().is_some_and(|scope| scope.key == scope_key);
+    // Text matches are a fallback: memory explicitly scoped to another project
+    // stays there even when its text names this one.
+    let unscoped_elsewhere = |scope: &Option<MemoryScope>| {
+        scope
+            .as_ref()
+            .is_none_or(|scope| scope.kind != MemoryScopeKind::Project)
+    };
+
+    let episode_ids = data
+        .episodes
+        .iter()
+        .filter(|episode| {
+            in_project(&episode.scope)
+                || episode.mentions.iter().any(|mention| focus.names(mention))
+                || (unscoped_elsewhere(&episode.scope) && focus.matches(&episode.content))
+        })
+        .map(|episode| episode.id.clone())
+        .collect::<BTreeSet<_>>();
+
+    let mut intention_ids = data
+        .intentions
+        .iter()
+        .filter(|intention| {
+            in_project(&intention.scope)
+                || intention
+                    .source_episode_id
+                    .as_deref()
+                    .is_some_and(|id| episode_ids.contains(id))
+                || (unscoped_elsewhere(&intention.scope) && focus.matches(&intention.description))
+        })
+        .map(|intention| intention.id.clone())
+        .collect::<BTreeSet<_>>();
+    // Work under an attributed goal belongs to the project too; repeat until
+    // nested goals stop adding members.
+    loop {
+        let children = data
+            .intentions
+            .iter()
+            .filter(|intention| {
+                !intention_ids.contains(&intention.id)
+                    && intention
+                        .goal_id
+                        .as_deref()
+                        .is_some_and(|goal| intention_ids.contains(goal))
+            })
+            .map(|intention| intention.id.clone())
+            .collect::<Vec<_>>();
+        if children.is_empty() {
+            break;
+        }
+        intention_ids.extend(children);
+    }
+
+    Ok(ProjectScope {
+        summary: ProjectScopeSummary {
+            project,
+            scope_key,
+            matched_entity: matched_entity.map(|entity| entity.name),
+            episode_count: episode_ids.len(),
+            intention_count: intention_ids.len(),
+            rule: PROJECT_SCOPE_RULE.to_string(),
+        },
+        episode_ids,
+        intention_ids,
+    })
+}
+
 fn focused_entity(data: &MemoryData, query: &str) -> Option<Entity> {
     let query_key = normalized(query);
     let mut candidates = data
@@ -429,6 +557,16 @@ impl Focus {
                     .is_some_and(|entity| value.contains(entity)))
     }
 
+    /// Whether `value` names the focus exactly (query or matched entity), as an
+    /// explicit mention does. Stricter than [`Self::matches_exact_or_contains`],
+    /// which would let a short mention such as `ai` claim a project named
+    /// `nahuali`.
+    fn names(&self, value: &str) -> bool {
+        let value = normalized(value);
+        !value.is_empty()
+            && (value == self.query || self.entity.as_ref().is_some_and(|entity| *entity == value))
+    }
+
     fn matches_exact_or_contains(&self, value: &str) -> bool {
         let value = normalized(value);
         value == self.query
@@ -579,6 +717,115 @@ mod tests {
                 .iter()
                 .any(|result| result.kind == crate::MemoryKind::Claim)
         );
+    }
+
+    fn scoped_episode(id: &str, content: &str, mentions: &[&str], scope: Option<&str>) -> Episode {
+        Episode {
+            id: id.to_string(),
+            event_id: format!("event_{id}"),
+            content: content.to_string(),
+            tags: Vec::new(),
+            mentions: mentions.iter().map(|name| name.to_string()).collect(),
+            source_id: None,
+            source_position: None,
+            source_role: None,
+            scope: scope.map(|scope| crate::MemoryScope::parse(scope).expect("scope parses")),
+            created_at_ms: 1,
+        }
+    }
+
+    fn scoped_intention(
+        id: &str,
+        description: &str,
+        source: Option<&str>,
+        goal: Option<&str>,
+        scope: Option<&str>,
+    ) -> Intention {
+        Intention {
+            id: id.to_string(),
+            event_id: format!("event_{id}"),
+            updated_event_id: format!("event_{id}"),
+            kind: IntentionKind::Task,
+            status: IntentionStatus::Active,
+            priority: IntentionPriority::Medium,
+            description: description.to_string(),
+            source_episode_id: source.map(str::to_string),
+            status_reason: None,
+            deadline_at_ms: None,
+            depends_on: Vec::new(),
+            goal_id: goal.map(str::to_string),
+            progress_percent: None,
+            scope: scope.map(|scope| crate::MemoryScope::parse(scope).expect("scope parses")),
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        }
+    }
+
+    #[test]
+    fn project_scope_attributes_by_scope_mention_text_and_goal() {
+        let data = MemoryData {
+            episodes: vec![
+                scoped_episode("ep_mention", "Shipped the CLI", &["Nahuali"], None),
+                scoped_episode("ep_scoped", "Unrelated text", &[], Some("project:nahuali")),
+                scoped_episode("ep_text", "Fixed nahuali recall", &[], None),
+                scoped_episode(
+                    "ep_elsewhere",
+                    "Ported the nahuali client",
+                    &[],
+                    Some("project:orvian"),
+                ),
+                scoped_episode("ep_short", "ai tooling notes", &["ai"], None),
+                scoped_episode("ep_other", "Orvian deploy", &["Orvian"], None),
+            ],
+            intentions: vec![
+                scoped_intention("in_cites", "Write the docs", Some("ep_mention"), None, None),
+                scoped_intention("in_text", "Release nahuali 0.9", None, None, None),
+                scoped_intention("in_child", "Draft notes", None, Some("in_text"), None),
+                scoped_intention("in_grandchild", "Proofread", None, Some("in_child"), None),
+                scoped_intention("in_scoped", "Plan", None, None, Some("project:nahuali")),
+                scoped_intention("in_other", "Orvian release", Some("ep_other"), None, None),
+                scoped_intention(
+                    "in_elsewhere",
+                    "Wrap the nahuali API",
+                    None,
+                    None,
+                    Some("project:orvian"),
+                ),
+            ],
+            ..MemoryData::default()
+        };
+
+        let scope = super::project_scope(&data, "  Nahuali ").expect("scope builds");
+
+        let episodes = ["ep_mention", "ep_scoped", "ep_text"];
+        for id in episodes {
+            assert!(scope.includes_episode(id), "{id} belongs to the project");
+        }
+        for id in ["ep_elsewhere", "ep_short", "ep_other"] {
+            assert!(!scope.includes_episode(id), "{id} does not belong");
+        }
+        for id in [
+            "in_cites",
+            "in_text",
+            "in_child",
+            "in_grandchild",
+            "in_scoped",
+        ] {
+            assert!(scope.includes_intention(id), "{id} belongs to the project");
+        }
+        for id in ["in_other", "in_elsewhere"] {
+            assert!(!scope.includes_intention(id), "{id} does not belong");
+        }
+        let summary = scope.summary();
+        assert_eq!(summary.project, "Nahuali");
+        assert_eq!(summary.scope_key, "project:nahuali");
+        assert_eq!(summary.episode_count, 3);
+        assert_eq!(summary.intention_count, 5);
+
+        assert!(matches!(
+            super::project_scope(&data, "   "),
+            Err(crate::NahualiError::InvalidScope { .. })
+        ));
     }
 
     #[test]

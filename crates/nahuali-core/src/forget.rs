@@ -299,6 +299,12 @@ pub(crate) fn derived_from(payload: &MemoryEvent) -> Vec<&str> {
         MemoryEvent::IntentionRecorded(event) => {
             event.source_episode_id.as_deref().into_iter().collect()
         }
+        MemoryEvent::IntentionUpdated(event) => {
+            event.source_episode_id.as_deref().into_iter().collect()
+        }
+        MemoryEvent::IntentionStatusChanged(event) => {
+            event.source_episode_id.as_deref().into_iter().collect()
+        }
         MemoryEvent::ReviewRecorded(event) => {
             event.evidence_ids.iter().map(String::as_str).collect()
         }
@@ -315,8 +321,6 @@ pub(crate) fn derived_from(payload: &MemoryEvent) -> Vec<&str> {
                 .collect()
         }
         MemoryEvent::SourceRecorded(_)
-        | MemoryEvent::IntentionUpdated(_)
-        | MemoryEvent::IntentionStatusChanged(_)
         | MemoryEvent::MemoryForgotten(_)
         | MemoryEvent::Redacted(_) => Vec::new(),
     }
@@ -328,9 +332,10 @@ mod tests {
     use crate::{
         NahualiError,
         event::{
-            EpisodeRecorded, EventEnvelope, FactAsserted, MemoryEvent, ReviewRecorded,
-            ReviewRecordedAction, ReviewRecordedOutcome, SourceRecorded, SourceRecordedKind,
-            verify_redactions,
+            EpisodeRecorded, EventEnvelope, FactAsserted, IntentionRecorded, IntentionRecordedKind,
+            IntentionRecordedPriority, IntentionRecordedStatus, IntentionStatusChanged,
+            IntentionUpdated, MemoryEvent, ReviewRecorded, ReviewRecordedAction,
+            ReviewRecordedOutcome, SourceRecorded, SourceRecordedKind, verify_redactions,
         },
         projection::project,
     };
@@ -446,6 +451,71 @@ mod tests {
         );
         assert_eq!(plan.redacted_indexes, vec![0, 1, 2, 3]);
         assert_eq!(plan.requested_by.as_deref(), Some("petru"));
+    }
+
+    fn intention(id: &str) -> MemoryEvent {
+        MemoryEvent::IntentionRecorded(IntentionRecorded {
+            id: id.to_string(),
+            kind: IntentionRecordedKind::Task,
+            priority: IntentionRecordedPriority::Medium,
+            description: "Move house".to_string(),
+            source_episode_id: None,
+            deadline_at_ms: None,
+            depends_on: Vec::new(),
+            goal_id: None,
+            progress_percent: None,
+            scope: None,
+        })
+    }
+
+    /// An update or lifecycle change that cites an episode is provenance like
+    /// any other citation. Redacting only that record would silently roll the
+    /// intention back to an earlier state, so the cascade erases the intention
+    /// it belongs to, while an unrelated intention survives.
+    #[test]
+    fn forgetting_an_episode_cited_by_an_intention_update_erases_that_intention() {
+        let events = ledger(vec![
+            episode("episode_1", "Petru signed the lease at Calle Luna 12", None),
+            intention("intention_1"),
+            MemoryEvent::IntentionUpdated(IntentionUpdated {
+                id: "intention_1".to_string(),
+                description: None,
+                priority: None,
+                deadline_at_ms: None,
+                depends_on: None,
+                goal_id: None,
+                progress_percent: Some(Some(50)),
+                source_episode_id: Some("episode_1".to_string()),
+            }),
+            MemoryEvent::IntentionStatusChanged(IntentionStatusChanged {
+                id: "intention_1".to_string(),
+                status: IntentionRecordedStatus::Completed,
+                reason: None,
+                source_episode_id: None,
+            }),
+            episode("episode_2", "Petru booked the van", None),
+            intention("intention_2"),
+            MemoryEvent::IntentionStatusChanged(IntentionStatusChanged {
+                id: "intention_2".to_string(),
+                status: IntentionRecordedStatus::Completed,
+                reason: None,
+                source_episode_id: Some("episode_2".to_string()),
+            }),
+        ]);
+
+        let plan = plan_forget(&events, &options(&["episode_1"])).unwrap();
+        assert_eq!(plan.forgotten_ids, vec!["episode_1", "intention_1"]);
+        assert_eq!(plan.redacted_indexes, vec![0, 1, 2, 3]);
+
+        let redacted = apply(&events, &["episode_1"]);
+        assert_eq!(verify_redactions(&redacted), None);
+        let data = project(&redacted);
+        assert_eq!(data.intentions.len(), 1);
+        assert_eq!(data.intentions[0].id, "intention_2");
+
+        let plan = plan_forget(&events, &options(&["episode_2"])).unwrap();
+        assert_eq!(plan.forgotten_ids, vec!["episode_2", "intention_2"]);
+        assert_eq!(plan.redacted_indexes, vec![4, 5, 6]);
     }
 
     #[test]

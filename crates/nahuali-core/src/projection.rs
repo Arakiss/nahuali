@@ -632,6 +632,7 @@ mod tests {
                     depends_on: Some(vec!["intention_dependency".to_string()]),
                     goal_id: Some(Some("goal_public_release".to_string())),
                     progress_percent: Some(Some(40)),
+                    source_episode_id: None,
                 }),
             ),
             EventEnvelope::new(
@@ -641,6 +642,7 @@ mod tests {
                     id: "intention_1".to_string(),
                     status: IntentionRecordedStatus::Completed,
                     reason: Some("Released".to_string()),
+                    source_episode_id: None,
                 }),
             ),
             EventEnvelope::new(
@@ -870,6 +872,7 @@ mod tests {
                     depends_on: Some(vec!["intention_dependency".to_string()]),
                     goal_id: Some(Some("goal_public_release".to_string())),
                     progress_percent: Some(Some(40)),
+                    source_episode_id: None,
                 }),
             ),
             EventEnvelope::new(
@@ -879,6 +882,7 @@ mod tests {
                     id: "intention_1".to_string(),
                     status: IntentionRecordedStatus::Blocked,
                     reason: Some("Waiting for release gate.".to_string()),
+                    source_episode_id: None,
                 }),
             ),
             EventEnvelope::new(
@@ -888,6 +892,7 @@ mod tests {
                     id: "intention_1".to_string(),
                     status: IntentionRecordedStatus::Completed,
                     reason: None,
+                    source_episode_id: None,
                 }),
             ),
         ];

@@ -191,8 +191,13 @@ fn print_human_report(report: &LedgerAudit) {
             .as_ref()
             .map(|scope| format!(" [{}]", scope.key))
             .unwrap_or_default();
+        let evidence = entry
+            .source_episode_id
+            .as_ref()
+            .map(|episode_id| format!(" · evidence {episode_id}"))
+            .unwrap_or_default();
         println!(
-            "- seq {} {} {}{scope}",
+            "- seq {} {} {}{scope}{evidence}",
             entry.sequence,
             kind_label(entry.kind),
             entry.summary

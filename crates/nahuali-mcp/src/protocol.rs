@@ -123,6 +123,10 @@ pub(crate) struct IntentionStatusArgs {
     pub(crate) id: String,
     pub(crate) status: IntentionStatusArg,
     pub(crate) reason: Option<String>,
+    /// Recorded episode that justifies the change.
+    pub(crate) source_episode_id: Option<String>,
+    /// Cite the most recent episode instead of naming one.
+    pub(crate) source_last: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -152,6 +156,10 @@ pub(crate) struct IntentionUpdateArgs {
         deserialize_with = "nahuali_core::deserialize_nullable_update"
     )]
     pub(crate) progress_percent: Option<Option<u8>>,
+    /// Recorded episode that justifies the update.
+    pub(crate) source_episode_id: Option<String>,
+    /// Cite the most recent episode instead of naming one.
+    pub(crate) source_last: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -195,6 +203,10 @@ pub(crate) struct BriefingArgs {
     pub(crate) intention_limit: Option<usize>,
     pub(crate) review_limit: Option<usize>,
     pub(crate) graph_seed_limit: Option<usize>,
+    /// Limit recent episodes and active intentions to memory attributed to
+    /// this project; `report.project_scope` in the result says what matched.
+    /// Health, review items, and graph seeds stay store-wide.
+    pub(crate) project: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
