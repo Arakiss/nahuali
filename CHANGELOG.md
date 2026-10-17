@@ -7,6 +7,27 @@ release histories.
 
 ## Unreleased
 
+## [0.8.0-beta.14](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.13...v0.8.0-beta.14) (2026-10-17)
+
+
+### New
+
+* **cli:** close selected intentions in bulk from reconcile-intentions ([79f7611](https://github.com/Arakiss/nahuali/commit/79f7611eabf3647924cb166f50ac90c9c089e394))
+* **cli:** notify when a newer release exists ([bdb207f](https://github.com/Arakiss/nahuali/commit/bdb207fa535f520d07a43271282e53ef77287b4f))
+* **cli:** notify when a newer release exists ([9d6a097](https://github.com/Arakiss/nahuali/commit/9d6a09797e6bf8d223ee6a7a991dc786b5a4e79d))
+* **cli:** show records by id, scope to a project, close intentions in bulk ([e9b00b5](https://github.com/Arakiss/nahuali/commit/e9b00b5392fa9d9546ba5cf8964a0ab297ed5111))
+* **core:** record the evidence episode behind intention changes ([f748609](https://github.com/Arakiss/nahuali/commit/f7486092cabafc3b6d2d5aacbfc22af97f06c0b7))
+
+
+### Fixed
+
+* **core:** make recording an active intention idempotent ([021e718](https://github.com/Arakiss/nahuali/commit/021e71832269b4c966da5519b7212d0eb2e67201))
+* **core:** make recording an active intention idempotent ([2932aae](https://github.com/Arakiss/nahuali/commit/2932aae4bfd3be129cd78010d2d054e333bf2e68))
+* **regression:** run fixtures in a throwaway store ([9634f06](https://github.com/Arakiss/nahuali/commit/9634f06e5ce4d75c6a01e2ea6b2da92e28b23302))
+* **regression:** run fixtures in a throwaway store ([91b2c38](https://github.com/Arakiss/nahuali/commit/91b2c38d922fe2378b9c465f62bec6a6cac6b8c3))
+* **release:** render the release page prose from the version's changelog entry ([def098b](https://github.com/Arakiss/nahuali/commit/def098b592952f4623e82adb26ab4fdcac7dc713))
+* **release:** render the release page prose from the version's changelog entry ([b4351e1](https://github.com/Arakiss/nahuali/commit/b4351e1da37a882d55b07c3d40aae12afafa5855))
+
 ## [0.8.0-beta.13](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.12...v0.8.0-beta.13) (2026-10-17)
 
 
