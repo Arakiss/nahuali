@@ -34,6 +34,26 @@ release histories.
 * **inspection:** extract the per-group supersession rule ([a691de3](https://github.com/Arakiss/nahuali/commit/a691de30afb01112051f5a671cb7e65e4118dbaf))
 * **recall:** score candidates through one admitted, totally ordered path ([9e8cb5d](https://github.com/Arakiss/nahuali/commit/9e8cb5d88f228b73d3df195779db111852b6f240))
 
+### Upgrade notes
+
+- **Graph projection.** Validation now ages health rows at the last ledger
+  event instead of the wall clock, so a store no longer starts refusing
+  `timeline` and `pending` once a fact crosses the 90-day stale threshold.
+  `GRAPH_PROJECTION_VERSION` is unchanged and existing projections need no
+  migration. If a read still fails validation, the error names the recovery:
+  `nahuali projection-rebuild` (API `POST /v1/projection/rebuild`, MCP
+  `projection_rebuild`).
+- **Briefing limits.** `--episode-limit 0`, `--intention-limit 0`,
+  `--review-limit 0`, and `--graph-seed-limit 0` now omit that section. Earlier
+  versions raised a zero limit to one item.
+- **JSON output (additive).** Briefing intentions gain `stale`, and the summary
+  gains `stale_intention_count`. An active intention is stale after 30 days
+  without an update; stale intentions are listed after fresh ones. `nahuali
+  pending --stale <days>` and `GET /v1/pending?stale_days=N` list only stale
+  intentions.
+- **Confidence.** A NaN confidence is now rejected with `InvalidConfidence`
+  before it reaches the ledger. Values outside `0.0..=1.0` are still clamped.
+
 ## [0.8.0-beta.11](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.10...v0.8.0-beta.11) (2026-10-11)
 
 
