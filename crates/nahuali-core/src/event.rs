@@ -622,6 +622,22 @@ pub struct IntentionRecorded {
     pub scope: Option<MemoryScope>,
 }
 
+/// Deserialize a present field as `Some`, keeping an explicit `null` as
+/// `Some(None)`. A plain `Option<Option<T>>` collapses `null` into `None`, which
+/// turns a clear into "unchanged" and, for a ledger payload, makes the
+/// recomputed checksum disagree with the recorded one. Pair it with
+/// `#[serde(default)]` so an absent field stays `None`.
+#[doc(hidden)]
+pub fn deserialize_nullable_update<'de, D, T>(
+    deserializer: D,
+) -> std::result::Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
 /// Payload for an intention metadata update event.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct IntentionUpdated {
@@ -634,16 +650,28 @@ pub struct IntentionUpdated {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub priority: Option<IntentionRecordedPriority>,
     /// Deadline update. `Some(null)` clears the deadline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_nullable_update",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub deadline_at_ms: Option<Option<u64>>,
     /// Full dependency replacement. An empty list clears dependencies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub depends_on: Option<Vec<String>>,
     /// Parent goal update. `Some(null)` clears the parent goal.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_nullable_update",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub goal_id: Option<Option<String>>,
     /// Progress update. `Some(null)` clears progress.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_nullable_update",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub progress_percent: Option<Option<u8>>,
 }
 

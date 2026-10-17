@@ -1005,13 +1005,22 @@ struct IntentionUpdateRequest {
     description: Option<String>,
     #[serde(default)]
     priority: Option<IntentionPriority>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "nahuali_core::deserialize_nullable_update"
+    )]
     deadline_at_ms: Option<Option<u64>>,
     #[serde(default)]
     depends_on: Option<Vec<String>>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "nahuali_core::deserialize_nullable_update"
+    )]
     goal_id: Option<Option<String>>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "nahuali_core::deserialize_nullable_update"
+    )]
     progress_percent: Option<Option<u8>>,
 }
 

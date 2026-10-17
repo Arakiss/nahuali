@@ -601,6 +601,20 @@ async fn api_exposes_operator_loop_contract() {
             .contains_key("/v1/intention/update")
     );
 
+    // An explicit null clears the field; omitted fields stay unchanged.
+    let cleared = json_request(
+        app.clone(),
+        "/v1/intention/update",
+        json!({
+            "id": task["id"],
+            "deadline_at_ms": null
+        }),
+    )
+    .await;
+    assert!(cleared["deadline_at_ms"].is_null(), "{cleared}");
+    assert_eq!(cleared["goal_id"], goal["id"]);
+    assert_eq!(cleared["progress_percent"], 25);
+
     let status = json_request(
         app,
         "/v1/intention/status",
