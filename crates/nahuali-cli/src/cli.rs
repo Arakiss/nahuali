@@ -21,14 +21,16 @@ Options:
 {options}";
 
 /// Grouped command listing rendered in the root help, with the everyday verbs
-/// first inside each section. Kept in sync by hand with the `Command` variants.
+/// first inside each section. Every visible alias is listed next to its command
+/// (`remember, episode`). Kept in sync by hand with the `Command` variants; the
+/// `root_help_lists_every_subcommand_and_visible_alias` test fails on drift.
 const GROUPED_COMMANDS_TEMPLATE: &str = "\
 Getting started:
   demo                  See recall trust, self-inspection, and history integrity
   init                  Wire your agent harness to use Nahuali (installs the skill)
 
 Capture:
-  remember              Record an observed episode
+  remember, episode     Record an observed episode
   claim                 Record an evidence-backed canonical claim
   fact                  Record a compatibility fact
   link                  Record a canonical typed link between entities
@@ -47,8 +49,8 @@ Recall & inspect:
   recall                Recall matching memory with optional authority context
   status                Print operational memory status
   config                Print the resolved effective configuration (no secrets)
-  explore               Open the interactive governance cockpit (TUI: memory + trust)
-  inspect               Inspect knowledge health before trusting memory
+{tui-commands}
+  inspect              Inspect knowledge health before trusting memory
   self-inspect          Produce a non-mutating self-inspection consolidation report
   graph                 Traverse the projected memory graph around a seed
   project               Print a focused project or entity dashboard
@@ -74,6 +76,7 @@ Reports:
 
 Maintenance:
   reconcile             Re-verify the ledger and rebuild the derived tiers (graph + semantic)
+  repair                Validate and apply an LLM-proposed memory repair
   projection-status     Inspect the SurrealDB graph projection status
   projection-rebuild    Rebuild the SurrealDB graph projection from the record ledger
   projection-validate   Validate the SurrealDB graph projection without mutating it
@@ -111,9 +114,15 @@ Shell:
 
 Run 'nahuali <COMMAND> --help' for details and examples on a single command.";
 
-/// Render the grouped command list for `--help`, including the attestation
-/// commands only in builds that actually have them.
+/// Render the grouped command list for `--help`, including the TUI and
+/// attestation commands only in builds that actually have them.
 fn grouped_commands() -> String {
+    #[cfg(feature = "tui")]
+    let tui =
+        "  explore, tui          Open the interactive governance cockpit (TUI: memory + trust)
+";
+    #[cfg(not(feature = "tui"))]
+    let tui = "";
     #[cfg(feature = "attestation")]
     let attest = "  attest-sign           Sign the current ledger chain tip with an Ed25519 key
   attest-verify         Verify a signed chain-tip receipt against the live ledger
@@ -125,7 +134,9 @@ fn grouped_commands() -> String {
 ";
     #[cfg(not(feature = "attestation"))]
     let attest = "";
-    GROUPED_COMMANDS_TEMPLATE.replacen("{attest-commands}\n", attest, 1)
+    GROUPED_COMMANDS_TEMPLATE
+        .replacen("{tui-commands}\n", tui, 1)
+        .replacen("{attest-commands}\n", attest, 1)
 }
 
 /// Parse and validate a `--confidence` value, rejecting anything outside the
@@ -686,11 +697,17 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Read pending intentions from the SurrealDB projection.")]
+    #[command(
+        about = "Read pending intentions from the SurrealDB projection.",
+        after_help = "Examples:\n  nahuali pending\n  nahuali pending --stale 30\n  nahuali pending --stale 90 --limit 50 --json"
+    )]
     Pending {
         /// Maximum number of pending intentions to return.
         #[arg(long, short = 'l', default_value_t = 20)]
         limit: usize,
+        /// Only show active intentions not updated in more than this many days.
+        #[arg(long, value_name = "DAYS", value_parser = clap::value_parser!(u64).range(1..))]
+        stale: Option<u64>,
         /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -1828,6 +1845,56 @@ mod tests {
                 assert!(!help.contains("receipt-export"));
                 assert!(!help.contains("receipt-verify"));
             }
+        });
+    }
+
+    /// The grouped root help is hand-written, so it must list exactly the
+    /// subcommands clap knows about, each with all of its visible aliases on
+    /// the same line (`remember, episode`), and nothing that does not exist.
+    #[test]
+    fn root_help_lists_every_subcommand_and_visible_alias() {
+        on_wide_stack(|| {
+            let mut command = Cli::command();
+            command.build();
+            let help = command.render_long_help().to_string();
+
+            let listed: Vec<Vec<String>> = help
+                .lines()
+                .filter_map(|line| line.strip_prefix("  "))
+                .filter(|rest| !rest.starts_with([' ', '-']))
+                .map(|rest| {
+                    let names = rest.split("  ").next().unwrap_or_default();
+                    names.split(", ").map(str::to_owned).collect()
+                })
+                .collect();
+
+            let mut expected = Vec::new();
+            for subcommand in command.get_subcommands() {
+                if subcommand.is_hide_set() {
+                    continue;
+                }
+                let mut names = vec![subcommand.get_name().to_owned()];
+                names.extend(subcommand.get_visible_aliases().map(str::to_owned));
+                expected.push(names);
+            }
+
+            let missing: Vec<_> = expected
+                .iter()
+                .filter(|names| !listed.contains(names))
+                .collect();
+            let unknown: Vec<_> = listed
+                .iter()
+                .filter(|names| !expected.contains(names))
+                .collect();
+            assert!(
+                missing.is_empty(),
+                "root help omits a subcommand or alias: {missing:#?}\n{help}"
+            );
+            assert!(
+                unknown.is_empty(),
+                "root help lists a command that does not exist: {unknown:#?}\n{help}"
+            );
+            assert!(help.contains("remember, episode"));
         });
     }
 

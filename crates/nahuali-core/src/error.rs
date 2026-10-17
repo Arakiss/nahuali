@@ -216,6 +216,12 @@ pub enum NahualiError {
         /// Human-readable validation failure.
         message: String,
     },
+    /// A claim, link, or procedure confidence was not a number.
+    #[error("invalid confidence: {message}")]
+    InvalidConfidence {
+        /// Human-readable validation failure.
+        message: String,
+    },
     /// A forget request could not be planned.
     #[error("invalid forget request: {message}")]
     InvalidForgetRequest {

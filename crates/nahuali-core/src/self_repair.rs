@@ -33,7 +33,7 @@ use crate::{
         RepairApplied, RepairClaimMaterialization, RepairLinkMaterialization, RepairMaterialization,
     },
     inspection::KnowledgeHealth,
-    model::{Claim, Episode, MemoryData, MemoryScope},
+    model::{Claim, Episode, MemoryData, MemoryScope, admit_confidence},
 };
 
 /// Current self-repair report format version.
@@ -404,7 +404,7 @@ pub(crate) fn prepare_repair(
                 subject,
                 predicate,
                 object,
-                confidence: claim.confidence.clamp(0.0, 1.0),
+                confidence: admit_confidence(claim.confidence)?,
                 scope: claim.scope.clone(),
             })
         }
@@ -433,7 +433,7 @@ pub(crate) fn prepare_repair(
                 from,
                 relation,
                 to,
-                confidence: link.confidence.clamp(0.0, 1.0),
+                confidence: admit_confidence(link.confidence)?,
                 scope: link.scope.clone(),
             })
         }

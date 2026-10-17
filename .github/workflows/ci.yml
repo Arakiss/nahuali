@@ -255,6 +255,50 @@ jobs:
         timeout-minutes: 5
         run: bash scripts/security-supply-chain-check.sh
 
+  laws:
+    name: laws (Kani proofs + property tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      KANI_VERSION: "0.68.0"
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          # A pull_request checkout is the merge commit; its first parent is
+          # the base branch tip, so depth 2 is enough to list the PR's files.
+          fetch-depth: 2
+      # Kani takes ~15 minutes, and the law property tests already run in the
+      # workspace test job. A pull request that cannot change a law passes this
+      # job without Kani; pushes to main and manual runs always verify.
+      - name: Decide whether the laws can have changed
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "verify=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only HEAD^1 HEAD \
+            | grep -qE '^(crates/nahuali-core/|LAWS\.md$|scripts/verify-laws\.sh$|\.github/workflows/ci\.yml$|Cargo\.(toml|lock)$|rust-toolchain\.toml$)'; then
+            echo "verify=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "verify=false" >> "$GITHUB_OUTPUT"
+            echo "No change can affect LAWS.md; Kani skipped. Law property tests ran in the workspace test job." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.scope.outputs.verify == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.scope.outputs.verify == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: laws-kani-${{ env.KANI_VERSION }}
+      - name: Install Kani
+        if: steps.scope.outputs.verify == 'true'
+        run: |
+          cargo install --locked kani-verifier --version "$KANI_VERSION"
+          cargo kani setup
+      - name: Verify LAWS.md invariants
+        if: steps.scope.outputs.verify == 'true'
+        run: bash scripts/verify-laws.sh
+
   commits:
     name: conventional commits
     runs-on: ubuntu-latest
@@ -271,7 +315,7 @@ jobs:
   ci-all:
     name: CI (all)
     runs-on: ubuntu-latest
-    needs: [version-policy, fmt, clippy, test, coverage, release-gate, commits]
+    needs: [version-policy, fmt, clippy, test, coverage, laws, release-gate, commits]
     if: ${{ always() }}
     permissions:
       contents: read
@@ -288,6 +332,7 @@ jobs:
             "${{ needs.clippy.result }}" \
             "${{ needs.test.result }}" \
             "${{ needs.coverage.result }}" \
+            "${{ needs.laws.result }}" \
             "${{ needs.release-gate.result }}" \
             "${{ needs.commits.result }}"; do
             if [[ "$result" != "success" ]]; then

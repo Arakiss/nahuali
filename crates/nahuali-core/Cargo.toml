@@ -61,6 +61,12 @@ model2vec-rs = { version = "0.2", default-features = false, features = ["fancy-r
 sha2 = { version = "0.10", default-features = false }
 ed25519-dalek = { version = "2.2", default-features = false, features = ["std", "zeroize"], optional = true }
 
+[dev-dependencies]
+proptest = { version = "1", default-features = false, features = ["std"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
 # Narrated walkthrough of the tamper-evidence wedge: hash chain catches in-place
 # rewrites, tip signature catches a full suffix re-chain. Build/run only with the
 # feature: `cargo run -p nahuali-core --example tamper_evidence --features attestation`.

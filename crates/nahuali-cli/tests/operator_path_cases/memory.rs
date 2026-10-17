@@ -306,6 +306,32 @@ fn briefing_is_scriptable() {
     let pending = run_ok(&store, &["pending", "--json"]);
     let pending: Value = serde_json::from_str(&pending).expect("pending output is JSON");
     assert_eq!(pending["intentions"].as_array().unwrap().len(), 1);
+    assert_eq!(pending["stale_after_days"], Value::Null);
+    let intention_id = pending["intentions"][0]["memory_id"]
+        .as_str()
+        .expect("pending intention has an id")
+        .to_string();
+
+    // Human pending output names each intention and how long ago it changed.
+    let human_pending = run_ok(&store, &["pending"]);
+    assert!(
+        human_pending.contains(&format!("{intention_id} · updated <1h ago")),
+        "{human_pending}"
+    );
+    assert!(!human_pending.contains("stale"), "{human_pending}");
+
+    // Nothing in this store is older than a day.
+    let stale = run_ok(&store, &["pending", "--stale", "1", "--json"]);
+    let stale: Value = serde_json::from_str(&stale).expect("stale pending output is JSON");
+    assert_eq!(stale["stale_after_days"], 1);
+    assert_eq!(stale["intentions"], serde_json::json!([]));
+    let human_stale = run_ok(&store, &["pending", "--stale", "1"]);
+    assert!(
+        human_stale.contains("No active intentions are older than the stale threshold."),
+        "{human_stale}"
+    );
+    let zero_days = run(&store, &["pending", "--stale", "0"]);
+    assert!(!zero_days.status.success());
 
     let resumed = run_ok(&store, &["session-resume", "--json"]);
     let resumed: Value = serde_json::from_str(&resumed).expect("session-resume output is JSON");
@@ -314,7 +340,47 @@ fn briefing_is_scriptable() {
     let human = run_ok(&store, &["briefing", "--episode-limit", "1"]);
     assert!(human.contains("Session briefing"));
     assert!(human.contains("Store trust: BLOCK"));
+    // The medium unsupported-fact signal did not set BLOCK; the contradiction did.
+    assert!(
+        human.contains(
+            "Why: conflicting_fact ×1 (high) · next: nahuali review --action resolve-contradiction"
+        ),
+        "{human}"
+    );
+    assert!(human.contains("0 ingested sources"), "{human}");
+    assert!(
+        human.contains(&format!("{intention_id} · updated <1h ago")),
+        "{human}"
+    );
+    assert!(!human.contains("stale active intentions"), "{human}");
     assert!(human.contains("Graph seeds"));
+
+    let zero_limits = [
+        "briefing",
+        "--episode-limit",
+        "0",
+        "--intention-limit",
+        "0",
+        "--review-limit",
+        "0",
+        "--graph-seed-limit",
+        "0",
+    ];
+    let human = run_ok(&store, &zero_limits);
+    assert!(human.contains("Session briefing"));
+    assert!(!human.contains("Graph seeds"), "{human}");
+    assert!(!human.contains("Review items"), "{human}");
+    assert!(!human.contains("Recent episodes"), "{human}");
+    assert!(!human.contains("Active intentions"), "{human}");
+    let json = run_ok(&store, &[&zero_limits[..], &["--json"]].concat());
+    let json: Value = serde_json::from_str(&json).expect("briefing output is JSON");
+    assert_eq!(json["report"]["graph_seeds"], serde_json::json!([]));
+    assert_eq!(json["report"]["review_items"], serde_json::json!([]));
+    assert_eq!(json["report"]["summary"]["graph_seed_count"], 0);
+    assert_eq!(
+        json["report"]["summary"]["high_priority_review_count"],
+        1
+    );
 
     let _ = fs::remove_file(store);
 }

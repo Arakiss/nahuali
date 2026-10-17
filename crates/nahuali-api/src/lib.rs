@@ -822,13 +822,36 @@ async fn timeline(
 
 async fn pending(
     State(state): State<ApiState>,
-    Query(query): Query<LimitQuery>,
+    Query(query): Query<PendingQuery>,
 ) -> ApiResult<PendingResponse> {
+    let limit = query.limit.unwrap_or(20);
+    let stale_after_ms = match query.stale_days {
+        Some(0) => {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "validation_error",
+                "stale_days must be at least 1".to_string(),
+            ));
+        }
+        Some(days) => Some(days.saturating_mul(24 * 60 * 60 * 1000)),
+        None => None,
+    };
     let memory = read_engine(&state).await?;
+    let intentions = match stale_after_ms {
+        Some(stale_after_ms) => {
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_millis() as u64)
+                .unwrap_or(0);
+            memory.projection_stale_pending(stale_after_ms, now_ms, limit)?
+        }
+        None => memory.projection_pending(limit)?,
+    };
     Ok(Json(PendingResponse {
         database: state.database.display().to_string(),
         projection_role: "derived_from_memory_record",
-        intentions: memory.projection_pending(query.limit.unwrap_or(20))?,
+        stale_after_days: query.stale_days,
+        intentions,
     }))
 }
 
@@ -1137,6 +1160,16 @@ struct LimitQuery {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PendingQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+    /// Only active intentions not updated in more than this many days.
+    #[serde(default)]
+    stale_days: Option<u64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ReviewResolveRequest {
     review_id: String,
     note: String,
@@ -1324,6 +1357,7 @@ struct TimelineResponse {
 struct PendingResponse {
     database: String,
     projection_role: &'static str,
+    stale_after_days: Option<u64>,
     intentions: Vec<GraphProjectionPendingIntention>,
 }
 

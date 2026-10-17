@@ -311,6 +311,21 @@ pub struct Claim {
 /// compatibility and migration from the initial Rust foundation.
 pub type Fact = Claim;
 
+/// Clamp a caller-provided confidence into `0.0..=1.0`, rejecting NaN.
+///
+/// `f32::clamp` passes NaN through, and JSON encodes NaN as `null`, which the
+/// ledger decoder refuses: one NaN write would make the store unopenable.
+pub(crate) fn admitted_confidence(value: f32) -> Option<f32> {
+    (!value.is_nan()).then(|| value.clamp(0.0, 1.0))
+}
+
+pub(crate) fn admit_confidence(value: f32) -> Result<f32> {
+    admitted_confidence(value).ok_or_else(|| NahualiError::InvalidConfidence {
+        message: "confidence must be a number (got NaN); values outside 0.0..=1.0 are clamped"
+            .to_string(),
+    })
+}
+
 /// Derived typed connection between two entities or concepts.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Link {
@@ -737,4 +752,10 @@ pub struct RecallScoreBreakdown {
     pub evidence: f32,
     /// Recency weight decayed by age relative to the newest matching result.
     pub recency: f32,
+}
+
+impl RecallScoreBreakdown {
+    pub(crate) fn total(&self) -> f32 {
+        self.relevance + self.confidence + self.evidence + self.recency
+    }
 }

@@ -6,6 +6,7 @@ use crate::inspection::{
 use crate::model::{
     Claim, ClaimLifecycle, IntentionStatus, Link, MemoryData, MemoryKind, MemoryScope,
     RecallResult, RecallResultTrust, RecallResultTrustMode, RecallScoreBreakdown,
+    admitted_confidence,
 };
 use crate::{AuthorityDecision, AuthorityRecall, NahualiError, Result};
 use serde::{Deserialize, Serialize};
@@ -122,7 +123,7 @@ impl RecallRankingPolicy {
         Ok(())
     }
 
-    fn recency(&self, age_ms: u64) -> f32 {
+    pub(crate) fn recency(&self, age_ms: u64) -> f32 {
         let half_lives = age_ms as f64 / self.recency_half_life_ms as f64;
         (f64::from(self.recency_weight) * 0.5_f64.powf(half_lives)) as f32
     }
@@ -158,13 +159,13 @@ fn recall_scoped(
 }
 
 /// Scoring inputs for one candidate before the recency reference is known.
-struct Candidate {
-    relevance: f32,
-    confidence: Option<f32>,
-    has_evidence: bool,
-    created_at_ms: u64,
-    updated_at_ms: Option<u64>,
-    lifecycle: Option<ClaimLifecycle>,
+pub(crate) struct Candidate {
+    pub(crate) relevance: f32,
+    pub(crate) confidence: Option<f32>,
+    pub(crate) has_evidence: bool,
+    pub(crate) created_at_ms: u64,
+    pub(crate) updated_at_ms: Option<u64>,
+    pub(crate) lifecycle: Option<ClaimLifecycle>,
 }
 
 pub(crate) fn recall_with_options(
@@ -464,7 +465,7 @@ pub(crate) fn recall_with_options(
 
 /// Turn candidates into scored results and order them: non-superseded before
 /// superseded, then score, then newer timestamp, then id.
-fn rank(
+pub(crate) fn rank(
     candidates: Vec<(Candidate, RecallResult)>,
     policy: &RecallRankingPolicy,
 ) -> Vec<RecallResult> {
@@ -476,21 +477,10 @@ fn rank(
     let mut ranked = candidates
         .into_iter()
         .map(|(candidate, mut result)| {
-            let breakdown = RecallScoreBreakdown {
-                relevance: candidate.relevance,
-                confidence: candidate
-                    .confidence
-                    .map(|confidence| confidence * policy.confidence_weight)
-                    .unwrap_or_default(),
-                evidence: if candidate.has_evidence {
-                    policy.evidence_bonus
-                } else {
-                    0.0
-                },
-                recency: policy.recency(reference_ms.saturating_sub(recency_timestamp(&candidate))),
-            };
-            result.score =
-                breakdown.relevance + breakdown.confidence + breakdown.evidence + breakdown.recency;
+            let recency =
+                policy.recency(reference_ms.saturating_sub(recency_timestamp(&candidate)));
+            let breakdown = score_breakdown(policy, &candidate, recency);
+            result.score = breakdown.total();
             result.score_breakdown = Some(breakdown);
             result.confidence = candidate.confidence;
             result.created_at_ms = Some(candidate.created_at_ms);
@@ -504,16 +494,39 @@ fn rank(
     ranked.sort_by(|(left_ts, left), (right_ts, right)| {
         is_superseded(left)
             .cmp(&is_superseded(right))
-            .then_with(|| {
-                right
-                    .score
-                    .partial_cmp(&left.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+            .then_with(|| right.score.total_cmp(&left.score))
             .then_with(|| right_ts.cmp(left_ts))
             .then_with(|| left.id.cmp(&right.id))
     });
     ranked.into_iter().map(|(_, result)| result).collect()
+}
+
+/// Combine one candidate's relevance, confidence, and evidence with its
+/// already-decayed `recency` contribution.
+///
+/// A confidence that the ledger would not admit (NaN or outside `0.0..=1.0`,
+/// reachable through caller-supplied projections) ranks as its admitted value,
+/// or `0.0` for NaN, so one malformed item cannot outrank or destabilize the rest.
+pub(crate) fn score_breakdown(
+    policy: &RecallRankingPolicy,
+    candidate: &Candidate,
+    recency: f32,
+) -> RecallScoreBreakdown {
+    RecallScoreBreakdown {
+        relevance: candidate.relevance,
+        confidence: candidate
+            .confidence
+            .map(|confidence| {
+                admitted_confidence(confidence).unwrap_or(0.0) * policy.confidence_weight
+            })
+            .unwrap_or_default(),
+        evidence: if candidate.has_evidence {
+            policy.evidence_bonus
+        } else {
+            0.0
+        },
+        recency,
+    }
 }
 
 fn recency_timestamp(candidate: &Candidate) -> u64 {

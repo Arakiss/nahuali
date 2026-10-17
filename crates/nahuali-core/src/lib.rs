@@ -54,6 +54,8 @@ mod ingestion;
 mod inspection;
 mod intention;
 mod interchange;
+#[cfg(any(kani, test))]
+mod laws;
 #[cfg(feature = "attestation")]
 mod livr;
 mod maintenance;
@@ -166,6 +168,7 @@ pub use intention::{
     INTENTION_RECONCILIATION_VERSION, IntentionReconciliationIssue,
     IntentionReconciliationIssueKind, IntentionReconciliationOptions,
     IntentionReconciliationPriority, IntentionReconciliationReport, IntentionUpdateOptions,
+    intention_is_stale,
 };
 pub use interchange::{
     InterchangeClaim, InterchangeEpisode, InterchangeImportCounts, InterchangeImportPreflight,

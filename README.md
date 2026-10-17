@@ -300,6 +300,7 @@ Docker is needed only for the optional remote development stack and Qdrant.
 ## Go deeper
 
 - [Trust model](TRUST_MODEL.md)
+- [Verified laws](LAWS.md) (Kani proofs and property tests)
 - [Release verification](RELEASE_VERIFICATION.md)
 - [Self-repair contract](SELF_REPAIR.md)
 - [Governance benchmarks](GOVERNANCE_BENCHMARKS.md)
