@@ -79,6 +79,28 @@ fn record_goal_and_task(server: &mut McpProcess) -> OperatorIds {
         .as_str()
         .expect("goal intention has an id")
         .to_string();
+    assert_eq!(goal["result"]["structuredContent"]["deduplicated"], false);
+
+    // A retried capture returns the active goal instead of recording a twin.
+    let retried = server.request(json!({
+        "jsonrpc": "2.0",
+        "id": 120,
+        "method": "tools/call",
+        "params": {
+            "name": "intention",
+            "arguments": {
+                "description": " Ship the  public beta ",
+                "kind": "goal",
+                "priority": "critical",
+                "sourceLast": true
+            }
+        }
+    }));
+    assert_eq!(retried["result"]["structuredContent"]["deduplicated"], true);
+    assert_eq!(
+        retried["result"]["structuredContent"]["intention"]["id"],
+        goal_id.as_str()
+    );
 
     let task = server.request(json!({
         "jsonrpc": "2.0",

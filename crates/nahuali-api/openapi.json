@@ -122,7 +122,7 @@
     "/v1/intention": {
       "post": {
         "operationId": "createIntention",
-        "summary": "Append future work, a goal, or a reminder through nahuali-core.",
+        "summary": "Append future work, a goal, or a reminder through nahuali-core. Idempotent: an equivalent active intention is returned unchanged with deduplicated true.",
         "requestBody": {
           "$ref": "#/components/requestBodies/IntentionRequest"
         },

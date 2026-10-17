@@ -694,7 +694,8 @@ impl MemoryEngine {
 
     /// Record future work, a goal, reminder, or commitment.
     ///
-    /// Empty descriptions are rejected after trimming.
+    /// Empty descriptions are rejected after trimming. Recording is
+    /// idempotent; see [`MemoryEngine::record_intention`].
     pub fn add_intention(
         &mut self,
         description: impl Into<String>,
@@ -702,7 +703,8 @@ impl MemoryEngine {
         priority: IntentionPriority,
         source_episode_id: Option<String>,
     ) -> Result<Intention> {
-        self.add_intention_with_scope(description, kind, priority, source_episode_id, None)
+        self.record_intention(description, kind, priority, source_episode_id, None)
+            .map(|capture| capture.intention)
     }
 
     /// Record future work, a goal, reminder, or commitment in a scope.
@@ -714,10 +716,58 @@ impl MemoryEngine {
         source_episode_id: Option<String>,
         scope: MemoryScope,
     ) -> Result<Intention> {
-        self.add_intention_with_scope(description, kind, priority, source_episode_id, Some(scope))
+        self.record_intention(description, kind, priority, source_episode_id, Some(scope))
+            .map(|capture| capture.intention)
     }
 
-    fn add_intention_with_scope(
+    /// Record an intention and report whether it already existed.
+    ///
+    /// When an active intention of the same kind and effective scope has the
+    /// same description, compared after trimming and collapsing whitespace
+    /// runs, that intention is returned unchanged with `deduplicated` set and
+    /// no ledger event is written. The request's priority and source episode
+    /// do not alter the existing intention; `update_intention` does that.
+    /// Completed, abandoned, blocked and deferred intentions never match, so
+    /// recording the same text after closing it creates a new intention.
+    pub fn record_intention(
+        &mut self,
+        description: impl Into<String>,
+        kind: IntentionKind,
+        priority: IntentionPriority,
+        source_episode_id: Option<String>,
+        scope: Option<MemoryScope>,
+    ) -> Result<IntentionCapture> {
+        let (description, scope) =
+            self.admit_intention(description.into(), source_episode_id.as_deref(), scope)?;
+        if let Some(existing) = self.data.intentions.iter().find(|intention| {
+            intention.status == IntentionStatus::Active
+                && intention.kind == kind
+                && intention.scope == scope
+                && intention
+                    .description
+                    .split_whitespace()
+                    .eq(description.split_whitespace())
+        }) {
+            return Ok(IntentionCapture {
+                intention: existing.clone(),
+                deduplicated: true,
+            });
+        }
+
+        let intention =
+            self.append_intention(description, kind, priority, source_episode_id, scope)?;
+        Ok(IntentionCapture {
+            intention,
+            deduplicated: false,
+        })
+    }
+
+    /// Append an intention verbatim, without the active-duplicate check.
+    ///
+    /// Import paths use this: they replay a document whose entries may share
+    /// text on purpose and then apply each entry's own lifecycle status to the
+    /// returned id, which must never land on an existing operator intention.
+    pub(crate) fn import_intention(
         &mut self,
         description: impl Into<String>,
         kind: IntentionKind,
@@ -725,14 +775,36 @@ impl MemoryEngine {
         source_episode_id: Option<String>,
         scope: Option<MemoryScope>,
     ) -> Result<Intention> {
-        let description = description.into().trim().to_string();
+        let (description, scope) =
+            self.admit_intention(description.into(), source_episode_id.as_deref(), scope)?;
+        self.append_intention(description, kind, priority, source_episode_id, scope)
+    }
+
+    /// Trim and validate an intention request and resolve its effective scope.
+    fn admit_intention(
+        &self,
+        description: String,
+        source_episode_id: Option<&str>,
+        scope: Option<MemoryScope>,
+    ) -> Result<(String, Option<MemoryScope>)> {
+        let description = description.trim().to_string();
         if description.is_empty() {
             return Err(NahualiError::EmptyContent);
         }
-        self.require_episode_exists(source_episode_id.as_deref())?;
+        self.require_episode_exists(source_episode_id)?;
+        let scope = scope.or_else(|| self.scope_for_episode(source_episode_id));
+        Ok((description, scope))
+    }
 
+    fn append_intention(
+        &mut self,
+        description: String,
+        kind: IntentionKind,
+        priority: IntentionPriority,
+        source_episode_id: Option<String>,
+        scope: Option<MemoryScope>,
+    ) -> Result<Intention> {
         let intention_id = make_id("intention");
-        let scope = scope.or_else(|| self.scope_for_episode(source_episode_id.as_deref()));
         let payload = MemoryEvent::IntentionRecorded(IntentionRecorded {
             id: intention_id.clone(),
             kind: intention_event_kind(kind),

@@ -301,35 +301,29 @@ pub(crate) fn intention(
     let source_episode_id =
         resolve_source_episode_id(memory, args.source_episode_id, args.source_last)?;
     let scope = parse_scope(args.scope)?;
-    let intention = if let Some(scope) = scope {
-        memory.add_intention_scoped(
-            args.description.join(" "),
-            IntentionKind::from(args.kind),
-            IntentionPriority::from(args.priority),
-            source_episode_id,
-            scope,
-        )?
-    } else {
-        memory.add_intention(
-            args.description.join(" "),
-            IntentionKind::from(args.kind),
-            IntentionPriority::from(args.priority),
-            source_episode_id,
-        )?
-    };
+    let capture = memory.record_intention(
+        args.description.join(" "),
+        IntentionKind::from(args.kind),
+        IntentionPriority::from(args.priority),
+        source_episode_id,
+        scope,
+    )?;
     if json {
-        output::print_json(&intention)?;
+        output::print_json(&capture)?;
     } else {
+        let intention = &capture.intention;
         let summary = format!(
             "\"{}\" · {:?}/{:?}",
             excerpt(&intention.description, 60),
             intention.kind,
             intention.priority
         );
-        println!(
-            "{}",
-            crate::style::confirm("Intention noted", &summary, &intention.id)
-        );
+        let action = if capture.deduplicated {
+            "Intention already active, not recorded again"
+        } else {
+            "Intention noted"
+        };
+        println!("{}", crate::style::confirm(action, &summary, &intention.id));
     }
     Ok(())
 }

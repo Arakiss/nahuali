@@ -164,3 +164,39 @@ fn reconcile_intentions_rejects_unknown_ids_and_missing_arguments_without_writin
     }
     assert_eq!(recorded_events(&store), before);
 }
+
+/// A harness that retries the capture, or fires it from two hooks, must not
+/// leave the operator with two identical active intentions.
+#[test]
+fn recording_an_active_intention_twice_returns_the_existing_one() {
+    let store = temp_database("intention-dedupe");
+    let first: Value = serde_json::from_str(&run_ok(
+        &store,
+        &["intention", "Rotate the signing key", "--json"],
+    ))
+    .expect("intention output is JSON");
+    assert_eq!(first["deduplicated"], false);
+    let id = first["id"].as_str().expect("intention id").to_string();
+    let before = recorded_events(&store);
+
+    let retry: Value = serde_json::from_str(&run_ok(
+        &store,
+        &["intention", "Rotate  the signing", "key", "--json"],
+    ))
+    .expect("intention output is JSON");
+    assert_eq!(retry["deduplicated"], true);
+    assert_eq!(retry["id"], id.as_str());
+    assert_eq!(retry["status"], "active");
+
+    let human = run_ok(&store, &["intention", "Rotate the signing key"]);
+    assert!(
+        human.contains("Intention already active, not recorded again"),
+        "{human}"
+    );
+    assert!(human.contains(&id), "{human}");
+    assert_eq!(recorded_events(&store), before, "a duplicate writes nothing");
+
+    run_ok(&store, &["intention-complete", &id]);
+    let reopened = new_intention(&store, "Rotate the signing key");
+    assert_ne!(reopened, id, "a closed intention does not absorb a new one");
+}

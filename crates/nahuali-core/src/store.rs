@@ -40,9 +40,9 @@ use crate::{
         self, MaintenanceReport, MemorySnapshot, SnapshotValidation, record_ledger_checksum,
     },
     model::{
-        Claim, Episode, Fact, Intention, IntentionKind, IntentionPriority, IntentionStatus, Link,
-        MEMORY_DATA_VERSION, MemoryData, MemoryScope, Procedure, ProcedureKind, RecallResult,
-        Relation, SourceDocument, SourceKind, admit_confidence,
+        Claim, Episode, Fact, Intention, IntentionCapture, IntentionKind, IntentionPriority,
+        IntentionStatus, Link, MEMORY_DATA_VERSION, MemoryData, MemoryScope, Procedure,
+        ProcedureKind, RecallResult, Relation, SourceDocument, SourceKind, admit_confidence,
     },
     operator_review::{self, OperatorReviewOptions, OperatorReviewReport},
     proactive,

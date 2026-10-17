@@ -456,20 +456,13 @@ fn import_intention(
             intention.scope.clone(),
             timestamp_ms,
         )
-    } else if let Some(scope) = intention.scope.clone() {
-        memory.add_intention_scoped(
-            intention.description.trim(),
-            intention.kind.clone(),
-            intention.priority.clone(),
-            source_episode_id,
-            scope,
-        )
     } else {
-        memory.add_intention(
+        memory.import_intention(
             intention.description.trim(),
             intention.kind.clone(),
             intention.priority.clone(),
             source_episode_id,
+            intention.scope.clone(),
         )
     }
 }

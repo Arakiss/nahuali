@@ -445,6 +445,103 @@ mod tests {
     }
 
     #[test]
+    fn recording_an_active_intention_again_is_idempotent() {
+        let path = temp_path("recording_an_active_intention_again_is_idempotent");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let first = memory
+            .record_intention(
+                "Ship the beta",
+                IntentionKind::Task,
+                IntentionPriority::High,
+                None,
+                None,
+            )
+            .unwrap();
+        assert!(!first.deduplicated);
+        let events_after_first = memory.events().len();
+
+        let retry = memory
+            .record_intention(
+                "  Ship   the\tbeta \n",
+                IntentionKind::Task,
+                IntentionPriority::Low,
+                None,
+                None,
+            )
+            .unwrap();
+        assert!(retry.deduplicated);
+        assert_eq!(retry.intention, first.intention, "returned unchanged");
+        let ship = |memory: &mut MemoryEngine| {
+            memory
+                .record_intention(
+                    "Ship the beta",
+                    IntentionKind::Task,
+                    IntentionPriority::High,
+                    None,
+                    None,
+                )
+                .unwrap()
+        };
+        let legacy = memory
+            .add_intention(
+                "Ship the beta",
+                IntentionKind::Task,
+                IntentionPriority::High,
+                None,
+            )
+            .unwrap();
+        assert_eq!(legacy.id, first.intention.id);
+        assert_eq!(memory.events().len(), events_after_first);
+        assert_eq!(memory.data().intentions.len(), 1);
+
+        // A fresh engine sees the same active intention through replay.
+        drop(memory);
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let reopened = ship(&mut memory);
+        assert!(reopened.deduplicated);
+        assert_eq!(reopened.intention.id, first.intention.id);
+
+        // Case, kind and scope are part of identity.
+        let scope = MemoryScope::new(MemoryScopeKind::Project, "Nahuali").unwrap();
+        for (description, kind, scope) in [
+            ("ship the beta", IntentionKind::Task, None),
+            ("Ship the beta", IntentionKind::Goal, None),
+            ("Ship the beta", IntentionKind::Task, Some(scope)),
+        ] {
+            let distinct = memory
+                .record_intention(description, kind, IntentionPriority::High, None, scope)
+                .unwrap();
+            assert!(!distinct.deduplicated, "{description:?} must not dedupe");
+        }
+        assert_eq!(memory.data().intentions.len(), 4);
+
+        // Only active intentions count: closing one lets the text be recorded anew.
+        memory
+            .complete_intention(first.intention.id.clone(), None)
+            .unwrap();
+        let again = ship(&mut memory);
+        assert!(!again.deduplicated);
+        assert_ne!(again.intention.id, first.intention.id);
+
+        // Import replay appends verbatim so a document's own status lands on
+        // its own entry.
+        let imported = memory
+            .import_intention(
+                "Ship the beta",
+                IntentionKind::Task,
+                IntentionPriority::High,
+                None,
+                None,
+            )
+            .unwrap();
+        assert_ne!(imported.id, again.intention.id);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn materializes_surrealdb_graph_projection_from_record_ledger() {
         let path = temp_path("materializes_surrealdb_graph_projection");
         let _ = fs::remove_file(&path);

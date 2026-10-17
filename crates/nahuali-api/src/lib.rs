@@ -25,13 +25,13 @@ use axum::{
 use nahuali_core::{
     AnomalyAcknowledgementReport, AnomalyReport, AuthorityDecision, Claim, DeadlineReport, Episode,
     GoalProgressReport, GraphProjectionEpisode, GraphProjectionPendingIntention,
-    GraphProjectionStatus, GraphProjectionValidation, HybridRecallReport, Intention, IntentionKind,
-    IntentionPriority, IntentionReconciliationOptions, IntentionReconciliationReport,
-    IntentionStatus, IntentionUpdateOptions, KnowledgeHealth, LedgerAudit, LedgerAuditOptions,
-    Link, MemoryBriefingReport, MemoryEngine, MemoryGraphReport, MemoryKind, MemoryProactiveReport,
-    MemoryScope, MemoryTrustReport, NahualiError, ProactiveOptions, Procedure, ProjectScopeSummary,
-    RecallOptions, RecallRankingPolicy, ReviewResolutionReport, SemanticIndexReport,
-    SemanticIndexStatus,
+    GraphProjectionStatus, GraphProjectionValidation, HybridRecallReport, Intention,
+    IntentionCapture, IntentionKind, IntentionPriority, IntentionReconciliationOptions,
+    IntentionReconciliationReport, IntentionStatus, IntentionUpdateOptions, KnowledgeHealth,
+    LedgerAudit, LedgerAuditOptions, Link, MemoryBriefingReport, MemoryEngine, MemoryGraphReport,
+    MemoryKind, MemoryProactiveReport, MemoryScope, MemoryTrustReport, NahualiError,
+    ProactiveOptions, Procedure, ProjectScopeSummary, RecallOptions, RecallRankingPolicy,
+    ReviewResolutionReport, SemanticIndexReport, SemanticIndexStatus,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, RwLockMappedWriteGuard, RwLockReadGuard, RwLockWriteGuard};
@@ -598,24 +598,15 @@ async fn record_procedure(
 async fn record_intention(
     State(state): State<ApiState>,
     Json(request): Json<IntentionRequest>,
-) -> ApiResult<Intention> {
+) -> ApiResult<IntentionCapture> {
     let mut memory = write_engine(&state).await?;
-    let intention = match request.scope {
-        Some(scope) => memory.add_intention_scoped(
-            request.description,
-            request.kind,
-            request.priority,
-            request.source_episode_id,
-            scope,
-        )?,
-        None => memory.add_intention(
-            request.description,
-            request.kind,
-            request.priority,
-            request.source_episode_id,
-        )?,
-    };
-    Ok(Json(intention))
+    Ok(Json(memory.record_intention(
+        request.description,
+        request.kind,
+        request.priority,
+        request.source_episode_id,
+        request.scope,
+    )?))
 }
 
 async fn update_intention(
