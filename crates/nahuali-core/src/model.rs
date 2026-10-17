@@ -474,6 +474,22 @@ pub struct Intention {
     pub updated_at_ms: u64,
 }
 
+/// Outcome of recording an intention.
+///
+/// Recording is idempotent: when an active intention of the same kind and
+/// scope already carries the same description (ignoring surrounding and
+/// repeated whitespace), that intention is returned unchanged with
+/// `deduplicated` set and no ledger event is written. Serializes as the
+/// intention's own fields plus `deduplicated`.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct IntentionCapture {
+    /// The recorded intention, or the active one it duplicated.
+    #[serde(flatten)]
+    pub intention: Intention,
+    /// True when an equivalent active intention already existed.
+    pub deduplicated: bool,
+}
+
 /// Operator-approved review decision over a self-inspection finding.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ReviewDecision {

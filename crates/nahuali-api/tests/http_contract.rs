@@ -382,6 +382,21 @@ async fn api_reads_projection_timeline_pending_and_session_resume() {
     )
     .await;
     assert_eq!(intention["status"], "active");
+    assert_eq!(intention["deduplicated"], false);
+
+    let retried = json_request(
+        app.clone(),
+        "/v1/intention",
+        json!({
+            "description": "Write the local  client contract tests ",
+            "kind": "task",
+            "priority": "high",
+            "source_episode_id": episode["id"]
+        }),
+    )
+    .await;
+    assert_eq!(retried["deduplicated"], true);
+    assert_eq!(retried["id"], intention["id"]);
 
     let timeline = get_json(app.clone(), "/v1/timeline?limit=5").await;
     assert_eq!(timeline["projection_role"], "derived_from_memory_record");

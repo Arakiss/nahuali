@@ -200,10 +200,10 @@ pub use merkle::{
 };
 pub use model::{
     Claim, ClaimLifecycle, ClaimStatus, Entity, Episode, Fact, ForgottenRecord, Intention,
-    IntentionKind, IntentionPriority, IntentionStatus, Link, MEMORY_DATA_VERSION, MemoryData,
-    MemoryKind, MemoryRepair, MemoryScope, MemoryScopeKind, Procedure, ProcedureKind, RecallResult,
-    RecallResultTrust, RecallResultTrustMode, RecallScoreBreakdown, Relation, ReviewDecision,
-    ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
+    IntentionCapture, IntentionKind, IntentionPriority, IntentionStatus, Link, MEMORY_DATA_VERSION,
+    MemoryData, MemoryKind, MemoryRepair, MemoryScope, MemoryScopeKind, Procedure, ProcedureKind,
+    RecallResult, RecallResultTrust, RecallResultTrustMode, RecallScoreBreakdown, Relation,
+    ReviewDecision, ReviewDecisionAction, ReviewDecisionOutcome, SourceDocument, SourceKind,
 };
 pub use operator_review::{
     OPERATOR_REVIEW_VERSION, OperatorReviewItem, OperatorReviewOptions, OperatorReviewReport,

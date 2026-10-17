@@ -410,11 +410,11 @@ impl NahualiMcpServer {
     }
 
     #[tool(
-        description = "Use when the user commits to future work, a goal, or a reminder that must survive across sessions. Capture it here so `briefing`, `deadlines`, and `reconcile_intentions` can surface it later. Then use `intention_update` to add a deadline or goal link, and `intention_status` to close it out.",
+        description = "Use when the user commits to future work, a goal, or a reminder that must survive across sessions. Capture it here so `briefing`, `deadlines`, and `reconcile_intentions` can surface it later. Recording the same active intention again returns the existing one with `deduplicated: true` and writes nothing. Then use `intention_update` to add a deadline or goal link, and `intention_status` to close it out.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
-            idempotent_hint = false,
+            idempotent_hint = true,
             open_world_hint = false
         )
     )]
@@ -422,7 +422,7 @@ impl NahualiMcpServer {
         &self,
         Parameters(args): Parameters<IntentionArgs>,
     ) -> Result<Json<IntentionResult>, String> {
-        let intention = self.with_memory(|memory| {
+        let capture = self.with_memory(|memory| {
             let source_episode_id = Self::resolve_source_episode_id(
                 memory,
                 args.source_episode_id,
@@ -430,27 +430,20 @@ impl NahualiMcpServer {
             )?;
             let scope = parse_scope_arg(args.scope)?;
 
-            if let Some(scope) = scope {
-                memory.add_intention_scoped(
+            memory
+                .record_intention(
                     args.description,
                     IntentionKind::from(args.kind.unwrap_or(IntentionKindArg::Task)),
                     IntentionPriority::from(args.priority.unwrap_or(IntentionPriorityArg::Medium)),
                     source_episode_id,
                     scope,
                 )
-            } else {
-                memory.add_intention(
-                    args.description,
-                    IntentionKind::from(args.kind.unwrap_or(IntentionKindArg::Task)),
-                    IntentionPriority::from(args.priority.unwrap_or(IntentionPriorityArg::Medium)),
-                    source_episode_id,
-                )
-            }
-            .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string())
         })?;
 
         Ok(Json(IntentionResult {
-            intention: IntentionView::from(intention),
+            intention: IntentionView::from(capture.intention),
+            deduplicated: Some(capture.deduplicated),
         }))
     }
 
@@ -485,6 +478,7 @@ impl NahualiMcpServer {
 
         Ok(Json(IntentionResult {
             intention: IntentionView::from(intention),
+            deduplicated: None,
         }))
     }
 
@@ -525,6 +519,7 @@ impl NahualiMcpServer {
 
         Ok(Json(IntentionResult {
             intention: IntentionView::from(intention),
+            deduplicated: None,
         }))
     }
 

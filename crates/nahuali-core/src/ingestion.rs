@@ -348,11 +348,12 @@ pub(crate) fn ingest(
     }
 
     for intention in &document.intentions {
-        let imported = memory.add_intention(
+        let imported = memory.import_intention(
             intention.description.trim(),
             intention.kind.clone(),
             intention.priority.clone(),
             resolve_ref(&episode_refs, &intention.source_episode_ref),
+            None,
         )?;
         report.ingested_event_count += 1;
         if intention.status != IntentionStatus::Active {

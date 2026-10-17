@@ -441,6 +441,10 @@ pub(crate) struct ProcedureResult {
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct IntentionResult {
     pub(crate) intention: IntentionView,
+    /// Set by `intention` only: true when an equivalent active intention
+    /// already existed and was returned without writing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) deduplicated: Option<bool>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
