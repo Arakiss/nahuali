@@ -952,6 +952,12 @@ mod tests {
             read_error,
             NahualiError::GraphProjectionInvalid { .. }
         ));
+        assert!(
+            read_error
+                .to_string()
+                .contains("`nahuali projection-rebuild`"),
+            "{read_error}"
+        );
 
         let _ = fs::remove_file(path);
     }
@@ -1391,6 +1397,10 @@ mod tests {
             active_read_error,
             NahualiError::GraphProjectionInvalid { .. }
         ));
+        assert!(
+            !active_read_error.to_string().contains("projection-rebuild"),
+            "an active rebuild clears by retrying: {active_read_error}"
+        );
 
         let waiter_path = path.clone();
         let (sender, receiver) = mpsc::channel();

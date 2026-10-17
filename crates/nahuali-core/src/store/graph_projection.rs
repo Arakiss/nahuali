@@ -12,6 +12,9 @@ const GRAPH_PROJECTION_REBUILD_WAIT_MS: u64 = 60_000;
 const GRAPH_PROJECTION_REBUILD_POLL_MS: u64 = 50;
 const GRAPH_PROJECTION_MANIFEST_ALGORITHM: &str = "sha256-canonical-json-v1";
 const GRAPH_PROJECTION_MUTATION_BATCH_SIZE: usize = 128;
+/// Recovery appended to read refusals caused by a failed validation. Fence and
+/// active-rebuild refusals omit it: those clear by retrying, not rebuilding.
+const GRAPH_PROJECTION_REBUILD_HINT: &str = "rebuild it from the ledger with `nahuali projection-rebuild` (API `POST /v1/projection/rebuild`, MCP `projection_rebuild`)";
 
 #[cfg(test)]
 static INJECTED_GRAPH_PROJECTION_FAILURES: std::sync::OnceLock<
@@ -460,7 +463,10 @@ impl MemoryEngine {
             Ok(())
         } else {
             Err(NahualiError::GraphProjectionInvalid {
-                issues: validation.issues.join("; "),
+                issues: format!(
+                    "{}; {GRAPH_PROJECTION_REBUILD_HINT}",
+                    validation.issues.join("; ")
+                ),
             })
         }
     }
