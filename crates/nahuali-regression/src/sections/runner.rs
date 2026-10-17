@@ -1,5 +1,9 @@
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    // Fixtures write throwaway databases. The database path each run uses only
+    // names a database inside the resolved store, so without this the runner
+    // would write into NAHUALI_DB_URL or ~/.nahuali/data.
+    nahuali_core::isolate_test_store();
     if cli.livr {
         return run_livr_report(cli.output);
     }
