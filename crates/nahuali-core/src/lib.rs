@@ -53,6 +53,7 @@ mod hooks;
 mod ingestion;
 mod inspection;
 mod intention;
+mod intention_closure;
 mod interchange;
 #[cfg(any(kani, test))]
 mod laws;
@@ -69,6 +70,7 @@ mod projection;
 mod recall;
 #[cfg(feature = "attestation")]
 mod receipt;
+mod record_view;
 mod reflection;
 mod review_writeback;
 mod schema;
@@ -170,6 +172,10 @@ pub use intention::{
     IntentionReconciliationPriority, IntentionReconciliationReport, IntentionUpdateOptions,
     intention_is_stale,
 };
+pub use intention_closure::{
+    INTENTION_CLOSURE_VERSION, IntentionClosureChange, IntentionClosureFailure,
+    IntentionClosureOptions, IntentionClosureReport, IntentionClosureSkip,
+};
 pub use interchange::{
     InterchangeClaim, InterchangeEpisode, InterchangeImportCounts, InterchangeImportPreflight,
     InterchangeImportReadiness, InterchangeImportReport, InterchangeIntention, InterchangeIssue,
@@ -211,7 +217,8 @@ pub use proactive::{
     ProactiveOptions, ProactivePriority, ProactiveSummary,
 };
 pub use project::{
-    MEMORY_PROJECT_VIEW_VERSION, MemoryProjectReport, ProjectViewOptions, ProjectViewSummary,
+    MEMORY_PROJECT_VIEW_VERSION, MemoryProjectReport, PROJECT_SCOPE_RULE, ProjectScope,
+    ProjectScopeSummary, ProjectViewOptions, ProjectViewSummary,
 };
 pub use projection::project_validated_events;
 pub use recall::{RecallOptions, RecallRankingPolicy, recall_projection_with_authority};
@@ -222,6 +229,10 @@ pub use receipt::{
     ReceiptContentAuthorityClassV1, ReceiptContentAuthorityV1, ReceiptEventProofV1,
     ReceiptIntegrityV1, ReceiptVerificationOptionsV1, create_claim_receipt_v1,
     parse_claim_receipt_v1, verify_claim_receipt_v1,
+};
+pub use record_view::{
+    RECORD_ID_KINDS, RECORD_VIEW_VERSION, RecordBody, RecordHistoryEntry, RecordReference,
+    RecordView, RecordViewKind,
 };
 pub use reflection::{
     MEMORY_REFLECTION_VERSION, MemoryReflectionReport, ReflectionCycle, ReflectionFinding,

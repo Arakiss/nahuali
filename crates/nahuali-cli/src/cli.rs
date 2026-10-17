@@ -47,7 +47,8 @@ Capture:
 
 Recall & inspect:
   recall                Recall matching memory with optional authority context
-  status                Print operational memory status
+  show                  Print one record in full by its id, with history and evidence
+  status               Print operational memory status
   config                Print the resolved effective configuration (no secrets)
 {tui-commands}
   inspect              Inspect knowledge health before trusting memory
@@ -68,7 +69,7 @@ Reports:
   anomalies             Print non-mutating proactive anomaly alerts
   anomaly-acknowledge   Acknowledge a proactive anomaly with an explicit audit note
   goal-progress         Print non-mutating progress for goal intentions
-  reconcile-intentions  Print a non-mutating intention reconciliation report
+  reconcile-intentions  Report intention issues, or close selected intentions in bulk
   reflect               Plan a non-mutating reflection cycle for operator approval
   sleep                 Run a non-mutating memory sleep pass
   consolidation-plan    Plan replay, review gates, and write-back eligibility
@@ -596,14 +597,43 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Print a non-mutating intention reconciliation report.")]
+    #[command(
+        about = "Print a non-mutating intention reconciliation report, or close selected intentions.",
+        group(clap::ArgGroup::new("closure_ids").args(["ids", "ids_from"]).multiple(true)),
+        after_help = "Without --close this only reports. With --close, it closes exactly the intentions \
+you name (--id, repeatable, or --ids-from a file with one id per line, `-` for stdin; blank lines \
+and `#` comments are ignored). It never picks intentions by age on its own. Every id is checked \
+before anything is written; already completed or abandoned intentions are skipped. Without \
+--apply it only previews; with --apply each closure is recorded as its own lifecycle event \
+carrying --reason, and the output lists every intention that changed.\n\nExamples:\n  \
+nahuali reconcile-intentions\n  \
+nahuali pending --stale 90 --limit 500 --json | jq -r '.intentions[].memory_id' > stale.txt\n  \
+nahuali reconcile-intentions --close abandoned --ids-from stale.txt --reason \"stale >90d, triaged 2026-10-17\"\n  \
+nahuali reconcile-intentions --close abandoned --ids-from stale.txt --reason \"stale >90d, triaged 2026-10-17\" --apply\n  \
+nahuali reconcile-intentions --close completed --id intention_1 --id intention_2 --reason \"shipped in 0.9\" --apply"
+    )]
     ReconcileIntentions {
         /// Evaluate as of this epoch-millisecond time instead of now (reproducible reports).
-        #[arg(long = "now-ms")]
+        #[arg(long = "now-ms", conflicts_with = "close")]
         now_ms: Option<u64>,
         /// Treat an active intention as stale after this many milliseconds without updates.
         #[arg(long = "stale-after-ms", default_value_t = DEFAULT_INTENTION_STALE_AFTER_MS)]
         stale_after_ms: u64,
+        /// Close the selected intentions with this status (`cancelled` is accepted for abandoned).
+        #[arg(long, value_enum, value_name = "STATUS", requires_all = ["reason", "closure_ids"])]
+        close: Option<CliClosureStatus>,
+        /// Intention id to close (repeatable).
+        #[arg(long = "id", value_name = "ID", requires = "close")]
+        ids: Vec<String>,
+        /// File with intention ids to close, one per line; `-` reads stdin.
+        #[arg(long = "ids-from", value_name = "PATH", requires = "close")]
+        ids_from: Option<PathBuf>,
+        /// Reason recorded on every closure event (required with --close).
+        #[arg(long, requires = "close")]
+        reason: Option<String>,
+        /// Write the closures; without it --close only previews what would change.
+        #[arg(long, requires = "close")]
+        apply: bool,
         /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -684,9 +714,15 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     },
     #[command(
         about = "Print a compact non-mutating session briefing.",
-        after_help = "Examples:\n  nahuali briefing\n  nahuali briefing --episode-limit 10 --review-limit 10\n  nahuali briefing --json"
+        after_help = "With --project, recent episodes and active intentions cover only memory attributed \
+to that project: scoped to project:<name>, mentioning it, or naming it in their text (intentions also \
+when they cite such an episode or sit under such a goal). Health, review items, and graph seeds stay \
+store-wide.\n\nExamples:\n  nahuali briefing\n  nahuali briefing --project nahuali\n  nahuali briefing --episode-limit 10 --review-limit 10\n  nahuali briefing --json"
     )]
     Briefing {
+        /// Only include episodes and intentions attributed to this project.
+        #[arg(long, value_name = "NAME")]
+        project: Option<String>,
         /// Maximum number of recent episodes to include.
         #[arg(long = "episode-limit", default_value_t = 5)]
         episode_limit: usize,
@@ -705,6 +741,9 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     },
     #[command(about = "Resume a session with briefing, authority, and review context.")]
     SessionResume {
+        /// Only include episodes and intentions attributed to this project.
+        #[arg(long, value_name = "NAME")]
+        project: Option<String>,
         /// Maximum number of recent episodes to include.
         #[arg(long = "episode-limit", default_value_t = 5)]
         episode_limit: usize,
@@ -732,7 +771,8 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     },
     #[command(
         about = "Read pending intentions from the SurrealDB projection.",
-        after_help = "Examples:\n  nahuali pending\n  nahuali pending --stale 30\n  nahuali pending --stale 90 --limit 50 --json"
+        after_help = "With --project, only intentions attributed to that project are listed (the same \
+attribution as `briefing --project`), and the limit applies within the project.\n\nExamples:\n  nahuali pending\n  nahuali pending --project nahuali\n  nahuali pending --stale 30\n  nahuali pending --project nahuali --stale 90 --limit 50 --json"
     )]
     Pending {
         /// Maximum number of pending intentions to return.
@@ -741,6 +781,9 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         /// Only show active intentions not updated in more than this many days.
         #[arg(long, value_name = "DAYS", value_parser = clap::value_parser!(u64).range(1..))]
         stale: Option<u64>,
+        /// Only show intentions attributed to this project.
+        #[arg(long, value_name = "NAME")]
+        project: Option<String>,
         /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
@@ -908,6 +951,20 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         )]
         confidence_weight: f32,
         #[arg(long, help = "Emit machine-readable JSON instead of text")]
+        json: bool,
+    },
+    #[command(
+        about = "Print one record in full by its id, with its history and evidence links.",
+        after_help = "Accepts any id Nahuali prints: source_, episode_, claim_/fact_, link_/relation_, \
+procedure_/preference_, intention_, entity_, review_ (open review item), review_decision_, \
+repair_, forget_, and event_ ids. A forgotten id shows the audit trace of its erasure. \
+Read-only.\n\nExamples:\n  nahuali show intention_1776000000000_42\n  nahuali show episode_1776000000000_7 --json"
+    )]
+    Show {
+        /// Exact record id to print, e.g. intention_... or episode_...
+        id: String,
+        /// Emit machine-readable JSON instead of text.
+        #[arg(long)]
         json: bool,
     },
     #[command(about = "Traverse the projected memory graph around a seed.")]
@@ -1632,6 +1689,23 @@ pub(crate) enum CliIntentionStatus {
     Abandoned,
     Blocked,
     Deferred,
+}
+
+/// Closing statuses `reconcile-intentions --close` accepts.
+#[derive(Clone, Debug, ValueEnum)]
+pub(crate) enum CliClosureStatus {
+    Completed,
+    #[value(alias = "cancelled", alias = "canceled")]
+    Abandoned,
+}
+
+impl From<CliClosureStatus> for IntentionStatus {
+    fn from(value: CliClosureStatus) -> Self {
+        match value {
+            CliClosureStatus::Completed => Self::Completed,
+            CliClosureStatus::Abandoned => Self::Abandoned,
+        }
+    }
 }
 
 #[derive(Clone, Debug, ValueEnum)]

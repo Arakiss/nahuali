@@ -411,6 +411,35 @@ async fn api_reads_projection_timeline_pending_and_session_resume() {
     let body = response_json(zero_days).await;
     assert_eq!(body["error"]["code"], "validation_error");
 
+    let scoped = get_json(app.clone(), "/v1/pending?limit=5&project=Nahuali%20API").await;
+    assert_eq!(scoped["project_scope"]["project"], "Nahuali API");
+    assert_eq!(scoped["project_scope"]["scope_key"], "project:nahuali_api");
+    assert_eq!(scoped["intentions"][0]["memory_id"], intention["id"]);
+    let elsewhere = get_json(app.clone(), "/v1/pending?project=atlas").await;
+    assert_eq!(elsewhere["project_scope"]["intention_count"], 0);
+    assert_eq!(elsewhere["intentions"], json!([]));
+    assert_eq!(
+        pending.get("project_scope"),
+        None,
+        "unscoped stays unscoped"
+    );
+
+    let scoped_resume = json_request(
+        app.clone(),
+        "/v1/session-resume",
+        json!({ "project": "atlas" }),
+    )
+    .await;
+    assert_eq!(
+        scoped_resume["briefing"]["project_scope"]["project"],
+        "atlas"
+    );
+    assert_eq!(
+        scoped_resume["briefing"]["summary"]["active_intention_count"],
+        0
+    );
+    assert_eq!(scoped_resume["briefing"]["recent_episodes"], json!([]));
+
     let audit = get_json(app.clone(), "/v1/audit").await;
     assert_eq!(audit["integrity"]["verified"], true);
     assert_eq!(audit["from_sequence"], 0);
@@ -444,6 +473,7 @@ async fn api_reads_projection_timeline_pending_and_session_resume() {
     assert!(resume["authority"]["mode"].is_string());
     assert_eq!(resume["briefing"]["summary"]["episode_count"], 1);
     assert_eq!(resume["briefing"]["summary"]["active_intention_count"], 1);
+    assert_eq!(resume["briefing"].get("project_scope"), None);
 }
 
 #[tokio::test]

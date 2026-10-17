@@ -354,7 +354,7 @@ fn count_event(counts: &mut LedgerAuditCounts, payload: &MemoryEvent) {
     }
 }
 
-fn event_kind(payload: &MemoryEvent) -> LedgerAuditEventKind {
+pub(crate) fn event_kind(payload: &MemoryEvent) -> LedgerAuditEventKind {
     match payload {
         MemoryEvent::SourceRecorded(_) => LedgerAuditEventKind::SourceRecorded,
         MemoryEvent::EpisodeRecorded(_) => LedgerAuditEventKind::EpisodeRecorded,
@@ -411,7 +411,7 @@ fn event_source_episode(payload: &MemoryEvent) -> Option<&str> {
     }
 }
 
-fn summarize(payload: &MemoryEvent) -> String {
+pub(crate) fn summarize(payload: &MemoryEvent) -> String {
     match payload {
         MemoryEvent::SourceRecorded(event) => {
             truncate(event.title.clone().unwrap_or_else(|| event.id.clone()))
@@ -454,7 +454,7 @@ fn summarize(payload: &MemoryEvent) -> String {
 
 /// Render a serde enum as its serialized string token without coupling to its
 /// variants (e.g. `IntentionRecordedStatus::Completed` -> `"completed"`).
-fn token<T: Serialize>(value: &T) -> String {
+pub(crate) fn token<T: Serialize>(value: &T) -> String {
     serde_json::to_value(value)
         .ok()
         .and_then(|value| value.as_str().map(str::to_owned))

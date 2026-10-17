@@ -29,8 +29,8 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use nahuali_core::{
-    IntentionStatus, LedgerAuditOptions, MemoryEngine, NahualiError, RecallRankingPolicy,
-    ResolvedValue, TrustReportOptions,
+    BriefingOptions, IntentionStatus, LedgerAuditOptions, MemoryEngine, NahualiError,
+    RecallRankingPolicy, ResolvedValue, TrustReportOptions,
 };
 
 use crate::cli::{Cli, Command};
@@ -380,9 +380,29 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             json,
         )?,
         Command::ReconcileIntentions {
+            close: Some(status),
+            ids,
+            ids_from,
+            reason,
+            apply,
+            json,
+            ..
+        } => reports::close_intentions(
+            &mut memory,
+            reports::ClosureArgs {
+                status,
+                ids,
+                ids_from,
+                reason: reason.unwrap_or_default(),
+                apply,
+            },
+            json,
+        )?,
+        Command::ReconcileIntentions {
             now_ms,
             stale_after_ms,
             json,
+            ..
         } => reports::reconcile_intentions(&mut memory, &database, now_ms, stale_after_ms, json)?,
         Command::GoalProgress { json } => reports::goal_progress(&mut memory, &database, json)?,
         Command::Proactive {
@@ -431,6 +451,15 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             json,
         } => reports::anomaly_acknowledge(&mut memory, id, note, dry_run, json)?,
         Command::Briefing {
+            project,
+            episode_limit,
+            intention_limit,
+            review_limit,
+            graph_seed_limit,
+            json,
+        }
+        | Command::SessionResume {
+            project,
             episode_limit,
             intention_limit,
             review_limit,
@@ -438,34 +467,32 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             json,
         } => reports::briefing(
             &mut memory,
-            episode_limit,
-            intention_limit,
-            review_limit,
-            graph_seed_limit,
-            json,
-            &database,
-        )?,
-        Command::SessionResume {
-            episode_limit,
-            intention_limit,
-            review_limit,
-            graph_seed_limit,
-            json,
-        } => reports::briefing(
-            &mut memory,
-            episode_limit,
-            intention_limit,
-            review_limit,
-            graph_seed_limit,
+            BriefingOptions {
+                episode_limit,
+                intention_limit,
+                review_limit,
+                graph_seed_limit,
+            },
+            project.as_deref(),
             json,
             &database,
         )?,
         Command::Timeline { limit, json } => {
             reports::projection_timeline(&mut memory, &database, limit, json)?
         }
-        Command::Pending { limit, stale, json } => {
-            reports::projection_pending(&mut memory, &database, limit, stale, json)?
-        }
+        Command::Pending {
+            limit,
+            stale,
+            project,
+            json,
+        } => reports::projection_pending(
+            &mut memory,
+            &database,
+            limit,
+            stale,
+            project.as_deref(),
+            json,
+        )?,
         Command::Sleep {
             episode_limit,
             candidate_limit,
@@ -567,6 +594,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
                 json,
             },
         )?,
+        Command::Show { id, json } => reports::show(&mut memory, &id, json)?,
         Command::Graph {
             seed,
             depth,
@@ -615,7 +643,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             reports::projection_timeline(&mut memory, &database, limit, json)?
         }
         Command::ProjectionPending { limit, json } => {
-            reports::projection_pending(&mut memory, &database, limit, None, json)?
+            reports::projection_pending(&mut memory, &database, limit, None, None, json)?
         }
         Command::ProjectionHealth { limit, json } => {
             reports::projection_health(&mut memory, &database, limit, json)?

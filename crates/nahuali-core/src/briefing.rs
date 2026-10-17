@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     AuthorityDecision, DEFAULT_INTENTION_STALE_AFTER_MS, IntentionKind, IntentionPriority,
     IntentionStatus, KnowledgeHealth, MemoryData, OperatorReviewItem, OperatorReviewOptions,
-    SelfInspectionReviewPriority, intention_is_stale, operator_review,
+    ProjectScope, ProjectScopeSummary, SelfInspectionReviewPriority, intention_is_stale,
+    operator_review,
 };
 
 /// Current session-briefing report format version.
@@ -57,6 +58,11 @@ pub struct MemoryBriefingReport {
     pub review_items: Vec<OperatorReviewItem>,
     /// Entity seeds worth using for graph traversal.
     pub graph_seeds: Vec<BriefingGraphSeed>,
+    /// Active project scope. When set, recent episodes, active intentions,
+    /// and the intention counts cover only memory attributed to the project;
+    /// health, review items, and graph seeds stay store-wide.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_scope: Option<ProjectScopeSummary>,
 }
 
 /// Aggregate counts for a session briefing.
@@ -68,9 +74,10 @@ pub struct BriefingSummary {
     pub episode_count: usize,
     /// Number of projected entities.
     pub entity_count: usize,
-    /// Number of active intentions in the full projection.
+    /// Number of active intentions in the full projection, or in the project
+    /// when a project scope is active.
     pub active_intention_count: usize,
-    /// Number of active intentions in the full projection not updated within
+    /// Number of those active intentions not updated within
     /// [`DEFAULT_INTENTION_STALE_AFTER_MS`].
     #[serde(default)]
     pub stale_intention_count: usize,
@@ -162,21 +169,27 @@ pub struct BriefingGraphSeed {
     pub source_event_ids: Vec<String>,
 }
 
-pub(crate) fn briefing(data: &MemoryData, options: BriefingOptions) -> MemoryBriefingReport {
-    briefing_at(data, options, now_ms())
+pub(crate) fn briefing(
+    data: &MemoryData,
+    options: BriefingOptions,
+    project: Option<&ProjectScope>,
+) -> MemoryBriefingReport {
+    briefing_at(data, options, project, now_ms())
 }
 
 pub(crate) fn briefing_at(
     data: &MemoryData,
     options: BriefingOptions,
+    project: Option<&ProjectScope>,
     generated_at_ms: u64,
 ) -> MemoryBriefingReport {
     // A limit of 0 means "omit this section"; the summary counts still cover
-    // the full projection.
+    // the full projection (or the whole project when scoped).
     let health = KnowledgeHealth::inspect_at(data, generated_at_ms);
     let authority = AuthorityDecision::evaluate(&health);
-    let recent_episodes = recent_episodes(data, options.episode_limit);
-    let active_intentions = active_intentions(data, options.intention_limit, generated_at_ms);
+    let recent_episodes = recent_episodes(data, project, options.episode_limit);
+    let active_intentions =
+        active_intentions(data, project, options.intention_limit, generated_at_ms);
     let mut review = operator_review::operator_review_at(
         data,
         OperatorReviewOptions {
@@ -192,7 +205,8 @@ pub(crate) fn briefing_at(
     let active = data
         .intentions
         .iter()
-        .filter(|intention| intention.status == IntentionStatus::Active);
+        .filter(|intention| intention.status == IntentionStatus::Active)
+        .filter(|intention| project.is_none_or(|scope| scope.includes_intention(&intention.id)));
     let active_intention_count = active.clone().count();
     let stale_intention_count = active
         .filter(|intention| is_stale(intention.updated_at_ms, generated_at_ms))
@@ -223,11 +237,21 @@ pub(crate) fn briefing_at(
         active_intentions,
         review_items: review.items,
         graph_seeds,
+        project_scope: project.map(|scope| scope.summary().clone()),
     }
 }
 
-fn recent_episodes(data: &MemoryData, limit: usize) -> Vec<BriefingEpisode> {
-    let mut episodes = data.episodes.clone();
+fn recent_episodes(
+    data: &MemoryData,
+    project: Option<&ProjectScope>,
+    limit: usize,
+) -> Vec<BriefingEpisode> {
+    let mut episodes = data
+        .episodes
+        .iter()
+        .filter(|episode| project.is_none_or(|scope| scope.includes_episode(&episode.id)))
+        .cloned()
+        .collect::<Vec<_>>();
     episodes.sort_by(|left, right| {
         right
             .created_at_ms
@@ -258,11 +282,17 @@ fn is_stale(updated_at_ms: u64, now_ms: u64) -> bool {
     intention_is_stale(updated_at_ms, now_ms, DEFAULT_INTENTION_STALE_AFTER_MS)
 }
 
-fn active_intentions(data: &MemoryData, limit: usize, now_ms: u64) -> Vec<BriefingIntention> {
+fn active_intentions(
+    data: &MemoryData,
+    project: Option<&ProjectScope>,
+    limit: usize,
+    now_ms: u64,
+) -> Vec<BriefingIntention> {
     let mut intentions = data
         .intentions
         .iter()
         .filter(|intention| intention.status == IntentionStatus::Active)
+        .filter(|intention| project.is_none_or(|scope| scope.includes_intention(&intention.id)))
         .cloned()
         .collect::<Vec<_>>();
     // Fresh work first: an old critical intention nobody touched in months
@@ -396,7 +426,7 @@ mod tests {
             intention("old_high", IntentionPriority::High, 61),
         ]);
 
-        let report = briefing_at(&data, options(10), NOW_MS);
+        let report = briefing_at(&data, options(10), None, NOW_MS);
         let order = report
             .active_intentions
             .iter()
@@ -425,7 +455,7 @@ mod tests {
             intention("stale_b", IntentionPriority::Critical, 46),
         ]);
 
-        let report = briefing_at(&data, options(1), NOW_MS);
+        let report = briefing_at(&data, options(1), None, NOW_MS);
         assert_eq!(report.active_intentions.len(), 1);
         assert_eq!(report.active_intentions[0].id, "fresh");
         assert_eq!(report.summary.stale_intention_count, 2);
@@ -444,6 +474,7 @@ mod tests {
         let report = briefing_at(
             &data(vec![at_threshold, past_threshold]),
             options(5),
+            None,
             NOW_MS,
         );
         let stale = |id: &str| {
@@ -455,5 +486,69 @@ mod tests {
         };
         assert_eq!(stale("at_threshold"), Some(false));
         assert_eq!(stale("past_threshold"), Some(true));
+    }
+
+    #[test]
+    fn project_scope_keeps_only_attributed_episodes_and_intentions() {
+        let episode = |id: &str, mention: &str| crate::Episode {
+            id: id.to_string(),
+            event_id: format!("event_{id}"),
+            content: format!("{id} notes"),
+            tags: Vec::new(),
+            mentions: vec![mention.to_string()],
+            source_id: None,
+            source_position: None,
+            source_role: None,
+            scope: None,
+            created_at_ms: NOW_MS,
+        };
+        let mut data = data(vec![
+            Intention {
+                source_episode_id: Some("episode_nahuali".to_string()),
+                ..intention("intention_nahuali", IntentionPriority::High, 1)
+            },
+            Intention {
+                source_episode_id: Some("episode_orvian".to_string()),
+                ..intention("intention_orvian", IntentionPriority::Critical, 1)
+            },
+            Intention {
+                source_episode_id: Some("episode_nahuali".to_string()),
+                ..intention("intention_nahuali_stale", IntentionPriority::Low, 90)
+            },
+        ]);
+        data.episodes = vec![
+            episode("episode_nahuali", "Nahuali"),
+            episode("episode_orvian", "Orvian"),
+        ];
+        let scope = crate::project::project_scope(&data, "nahuali").expect("scope builds");
+
+        let report = briefing_at(&data, options(10), Some(&scope), NOW_MS);
+
+        let episodes = report
+            .recent_episodes
+            .iter()
+            .map(|episode| episode.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(episodes, vec!["episode_nahuali"]);
+        let intentions = report
+            .active_intentions
+            .iter()
+            .map(|intention| intention.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            intentions,
+            vec!["intention_nahuali", "intention_nahuali_stale"]
+        );
+        assert_eq!(report.summary.active_intention_count, 2);
+        assert_eq!(report.summary.stale_intention_count, 1);
+        let summary = report.project_scope.expect("scope is reported");
+        assert_eq!(summary.project, "nahuali");
+        assert_eq!(summary.scope_key, "project:nahuali");
+        assert_eq!(summary.episode_count, 1);
+        assert_eq!(summary.intention_count, 2);
+
+        let unscoped = briefing_at(&data, options(10), None, NOW_MS);
+        assert!(unscoped.project_scope.is_none());
+        assert_eq!(unscoped.summary.active_intention_count, 3);
     }
 }

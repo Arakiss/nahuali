@@ -203,6 +203,10 @@ pub(crate) struct BriefingArgs {
     pub(crate) intention_limit: Option<usize>,
     pub(crate) review_limit: Option<usize>,
     pub(crate) graph_seed_limit: Option<usize>,
+    /// Limit recent episodes and active intentions to memory attributed to
+    /// this project; `report.project_scope` in the result says what matched.
+    /// Health, review items, and graph seeds stay store-wide.
+    pub(crate) project: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

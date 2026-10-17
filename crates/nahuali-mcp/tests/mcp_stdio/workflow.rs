@@ -377,6 +377,28 @@ fn assert_briefing(server: &mut McpProcess, ids: &WorkflowIds) {
             .iter()
             .any(|seed| seed["label"] == "Lena")
     );
+    assert!(
+        briefing["result"]["structuredContent"]["report"]
+            .get("project_scope")
+            .is_none(),
+        "an unscoped briefing reports no project scope"
+    );
+
+    let scoped = server.request(json!({
+        "jsonrpc": "2.0",
+        "id": 37,
+        "method": "tools/call",
+        "params": {
+            "name": "briefing",
+            "arguments": { "project": "atlas" }
+        }
+    }));
+    let report = &scoped["result"]["structuredContent"]["report"];
+    assert_eq!(report["project_scope"]["project"], "atlas");
+    assert_eq!(report["project_scope"]["scope_key"], "project:atlas");
+    assert_eq!(report["summary"]["active_intention_count"], 0);
+    assert_eq!(report["active_intentions"], json!([]));
+    assert_eq!(report["recent_episodes"], json!([]));
 }
 
 fn complete_intention(server: &mut McpProcess, intention_id: &str) {
