@@ -513,6 +513,16 @@ pub(crate) fn project(
     Ok(())
 }
 
+pub(crate) fn show(memory: &mut MemoryEngine, id: &str, json: bool) -> anyhow::Result<()> {
+    let view = memory.show_record(id)?;
+    if json {
+        output::print_json(&view)?;
+    } else {
+        output::print_record_view(&view)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn reconcile_intentions(
     memory: &mut MemoryEngine,
     database: &std::path::Path,

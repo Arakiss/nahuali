@@ -509,6 +509,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
                 json,
             },
         )?,
+        Command::Show { id, json } => reports::show(&mut memory, &id, json)?,
         Command::Graph {
             seed,
             depth,

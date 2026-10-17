@@ -51,6 +51,7 @@ include!("operator_path_cases/concurrency.rs");
 include!("operator_path_cases/literals.rs");
 include!("operator_path_cases/forget.rs");
 include!("operator_path_cases/scopes.rs");
+include!("operator_path_cases/show.rs");
 include!("operator_path_cases/ingestion.rs");
 include!("operator_path_cases/migration.rs");
 include!("operator_path_cases/review.rs");

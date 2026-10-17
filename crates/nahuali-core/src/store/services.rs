@@ -257,6 +257,17 @@ impl MemoryEngine {
         project::project_view(&self.data, query, options)
     }
 
+    /// Look up one record by its exact id and return it in full, with the
+    /// ledger events that wrote it and its evidence links in both directions.
+    ///
+    /// Accepts any id the CLI prints: sources, entities, episodes, claims,
+    /// links, procedures, intentions, review decisions, open review items,
+    /// repairs, forget requests, forgotten ids, and ledger event ids. Never
+    /// writes records.
+    pub fn show_record(&self, id: &str) -> Result<RecordView> {
+        record_view::show_record(&self.data, &self.events, id)
+    }
+
     /// Produce a non-mutating intention reconciliation report.
     pub fn reconcile_intentions(&self) -> IntentionReconciliationReport {
         self.reconcile_intentions_with_options(IntentionReconciliationOptions::default())

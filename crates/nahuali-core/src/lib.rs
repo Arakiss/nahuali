@@ -69,6 +69,7 @@ mod projection;
 mod recall;
 #[cfg(feature = "attestation")]
 mod receipt;
+mod record_view;
 mod reflection;
 mod review_writeback;
 mod schema;
@@ -222,6 +223,10 @@ pub use receipt::{
     ReceiptContentAuthorityClassV1, ReceiptContentAuthorityV1, ReceiptEventProofV1,
     ReceiptIntegrityV1, ReceiptVerificationOptionsV1, create_claim_receipt_v1,
     parse_claim_receipt_v1, verify_claim_receipt_v1,
+};
+pub use record_view::{
+    RECORD_ID_KINDS, RECORD_VIEW_VERSION, RecordBody, RecordHistoryEntry, RecordReference,
+    RecordView, RecordViewKind,
 };
 pub use reflection::{
     MEMORY_REFLECTION_VERSION, MemoryReflectionReport, ReflectionCycle, ReflectionFinding,

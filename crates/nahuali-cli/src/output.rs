@@ -6,7 +6,7 @@ use nahuali_core::{
     InterchangeImportReport, MemoryBriefingReport, MemoryConsolidationPlanReport,
     MemoryGraphReport, MemoryHookReport, MemoryProactiveReport, MemoryProjectReport,
     MemoryReflectionReport, MemorySleepReport, OperatorReviewReport, RecordLedgerIssueKind,
-    RepairReport, ReviewResolutionReport, SnapshotIssueKind,
+    RecordView, RepairReport, ReviewResolutionReport, SnapshotIssueKind,
 };
 use serde::Serialize;
 
@@ -99,6 +99,176 @@ pub(crate) fn intention_meta(id: &str, updated_at_ms: u64, now_ms: u64, stale: b
     };
     let mark = if stale { " · stale" } else { "" };
     format!("{id} · updated {age} ago{mark}")
+}
+
+/// Render an epoch-millisecond timestamp as `YYYY-MM-DD HH:MMZ` (UTC) without a
+/// date dependency, using the proleptic Gregorian civil-from-days conversion.
+pub(crate) fn utc_minute(ms: u64) -> String {
+    let seconds = ms / 1000;
+    let days = i64::try_from(seconds / 86_400).unwrap_or(i64::MAX / 2);
+    let of_day = seconds % 86_400;
+    let shifted = days + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let day_of_era = shifted.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+    let month = if month_index < 10 {
+        month_index + 3
+    } else {
+        month_index - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02} {:02}:{:02}Z",
+        of_day / 3_600,
+        (of_day % 3_600) / 60
+    )
+}
+
+/// Serialized string token of a serde enum, e.g. `IntentionStatus::Active` -> `active`.
+fn token<T: Serialize>(value: &T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+/// Most references or history lines `show` prints per section before pointing
+/// at `--json` for the rest.
+const SHOW_SECTION_LIMIT: usize = 20;
+
+pub(crate) fn print_record_view(view: &RecordView) -> anyhow::Result<()> {
+    let label = view.kind.as_str().replace('_', " ");
+    let mut label_chars = label.chars();
+    let label = label_chars
+        .next()
+        .map(|first| first.to_uppercase().chain(label_chars).collect::<String>())
+        .unwrap_or_default();
+    let status = view
+        .status
+        .as_deref()
+        .map(|status| format!("  [{status}]"))
+        .unwrap_or_default();
+    println!(
+        "{}{status}",
+        crate::style::heading(&format!("{label} {}", view.id))
+    );
+    println!("  {}", one_line(&view.summary, 120));
+    if let Some(scope) = &view.scope {
+        println!("  {}", crate::style::dim(&format!("scope: {}", scope.key)));
+    }
+    for note in &view.notes {
+        println!("  {}", crate::style::dim(note));
+    }
+
+    println!("\n{}", crate::style::heading("Record"));
+    if let serde_json::Value::Object(fields) = serde_json::to_value(&view.record)? {
+        for (name, value) in &fields {
+            if let Some(rendered) = record_field(name, value) {
+                println!("  {name}: {rendered}");
+            }
+        }
+    }
+
+    if let Some(lifecycle) = &view.claim_lifecycle {
+        let mut line = token(&lifecycle.status);
+        if let Some(by) = &lifecycle.superseded_by {
+            line.push_str(&format!(" · superseded by {by}"));
+        }
+        if !lifecycle.supersedes.is_empty() {
+            line.push_str(&format!(
+                " · supersedes {}",
+                lifecycle.supersedes.join(", ")
+            ));
+        }
+        if !lifecycle.contested_with.is_empty() {
+            line.push_str(&format!(
+                " · contested with {}",
+                lifecycle.contested_with.join(", ")
+            ));
+        }
+        println!("\n{}  {line}", crate::style::heading("Claim lifecycle"));
+    }
+
+    println!(
+        "\n{}",
+        crate::style::heading(&format!("History ({})", view.history.len()))
+    );
+    let hidden = view.history.len().saturating_sub(SHOW_SECTION_LIMIT);
+    if hidden > 0 {
+        println!(
+            "  {}",
+            crate::style::dim(&format!("+{hidden} earlier events (see --json)"))
+        );
+    }
+    for entry in view.history.iter().skip(hidden) {
+        println!(
+            "  #{} {}  {}  {}",
+            entry.sequence,
+            utc_minute(entry.timestamp_ms),
+            token(&entry.kind),
+            one_line(&entry.summary, 88)
+        );
+    }
+
+    print_references("Evidence", &view.evidence);
+    print_references("Cited by", &view.cited_by);
+    Ok(())
+}
+
+fn print_references(title: &str, references: &[nahuali_core::RecordReference]) {
+    if references.is_empty() {
+        return;
+    }
+    println!(
+        "\n{}",
+        crate::style::heading(&format!("{title} ({})", references.len()))
+    );
+    for reference in references.iter().take(SHOW_SECTION_LIMIT) {
+        let target = match (&reference.kind, &reference.summary) {
+            (Some(kind), Some(summary)) => format!("[{}] {}", kind.as_str(), one_line(summary, 80)),
+            _ => crate::style::dim("unresolved"),
+        };
+        println!("  {}  {}  {target}", reference.relation, reference.id);
+    }
+    let hidden = references.len().saturating_sub(SHOW_SECTION_LIMIT);
+    if hidden > 0 {
+        println!(
+            "  {}",
+            crate::style::dim(&format!("+{hidden} more (see --json)"))
+        );
+    }
+}
+
+/// One record field as printed by `show`: scalars as-is, string lists joined,
+/// timestamps with their UTC date, nested objects as compact JSON. Empty
+/// values are skipped.
+fn record_field(name: &str, value: &serde_json::Value) -> Option<String> {
+    use serde_json::Value;
+    match value {
+        Value::Null => None,
+        Value::String(text) => Some(text.clone()),
+        Value::Number(number) => match number.as_u64() {
+            Some(ms) if name.ends_with("_at_ms") => Some(format!("{ms} ({})", utc_minute(ms))),
+            _ => Some(number.to_string()),
+        },
+        Value::Bool(flag) => Some(flag.to_string()),
+        Value::Array(items) if items.is_empty() => None,
+        Value::Array(items) if items.iter().all(Value::is_string) => Some(
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", "),
+        ),
+        Value::Object(fields) if name == "scope" => {
+            fields.get("key").and_then(Value::as_str).map(str::to_owned)
+        }
+        other => Some(other.to_string()),
+    }
 }
 
 pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
@@ -1013,7 +1183,15 @@ fn print_anomaly_rows(report: &AnomalyReport) {
 
 #[cfg(test)]
 mod tests {
-    use super::{DAY_MS, intention_meta};
+    use super::{DAY_MS, intention_meta, utc_minute};
+
+    #[test]
+    fn utc_minute_renders_calendar_dates_across_leap_years() {
+        assert_eq!(utc_minute(0), "1970-01-01 00:00Z");
+        assert_eq!(utc_minute(1_700_000_000_000), "2023-11-14 22:13Z");
+        assert_eq!(utc_minute(951_782_400_000), "2000-02-29 00:00Z");
+        assert_eq!(utc_minute(1_798_761_599_000), "2026-12-31 23:59Z");
+    }
 
     #[test]
     fn intention_meta_shows_id_age_and_stale_mark() {

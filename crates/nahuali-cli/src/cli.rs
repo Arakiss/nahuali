@@ -47,7 +47,8 @@ Capture:
 
 Recall & inspect:
   recall                Recall matching memory with optional authority context
-  status                Print operational memory status
+  show                  Print one record in full by its id, with history and evidence
+  status               Print operational memory status
   config                Print the resolved effective configuration (no secrets)
 {tui-commands}
   inspect              Inspect knowledge health before trusting memory
@@ -875,6 +876,20 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         )]
         confidence_weight: f32,
         #[arg(long, help = "Emit machine-readable JSON instead of text")]
+        json: bool,
+    },
+    #[command(
+        about = "Print one record in full by its id, with its history and evidence links.",
+        after_help = "Accepts any id Nahuali prints: source_, episode_, claim_/fact_, link_/relation_, \
+procedure_/preference_, intention_, entity_, review_ (open review item), review_decision_, \
+repair_, forget_, and event_ ids. A forgotten id shows the audit trace of its erasure. \
+Read-only.\n\nExamples:\n  nahuali show intention_1776000000000_42\n  nahuali show episode_1776000000000_7 --json"
+    )]
+    Show {
+        /// Exact record id to print, e.g. intention_... or episode_...
+        id: String,
+        /// Emit machine-readable JSON instead of text.
+        #[arg(long)]
         json: bool,
     },
     #[command(about = "Traverse the projected memory graph around a seed.")]
