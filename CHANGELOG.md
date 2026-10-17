@@ -7,6 +7,65 @@ release histories.
 
 ## Unreleased
 
+## [0.8.0-beta.14](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.13...v0.8.0-beta.14) (2026-10-17)
+
+
+### Why upgrade
+
+This beta makes a large memory manageable from the command line. `nahuali show
+<id>` prints any record with its history and evidence; `--project` scopes
+`briefing`, `session-resume`, and `pending` to one project; and
+`reconcile-intentions --close` closes a reviewed list of intentions in one
+auditable pass. Intention updates and lifecycle changes can now cite the episode
+that justified them, recording the same active intention twice no longer creates
+a duplicate, and the briefing tells you when a newer release is available.
+
+### Upgrade notes
+
+- **Ledger.** `intention-update`, `intention-status`, `intention-complete`,
+  `intention-block`, and `intention-defer` accept `--source-episode` and
+  `--source-last`, and the HTTP and MCP update and status requests accept a
+  source. A cited change writes a new optional field. 0.8.0-beta.13 and older
+  binaries refuse a store containing such a record with `checksum mismatch`,
+  without modifying it. Upgrade every CLI, `nahuali-mcp`, and `nahuali-api`
+  process before citing sources on updates. Uncited records are byte-identical
+  to earlier releases.
+- **Forget.** Forgetting an episode cited by an intention update erases that
+  intention, as forgetting an intention's creation source already did.
+- **Network.** The human output of `briefing` and `session-resume` checks the
+  GitHub releases API at most once a day (1.5 s timeout, no identifiers) and
+  ends with one `Update available` line when a newer release exists. It is the
+  only network call Nahuali makes on its own. Set `NAHUALI_NO_UPDATE_CHECK=1`
+  to disable it; it is skipped when `CI` is set. `nahuali update-check` checks
+  on demand.
+- **Intentions.** Recording an intention whose description matches an active
+  intention of the same kind and scope returns the existing one instead of
+  writing a new event. CLI JSON and the HTTP response add `deduplicated`; the
+  MCP `intention` result adds an optional `deduplicated`.
+- **JSON output (additive).** Audit entries expose `source_episode_id`;
+  `briefing`, `session-resume`, and `pending` accept `--project` (HTTP and MCP
+  `project`) and report the active scope.
+- **Release pages.** The release page prose now comes from each version's
+  changelog entry, so it can no longer carry over from an earlier release.
+
+### New
+
+* **cli:** close selected intentions in bulk from reconcile-intentions ([79f7611](https://github.com/Arakiss/nahuali/commit/79f7611eabf3647924cb166f50ac90c9c089e394))
+* **cli:** notify when a newer release exists ([bdb207f](https://github.com/Arakiss/nahuali/commit/bdb207fa535f520d07a43271282e53ef77287b4f))
+* **cli:** notify when a newer release exists ([9d6a097](https://github.com/Arakiss/nahuali/commit/9d6a09797e6bf8d223ee6a7a991dc786b5a4e79d))
+* **cli:** show records by id, scope to a project, close intentions in bulk ([e9b00b5](https://github.com/Arakiss/nahuali/commit/e9b00b5392fa9d9546ba5cf8964a0ab297ed5111))
+* **core:** record the evidence episode behind intention changes ([f748609](https://github.com/Arakiss/nahuali/commit/f7486092cabafc3b6d2d5aacbfc22af97f06c0b7))
+
+
+### Fixed
+
+* **core:** make recording an active intention idempotent ([021e718](https://github.com/Arakiss/nahuali/commit/021e71832269b4c966da5519b7212d0eb2e67201))
+* **core:** make recording an active intention idempotent ([2932aae](https://github.com/Arakiss/nahuali/commit/2932aae4bfd3be129cd78010d2d054e333bf2e68))
+* **regression:** run fixtures in a throwaway store ([9634f06](https://github.com/Arakiss/nahuali/commit/9634f06e5ce4d75c6a01e2ea6b2da92e28b23302))
+* **regression:** run fixtures in a throwaway store ([91b2c38](https://github.com/Arakiss/nahuali/commit/91b2c38d922fe2378b9c465f62bec6a6cac6b8c3))
+* **release:** render the release page prose from the version's changelog entry ([def098b](https://github.com/Arakiss/nahuali/commit/def098b592952f4623e82adb26ab4fdcac7dc713))
+* **release:** render the release page prose from the version's changelog entry ([b4351e1](https://github.com/Arakiss/nahuali/commit/b4351e1da37a882d55b07c3d40aae12afafa5855))
+
 ## [0.8.0-beta.13](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.12...v0.8.0-beta.13) (2026-10-17)
 
 
