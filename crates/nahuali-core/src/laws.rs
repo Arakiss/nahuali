@@ -435,6 +435,7 @@ fn record(
             depends_on: None,
             goal_id: None,
             progress_percent: None,
+            source_episode_id: parent,
         }),
         5 => MemoryEvent::RepairApplied(RepairApplied {
             id: repair_id.to_string(),

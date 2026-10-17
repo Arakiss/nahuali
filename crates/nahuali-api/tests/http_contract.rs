@@ -411,6 +411,35 @@ async fn api_reads_projection_timeline_pending_and_session_resume() {
     let body = response_json(zero_days).await;
     assert_eq!(body["error"]["code"], "validation_error");
 
+    let scoped = get_json(app.clone(), "/v1/pending?limit=5&project=Nahuali%20API").await;
+    assert_eq!(scoped["project_scope"]["project"], "Nahuali API");
+    assert_eq!(scoped["project_scope"]["scope_key"], "project:nahuali_api");
+    assert_eq!(scoped["intentions"][0]["memory_id"], intention["id"]);
+    let elsewhere = get_json(app.clone(), "/v1/pending?project=atlas").await;
+    assert_eq!(elsewhere["project_scope"]["intention_count"], 0);
+    assert_eq!(elsewhere["intentions"], json!([]));
+    assert_eq!(
+        pending.get("project_scope"),
+        None,
+        "unscoped stays unscoped"
+    );
+
+    let scoped_resume = json_request(
+        app.clone(),
+        "/v1/session-resume",
+        json!({ "project": "atlas" }),
+    )
+    .await;
+    assert_eq!(
+        scoped_resume["briefing"]["project_scope"]["project"],
+        "atlas"
+    );
+    assert_eq!(
+        scoped_resume["briefing"]["summary"]["active_intention_count"],
+        0
+    );
+    assert_eq!(scoped_resume["briefing"]["recent_episodes"], json!([]));
+
     let audit = get_json(app.clone(), "/v1/audit").await;
     assert_eq!(audit["integrity"]["verified"], true);
     assert_eq!(audit["from_sequence"], 0);
@@ -444,6 +473,7 @@ async fn api_reads_projection_timeline_pending_and_session_resume() {
     assert!(resume["authority"]["mode"].is_string());
     assert_eq!(resume["briefing"]["summary"]["episode_count"], 1);
     assert_eq!(resume["briefing"]["summary"]["active_intention_count"], 1);
+    assert_eq!(resume["briefing"].get("project_scope"), None);
 }
 
 #[tokio::test]
@@ -495,7 +525,8 @@ async fn api_exposes_operator_loop_contract() {
             "id": task["id"],
             "deadline_at_ms": 50,
             "goal_id": goal["id"],
-            "progress_percent": 25
+            "progress_percent": 25,
+            "source_episode_id": episode["id"]
         }),
     )
     .await;
@@ -616,17 +647,38 @@ async fn api_exposes_operator_loop_contract() {
     assert_eq!(cleared["progress_percent"], 25);
 
     let status = json_request(
-        app,
+        app.clone(),
         "/v1/intention/status",
         json!({
             "id": task["id"],
             "status": "completed",
-            "reason": "API parity validated"
+            "reason": "API parity validated",
+            "source_episode_id": episode["id"]
         }),
     )
     .await;
     assert_eq!(status["status"], "completed");
     assert_eq!(status["status_reason"], "API parity validated");
+
+    let audit = get_json(app, "/v1/audit").await;
+    let cited = audit["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|entry| {
+            entry["kind"] == "intention_updated" || entry["kind"] == "intention_status_changed"
+        })
+        .map(|entry| entry["source_episode_id"].clone())
+        .collect::<Vec<_>>();
+    // The deadline clear in between cites nothing, so it carries no source.
+    assert_eq!(
+        cited,
+        vec![
+            episode["id"].clone(),
+            serde_json::Value::Null,
+            episode["id"].clone()
+        ]
+    );
 }
 
 #[tokio::test]

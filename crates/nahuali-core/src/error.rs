@@ -33,6 +33,14 @@ pub enum NahualiError {
         /// Requested review item identifier.
         id: String,
     },
+    /// No projected record, ledger event, or open review item has this id.
+    #[error("no memory record has the id {id:?}; known id kinds: {known_kinds}")]
+    UnknownRecord {
+        /// Requested identifier.
+        id: String,
+        /// Comma-separated id prefixes the lookup understands.
+        known_kinds: String,
+    },
     /// The requested source does not exist in the current projection.
     #[error("unknown source: {id}")]
     UnknownSource {

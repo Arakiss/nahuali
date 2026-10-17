@@ -66,11 +66,11 @@ pub fn tool_catalog() -> Vec<McpTool> {
         },
         McpTool {
             name: "intention_status",
-            description: "Use when an intention's lifecycle changes (it is completed, abandoned, blocked, or deferred) and you want that recorded with a reason. Find the intention id via `briefing` or `recall` first. Then re-check `reconcile_intentions` if you need the updated commitment picture.",
+            description: "Use when an intention's lifecycle changes (it is completed, abandoned, blocked, or deferred) and you want that recorded with a reason. Find the intention id via `briefing` or `recall` first; when an episode shows the change, pass `sourceLast: true` or `sourceEpisodeId` to cite it. Then re-check `reconcile_intentions` if you need the updated commitment picture.",
         },
         McpTool {
             name: "intention_update",
-            description: "Use when you need to set an intention's deadline, goal link, dependencies, or progress without changing its lifecycle status. Look up the intention id via `briefing` or `recall` first. Then `goal_progress` and `deadlines` will reflect the new metadata.",
+            description: "Use when you need to set an intention's deadline, goal link, dependencies, or progress without changing its lifecycle status. Look up the intention id via `briefing` or `recall` first; pass `sourceLast: true` or `sourceEpisodeId` to cite the episode that justifies the update. Then `goal_progress` and `deadlines` will reflect the new metadata.",
         },
         McpTool {
             name: "reconcile_intentions",
@@ -98,7 +98,7 @@ pub fn tool_catalog() -> Vec<McpTool> {
         },
         McpTool {
             name: "briefing",
-            description: "Use this first at the start of a session, before any other work: it returns the compact read-only pre-work surface (authority, health, recent episodes, active intentions, high-priority review items, graph seeds). It does not change anything. Then `recall` specifics or act on the surfaced intentions and review items.",
+            description: "Use this first at the start of a session, before any other work: it returns the compact read-only pre-work surface (authority, health, recent episodes, active intentions, high-priority review items, graph seeds). Pass `project` to limit episodes and intentions to one project. It does not change anything. Then `recall` specifics or act on the surfaced intentions and review items.",
         },
         McpTool {
             name: "memory_hook",

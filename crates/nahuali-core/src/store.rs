@@ -32,6 +32,9 @@ use crate::{
     graph, hooks, ingestion,
     inspection::KnowledgeHealth,
     intention,
+    intention_closure::{
+        self, IntentionClosureFailure, IntentionClosureOptions, IntentionClosureReport,
+    },
     interchange::{self, InterchangeImportReport, MemoryInterchange},
     maintenance::{
         self, MaintenanceReport, MemorySnapshot, SnapshotValidation, record_ledger_checksum,
@@ -43,8 +46,10 @@ use crate::{
     },
     operator_review::{self, OperatorReviewOptions, OperatorReviewReport},
     proactive,
-    project::{self, MemoryProjectReport, ProjectViewOptions},
-    projection, recall, reflection, review_writeback,
+    project::{self, MemoryProjectReport, ProjectScope, ProjectViewOptions},
+    projection, recall,
+    record_view::{self, RecordView},
+    reflection, review_writeback,
     schema::{GRAPH_PROJECTION_SCHEMA, MEMORY_RECORD_SCHEMA},
     self_inspection,
     self_inspection::SelfInspectionReport,

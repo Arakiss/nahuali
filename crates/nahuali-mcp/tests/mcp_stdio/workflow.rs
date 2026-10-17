@@ -377,6 +377,28 @@ fn assert_briefing(server: &mut McpProcess, ids: &WorkflowIds) {
             .iter()
             .any(|seed| seed["label"] == "Lena")
     );
+    assert!(
+        briefing["result"]["structuredContent"]["report"]
+            .get("project_scope")
+            .is_none(),
+        "an unscoped briefing reports no project scope"
+    );
+
+    let scoped = server.request(json!({
+        "jsonrpc": "2.0",
+        "id": 37,
+        "method": "tools/call",
+        "params": {
+            "name": "briefing",
+            "arguments": { "project": "atlas" }
+        }
+    }));
+    let report = &scoped["result"]["structuredContent"]["report"];
+    assert_eq!(report["project_scope"]["project"], "atlas");
+    assert_eq!(report["project_scope"]["scope_key"], "project:atlas");
+    assert_eq!(report["summary"]["active_intention_count"], 0);
+    assert_eq!(report["active_intentions"], json!([]));
+    assert_eq!(report["recent_episodes"], json!([]));
 }
 
 fn complete_intention(server: &mut McpProcess, intention_id: &str) {
@@ -389,13 +411,35 @@ fn complete_intention(server: &mut McpProcess, intention_id: &str) {
             "arguments": {
                 "id": intention_id,
                 "status": "completed",
-                "reason": "Done"
+                "reason": "Done",
+                "sourceLast": true
             }
         }
     }));
     assert_eq!(
         intention_status["result"]["structuredContent"]["intention"]["status"],
         "completed"
+    );
+
+    let audit = server.request(json!({
+        "jsonrpc": "2.0",
+        "id": 40,
+        "method": "tools/call",
+        "params": {
+            "name": "audit",
+            "arguments": {}
+        }
+    }));
+    let completion = audit["result"]["structuredContent"]["entries"]
+        .as_array()
+        .expect("audit returns entries")
+        .iter()
+        .rfind(|entry| entry["kind"] == "intention_status_changed")
+        .expect("audit lists the completion");
+    assert!(
+        completion["source_episode_id"]
+            .as_str()
+            .is_some_and(|episode_id| episode_id.starts_with("episode_"))
     );
 }
 

@@ -1732,6 +1732,96 @@ mod tests {
     }
 
     #[test]
+    fn intention_updates_and_status_changes_record_their_source_episode() {
+        let path = temp_path("intention_updates_and_status_changes_record_their_source_episode");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let intention = memory
+            .add_intention(
+                "Ship release notes",
+                IntentionKind::Task,
+                IntentionPriority::High,
+                None,
+            )
+            .unwrap();
+        let drafted = memory
+            .remember("Release notes drafted", Vec::new())
+            .unwrap();
+        let published = memory
+            .remember("Release notes published", Vec::new())
+            .unwrap();
+
+        memory
+            .update_intention(
+                intention.id.clone(),
+                IntentionUpdateOptions {
+                    progress_percent: Some(Some(60)),
+                    source_episode_id: Some(drafted.id.clone()),
+                    ..IntentionUpdateOptions::default()
+                },
+            )
+            .unwrap();
+        let completed = memory
+            .set_intention_status_with_source(
+                intention.id.clone(),
+                IntentionStatus::Completed,
+                Some("Published".to_string()),
+                Some(published.id.clone()),
+            )
+            .unwrap();
+        assert_eq!(completed.status, IntentionStatus::Completed);
+
+        let events_before_invalid = memory.events().len();
+        let fabricated = memory
+            .set_intention_status_with_source(
+                intention.id.clone(),
+                IntentionStatus::Active,
+                None,
+                Some("episode_missing".to_string()),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            fabricated,
+            NahualiError::UnknownSourceEpisode { .. }
+        ));
+        let source_only = memory
+            .update_intention(
+                intention.id.clone(),
+                IntentionUpdateOptions {
+                    source_episode_id: Some(drafted.id.clone()),
+                    ..IntentionUpdateOptions::default()
+                },
+            )
+            .unwrap_err();
+        assert!(matches!(
+            source_only,
+            NahualiError::InvalidIntentionUpdate { .. }
+        ));
+        assert_eq!(memory.events().len(), events_before_invalid);
+
+        drop(memory);
+        let memory = MemoryEngine::open(&path).unwrap();
+        let audit = memory.audit_ledger(&crate::LedgerAuditOptions::default());
+        let sources = audit
+            .entries
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry.kind,
+                    crate::LedgerAuditEventKind::IntentionUpdated
+                        | crate::LedgerAuditEventKind::IntentionStatusChanged
+                )
+            })
+            .map(|entry| entry.source_episode_id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(sources, vec![Some(drafted.id), Some(published.id)]);
+        assert!(audit.integrity.verified);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn inspection_reports_unsupported_facts() {
         let path = temp_path("inspection_reports_unsupported_facts");
         let _ = fs::remove_file(&path);

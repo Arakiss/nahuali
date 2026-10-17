@@ -119,6 +119,8 @@ pub(crate) struct LedgerAuditEntryView {
     summary: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     scope: Option<ScopeView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_episode_id: Option<String>,
 }
 
 impl From<LedgerAuditEntry> for LedgerAuditEntryView {
@@ -130,6 +132,7 @@ impl From<LedgerAuditEntry> for LedgerAuditEntryView {
             kind: json_string(&entry.kind),
             summary: entry.summary,
             scope: entry.scope.map(ScopeView::from),
+            source_episode_id: entry.source_episode_id,
         }
     }
 }
