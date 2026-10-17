@@ -168,6 +168,7 @@ pub use intention::{
     INTENTION_RECONCILIATION_VERSION, IntentionReconciliationIssue,
     IntentionReconciliationIssueKind, IntentionReconciliationOptions,
     IntentionReconciliationPriority, IntentionReconciliationReport, IntentionUpdateOptions,
+    intention_is_stale,
 };
 pub use interchange::{
     InterchangeClaim, InterchangeEpisode, InterchangeImportCounts, InterchangeImportPreflight,

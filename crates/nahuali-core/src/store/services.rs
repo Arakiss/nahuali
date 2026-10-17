@@ -217,6 +217,28 @@ impl MemoryEngine {
         briefing::briefing(&self.data, options)
     }
 
+    /// Read projected active intentions that have gone more than
+    /// `stale_after_ms` without an update as of `now_ms`, most recently
+    /// updated first, at most `limit` (minimum one, like
+    /// [`Self::projection_pending`]).
+    ///
+    /// Every active intention is read before filtering: the projection orders
+    /// by most recent update, so truncating first would drop exactly the
+    /// oldest intentions this view exists to surface.
+    pub fn projection_stale_pending(
+        &self,
+        stale_after_ms: u64,
+        now_ms: u64,
+        limit: usize,
+    ) -> Result<Vec<GraphProjectionPendingIntention>> {
+        let mut intentions = self.projection_pending(usize::MAX)?;
+        intentions.retain(|intention| {
+            crate::intention_is_stale(intention.updated_at_ms, now_ms, stale_after_ms)
+        });
+        intentions.truncate(limit.max(1));
+        Ok(intentions)
+    }
+
     /// Produce a focused non-mutating project/entity dashboard.
     ///
     /// Project views compose graph traversal, recall, knowledge health,

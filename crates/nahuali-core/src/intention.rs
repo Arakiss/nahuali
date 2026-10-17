@@ -13,6 +13,13 @@ pub const GOAL_PROGRESS_VERSION: u32 = 1;
 /// Default stale active-intention threshold in milliseconds.
 pub const DEFAULT_INTENTION_STALE_AFTER_MS: u64 = 30 * 24 * 60 * 60 * 1000;
 
+/// Whether an intention last updated at `updated_at_ms` has gone more than
+/// `stale_after_ms` without changing as of `now_ms`. A zero threshold disables
+/// staleness. Shared by reconciliation, the briefing, and `pending --stale`.
+pub fn intention_is_stale(updated_at_ms: u64, now_ms: u64, stale_after_ms: u64) -> bool {
+    stale_after_ms > 0 && updated_at_ms.saturating_add(stale_after_ms) < now_ms
+}
+
 /// Options for updating intention metadata.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IntentionUpdateOptions {
@@ -212,12 +219,11 @@ pub(crate) fn reconcile_intentions(
                 }
             }
 
-            if options.stale_after_ms > 0
-                && intention
-                    .updated_at_ms
-                    .saturating_add(options.stale_after_ms)
-                    < options.now_ms
-            {
+            if intention_is_stale(
+                intention.updated_at_ms,
+                options.now_ms,
+                options.stale_after_ms,
+            ) {
                 issues.push(issue(
                     intention,
                     IntentionReconciliationIssueKind::Stale,

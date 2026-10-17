@@ -395,6 +395,56 @@ mod tests {
     }
 
     #[test]
+    fn stale_pending_filters_before_limiting_the_projection() {
+        let path = temp_path("stale_pending_filters_before_limiting");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let old = memory
+            .add_intention(
+                "Untouched since last quarter",
+                IntentionKind::Task,
+                IntentionPriority::Critical,
+                None,
+            )
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let fresh = memory
+            .add_intention(
+                "In flight today",
+                IntentionKind::Task,
+                IntentionPriority::Low,
+                None,
+            )
+            .unwrap();
+        assert!(fresh.updated_at_ms >= old.updated_at_ms + 5);
+
+        // The plain view truncates the newest-first projection, so the old
+        // intention falls outside a limit of one.
+        let newest = memory.projection_pending(1).unwrap();
+        assert_eq!(newest.len(), 1);
+        assert_eq!(newest[0].memory_id, fresh.id);
+
+        let now_ms = fresh.updated_at_ms;
+        let stale = memory.projection_stale_pending(2, now_ms, 1).unwrap();
+        assert_eq!(
+            stale
+                .iter()
+                .map(|intention| intention.memory_id.as_str())
+                .collect::<Vec<_>>(),
+            vec![old.id.as_str()]
+        );
+        assert!(
+            memory
+                .projection_stale_pending(2, old.updated_at_ms, 10)
+                .unwrap()
+                .is_empty()
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn materializes_surrealdb_graph_projection_from_record_ledger() {
         let path = temp_path("materializes_surrealdb_graph_projection");
         let _ = fs::remove_file(&path);
