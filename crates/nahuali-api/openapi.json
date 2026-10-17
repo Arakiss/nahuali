@@ -1097,6 +1097,10 @@
           },
           "reason": {
             "type": "string"
+          },
+          "source_episode_id": {
+            "type": "string",
+            "description": "Recorded episode that justifies the lifecycle change."
           }
         }
       },
@@ -1143,6 +1147,10 @@
             ],
             "minimum": 0,
             "maximum": 100
+          },
+          "source_episode_id": {
+            "type": "string",
+            "description": "Recorded episode that justifies the update. Not an update by itself; at least one other field must change."
           }
         }
       },

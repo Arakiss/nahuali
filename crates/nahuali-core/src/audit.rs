@@ -75,6 +75,9 @@ pub struct LedgerAuditEntry {
     /// Memory scope carried by the event, when present.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<MemoryScope>,
+    /// Episode the event cites as its evidence, when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_episode_id: Option<String>,
 }
 
 /// Per-category counts of changes within the audited range.
@@ -243,6 +246,7 @@ pub fn audit_events(events: &[EventEnvelope], options: &LedgerAuditOptions) -> L
             kind: event_kind(&event.payload),
             summary: summarize(&event.payload),
             scope: event_scope(&event.payload),
+            source_episode_id: event_source_episode(&event.payload).map(str::to_string),
         });
     }
 
@@ -382,6 +386,26 @@ fn event_scope(payload: &MemoryEvent) -> Option<MemoryScope> {
         },
         MemoryEvent::IntentionUpdated(_)
         | MemoryEvent::IntentionStatusChanged(_)
+        | MemoryEvent::MemoryForgotten(_)
+        | MemoryEvent::Redacted(_) => None,
+    }
+}
+
+fn event_source_episode(payload: &MemoryEvent) -> Option<&str> {
+    match payload {
+        MemoryEvent::FactAsserted(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::RelationRecorded(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::ProcedureRecorded(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::IntentionRecorded(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::IntentionUpdated(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::IntentionStatusChanged(event) => event.source_episode_id.as_deref(),
+        MemoryEvent::RepairApplied(event) => match &event.materialized {
+            RepairMaterialization::Claim(claim) => claim.source_episode_id.as_deref(),
+            RepairMaterialization::Link(link) => link.source_episode_id.as_deref(),
+        },
+        MemoryEvent::SourceRecorded(_)
+        | MemoryEvent::EpisodeRecorded(_)
+        | MemoryEvent::ReviewRecorded(_)
         | MemoryEvent::MemoryForgotten(_)
         | MemoryEvent::Redacted(_) => None,
     }

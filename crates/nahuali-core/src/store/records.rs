@@ -778,6 +778,7 @@ impl MemoryEngine {
         {
             return Err(NahualiError::UnknownIntention { id });
         }
+        self.require_episode_exists(options.source_episode_id.as_deref())?;
 
         let payload = prepare_intention_update(id.clone(), options)?;
         self.append(MemoryEvent::IntentionUpdated(payload))?;
@@ -828,6 +829,21 @@ impl MemoryEngine {
         status: IntentionStatus,
         reason: Option<String>,
     ) -> Result<Intention> {
+        self.set_intention_status_with_source(id, status, reason, None)
+    }
+
+    /// Change an intention lifecycle state, citing the episode that justifies
+    /// the change.
+    ///
+    /// A cited episode must already be recorded, as for every other write
+    /// that carries a source episode.
+    pub fn set_intention_status_with_source(
+        &mut self,
+        id: impl Into<String>,
+        status: IntentionStatus,
+        reason: Option<String>,
+        source_episode_id: Option<String>,
+    ) -> Result<Intention> {
         let id = id.into().trim().to_string();
         if id.is_empty() {
             return Err(NahualiError::EmptyContent);
@@ -840,6 +856,7 @@ impl MemoryEngine {
         {
             return Err(NahualiError::UnknownIntention { id });
         }
+        self.require_episode_exists(source_episode_id.as_deref())?;
 
         let payload = MemoryEvent::IntentionStatusChanged(IntentionStatusChanged {
             id: id.clone(),
@@ -852,6 +869,7 @@ impl MemoryEngine {
                     Some(reason)
                 }
             }),
+            source_episode_id,
         });
         self.append(payload)?;
 
@@ -965,6 +983,7 @@ fn prepare_intention_update(
         depends_on,
         goal_id,
         progress_percent: options.progress_percent,
+        source_episode_id: options.source_episode_id,
     })
 }
 

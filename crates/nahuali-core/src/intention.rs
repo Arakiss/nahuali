@@ -35,6 +35,9 @@ pub struct IntentionUpdateOptions {
     pub goal_id: Option<Option<String>>,
     /// Progress update. `Some(None)` clears progress.
     pub progress_percent: Option<Option<u8>>,
+    /// Recorded episode that justifies the update. Citing a source is not an
+    /// update by itself: at least one other field must change.
+    pub source_episode_id: Option<String>,
 }
 
 /// Options for building a non-mutating intention reconciliation report.

@@ -495,7 +495,8 @@ async fn api_exposes_operator_loop_contract() {
             "id": task["id"],
             "deadline_at_ms": 50,
             "goal_id": goal["id"],
-            "progress_percent": 25
+            "progress_percent": 25,
+            "source_episode_id": episode["id"]
         }),
     )
     .await;
@@ -616,17 +617,38 @@ async fn api_exposes_operator_loop_contract() {
     assert_eq!(cleared["progress_percent"], 25);
 
     let status = json_request(
-        app,
+        app.clone(),
         "/v1/intention/status",
         json!({
             "id": task["id"],
             "status": "completed",
-            "reason": "API parity validated"
+            "reason": "API parity validated",
+            "source_episode_id": episode["id"]
         }),
     )
     .await;
     assert_eq!(status["status"], "completed");
     assert_eq!(status["status_reason"], "API parity validated");
+
+    let audit = get_json(app, "/v1/audit").await;
+    let cited = audit["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|entry| {
+            entry["kind"] == "intention_updated" || entry["kind"] == "intention_status_changed"
+        })
+        .map(|entry| entry["source_episode_id"].clone())
+        .collect::<Vec<_>>();
+    // The deadline clear in between cites nothing, so it carries no source.
+    assert_eq!(
+        cited,
+        vec![
+            episode["id"].clone(),
+            serde_json::Value::Null,
+            episode["id"].clone()
+        ]
+    );
 }
 
 #[tokio::test]
