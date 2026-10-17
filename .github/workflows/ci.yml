@@ -81,6 +81,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: ${{ matrix.command }}
+        env:
+          # Tests must pin their own store. One that falls through to the
+          # environment hits this dead port and fails instead of passing
+          # against whatever store the runner happens to have.
+          NAHUALI_DB_URL: ws://127.0.0.1:1
+      - name: Tests left no store under HOME
+        run: test ! -e "$HOME/.nahuali"
 
   coverage:
     name: coverage
