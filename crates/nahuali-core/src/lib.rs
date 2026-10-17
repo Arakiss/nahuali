@@ -134,7 +134,7 @@ pub use database::{
 };
 pub use error::{NahualiError, Result};
 #[cfg(feature = "tamper-evidence")]
-pub use event::{ChainBreak, verify_event_chain};
+pub use event::{ChainBreak, deserialize_nullable_update, verify_event_chain};
 pub use event::{
     EVENT_ENVELOPE_VERSION, EpisodeRecorded, EventEnvelope, FactAsserted, IntentionRecorded,
     IntentionRecordedKind, IntentionRecordedPriority, IntentionRecordedStatus,

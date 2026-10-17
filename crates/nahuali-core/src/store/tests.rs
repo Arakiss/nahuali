@@ -867,6 +867,68 @@ mod tests {
     }
 
     #[test]
+    fn clearing_intention_fields_keeps_the_ledger_valid_across_reopen() {
+        let path = temp_path("clearing_intention_fields_keeps_ledger_valid");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let goal = memory
+            .add_intention(
+                "Ship the beta",
+                IntentionKind::Goal,
+                IntentionPriority::High,
+                None,
+            )
+            .unwrap();
+        let intention = memory
+            .add_intention(
+                "Write the upgrade notes",
+                IntentionKind::Task,
+                IntentionPriority::Medium,
+                None,
+            )
+            .unwrap();
+        memory
+            .update_intention(
+                intention.id.clone(),
+                IntentionUpdateOptions {
+                    deadline_at_ms: Some(Some(1_900_000_000_000)),
+                    goal_id: Some(Some(goal.id)),
+                    progress_percent: Some(Some(40)),
+                    ..IntentionUpdateOptions::default()
+                },
+            )
+            .unwrap();
+        memory
+            .update_intention(
+                intention.id.clone(),
+                IntentionUpdateOptions {
+                    deadline_at_ms: Some(None),
+                    goal_id: Some(None),
+                    progress_percent: Some(None),
+                    ..IntentionUpdateOptions::default()
+                },
+            )
+            .unwrap();
+
+        let validation = MemoryEngine::validate_store(&path).unwrap();
+        assert!(validation.valid, "{:?}", validation.issues);
+        let reopened = MemoryEngine::open(&path).unwrap();
+        let cleared = reopened
+            .data()
+            .intentions
+            .iter()
+            .find(|candidate| candidate.id == intention.id)
+            .unwrap();
+        assert_eq!(cleared.deadline_at_ms, None);
+        assert_eq!(cleared.goal_id, None);
+        assert_eq!(cleared.progress_percent, None);
+        assert!(reopened.projection_validate().unwrap().valid);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn concurrent_graph_rebuilds_leave_one_complete_projection() {
         const REBUILDER_COUNT: usize = 8;
         let path = temp_path("concurrent_graph_rebuilds");
