@@ -212,7 +212,8 @@ pub use proactive::{
     ProactiveOptions, ProactivePriority, ProactiveSummary,
 };
 pub use project::{
-    MEMORY_PROJECT_VIEW_VERSION, MemoryProjectReport, ProjectViewOptions, ProjectViewSummary,
+    MEMORY_PROJECT_VIEW_VERSION, MemoryProjectReport, PROJECT_SCOPE_RULE, ProjectScope,
+    ProjectScopeSummary, ProjectViewOptions, ProjectViewSummary,
 };
 pub use projection::project_validated_events;
 pub use recall::{RecallOptions, RecallRankingPolicy, recall_projection_with_authority};

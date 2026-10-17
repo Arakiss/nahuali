@@ -214,7 +214,52 @@ impl MemoryEngine {
 
     /// Produce a compact non-mutating session briefing with explicit limits.
     pub fn briefing_with_options(&self, options: BriefingOptions) -> MemoryBriefingReport {
-        briefing::briefing(&self.data, options)
+        briefing::briefing(&self.data, options, None)
+    }
+
+    /// Attribute memory to one project (see [`crate::PROJECT_SCOPE_RULE`]).
+    ///
+    /// Fails only on an empty project name; a project that matches nothing
+    /// yields an empty scope, which callers report as such.
+    pub fn project_scope(&self, project: &str) -> Result<ProjectScope> {
+        project::project_scope(&self.data, project)
+    }
+
+    /// Produce a session briefing limited to one project: recent episodes,
+    /// active intentions, and intention counts cover only memory attributed
+    /// to it, and the report names the active scope. Health, review items,
+    /// and graph seeds stay store-wide.
+    pub fn briefing_for_project(
+        &self,
+        options: BriefingOptions,
+        project: &str,
+    ) -> Result<MemoryBriefingReport> {
+        let scope = self.project_scope(project)?;
+        Ok(briefing::briefing(&self.data, options, Some(&scope)))
+    }
+
+    /// Read projected active intentions attributed to `scope`, most recently
+    /// updated first, at most `limit` (minimum one). With `stale_after_ms`,
+    /// only those without an update for longer than that as of `now_ms`.
+    ///
+    /// Every pending intention is read before filtering so the limit applies
+    /// to the project, not to the whole store.
+    pub fn projection_project_pending(
+        &self,
+        scope: &ProjectScope,
+        stale_after_ms: Option<u64>,
+        now_ms: u64,
+        limit: usize,
+    ) -> Result<Vec<GraphProjectionPendingIntention>> {
+        let mut intentions = self.projection_pending(usize::MAX)?;
+        intentions.retain(|intention| {
+            scope.includes_intention(&intention.memory_id)
+                && stale_after_ms.is_none_or(|stale_after_ms| {
+                    crate::intention_is_stale(intention.updated_at_ms, now_ms, stale_after_ms)
+                })
+        });
+        intentions.truncate(limit.max(1));
+        Ok(intentions)
     }
 
     /// Read projected active intentions that have gone more than

@@ -98,7 +98,7 @@ pub fn tool_catalog() -> Vec<McpTool> {
         },
         McpTool {
             name: "briefing",
-            description: "Use this first at the start of a session, before any other work: it returns the compact read-only pre-work surface (authority, health, recent episodes, active intentions, high-priority review items, graph seeds). It does not change anything. Then `recall` specifics or act on the surfaced intentions and review items.",
+            description: "Use this first at the start of a session, before any other work: it returns the compact read-only pre-work surface (authority, health, recent episodes, active intentions, high-priority review items, graph seeds). Pass `project` to limit episodes and intentions to one project. It does not change anything. Then `recall` specifics or act on the surfaced intentions and review items.",
         },
         McpTool {
             name: "memory_hook",

@@ -29,8 +29,8 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use nahuali_core::{
-    LedgerAuditOptions, MemoryEngine, NahualiError, RecallRankingPolicy, ResolvedValue,
-    TrustReportOptions,
+    BriefingOptions, LedgerAuditOptions, MemoryEngine, NahualiError, RecallRankingPolicy,
+    ResolvedValue, TrustReportOptions,
 };
 
 use crate::cli::{Cli, Command};
@@ -373,6 +373,15 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             json,
         } => reports::anomaly_acknowledge(&mut memory, id, note, dry_run, json)?,
         Command::Briefing {
+            project,
+            episode_limit,
+            intention_limit,
+            review_limit,
+            graph_seed_limit,
+            json,
+        }
+        | Command::SessionResume {
+            project,
             episode_limit,
             intention_limit,
             review_limit,
@@ -380,34 +389,32 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             json,
         } => reports::briefing(
             &mut memory,
-            episode_limit,
-            intention_limit,
-            review_limit,
-            graph_seed_limit,
-            json,
-            &database,
-        )?,
-        Command::SessionResume {
-            episode_limit,
-            intention_limit,
-            review_limit,
-            graph_seed_limit,
-            json,
-        } => reports::briefing(
-            &mut memory,
-            episode_limit,
-            intention_limit,
-            review_limit,
-            graph_seed_limit,
+            BriefingOptions {
+                episode_limit,
+                intention_limit,
+                review_limit,
+                graph_seed_limit,
+            },
+            project.as_deref(),
             json,
             &database,
         )?,
         Command::Timeline { limit, json } => {
             reports::projection_timeline(&mut memory, &database, limit, json)?
         }
-        Command::Pending { limit, stale, json } => {
-            reports::projection_pending(&mut memory, &database, limit, stale, json)?
-        }
+        Command::Pending {
+            limit,
+            stale,
+            project,
+            json,
+        } => reports::projection_pending(
+            &mut memory,
+            &database,
+            limit,
+            stale,
+            project.as_deref(),
+            json,
+        )?,
         Command::Sleep {
             episode_limit,
             candidate_limit,
@@ -558,7 +565,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             reports::projection_timeline(&mut memory, &database, limit, json)?
         }
         Command::ProjectionPending { limit, json } => {
-            reports::projection_pending(&mut memory, &database, limit, None, json)?
+            reports::projection_pending(&mut memory, &database, limit, None, None, json)?
         }
         Command::ProjectionHealth { limit, json } => {
             reports::projection_health(&mut memory, &database, limit, json)?

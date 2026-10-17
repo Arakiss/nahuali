@@ -1,5 +1,6 @@
 use nahuali_core::{
     BriefingEpisode, BriefingGraphSeed, BriefingIntention, BriefingSummary, MemoryBriefingReport,
+    ProjectScopeSummary,
 };
 use rmcp::schemars;
 use serde::Serialize;
@@ -132,6 +133,30 @@ impl From<BriefingGraphSeed> for BriefingGraphSeedView {
     }
 }
 
+/// Active project scope of a briefing and what it matched.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub(crate) struct ProjectScopeView {
+    project: String,
+    scope_key: String,
+    matched_entity: Option<String>,
+    episode_count: usize,
+    intention_count: usize,
+    rule: String,
+}
+
+impl From<ProjectScopeSummary> for ProjectScopeView {
+    fn from(scope: ProjectScopeSummary) -> Self {
+        Self {
+            project: scope.project,
+            scope_key: scope.scope_key,
+            matched_entity: scope.matched_entity,
+            episode_count: scope.episode_count,
+            intention_count: scope.intention_count,
+            rule: scope.rule,
+        }
+    }
+}
+
 /// Structured session-briefing report surfacing authority, health, and seeds.
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct BriefingReportView {
@@ -145,6 +170,9 @@ pub(crate) struct BriefingReportView {
     active_intentions: Vec<BriefingIntentionView>,
     review_items: Vec<OperatorReviewItemView>,
     graph_seeds: Vec<BriefingGraphSeedView>,
+    /// Present when the briefing was limited to one project.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_scope: Option<ProjectScopeView>,
 }
 
 impl From<MemoryBriefingReport> for BriefingReportView {
@@ -176,6 +204,7 @@ impl From<MemoryBriefingReport> for BriefingReportView {
                 .into_iter()
                 .map(BriefingGraphSeedView::from)
                 .collect(),
+            project_scope: report.project_scope.map(ProjectScopeView::from),
         }
     }
 }

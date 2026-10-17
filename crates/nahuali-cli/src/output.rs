@@ -5,8 +5,8 @@ use nahuali_core::{
     DeadlineReport, GoalProgressReport, IngestionReport, IntentionReconciliationReport,
     InterchangeImportReport, MemoryBriefingReport, MemoryConsolidationPlanReport,
     MemoryGraphReport, MemoryHookReport, MemoryProactiveReport, MemoryProjectReport,
-    MemoryReflectionReport, MemorySleepReport, OperatorReviewReport, RecordLedgerIssueKind,
-    RecordView, RepairReport, ReviewResolutionReport, SnapshotIssueKind,
+    MemoryReflectionReport, MemorySleepReport, OperatorReviewReport, ProjectScopeSummary,
+    RecordLedgerIssueKind, RecordView, RepairReport, ReviewResolutionReport, SnapshotIssueKind,
 };
 use serde::Serialize;
 
@@ -271,6 +271,39 @@ fn record_field(name: &str, value: &serde_json::Value) -> Option<String> {
     }
 }
 
+/// Quote `word` for a copy-pasteable shell hint when it is not a plain token.
+fn shell_word(word: &str) -> String {
+    if !word.is_empty()
+        && word
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ':' | '/'))
+    {
+        word.to_string()
+    } else {
+        format!("'{}'", word.replace('\'', r"'\''"))
+    }
+}
+
+/// One line naming the active `--project` scope and what it matched, so a
+/// scoped report is never mistaken for the whole store.
+pub(crate) fn project_scope_line(scope: &ProjectScopeSummary) -> String {
+    if scope.episode_count == 0 && scope.intention_count == 0 {
+        return format!(
+            "Scope: project {} matched no episodes or intentions (record with --mention {} or --scope {})",
+            scope.project, scope.project, scope.scope_key
+        );
+    }
+    let entity = scope
+        .matched_entity
+        .as_deref()
+        .map(|entity| format!(" (entity {entity})"))
+        .unwrap_or_default();
+    format!(
+        "Scope: project {}{entity} · {} episodes · {} intentions attributed · other projects hidden",
+        scope.project, scope.episode_count, scope.intention_count
+    )
+}
+
 pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
     println!("{}", crate::style::heading("Session briefing"));
     println!(
@@ -297,6 +330,15 @@ pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
             report.summary.high_priority_review_count,
         ))
     );
+    if let Some(scope) = &report.project_scope {
+        println!(
+            "{}",
+            crate::style::dim(&format!(
+                "{} · health, review, and graph seeds stay store-wide",
+                project_scope_line(scope)
+            ))
+        );
+    }
 
     if !report.recent_episodes.is_empty() {
         println!("\n{}", crate::style::heading("Recent episodes"));
@@ -335,10 +377,15 @@ pub(crate) fn print_briefing_report(report: &MemoryBriefingReport) {
             .saturating_sub(shown_stale);
         if hidden_stale > 0 {
             let days = DEFAULT_INTENTION_STALE_AFTER_MS / DAY_MS;
+            let project = report
+                .project_scope
+                .as_ref()
+                .map(|scope| format!(" --project {}", shell_word(&scope.project)))
+                .unwrap_or_default();
             println!(
                 "  {}",
                 crate::style::dim(&format!(
-                    "+{hidden_stale} stale active intentions not shown (no update in {days}d) · review: nahuali pending --stale {days}"
+                    "+{hidden_stale} stale active intentions not shown (no update in {days}d) · review: nahuali pending{project} --stale {days}"
                 ))
             );
         }
@@ -1183,7 +1230,14 @@ fn print_anomaly_rows(report: &AnomalyReport) {
 
 #[cfg(test)]
 mod tests {
-    use super::{DAY_MS, intention_meta, utc_minute};
+    use super::{DAY_MS, intention_meta, shell_word, utc_minute};
+
+    #[test]
+    fn shell_word_quotes_only_when_needed() {
+        assert_eq!(shell_word("nahuali"), "nahuali");
+        assert_eq!(shell_word("Acme Corp"), "'Acme Corp'");
+        assert_eq!(shell_word("it's"), r"'it'\''s'");
+    }
 
     #[test]
     fn utc_minute_renders_calendar_dates_across_leap_years() {

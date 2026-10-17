@@ -50,6 +50,7 @@ include!("operator_path_cases/lifecycle.rs");
 include!("operator_path_cases/concurrency.rs");
 include!("operator_path_cases/literals.rs");
 include!("operator_path_cases/forget.rs");
+include!("operator_path_cases/project_scope.rs");
 include!("operator_path_cases/scopes.rs");
 include!("operator_path_cases/show.rs");
 include!("operator_path_cases/ingestion.rs");

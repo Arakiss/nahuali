@@ -624,7 +624,7 @@ impl NahualiMcpServer {
     }
 
     #[tool(
-        description = "Use this first at the start of a session, before any other work: it returns the compact read-only pre-work surface (authority, health, recent episodes, active intentions, high-priority review items, graph seeds). It does not change anything. Then `recall` specifics or act on the surfaced intentions and review items.",
+        description = "Use this first at the start of a session, before any other work: it returns the compact read-only pre-work surface (authority, health, recent episodes, active intentions, high-priority review items, graph seeds). Pass `project` to limit episodes and intentions to one project. It does not change anything. Then `recall` specifics or act on the surfaced intentions and review items.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn briefing(
@@ -632,12 +632,18 @@ impl NahualiMcpServer {
         Parameters(args): Parameters<BriefingArgs>,
     ) -> Result<Json<BriefingResult>, String> {
         let report = self.with_memory(|memory| {
-            Ok(memory.briefing_with_options(BriefingOptions {
+            let options = BriefingOptions {
                 episode_limit: args.episode_limit.unwrap_or(5),
                 intention_limit: args.intention_limit.unwrap_or(5),
                 review_limit: args.review_limit.unwrap_or(5),
                 graph_seed_limit: args.graph_seed_limit.unwrap_or(8),
-            }))
+            };
+            match args.project.as_deref() {
+                Some(project) => memory
+                    .briefing_for_project(options, project)
+                    .map_err(|error| error.to_string()),
+                None => Ok(memory.briefing_with_options(options)),
+            }
         })?;
         Ok(Json(BriefingResult {
             report: report.into(),

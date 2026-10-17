@@ -43,7 +43,7 @@ use crate::{
     },
     operator_review::{self, OperatorReviewOptions, OperatorReviewReport},
     proactive,
-    project::{self, MemoryProjectReport, ProjectViewOptions},
+    project::{self, MemoryProjectReport, ProjectScope, ProjectViewOptions},
     projection, recall,
     record_view::{self, RecordView},
     reflection, review_writeback,

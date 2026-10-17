@@ -68,19 +68,15 @@ pub(crate) fn status(
 
 pub(crate) fn briefing(
     memory: &mut MemoryEngine,
-    episode_limit: usize,
-    intention_limit: usize,
-    review_limit: usize,
-    graph_seed_limit: usize,
+    options: BriefingOptions,
+    project: Option<&str>,
     json: bool,
     database: &std::path::Path,
 ) -> anyhow::Result<()> {
-    let report = memory.briefing_with_options(BriefingOptions {
-        episode_limit,
-        intention_limit,
-        review_limit,
-        graph_seed_limit,
-    });
+    let report = match project {
+        Some(project) => memory.briefing_for_project(options, project)?,
+        None => memory.briefing_with_options(options),
+    };
     if json {
         let mut envelope = serde_json::json!({
             "database": database.display().to_string(),
@@ -931,6 +927,7 @@ pub(crate) fn projection_pending(
     database: &std::path::Path,
     limit: usize,
     stale_after_days: Option<u64>,
+    project: Option<&str>,
     json: bool,
 ) -> anyhow::Result<()> {
     let now_ms = std::time::SystemTime::now()
@@ -940,23 +937,53 @@ pub(crate) fn projection_pending(
     let stale_after_ms = stale_after_days
         .map(|days| days.saturating_mul(output::DAY_MS))
         .unwrap_or(DEFAULT_INTENTION_STALE_AFTER_MS);
-    let intentions = match stale_after_days {
-        Some(_) => memory.projection_stale_pending(stale_after_ms, now_ms, limit)?,
-        None => memory.projection_pending(limit)?,
+    let scope = project
+        .map(|project| memory.project_scope(project))
+        .transpose()?;
+    let intentions = match (&scope, stale_after_days) {
+        (Some(scope), stale) => memory.projection_project_pending(
+            scope,
+            stale.map(|_| stale_after_ms),
+            now_ms,
+            limit,
+        )?,
+        (None, Some(_)) => memory.projection_stale_pending(stale_after_ms, now_ms, limit)?,
+        (None, None) => memory.projection_pending(limit)?,
     };
     if json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "database": database.display().to_string(),
-                "projection_role": "derived_from_memory_record",
-                "stale_after_days": stale_after_days,
-                "intentions": intentions,
-            }))?
-        );
+        let mut envelope = serde_json::json!({
+            "database": database.display().to_string(),
+            "projection_role": "derived_from_memory_record",
+            "stale_after_days": stale_after_days,
+            "intentions": intentions,
+        });
+        if let Some(scope) = &scope {
+            envelope["project_scope"] = serde_json::to_value(scope.summary())?;
+        }
+        println!("{}", serde_json::to_string_pretty(&envelope)?);
     } else {
-        if intentions.is_empty() && stale_after_days.is_some() {
-            println!("No active intentions are older than the stale threshold.");
+        if let Some(scope) = &scope {
+            println!(
+                "{}",
+                crate::style::dim(&output::project_scope_line(scope.summary()))
+            );
+        }
+        if intentions.is_empty() {
+            match (&scope, stale_after_days) {
+                (Some(scope), _) => println!(
+                    "No {}active intentions are attributed to project {}.",
+                    if stale_after_days.is_some() {
+                        "stale "
+                    } else {
+                        ""
+                    },
+                    scope.summary().project
+                ),
+                (None, Some(_)) => {
+                    println!("No active intentions are older than the stale threshold.")
+                }
+                (None, None) => {}
+            }
         }
         for intention in intentions {
             println!(

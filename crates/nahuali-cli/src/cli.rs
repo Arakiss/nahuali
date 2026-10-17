@@ -652,9 +652,15 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     },
     #[command(
         about = "Print a compact non-mutating session briefing.",
-        after_help = "Examples:\n  nahuali briefing\n  nahuali briefing --episode-limit 10 --review-limit 10\n  nahuali briefing --json"
+        after_help = "With --project, recent episodes and active intentions cover only memory attributed \
+to that project: scoped to project:<name>, mentioning it, or naming it in their text (intentions also \
+when they cite such an episode or sit under such a goal). Health, review items, and graph seeds stay \
+store-wide.\n\nExamples:\n  nahuali briefing\n  nahuali briefing --project nahuali\n  nahuali briefing --episode-limit 10 --review-limit 10\n  nahuali briefing --json"
     )]
     Briefing {
+        /// Only include episodes and intentions attributed to this project.
+        #[arg(long, value_name = "NAME")]
+        project: Option<String>,
         /// Maximum number of recent episodes to include.
         #[arg(long = "episode-limit", default_value_t = 5)]
         episode_limit: usize,
@@ -673,6 +679,9 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     },
     #[command(about = "Resume a session with briefing, authority, and review context.")]
     SessionResume {
+        /// Only include episodes and intentions attributed to this project.
+        #[arg(long, value_name = "NAME")]
+        project: Option<String>,
         /// Maximum number of recent episodes to include.
         #[arg(long = "episode-limit", default_value_t = 5)]
         episode_limit: usize,
@@ -700,7 +709,8 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
     },
     #[command(
         about = "Read pending intentions from the SurrealDB projection.",
-        after_help = "Examples:\n  nahuali pending\n  nahuali pending --stale 30\n  nahuali pending --stale 90 --limit 50 --json"
+        after_help = "With --project, only intentions attributed to that project are listed (the same \
+attribution as `briefing --project`), and the limit applies within the project.\n\nExamples:\n  nahuali pending\n  nahuali pending --project nahuali\n  nahuali pending --stale 30\n  nahuali pending --project nahuali --stale 90 --limit 50 --json"
     )]
     Pending {
         /// Maximum number of pending intentions to return.
@@ -709,6 +719,9 @@ Credentials are never printed.\n\nExamples:\n  nahuali config\n  nahuali --datab
         /// Only show active intentions not updated in more than this many days.
         #[arg(long, value_name = "DAYS", value_parser = clap::value_parser!(u64).range(1..))]
         stale: Option<u64>,
+        /// Only show intentions attributed to this project.
+        #[arg(long, value_name = "NAME")]
+        project: Option<String>,
         /// Emit machine-readable JSON instead of text.
         #[arg(long)]
         json: bool,
