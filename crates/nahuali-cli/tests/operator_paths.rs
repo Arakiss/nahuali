@@ -47,6 +47,7 @@ include!("operator_path_cases/receipt.rs");
 include!("operator_path_cases/trust_report.rs");
 include!("operator_path_cases/memory.rs");
 include!("operator_path_cases/lifecycle.rs");
+include!("operator_path_cases/intention_closure.rs");
 include!("operator_path_cases/concurrency.rs");
 include!("operator_path_cases/literals.rs");
 include!("operator_path_cases/forget.rs");

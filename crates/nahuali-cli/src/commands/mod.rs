@@ -322,9 +322,29 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             record::intention_defer(&mut memory, id, reason, json)?
         }
         Command::ReconcileIntentions {
+            close: Some(status),
+            ids,
+            ids_from,
+            reason,
+            apply,
+            json,
+            ..
+        } => reports::close_intentions(
+            &mut memory,
+            reports::ClosureArgs {
+                status,
+                ids,
+                ids_from,
+                reason: reason.unwrap_or_default(),
+                apply,
+            },
+            json,
+        )?,
+        Command::ReconcileIntentions {
             now_ms,
             stale_after_ms,
             json,
+            ..
         } => reports::reconcile_intentions(&mut memory, &database, now_ms, stale_after_ms, json)?,
         Command::GoalProgress { json } => reports::goal_progress(&mut memory, &database, json)?,
         Command::Proactive {

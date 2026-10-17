@@ -53,6 +53,7 @@ mod hooks;
 mod ingestion;
 mod inspection;
 mod intention;
+mod intention_closure;
 mod interchange;
 #[cfg(any(kani, test))]
 mod laws;
@@ -170,6 +171,10 @@ pub use intention::{
     IntentionReconciliationIssueKind, IntentionReconciliationOptions,
     IntentionReconciliationPriority, IntentionReconciliationReport, IntentionUpdateOptions,
     intention_is_stale,
+};
+pub use intention_closure::{
+    INTENTION_CLOSURE_VERSION, IntentionClosureChange, IntentionClosureFailure,
+    IntentionClosureOptions, IntentionClosureReport, IntentionClosureSkip,
 };
 pub use interchange::{
     InterchangeClaim, InterchangeEpisode, InterchangeImportCounts, InterchangeImportPreflight,

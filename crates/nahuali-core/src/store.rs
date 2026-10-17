@@ -32,6 +32,9 @@ use crate::{
     graph, hooks, ingestion,
     inspection::KnowledgeHealth,
     intention,
+    intention_closure::{
+        self, IntentionClosureFailure, IntentionClosureOptions, IntentionClosureReport,
+    },
     interchange::{self, InterchangeImportReport, MemoryInterchange},
     maintenance::{
         self, MaintenanceReport, MemorySnapshot, SnapshotValidation, record_ledger_checksum,

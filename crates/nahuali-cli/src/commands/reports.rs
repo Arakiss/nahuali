@@ -1,14 +1,14 @@
 use nahuali_core::{
     BriefingOptions, ConsolidationPlanOptions, DEFAULT_INTENTION_STALE_AFTER_MS,
-    IntentionReconciliationOptions, MemoryEngine, MemoryHookOptions, MemoryKind,
-    OperatorReviewOptions, ProactiveOptions, ProjectViewOptions, RecallOptions,
+    IntentionClosureOptions, IntentionReconciliationOptions, MemoryEngine, MemoryHookOptions,
+    MemoryKind, OperatorReviewOptions, ProactiveOptions, ProjectViewOptions, RecallOptions,
     RecallRankingPolicy, ReflectionOptions, SelfInspectionReviewAction,
     SelfInspectionReviewPriority, SleepModeOptions, intention_is_stale,
 };
 
 use crate::commands::scope::parse_scope;
 use crate::{
-    cli::{CliMemoryHookKind, CliRecallKind, CliReviewAction, CliReviewPriority},
+    cli::{CliClosureStatus, CliMemoryHookKind, CliRecallKind, CliReviewAction, CliReviewPriority},
     output,
 };
 
@@ -546,6 +546,74 @@ pub(crate) fn reconcile_intentions(
         output::print_intention_reconciliation_report(&report);
     }
     Ok(())
+}
+
+pub(crate) struct ClosureArgs {
+    pub(crate) status: CliClosureStatus,
+    pub(crate) ids: Vec<String>,
+    pub(crate) ids_from: Option<std::path::PathBuf>,
+    pub(crate) reason: String,
+    pub(crate) apply: bool,
+}
+
+pub(crate) fn close_intentions(
+    memory: &mut MemoryEngine,
+    args: ClosureArgs,
+    json: bool,
+) -> anyhow::Result<()> {
+    let mut ids = args.ids;
+    if let Some(path) = &args.ids_from {
+        ids.extend(read_id_list(path)?);
+    }
+    let report = memory.close_intentions(IntentionClosureOptions {
+        ids,
+        status: args.status.into(),
+        reason: args.reason,
+        dry_run: !args.apply,
+    })?;
+    if json {
+        output::print_json(&report)?;
+    } else {
+        output::print_intention_closure(&report);
+    }
+    if let Some(failure) = &report.failure {
+        anyhow::bail!(
+            "closure stopped at {} after {} written: {} ({} not closed)",
+            failure.id,
+            report.changes.len(),
+            failure.message,
+            failure.not_closed.len()
+        );
+    }
+    Ok(())
+}
+
+/// Read intention ids from a file, or stdin for `-`.
+fn read_id_list(path: &std::path::Path) -> anyhow::Result<Vec<String>> {
+    let text = if path == std::path::Path::new("-") {
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+            .map_err(|error| anyhow::anyhow!("failed to read ids from stdin: {error}"))?;
+        text
+    } else {
+        std::fs::read_to_string(path).map_err(|error| {
+            anyhow::anyhow!("failed to read ids from {}: {error}", path.display())
+        })?
+    };
+    Ok(parse_id_list(&text))
+}
+
+/// One id per line: the first token before any `#` comment; blank lines are
+/// ignored, so annotated lists like `intention_1  # old roadmap item` work.
+fn parse_id_list(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| {
+            line.split('#')
+                .next()
+                .and_then(|content| content.split_whitespace().next())
+                .map(str::to_owned)
+        })
+        .collect()
 }
 
 pub(crate) fn goal_progress(
@@ -1305,5 +1373,19 @@ fn print_hybrid_recall_results(results: Vec<nahuali_core::HybridRecallResult>) {
         if !result.explanations.is_empty() {
             println!("  explanations: {}", result.explanations.join(", "));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_id_list;
+
+    #[test]
+    fn id_lists_take_the_first_token_per_line_and_skip_comments() {
+        let text = "intention_1\n\n  intention_2   # old roadmap item\n# whole-line note\nintention_3 extra words\n";
+        assert_eq!(
+            parse_id_list(text),
+            vec!["intention_1", "intention_2", "intention_3"]
+        );
     }
 }

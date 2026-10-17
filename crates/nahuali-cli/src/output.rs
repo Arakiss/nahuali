@@ -2,11 +2,12 @@ use std::path::Path;
 
 use nahuali_core::{
     AnomalyAcknowledgementReport, AnomalyReport, BackupIssueKind, DEFAULT_INTENTION_STALE_AFTER_MS,
-    DeadlineReport, GoalProgressReport, IngestionReport, IntentionReconciliationReport,
-    InterchangeImportReport, MemoryBriefingReport, MemoryConsolidationPlanReport,
-    MemoryGraphReport, MemoryHookReport, MemoryProactiveReport, MemoryProjectReport,
-    MemoryReflectionReport, MemorySleepReport, OperatorReviewReport, ProjectScopeSummary,
-    RecordLedgerIssueKind, RecordView, RepairReport, ReviewResolutionReport, SnapshotIssueKind,
+    DeadlineReport, GoalProgressReport, IngestionReport, IntentionClosureReport,
+    IntentionReconciliationReport, InterchangeImportReport, MemoryBriefingReport,
+    MemoryConsolidationPlanReport, MemoryGraphReport, MemoryHookReport, MemoryProactiveReport,
+    MemoryProjectReport, MemoryReflectionReport, MemorySleepReport, OperatorReviewReport,
+    ProjectScopeSummary, RecordLedgerIssueKind, RecordView, RepairReport, ReviewResolutionReport,
+    SnapshotIssueKind,
 };
 use serde::Serialize;
 
@@ -1059,6 +1060,66 @@ pub(crate) fn print_intention_reconciliation_report(report: &IntentionReconcilia
         if !issue.evidence_ids.is_empty() {
             println!("  evidence: {}", issue.evidence_ids.join(", "));
         }
+    }
+}
+
+/// Every intention a bulk closure changed (or would change), what it skipped,
+/// and where an applied run stopped, if it did.
+pub(crate) fn print_intention_closure(report: &IntentionClosureReport) {
+    let status = token(&report.status);
+    let count = report.changes.len();
+    let title = if report.dry_run {
+        format!("Dry run: would mark {count} intention(s) {status}")
+    } else {
+        format!("Marked {count} intention(s) {status}")
+    };
+    println!("{}", crate::style::heading(&title));
+    println!(
+        "  {}",
+        crate::style::dim(&format!(
+            "reason: {} · {} requested",
+            report.reason, report.requested_count
+        ))
+    );
+    for change in &report.changes {
+        println!(
+            "  · {}  {} -> {}  {}",
+            change.id,
+            token(&change.previous_status),
+            token(&change.status),
+            one_line(&change.description, 72)
+        );
+        if let Some(event_id) = &change.event_id {
+            println!(
+                "    {}",
+                crate::style::dim(&format!("recorded as {event_id}"))
+            );
+        }
+    }
+    if !report.skipped.is_empty() {
+        println!(
+            "\n{}",
+            crate::style::heading(&format!("Skipped {} already closed", report.skipped.len()))
+        );
+        for skipped in &report.skipped {
+            println!(
+                "  · {}  already {}  {}",
+                skipped.id,
+                token(&skipped.status),
+                one_line(&skipped.description, 72)
+            );
+        }
+    }
+    if let Some(failure) = &report.failure {
+        println!("\n{}", crate::style::heading("Stopped"));
+        println!("  {} could not be closed: {}", failure.id, failure.message);
+        println!("  not closed: {}", failure.not_closed.join(", "));
+    }
+    if report.dry_run {
+        println!(
+            "\n{}",
+            crate::style::dim("Nothing was written. Re-run with --apply to record these closures.")
+        );
     }
 }
 

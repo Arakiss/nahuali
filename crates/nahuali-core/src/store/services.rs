@@ -326,6 +326,54 @@ impl MemoryEngine {
         intention::reconcile_intentions(&self.data, options)
     }
 
+    /// Close an explicit set of intentions as completed or abandoned.
+    ///
+    /// The whole selection is validated first (closing status, non-empty
+    /// reason, at least one id, every id known), so a bad id writes nothing.
+    /// Already-closed intentions are skipped and reported. Unless
+    /// `dry_run`, each remaining intention gets its own lifecycle event
+    /// through [`Self::set_intention_status`], carrying the reason; a write
+    /// failure stops the run and the report lists exactly what was written
+    /// and what was not.
+    pub fn close_intentions(
+        &mut self,
+        options: IntentionClosureOptions,
+    ) -> Result<IntentionClosureReport> {
+        let mut report = intention_closure::plan_intention_closure(&self.data, &options)?;
+        if options.dry_run {
+            return Ok(report);
+        }
+        let mut written = 0;
+        while written < report.changes.len() {
+            let id = report.changes[written].id.clone();
+            match self.set_intention_status(
+                id.clone(),
+                options.status.clone(),
+                Some(report.reason.clone()),
+            ) {
+                Ok(intention) => {
+                    report.changes[written].event_id = Some(intention.updated_event_id);
+                    written += 1;
+                }
+                Err(error) => {
+                    let not_closed = report
+                        .changes
+                        .split_off(written)
+                        .into_iter()
+                        .map(|change| change.id)
+                        .collect();
+                    report.failure = Some(IntentionClosureFailure {
+                        id,
+                        message: error.to_string(),
+                        not_closed,
+                    });
+                    break;
+                }
+            }
+        }
+        Ok(report)
+    }
+
     /// Produce a non-mutating goal progress report.
     pub fn goal_progress(&self) -> crate::GoalProgressReport {
         intention::goal_progress(&self.data)
