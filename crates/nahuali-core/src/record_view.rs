@@ -981,11 +981,13 @@ mod tests {
                 depends_on: None,
                 goal_id: Some(Some("intention_goal".to_string())),
                 progress_percent: Some(Some(40)),
+                source_episode_id: None,
             }),
             MemoryEvent::IntentionStatusChanged(IntentionStatusChanged {
                 id: "intention_1".to_string(),
                 status: IntentionRecordedStatus::Completed,
                 reason: Some("merged in the guide".to_string()),
+                source_episode_id: None,
             }),
         ])
     }

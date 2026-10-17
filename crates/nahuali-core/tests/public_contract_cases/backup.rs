@@ -435,6 +435,8 @@ fn public_api_reports_corrupt_backup_without_touching_target() {
 
 #[test]
 fn public_api_accepts_relative_database_and_snapshot_paths() {
+    // This path bypasses `temp_store`, so pin the process store explicitly.
+    nahuali_core::isolate_test_store();
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system clock is after epoch")

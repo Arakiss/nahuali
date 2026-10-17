@@ -622,6 +622,22 @@ pub struct IntentionRecorded {
     pub scope: Option<MemoryScope>,
 }
 
+/// Deserialize a present field as `Some`, keeping an explicit `null` as
+/// `Some(None)`. A plain `Option<Option<T>>` collapses `null` into `None`, which
+/// turns a clear into "unchanged" and, for a ledger payload, makes the
+/// recomputed checksum disagree with the recorded one. Pair it with
+/// `#[serde(default)]` so an absent field stays `None`.
+#[doc(hidden)]
+pub fn deserialize_nullable_update<'de, D, T>(
+    deserializer: D,
+) -> std::result::Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
 /// Payload for an intention metadata update event.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct IntentionUpdated {
@@ -634,17 +650,35 @@ pub struct IntentionUpdated {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub priority: Option<IntentionRecordedPriority>,
     /// Deadline update. `Some(null)` clears the deadline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_nullable_update",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub deadline_at_ms: Option<Option<u64>>,
     /// Full dependency replacement. An empty list clears dependencies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub depends_on: Option<Vec<String>>,
     /// Parent goal update. `Some(null)` clears the parent goal.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_nullable_update",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub goal_id: Option<Option<String>>,
     /// Progress update. `Some(null)` clears progress.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_nullable_update",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub progress_percent: Option<Option<u8>>,
+    /// Episode that justifies this update, when cited.
+    ///
+    /// Skipped when absent, so an uncited update serializes, checksums, and
+    /// chains exactly as it did before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_episode_id: Option<String>,
 }
 
 /// Payload for an intention lifecycle event.
@@ -657,6 +691,12 @@ pub struct IntentionStatusChanged {
     /// Optional reason for the lifecycle change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// Episode that justifies this lifecycle change, when cited.
+    ///
+    /// Skipped when absent, so an uncited change serializes, checksums, and
+    /// chains exactly as it did before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_episode_id: Option<String>,
 }
 
 /// Payload for an operator review decision.
@@ -966,8 +1006,9 @@ fn absorb_field(hasher: &mut sha2::Sha256, bytes: &[u8]) {
 #[cfg(test)]
 mod tests {
     use super::{
-        EVENT_ENVELOPE_VERSION, EpisodeRecorded, EventEnvelope, LEGACY_FNV_CHECKSUM_MAX_VERSION,
-        MemoryEvent, fnv_checksum_for, legacy_checksum_for,
+        EVENT_ENVELOPE_VERSION, EpisodeRecorded, EventEnvelope, IntentionRecordedPriority,
+        IntentionRecordedStatus, IntentionStatusChanged, IntentionUpdated,
+        LEGACY_FNV_CHECKSUM_MAX_VERSION, MemoryEvent, fnv_checksum_for, legacy_checksum_for,
     };
 
     #[test]
@@ -1158,6 +1199,116 @@ mod tests {
         let round_tripped: EventEnvelope = serde_json::from_value(encoded).unwrap();
         assert_eq!(round_tripped, envelope);
         assert!(round_tripped.prev_hash.is_none());
+    }
+
+    /// Pre-source intention update fixture. Its serialized bytes and digests
+    /// below were captured on the release before intention updates could cite
+    /// a source episode.
+    fn unsourced_intention_update() -> MemoryEvent {
+        MemoryEvent::IntentionUpdated(IntentionUpdated {
+            id: "intention_fixture".to_string(),
+            description: Some("Ship the release notes".to_string()),
+            priority: Some(IntentionRecordedPriority::High),
+            deadline_at_ms: Some(None),
+            depends_on: Some(vec!["intention_dependency".to_string()]),
+            goal_id: Some(Some("intention_goal".to_string())),
+            progress_percent: Some(Some(40)),
+            source_episode_id: None,
+        })
+    }
+
+    /// Pre-source intention lifecycle fixture, captured like the update above.
+    fn unsourced_intention_status_change() -> MemoryEvent {
+        MemoryEvent::IntentionStatusChanged(IntentionStatusChanged {
+            id: "intention_fixture".to_string(),
+            status: IntentionRecordedStatus::Completed,
+            reason: Some("Published".to_string()),
+            source_episode_id: None,
+        })
+    }
+
+    /// An intention update or lifecycle change that cites no source episode
+    /// must stay byte-identical to what earlier releases wrote, so every
+    /// existing ledger keeps verifying: same stored record, same checksum,
+    /// same chained hash.
+    #[test]
+    fn unsourced_intention_events_keep_their_pre_source_bytes() {
+        let update = EventEnvelope::new(7, 1_700_000_000_000, unsourced_intention_update());
+        assert_eq!(
+            serde_json::to_string(&update).unwrap(),
+            r#"{"version":2,"id":"event_7_bbf1d9cc7a74736bd8a886573bd4f2db1d65ae7948f2b8efeba0d71c81d7d334","sequence":7,"timestamp_ms":1700000000000,"checksum":"bbf1d9cc7a74736bd8a886573bd4f2db1d65ae7948f2b8efeba0d71c81d7d334","payload":{"type":"intention_updated","id":"intention_fixture","description":"Ship the release notes","priority":"high","deadline_at_ms":null,"depends_on":["intention_dependency"],"goal_id":"intention_goal","progress_percent":40}}"#
+        );
+        let status = EventEnvelope::new(8, 1_700_000_000_001, unsourced_intention_status_change());
+        assert_eq!(
+            serde_json::to_string(&status).unwrap(),
+            r#"{"version":2,"id":"event_8_d3a11d21eda27d3aa8bdd567b9d3fdfc534fe0a05fe59e2ad0035401b397fe3f","sequence":8,"timestamp_ms":1700000000001,"checksum":"d3a11d21eda27d3aa8bdd567b9d3fdfc534fe0a05fe59e2ad0035401b397fe3f","payload":{"type":"intention_status_changed","id":"intention_fixture","status":"completed","reason":"Published"}}"#
+        );
+    }
+
+    /// A cited source round-trips and verifies. A reader that predates the
+    /// field drops it while decoding, because the payload structs accept
+    /// unknown fields, and then recomputes the checksum over what it kept: the
+    /// record fails as a checksum mismatch instead of loading without its
+    /// evidence. Older releases therefore refuse such a ledger rather than
+    /// misread it.
+    #[test]
+    fn sourced_intention_events_verify_and_fail_closed_without_the_field() {
+        for payload in [
+            unsourced_intention_update(),
+            unsourced_intention_status_change(),
+        ] {
+            let payload = match payload {
+                MemoryEvent::IntentionUpdated(event) => {
+                    MemoryEvent::IntentionUpdated(IntentionUpdated {
+                        source_episode_id: Some("episode_evidence".to_string()),
+                        ..event
+                    })
+                }
+                MemoryEvent::IntentionStatusChanged(event) => {
+                    MemoryEvent::IntentionStatusChanged(IntentionStatusChanged {
+                        source_episode_id: Some("episode_evidence".to_string()),
+                        ..event
+                    })
+                }
+                other => other,
+            };
+            let envelope = EventEnvelope::new(9, 1_700_000_000_002, payload);
+            let mut stored = serde_json::to_value(&envelope).unwrap();
+            assert_eq!(stored["payload"]["source_episode_id"], "episode_evidence");
+
+            let decoded: EventEnvelope = serde_json::from_value(stored.clone()).unwrap();
+            assert_eq!(decoded, envelope);
+            assert!(decoded.validate_checksum());
+
+            stored["payload"]
+                .as_object_mut()
+                .unwrap()
+                .remove("source_episode_id");
+            let without_field: EventEnvelope = serde_json::from_value(stored).unwrap();
+            assert!(!without_field.validate_checksum());
+        }
+    }
+
+    /// Chained-hash half of the fixture above, for the default build.
+    #[cfg(feature = "tamper-evidence")]
+    #[test]
+    fn unsourced_intention_events_keep_their_pre_source_chain_hash() {
+        let update = EventEnvelope::with_chain(
+            7,
+            1_700_000_000_000,
+            unsourced_intention_update(),
+            Some("prev"),
+        );
+        let status = EventEnvelope::with_chain(
+            8,
+            1_700_000_000_001,
+            unsourced_intention_status_change(),
+            Some(&update.chain_hash()),
+        );
+        assert_eq!(
+            status.chain_hash(),
+            "76a07aeba736ac2ae695f31270660ddb0e88201438264cfe559556f93df506dd"
+        );
     }
 
     /// Build a clean chained ledger of `count` events using `with_chain`.

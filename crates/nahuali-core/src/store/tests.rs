@@ -867,6 +867,68 @@ mod tests {
     }
 
     #[test]
+    fn clearing_intention_fields_keeps_the_ledger_valid_across_reopen() {
+        let path = temp_path("clearing_intention_fields_keeps_ledger_valid");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let goal = memory
+            .add_intention(
+                "Ship the beta",
+                IntentionKind::Goal,
+                IntentionPriority::High,
+                None,
+            )
+            .unwrap();
+        let intention = memory
+            .add_intention(
+                "Write the upgrade notes",
+                IntentionKind::Task,
+                IntentionPriority::Medium,
+                None,
+            )
+            .unwrap();
+        memory
+            .update_intention(
+                intention.id.clone(),
+                IntentionUpdateOptions {
+                    deadline_at_ms: Some(Some(1_900_000_000_000)),
+                    goal_id: Some(Some(goal.id)),
+                    progress_percent: Some(Some(40)),
+                    ..IntentionUpdateOptions::default()
+                },
+            )
+            .unwrap();
+        memory
+            .update_intention(
+                intention.id.clone(),
+                IntentionUpdateOptions {
+                    deadline_at_ms: Some(None),
+                    goal_id: Some(None),
+                    progress_percent: Some(None),
+                    ..IntentionUpdateOptions::default()
+                },
+            )
+            .unwrap();
+
+        let validation = MemoryEngine::validate_store(&path).unwrap();
+        assert!(validation.valid, "{:?}", validation.issues);
+        let reopened = MemoryEngine::open(&path).unwrap();
+        let cleared = reopened
+            .data()
+            .intentions
+            .iter()
+            .find(|candidate| candidate.id == intention.id)
+            .unwrap();
+        assert_eq!(cleared.deadline_at_ms, None);
+        assert_eq!(cleared.goal_id, None);
+        assert_eq!(cleared.progress_percent, None);
+        assert!(reopened.projection_validate().unwrap().valid);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn concurrent_graph_rebuilds_leave_one_complete_projection() {
         const REBUILDER_COUNT: usize = 8;
         let path = temp_path("concurrent_graph_rebuilds");
@@ -1665,6 +1727,96 @@ mod tests {
             NahualiError::InvalidIntentionUpdate { .. }
         ));
         assert_eq!(memory.events().len(), events_before_invalid);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn intention_updates_and_status_changes_record_their_source_episode() {
+        let path = temp_path("intention_updates_and_status_changes_record_their_source_episode");
+        let _ = fs::remove_file(&path);
+
+        let mut memory = MemoryEngine::open(&path).unwrap();
+        let intention = memory
+            .add_intention(
+                "Ship release notes",
+                IntentionKind::Task,
+                IntentionPriority::High,
+                None,
+            )
+            .unwrap();
+        let drafted = memory
+            .remember("Release notes drafted", Vec::new())
+            .unwrap();
+        let published = memory
+            .remember("Release notes published", Vec::new())
+            .unwrap();
+
+        memory
+            .update_intention(
+                intention.id.clone(),
+                IntentionUpdateOptions {
+                    progress_percent: Some(Some(60)),
+                    source_episode_id: Some(drafted.id.clone()),
+                    ..IntentionUpdateOptions::default()
+                },
+            )
+            .unwrap();
+        let completed = memory
+            .set_intention_status_with_source(
+                intention.id.clone(),
+                IntentionStatus::Completed,
+                Some("Published".to_string()),
+                Some(published.id.clone()),
+            )
+            .unwrap();
+        assert_eq!(completed.status, IntentionStatus::Completed);
+
+        let events_before_invalid = memory.events().len();
+        let fabricated = memory
+            .set_intention_status_with_source(
+                intention.id.clone(),
+                IntentionStatus::Active,
+                None,
+                Some("episode_missing".to_string()),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            fabricated,
+            NahualiError::UnknownSourceEpisode { .. }
+        ));
+        let source_only = memory
+            .update_intention(
+                intention.id.clone(),
+                IntentionUpdateOptions {
+                    source_episode_id: Some(drafted.id.clone()),
+                    ..IntentionUpdateOptions::default()
+                },
+            )
+            .unwrap_err();
+        assert!(matches!(
+            source_only,
+            NahualiError::InvalidIntentionUpdate { .. }
+        ));
+        assert_eq!(memory.events().len(), events_before_invalid);
+
+        drop(memory);
+        let memory = MemoryEngine::open(&path).unwrap();
+        let audit = memory.audit_ledger(&crate::LedgerAuditOptions::default());
+        let sources = audit
+            .entries
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry.kind,
+                    crate::LedgerAuditEventKind::IntentionUpdated
+                        | crate::LedgerAuditEventKind::IntentionStatusChanged
+                )
+            })
+            .map(|entry| entry.source_episode_id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(sources, vec![Some(drafted.id), Some(published.id)]);
+        assert!(audit.integrity.verified);
 
         let _ = fs::remove_file(path);
     }

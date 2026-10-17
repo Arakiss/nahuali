@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Nahuali Beta API",
-    "version": "0.8.0-beta.11",
+    "version": "0.8.0-beta.13",
     "description": "Local HTTP API for evidence-backed agent memory. Recorded history is authoritative; query views and optional semantic indexes are rebuildable."
   },
   "paths": {
@@ -1110,6 +1110,10 @@
           },
           "reason": {
             "type": "string"
+          },
+          "source_episode_id": {
+            "type": "string",
+            "description": "Recorded episode that justifies the lifecycle change."
           }
         }
       },
@@ -1156,6 +1160,10 @@
             ],
             "minimum": 0,
             "maximum": 100
+          },
+          "source_episode_id": {
+            "type": "string",
+            "description": "Recorded episode that justifies the update. Not an update by itself; at least one other field must change."
           }
         }
       },

@@ -14,7 +14,6 @@ use tokio::sync::Mutex;
 use tower::ServiceExt;
 
 static API_CONTRACT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-static API_TEST_ENDPOINT: OnceLock<()> = OnceLock::new();
 
 #[test]
 fn openapi_contract_matches_the_product_version() {
@@ -526,7 +525,8 @@ async fn api_exposes_operator_loop_contract() {
             "id": task["id"],
             "deadline_at_ms": 50,
             "goal_id": goal["id"],
-            "progress_percent": 25
+            "progress_percent": 25,
+            "source_episode_id": episode["id"]
         }),
     )
     .await;
@@ -632,18 +632,53 @@ async fn api_exposes_operator_loop_contract() {
             .contains_key("/v1/intention/update")
     );
 
+    // An explicit null clears the field; omitted fields stay unchanged.
+    let cleared = json_request(
+        app.clone(),
+        "/v1/intention/update",
+        json!({
+            "id": task["id"],
+            "deadline_at_ms": null
+        }),
+    )
+    .await;
+    assert!(cleared["deadline_at_ms"].is_null(), "{cleared}");
+    assert_eq!(cleared["goal_id"], goal["id"]);
+    assert_eq!(cleared["progress_percent"], 25);
+
     let status = json_request(
-        app,
+        app.clone(),
         "/v1/intention/status",
         json!({
             "id": task["id"],
             "status": "completed",
-            "reason": "API parity validated"
+            "reason": "API parity validated",
+            "source_episode_id": episode["id"]
         }),
     )
     .await;
     assert_eq!(status["status"], "completed");
     assert_eq!(status["status_reason"], "API parity validated");
+
+    let audit = get_json(app, "/v1/audit").await;
+    let cited = audit["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|entry| {
+            entry["kind"] == "intention_updated" || entry["kind"] == "intention_status_changed"
+        })
+        .map(|entry| entry["source_episode_id"].clone())
+        .collect::<Vec<_>>();
+    // The deadline clear in between cites nothing, so it carries no source.
+    assert_eq!(
+        cited,
+        vec![
+            episode["id"].clone(),
+            serde_json::Value::Null,
+            episode["id"].clone()
+        ]
+    );
 }
 
 #[tokio::test]
@@ -1019,21 +1054,10 @@ fn assert_schema_does_not_require(openapi: &Value, schema: &str, property: &str)
 }
 
 fn temp_database(name: &str) -> String {
-    API_TEST_ENDPOINT.get_or_init(|| {
-        // Workspace test binaries run concurrently. Keep this contract suite on
-        // its own process-specific store, so it cannot contend with another
-        // binary for the default embedded SurrealKV directory.
-        let endpoint = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/test-data")
-            .join(format!("nahuali-api-http-contract-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&endpoint);
-        unsafe {
-            std::env::set_var(
-                "NAHUALI_DB_URL",
-                format!("surrealkv://{}", endpoint.display()),
-            )
-        };
-    });
+    // Keep this contract suite on its own process-specific store, so it never
+    // reaches `NAHUALI_DB_URL` or `~/.nahuali` and cannot contend with another
+    // test binary for an embedded SurrealKV directory.
+    nahuali_core::isolate_test_store();
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()

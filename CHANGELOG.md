@@ -7,6 +7,78 @@ release histories.
 
 ## Unreleased
 
+## [0.8.0-beta.13](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.12...v0.8.0-beta.13) (2026-10-17)
+
+
+### Fixed
+
+* **core:** keep an intention field clear valid in the ledger ([3ed0631](https://github.com/Arakiss/nahuali/commit/3ed0631b5f7f863a475521820a1680a245133774))
+* **core:** keep an intention field clear valid in the ledger ([c68cc60](https://github.com/Arakiss/nahuali/commit/c68cc604bb8cbd5e88bc0a581b1778162c6fa9ac))
+* **core:** pin every test process to its own temp store ([d7a6434](https://github.com/Arakiss/nahuali/commit/d7a6434704eb35fa4487372d729762fdce7722e5))
+
+### Upgrade notes
+
+- **Intention clears.** In 0.8.0-beta.12 and earlier, clearing an intention's
+  deadline, goal, or progress (`intention-update --clear-deadline`,
+  `--clear-goal`, `--clear-progress`) wrote a ledger record that failed checksum
+  verification on the next read, after which the store refused to open. This
+  release reads those records correctly; the stored bytes are unchanged, so an
+  affected store opens and validates again with no repair. Older binaries still
+  reject such a store, so upgrade every CLI, `nahuali-mcp`, and `nahuali-api`
+  process. Over HTTP and MCP, an explicit `null` for `deadline_at_ms`,
+  `goal_id`, or `progress_percent` now clears the field instead of being
+  ignored.
+- **Tests.** Every in-process test now pins its own temporary store, so running
+  the test suite no longer writes into `NAHUALI_DB_URL` or `~/.nahuali/data`.
+  No runtime behavior changes.
+
+## [0.8.0-beta.12](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.11...v0.8.0-beta.12) (2026-10-17)
+
+
+### New
+
+* **intentions:** surface stale intentions in briefing and pending ([cc9d1ec](https://github.com/Arakiss/nahuali/commit/cc9d1ec2e56f5818c695590e3da6d2792d136e0f))
+
+
+### Fixed
+
+* **briefing:** honor zero limits instead of returning one item ([ac685aa](https://github.com/Arakiss/nahuali/commit/ac685aa23f31b93c66b99eefb217840b2741b399))
+* **cli:** list every subcommand and visible alias in root help ([675eb84](https://github.com/Arakiss/nahuali/commit/675eb844e1f5c35a8b4a64534580d150c5c9ae51))
+* **cli:** make the briefing explain its signals and respect zero limits ([b86b808](https://github.com/Arakiss/nahuali/commit/b86b8084fe8d4d4a31b756be9e79657fcb7ed040))
+* **cli:** say why the store is not certified in the briefing ([ea99b60](https://github.com/Arakiss/nahuali/commit/ea99b60880ba89f7074f3cd5a959ce5fb0d6ded7))
+* **core:** age graph projection rows at the last ledger event ([f189633](https://github.com/Arakiss/nahuali/commit/f189633f427ed26f6c5e777ddd7a14d764dfb268))
+* **core:** name the rebuild command when projection validation fails ([54d1629](https://github.com/Arakiss/nahuali/commit/54d16298a430facf39433ba9b8e8d6732c847e51))
+* **core:** reject NaN confidence before it reaches the ledger ([77daf5b](https://github.com/Arakiss/nahuali/commit/77daf5b2e71c092889f586882d2e5c10506560fa))
+* **core:** say that out-of-range confidence is clamped, not rejected ([f0e9ec9](https://github.com/Arakiss/nahuali/commit/f0e9ec9372bb013db25871046d444b49a7a998b1))
+* **core:** validate the graph projection against ledger time, not wall-clock time ([57a8503](https://github.com/Arakiss/nahuali/commit/57a850306655d3b015bc1192400ee176e69a101f))
+
+
+### Changed
+
+* **forget:** extract the redaction cascade as a generic least fixpoint ([0cb4985](https://github.com/Arakiss/nahuali/commit/0cb4985eb3f355168920907f273c7c15a8ab218a))
+* **inspection:** extract the per-group supersession rule ([a691de3](https://github.com/Arakiss/nahuali/commit/a691de30afb01112051f5a671cb7e65e4118dbaf))
+* **recall:** score candidates through one admitted, totally ordered path ([9e8cb5d](https://github.com/Arakiss/nahuali/commit/9e8cb5d88f228b73d3df195779db111852b6f240))
+
+### Upgrade notes
+
+- **Graph projection.** Validation now ages health rows at the last ledger
+  event instead of the wall clock, so a store no longer starts refusing
+  `timeline` and `pending` once a fact crosses the 90-day stale threshold.
+  `GRAPH_PROJECTION_VERSION` is unchanged and existing projections need no
+  migration. If a read still fails validation, the error names the recovery:
+  `nahuali projection-rebuild` (API `POST /v1/projection/rebuild`, MCP
+  `projection_rebuild`).
+- **Briefing limits.** `--episode-limit 0`, `--intention-limit 0`,
+  `--review-limit 0`, and `--graph-seed-limit 0` now omit that section. Earlier
+  versions raised a zero limit to one item.
+- **JSON output (additive).** Briefing intentions gain `stale`, and the summary
+  gains `stale_intention_count`. An active intention is stale after 30 days
+  without an update; stale intentions are listed after fresh ones. `nahuali
+  pending --stale <days>` and `GET /v1/pending?stale_days=N` list only stale
+  intentions.
+- **Confidence.** A NaN confidence is now rejected with `InvalidConfidence`
+  before it reaches the ledger. Values outside `0.0..=1.0` are still clamped.
+
 ## [0.8.0-beta.11](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.10...v0.8.0-beta.11) (2026-10-11)
 
 

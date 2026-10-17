@@ -38,6 +38,9 @@ pub struct NahualiMcpServer {
 
 impl NahualiMcpServer {
     pub fn open(database: PathBuf) -> nahuali_core::Result<Self> {
+        // Unit tests must never reach `NAHUALI_DB_URL` or `~/.nahuali`.
+        #[cfg(test)]
+        nahuali_core::isolate_test_store();
         let memory = MemoryEngine::open(&database)?;
         Ok(Self {
             tool_router: crate::tools::tool_router(),

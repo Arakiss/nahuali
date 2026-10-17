@@ -123,6 +123,10 @@ pub(crate) struct IntentionStatusArgs {
     pub(crate) id: String,
     pub(crate) status: IntentionStatusArg,
     pub(crate) reason: Option<String>,
+    /// Recorded episode that justifies the change.
+    pub(crate) source_episode_id: Option<String>,
+    /// Cite the most recent episode instead of naming one.
+    pub(crate) source_last: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -133,12 +137,29 @@ pub(crate) struct IntentionUpdateArgs {
     pub(crate) priority: Option<IntentionPriorityArg>,
     /// Deadline as Unix epoch milliseconds. Pass `null` to clear an existing
     /// deadline; omit the field to leave it unchanged.
+    #[serde(
+        default,
+        deserialize_with = "nahuali_core::deserialize_nullable_update"
+    )]
     pub(crate) deadline_at_ms: Option<Option<u64>>,
     pub(crate) depends_on: Option<Vec<String>>,
+    /// Parent goal id. Pass `null` to clear it; omit to leave it unchanged.
+    #[serde(
+        default,
+        deserialize_with = "nahuali_core::deserialize_nullable_update"
+    )]
     pub(crate) goal_id: Option<Option<String>>,
     /// Progress from 0 to 100 percent. Pass `null` to clear it; omit to leave
     /// it unchanged.
+    #[serde(
+        default,
+        deserialize_with = "nahuali_core::deserialize_nullable_update"
+    )]
     pub(crate) progress_percent: Option<Option<u8>>,
+    /// Recorded episode that justifies the update.
+    pub(crate) source_episode_id: Option<String>,
+    /// Cite the most recent episode instead of naming one.
+    pub(crate) source_last: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -694,4 +715,22 @@ pub(crate) struct ValidateResult {
     pub(crate) legacy_event_count: usize,
     pub(crate) migration_required: bool,
     pub(crate) issues: Vec<RecordLedgerIssueView>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IntentionUpdateArgs;
+
+    #[test]
+    fn intention_update_null_clears_and_absent_leaves_unchanged() {
+        let args: IntentionUpdateArgs = serde_json::from_value(serde_json::json!({
+            "id": "intention_1",
+            "deadlineAtMs": null,
+            "progressPercent": 40
+        }))
+        .unwrap();
+        assert_eq!(args.deadline_at_ms, Some(None));
+        assert_eq!(args.progress_percent, Some(Some(40)));
+        assert_eq!(args.goal_id, None);
+    }
 }

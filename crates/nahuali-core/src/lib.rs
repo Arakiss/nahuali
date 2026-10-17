@@ -131,12 +131,12 @@ pub use consolidation_plan::{
 };
 pub use database::{
     ConfigSource, DEFAULT_STORE_LOCK_TIMEOUT_MS, DatabaseNameError, ResolvedConfig, ResolvedValue,
-    resolve_archive_database, resolve_config, resolve_database_name, resolve_endpoint,
-    resolve_namespace, set_store_location, validate_database_name,
+    isolate_test_store, resolve_archive_database, resolve_config, resolve_database_name,
+    resolve_endpoint, resolve_namespace, set_store_location, validate_database_name,
 };
 pub use error::{NahualiError, Result};
 #[cfg(feature = "tamper-evidence")]
-pub use event::{ChainBreak, verify_event_chain};
+pub use event::{ChainBreak, deserialize_nullable_update, verify_event_chain};
 pub use event::{
     EVENT_ENVELOPE_VERSION, EpisodeRecorded, EventEnvelope, FactAsserted, IntentionRecorded,
     IntentionRecordedKind, IntentionRecordedPriority, IntentionRecordedStatus,

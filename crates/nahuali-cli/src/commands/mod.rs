@@ -29,8 +29,8 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use nahuali_core::{
-    BriefingOptions, LedgerAuditOptions, MemoryEngine, NahualiError, RecallRankingPolicy,
-    ResolvedValue, TrustReportOptions,
+    BriefingOptions, IntentionStatus, LedgerAuditOptions, MemoryEngine, NahualiError,
+    RecallRankingPolicy, ResolvedValue, TrustReportOptions,
 };
 
 use crate::cli::{Cli, Command};
@@ -280,8 +280,20 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             id,
             status,
             reason,
+            source_episode_id,
+            source_last,
             json,
-        } => record::intention_status(&mut memory, id, status, reason, json)?,
+        } => record::intention_status(
+            &mut memory,
+            id,
+            IntentionStatus::from(status),
+            record::StatusChangeArgs {
+                reason,
+                source_episode_id,
+                source_last,
+            },
+            json,
+        )?,
         Command::IntentionUpdate {
             id,
             description,
@@ -294,6 +306,8 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             clear_goal,
             progress,
             clear_progress,
+            source_episode_id,
+            source_last,
             json,
         } => record::intention_update(
             &mut memory,
@@ -309,18 +323,62 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
                 clear_goal,
                 progress,
                 clear_progress,
+                source_episode_id,
+                source_last,
             },
             json,
         )?,
-        Command::IntentionComplete { id, reason, json } => {
-            record::intention_complete(&mut memory, id, reason, json)?
-        }
-        Command::IntentionBlock { id, reason, json } => {
-            record::intention_block(&mut memory, id, reason, json)?
-        }
-        Command::IntentionDefer { id, reason, json } => {
-            record::intention_defer(&mut memory, id, reason, json)?
-        }
+        Command::IntentionComplete {
+            id,
+            reason,
+            source_episode_id,
+            source_last,
+            json,
+        } => record::intention_status(
+            &mut memory,
+            id,
+            IntentionStatus::Completed,
+            record::StatusChangeArgs {
+                reason,
+                source_episode_id,
+                source_last,
+            },
+            json,
+        )?,
+        Command::IntentionBlock {
+            id,
+            reason,
+            source_episode_id,
+            source_last,
+            json,
+        } => record::intention_status(
+            &mut memory,
+            id,
+            IntentionStatus::Blocked,
+            record::StatusChangeArgs {
+                reason,
+                source_episode_id,
+                source_last,
+            },
+            json,
+        )?,
+        Command::IntentionDefer {
+            id,
+            reason,
+            source_episode_id,
+            source_last,
+            json,
+        } => record::intention_status(
+            &mut memory,
+            id,
+            IntentionStatus::Deferred,
+            record::StatusChangeArgs {
+                reason,
+                source_episode_id,
+                source_last,
+            },
+            json,
+        )?,
         Command::ReconcileIntentions {
             close: Some(status),
             ids,

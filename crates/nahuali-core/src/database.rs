@@ -194,11 +194,52 @@ pub fn set_store_location(location: &str) -> std::result::Result<ResolvedValue, 
     })
 }
 
+static TEST_STORE: OnceLock<PathBuf> = OnceLock::new();
+
+/// Pin this process to a fresh embedded store under the system temp directory,
+/// so a test can never reach `NAHUALI_DB_URL` or the `~/.nahuali` default. The
+/// database path a test passes to an engine only names a logical database
+/// inside the process's one physical store, so isolation has to happen here,
+/// before the first store opens. Idempotent: every call returns the same
+/// directory. This crate's unit tests get it from [`resolve_endpoint`]; other
+/// test binaries call it from the helper that hands out their database paths.
+#[doc(hidden)]
+pub fn isolate_test_store() -> &'static Path {
+    TEST_STORE.get_or_init(|| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock is after epoch")
+            .as_nanos();
+        let directory =
+            std::env::temp_dir().join(format!("nahuali-test-store-{}-{nanos}", std::process::id()));
+        let location = directory
+            .to_str()
+            .expect("the temp directory path is UTF-8");
+        let endpoint = set_store_location(location)
+            .unwrap_or_else(|error| panic!("cannot isolate the test store: {error}"))
+            .value;
+        let opened_elsewhere = STORE_RUNTIMES.get().is_some_and(|runtimes| {
+            runtimes
+                .lock()
+                .expect("store runtime registry must not be poisoned")
+                .keys()
+                .any(|opened| *opened != endpoint)
+        });
+        assert!(
+            !opened_elsewhere,
+            "a store was opened before isolate_test_store(); call it before any store opens"
+        );
+        directory
+    })
+}
+
 /// Resolve the storage endpoint: `--store` (see [`set_store_location`]), then
 /// `NAHUALI_DB_URL`, else an embedded SurrealKV store under `~/.nahuali/data`
 /// (or `$NAHUALI_HOME/data`). Remote endpoints without a scheme keep
 /// compatibility with the historical `host:port` form by using `ws://`.
 pub fn resolve_endpoint() -> ResolvedValue {
+    #[cfg(test)]
+    isolate_test_store();
     if let Some(endpoint) = STORE_LOCATION_FLAG.get() {
         return ResolvedValue {
             value: endpoint.clone(),

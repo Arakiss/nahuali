@@ -411,13 +411,35 @@ fn complete_intention(server: &mut McpProcess, intention_id: &str) {
             "arguments": {
                 "id": intention_id,
                 "status": "completed",
-                "reason": "Done"
+                "reason": "Done",
+                "sourceLast": true
             }
         }
     }));
     assert_eq!(
         intention_status["result"]["structuredContent"]["intention"]["status"],
         "completed"
+    );
+
+    let audit = server.request(json!({
+        "jsonrpc": "2.0",
+        "id": 40,
+        "method": "tools/call",
+        "params": {
+            "name": "audit",
+            "arguments": {}
+        }
+    }));
+    let completion = audit["result"]["structuredContent"]["entries"]
+        .as_array()
+        .expect("audit returns entries")
+        .iter()
+        .rfind(|entry| entry["kind"] == "intention_status_changed")
+        .expect("audit lists the completion");
+    assert!(
+        completion["source_episode_id"]
+            .as_str()
+            .is_some_and(|episode_id| episode_id.starts_with("episode_"))
     );
 }
 

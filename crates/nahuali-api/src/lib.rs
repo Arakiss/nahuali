@@ -632,6 +632,7 @@ async fn update_intention(
             depends_on: request.depends_on,
             goal_id: request.goal_id,
             progress_percent: request.progress_percent,
+            source_episode_id: request.source_episode_id,
         },
     )?))
 }
@@ -641,10 +642,11 @@ async fn update_intention_status(
     Json(request): Json<IntentionStatusRequest>,
 ) -> ApiResult<Intention> {
     let mut memory = write_engine(&state).await?;
-    Ok(Json(memory.set_intention_status(
+    Ok(Json(memory.set_intention_status_with_source(
         request.id,
         request.status,
         request.reason,
+        request.source_episode_id,
     )?))
 }
 
@@ -1019,14 +1021,25 @@ struct IntentionUpdateRequest {
     description: Option<String>,
     #[serde(default)]
     priority: Option<IntentionPriority>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "nahuali_core::deserialize_nullable_update"
+    )]
     deadline_at_ms: Option<Option<u64>>,
     #[serde(default)]
     depends_on: Option<Vec<String>>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "nahuali_core::deserialize_nullable_update"
+    )]
     goal_id: Option<Option<String>>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "nahuali_core::deserialize_nullable_update"
+    )]
     progress_percent: Option<Option<u8>>,
+    #[serde(default)]
+    source_episode_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1036,6 +1049,8 @@ struct IntentionStatusRequest {
     status: IntentionStatus,
     #[serde(default)]
     reason: Option<String>,
+    #[serde(default)]
+    source_episode_id: Option<String>,
 }
 
 #[derive(Deserialize)]
