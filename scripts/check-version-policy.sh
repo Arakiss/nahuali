@@ -87,6 +87,8 @@ openapi_version="$(jq -r '.info.version' crates/nahuali-api/openapi.json)"
 
 grep -q "^## \[$version\]" CHANGELOG.md \
   || fail "CHANGELOG.md needs a curated [$version] product entry"
+bash scripts/render-release-notes.sh "$version" >/dev/null \
+  || fail "CHANGELOG.md [$version] must carry the release page prose (### Why upgrade and ### Upgrade notes)"
 release_train="$(printf '%s' "$allowed_base" | cut -d. -f1-2)"
 grep -Fq "release-${release_train}_beta" README.md \
   || fail "README.md release badge must match the approved $release_train beta train"

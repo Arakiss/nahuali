@@ -25,6 +25,33 @@ section="$(
   exit 1
 }
 
+# The release page prose lives in the version's own changelog entry, so it can
+# never carry over from an earlier release. Print one `### <name>` subsection.
+subsection() {
+  awk -v heading="### $1" '
+    $0 == heading { active = 1; next }
+    active && /^#{2,3} / { exit }
+    active { print }
+  ' <<<"$section" | sed -e '/./,$!d'
+}
+
+why_upgrade="$(subsection "Why upgrade")"
+upgrade_notes="$(subsection "Upgrade notes")"
+for required in "Why upgrade:$why_upgrade" "Upgrade notes:$upgrade_notes"; do
+  [[ -n "$(tr -d '[:space:]' <<<"${required#*:}")" ]] || {
+    echo "release-notes: CHANGELOG.md [$version] needs a non-empty '### ${required%%:*}' subsection" >&2
+    exit 1
+  }
+done
+
+changes="$(
+  awk '
+    $0 == "### Why upgrade" || $0 == "### Upgrade notes" { skip = 1; next }
+    /^### / { skip = 0 }
+    !skip { print }
+  ' <<<"$section"
+)"
+
 cat <<EOF
 Nahuali v${version} is a prerelease of the local trust layer for agent memory.
 Every recall can carry its evidence and a deterministic verdict, and the ledger
@@ -33,29 +60,17 @@ require comparison with an externally retained, authorized checkpoint.
 
 ## Why upgrade
 
-This beta fixes friction reported from daily use. Superseded claims stay marked
-in recall after review, ranking explains itself and favors recent, confident,
-evidence-backed memory, parallel commands queue on the embedded store lock, and
-claim values no longer appear as isolated entities. \`nahuali forget\` adds an
-explicit, auditable erasure path that keeps the ledger verifiable.
+${why_upgrade}
 
 ## Changes
 
-${section}
+${changes}
 
 ## Breaking changes and migration
 
-Existing stores need no migration: the ledger is unchanged and the projection
-(now version 8) is re-derived on read. Run \`nahuali reconcile\` to rebuild the
-graph projection and semantic index right away, and take new snapshots, since
-older snapshots fail \`snapshot-validate\` on the projection version.
+${upgrade_notes}
 
-\`nahuali forget\` writes two new record types. Releases before this beta refuse
-to open a store after \`forget\` has run, so upgrade every CLI, \`nahuali-mcp\`,
-and \`nahuali-api\` process first. JSON output changes are additive; recall
-scores now include a recency component. After upgrading, restart every
-long-lived \`nahuali-mcp\` host before using the CLI against the same local
-store. See CHANGELOG.md for the full migration notes.
+See CHANGELOG.md for the full product history.
 
 ## Install
 
