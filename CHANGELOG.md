@@ -10,6 +10,44 @@ release histories.
 ## [0.8.0-beta.14](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.13...v0.8.0-beta.14) (2026-10-17)
 
 
+### Why upgrade
+
+This beta makes a large memory manageable from the command line. `nahuali show
+<id>` prints any record with its history and evidence; `--project` scopes
+`briefing`, `session-resume`, and `pending` to one project; and
+`reconcile-intentions --close` closes a reviewed list of intentions in one
+auditable pass. Intention updates and lifecycle changes can now cite the episode
+that justified them, recording the same active intention twice no longer creates
+a duplicate, and the briefing tells you when a newer release is available.
+
+### Upgrade notes
+
+- **Ledger.** `intention-update`, `intention-status`, `intention-complete`,
+  `intention-block`, and `intention-defer` accept `--source-episode` and
+  `--source-last`, and the HTTP and MCP update and status requests accept a
+  source. A cited change writes a new optional field. 0.8.0-beta.13 and older
+  binaries refuse a store containing such a record with `checksum mismatch`,
+  without modifying it. Upgrade every CLI, `nahuali-mcp`, and `nahuali-api`
+  process before citing sources on updates. Uncited records are byte-identical
+  to earlier releases.
+- **Forget.** Forgetting an episode cited by an intention update erases that
+  intention, as forgetting an intention's creation source already did.
+- **Network.** The human output of `briefing` and `session-resume` checks the
+  GitHub releases API at most once a day (1.5 s timeout, no identifiers) and
+  ends with one `Update available` line when a newer release exists. It is the
+  only network call Nahuali makes on its own. Set `NAHUALI_NO_UPDATE_CHECK=1`
+  to disable it; it is skipped when `CI` is set. `nahuali update-check` checks
+  on demand.
+- **Intentions.** Recording an intention whose description matches an active
+  intention of the same kind and scope returns the existing one instead of
+  writing a new event. CLI JSON and the HTTP response add `deduplicated`; the
+  MCP `intention` result adds an optional `deduplicated`.
+- **JSON output (additive).** Audit entries expose `source_episode_id`;
+  `briefing`, `session-resume`, and `pending` accept `--project` (HTTP and MCP
+  `project`) and report the active scope.
+- **Release pages.** The release page prose now comes from each version's
+  changelog entry, so it can no longer carry over from an earlier release.
+
 ### New
 
 * **cli:** close selected intentions in bulk from reconcile-intentions ([79f7611](https://github.com/Arakiss/nahuali/commit/79f7611eabf3647924cb166f50ac90c9c089e394))
