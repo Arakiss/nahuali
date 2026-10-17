@@ -75,6 +75,9 @@ pub(crate) fn briefing(
     json: bool,
     database: &std::path::Path,
 ) -> anyhow::Result<()> {
+    // Human view only: the bounded release check runs while the report is
+    // built and never reaches JSON, MCP, or HTTP output.
+    let update_notice = (!json).then(|| std::thread::spawn(crate::update_check::notice_line));
     let report = memory.briefing_with_options(BriefingOptions {
         episode_limit,
         intention_limit,
@@ -116,6 +119,10 @@ pub(crate) fn briefing(
                     "Archive: {archive_db} available as historical reference — `nahuali recall <topic> --archive`"
                 ))
             );
+        }
+        // On stdout so session-start hooks that discard stderr still show it.
+        if let Some(line) = update_notice.and_then(|check| check.join().ok()).flatten() {
+            println!("\n{line}");
         }
     }
     Ok(())

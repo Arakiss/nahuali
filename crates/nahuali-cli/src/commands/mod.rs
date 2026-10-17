@@ -56,6 +56,9 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
     if let Command::Config { json } = &cli.command {
         return config::config(database_flag, *json);
     }
+    if let Command::UpdateCheck { json } = &cli.command {
+        return crate::update_check::update_check(*json);
+    }
 
     // Receipt verification is deliberately store-free: the portable document,
     // its inclusion proofs, and an independently held policy are sufficient.
@@ -811,6 +814,7 @@ pub(crate) fn run(cli: Cli) -> anyhow::Result<()> {
             unreachable!("receipt verification returns before opening memory")
         }
         Command::Config { .. }
+        | Command::UpdateCheck { .. }
         | Command::Demo { .. }
         | Command::Init { .. }
         | Command::Completions { .. }

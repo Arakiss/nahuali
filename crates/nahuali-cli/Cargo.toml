@@ -42,8 +42,6 @@ attestation = ["nahuali-core/attestation", "tamper-evidence"]
 local-embeddings = ["nahuali-core/local-embeddings"]
 
 [dev-dependencies]
-# Used by the operator-path test support to drop per-test Qdrant collections.
-reqwest.workspace = true
 # Holds the embedded store's LOCK file to exercise the busy-store timeout.
 fs2 = "0.4"
 
@@ -53,5 +51,9 @@ clap.workspace = true
 clap_complete = "4.5"
 nahuali-core.workspace = true
 nahuali-ui.workspace = true
+# The daily release check behind the update notice; the operator-path tests
+# also use it to drop per-test Qdrant collections. Same blocking + rustls
+# build nahuali-core already links, so no new crate enters the tree.
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
