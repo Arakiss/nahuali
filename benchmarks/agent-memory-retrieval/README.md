@@ -14,18 +14,18 @@ and results that do not identify the tested binary and source revision.
 ## Checked-in baseline
 
 The current version-matched source-build result is checked in as
-[`nahuali-0.8.0-beta.11.json`](results/nahuali-0.8.0-beta.11.json).
+[`nahuali-0.8.0-beta.12.json`](results/nahuali-0.8.0-beta.12.json).
 
 | Mode | Recall@1 | Recall@3 | MRR | nDCG@10 | Median latency | p95 latency |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Lexical | 1.000 | 1.000 | 1.000 | 1.000 | 244.9 ms | 298.4 ms |
-| Deterministic hybrid | 1.000 | 1.000 | 1.000 | 1.000 | 260.8 ms | 314.9 ms |
+| Lexical | 1.000 | 1.000 | 1.000 | 1.000 | 63.4 ms | 100.4 ms |
+| Deterministic hybrid | 1.000 | 1.000 | 1.000 | 1.000 | 82.4 ms | 184.5 ms |
 | Optional local model | not configured | — | — | — | — | — |
 
-Latency depends on the measuring host. This result was measured on a slower
-shared Linux host than the beta.10 baseline; the published beta.10 binary
-measured the same latency there (median 247 ms lexical, 249 ms hybrid), so the
-difference is the host, not a regression.
+Latency depends on the measuring host. This result was measured on a local
+macOS arm64 workstation, faster than the shared Linux host used for the beta.11
+baseline (median 244.9 ms lexical, 260.8 ms hybrid there), so the lower latency
+reflects the host, not a retrieval optimization.
 
 This is a deliberately small regression corpus, so a perfect score is a gate,
 not a state-of-the-art claim. The result is useful because every ranked item,
