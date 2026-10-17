@@ -309,12 +309,18 @@ pub(crate) fn resolved_namespace() -> String {
     resolve_namespace().value
 }
 
-fn default_embedded_endpoint() -> String {
-    let root = std::env::var_os("NAHUALI_HOME")
+/// The Nahuali home directory: `$NAHUALI_HOME`, else `~/.nahuali`, else a
+/// relative `.nahuali` when no home directory is known. The embedded store
+/// defaults to its `data` subdirectory.
+pub fn nahuali_home() -> PathBuf {
+    std::env::var_os("NAHUALI_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".nahuali")))
-        .unwrap_or_else(|| PathBuf::from(".nahuali"));
-    format!("surrealkv://{}", root.join("data").display())
+        .unwrap_or_else(|| PathBuf::from(".nahuali"))
+}
+
+fn default_embedded_endpoint() -> String {
+    format!("surrealkv://{}", nahuali_home().join("data").display())
 }
 
 fn normalize_endpoint(endpoint: &str) -> String {

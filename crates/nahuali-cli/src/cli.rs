@@ -111,7 +111,8 @@ Migration & backup:
 
 Shell:
   completions           Generate shell completion scripts for your terminal
-  help                  Print this message or the help of the given subcommand(s)
+  update-check          Check GitHub for a newer release and print the upgrade command
+  help                 Print this message or the help of the given subcommand(s)
 
 Run 'nahuali <COMMAND> --help' for details and examples on a single command.";
 
@@ -1624,6 +1625,16 @@ nahuali forget episode_123 --reason \"GDPR art. 17 request\" --requested-by petr
     Completions {
         #[arg(value_enum, help = "Shell to generate a completion script for")]
         shell: CliShell,
+    },
+    #[command(
+        about = "Check GitHub for a newer release and print the upgrade command.",
+        after_help = "Checks now, ignoring the once-a-day cache that `briefing` and `session-resume` \
+use for their update notice. Sends one anonymous GET to the GitHub releases API and never \
+installs anything. NAHUALI_NO_UPDATE_CHECK=1 disables every update check.\n\nExamples:\n  nahuali update-check\n  nahuali update-check --json"
+    )]
+    UpdateCheck {
+        #[arg(long, help = "Emit machine-readable JSON instead of text")]
+        json: bool,
     },
 }
 
