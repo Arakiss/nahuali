@@ -7,6 +7,31 @@ release histories.
 
 ## Unreleased
 
+## [0.8.0-beta.13](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.12...v0.8.0-beta.13) (2026-10-17)
+
+
+### Fixed
+
+* **core:** keep an intention field clear valid in the ledger ([3ed0631](https://github.com/Arakiss/nahuali/commit/3ed0631b5f7f863a475521820a1680a245133774))
+* **core:** keep an intention field clear valid in the ledger ([c68cc60](https://github.com/Arakiss/nahuali/commit/c68cc604bb8cbd5e88bc0a581b1778162c6fa9ac))
+* **core:** pin every test process to its own temp store ([d7a6434](https://github.com/Arakiss/nahuali/commit/d7a6434704eb35fa4487372d729762fdce7722e5))
+
+### Upgrade notes
+
+- **Intention clears.** In 0.8.0-beta.12 and earlier, clearing an intention's
+  deadline, goal, or progress (`intention-update --clear-deadline`,
+  `--clear-goal`, `--clear-progress`) wrote a ledger record that failed checksum
+  verification on the next read, after which the store refused to open. This
+  release reads those records correctly; the stored bytes are unchanged, so an
+  affected store opens and validates again with no repair. Older binaries still
+  reject such a store, so upgrade every CLI, `nahuali-mcp`, and `nahuali-api`
+  process. Over HTTP and MCP, an explicit `null` for `deadline_at_ms`,
+  `goal_id`, or `progress_percent` now clears the field instead of being
+  ignored.
+- **Tests.** Every in-process test now pins its own temporary store, so running
+  the test suite no longer writes into `NAHUALI_DB_URL` or `~/.nahuali/data`.
+  No runtime behavior changes.
+
 ## [0.8.0-beta.12](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.11...v0.8.0-beta.12) (2026-10-17)
 
 
