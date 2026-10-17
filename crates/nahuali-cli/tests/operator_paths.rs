@@ -58,3 +58,4 @@ include!("operator_path_cases/ingestion.rs");
 include!("operator_path_cases/migration.rs");
 include!("operator_path_cases/review.rs");
 include!("operator_path_cases/snapshots.rs");
+include!("operator_path_cases/update_check.rs");

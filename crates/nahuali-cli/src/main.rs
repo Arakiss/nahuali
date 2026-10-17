@@ -3,6 +3,7 @@ mod commands;
 mod output;
 mod style;
 mod text_intake;
+mod update_check;
 
 use std::ffi::OsString;
 use std::io::IsTerminal;

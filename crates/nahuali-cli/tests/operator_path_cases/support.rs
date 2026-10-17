@@ -40,6 +40,7 @@ pub fn run_with_env(store: &Path, args: &[&str], envs: &[(&str, &str)]) -> Outpu
         .arg("--database")
         .arg(store)
         .env("NAHUALI_DB_URL", test_endpoint(store))
+        .env("NAHUALI_NO_UPDATE_CHECK", "1")
         .envs(envs.iter().copied());
     command.args(args);
     command.output().expect("nahuali-cli runs")
@@ -50,7 +51,8 @@ pub fn run_at_endpoint(database: &Path, endpoint_store: &Path, args: &[&str]) ->
     command
         .arg("--database")
         .arg(database)
-        .env("NAHUALI_DB_URL", test_endpoint(endpoint_store));
+        .env("NAHUALI_DB_URL", test_endpoint(endpoint_store))
+        .env("NAHUALI_NO_UPDATE_CHECK", "1");
     command.args(args);
     command.output().expect("nahuali-cli runs")
 }
@@ -73,6 +75,7 @@ pub fn run_with_semantic_collection(store: &Path, args: &[&str], collection: &st
         .arg("--database")
         .arg(store)
         .env("NAHUALI_DB_URL", test_endpoint(store))
+        .env("NAHUALI_NO_UPDATE_CHECK", "1")
         .env("NAHUALI_QDRANT_COLLECTION", collection);
     command.args(args);
     command.output().expect("nahuali-cli runs")

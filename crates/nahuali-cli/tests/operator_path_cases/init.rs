@@ -16,7 +16,8 @@ fn nahuali_without_store_env() -> std::process::Command {
     command
         .env_remove("NAHUALI_DB_URL")
         .env_remove("NAHUALI_DB_DATABASE")
-        .env("NAHUALI_HOME", std::env::temp_dir().join("nahuali-cli-unused-home"));
+        .env("NAHUALI_HOME", std::env::temp_dir().join("nahuali-cli-unused-home"))
+        .env("NAHUALI_NO_UPDATE_CHECK", "1");
     command
 }
 

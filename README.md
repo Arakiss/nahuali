@@ -287,6 +287,28 @@ This path requires `cosign` and stops if the archive checksum, signing identity,
 or bundle cannot be verified. See [release verification](RELEASE_VERIFICATION.md)
 for the exact identity, provenance, SBOM, and manual verification path.
 
+## Update notices
+
+The human output of `nahuali briefing` and `nahuali session-resume` ends with
+one line when a newer release exists for your platform:
+
+```text
+Update available: X.Y.Z-beta.N (you have X.Y.Z-beta.M) · https://github.com/Arakiss/nahuali/releases/tag/vX.Y.Z-beta.N
+```
+
+This is the only network call Nahuali makes on its own. It is one anonymous
+`GET https://api.github.com/repos/Arakiss/nahuali/releases`, at most once every
+24 hours, with a 1.5-second timeout. It sends no memory content, store path, or
+identifier; the `User-Agent` header carries only the Nahuali version, as GitHub
+requires. The result, including a failed attempt, is cached in
+`$NAHUALI_HOME/update-check.json` (default `~/.nahuali`). The notice never
+appears in `--json` output, other commands, MCP, or the HTTP API, and Nahuali
+never installs anything itself. `nahuali update-check` checks immediately and
+prints the pinned installer command.
+
+Set `NAHUALI_NO_UPDATE_CHECK=1` to disable every update check, including
+`update-check`. The automatic check is also skipped when `CI` is set.
+
 ## Build from source
 
 ```bash

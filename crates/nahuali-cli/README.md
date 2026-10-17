@@ -117,6 +117,16 @@ its whole lifetime, so short commands time out behind it. Use a remote
 SurrealDB endpoint (`--store ws://…`) if independent CLI, MCP, or HTTP
 processes need the same database truly concurrently.
 
+## Update Notices
+
+Human `briefing` and `session-resume` output ends with one `Update available:`
+line when a newer release exists. The check is a single anonymous GET to the
+GitHub releases API, at most once per 24 hours (cached in
+`$NAHUALI_HOME/update-check.json`), and never runs for `--json`. Run
+`nahuali update-check` to check now and print the pinned upgrade command. Set
+`NAHUALI_NO_UPDATE_CHECK=1` to disable it; it is skipped automatically when `CI`
+is set. See the root README for exactly what is sent.
+
 ## Primary Workflow
 
 ```bash
