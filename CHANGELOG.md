@@ -7,6 +7,15 @@ release histories.
 
 ## Unreleased
 
+## [0.8.0-beta.13](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.12...v0.8.0-beta.13) (2026-10-17)
+
+
+### Fixed
+
+* **core:** keep an intention field clear valid in the ledger ([3ed0631](https://github.com/Arakiss/nahuali/commit/3ed0631b5f7f863a475521820a1680a245133774))
+* **core:** keep an intention field clear valid in the ledger ([c68cc60](https://github.com/Arakiss/nahuali/commit/c68cc604bb8cbd5e88bc0a581b1778162c6fa9ac))
+* **core:** pin every test process to its own temp store ([d7a6434](https://github.com/Arakiss/nahuali/commit/d7a6434704eb35fa4487372d729762fdce7722e5))
+
 ## [0.8.0-beta.12](https://github.com/Arakiss/nahuali/compare/v0.8.0-beta.11...v0.8.0-beta.12) (2026-10-17)
 
 
