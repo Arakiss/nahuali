@@ -26,7 +26,7 @@ fn ours(entry: &Value) -> bool {
 
 /// A settings file with our two hooks in it (or out of it). Everything
 /// else in the file is left as it was, in the order it was.
-fn with_hooks(mut settings: Value, exe: &str, remove: bool) -> Value {
+fn with_hooks(mut settings: Value, exe: &str, tool: &str, remove: bool) -> Value {
     if !settings.is_object() {
         settings = json!({});
     }
@@ -36,7 +36,7 @@ fn with_hooks(mut settings: Value, exe: &str, remove: bool) -> Value {
         let mut entries: Vec<Value> = settings["hooks"][event].as_array().cloned().unwrap_or_default();
         entries.retain(|entry| !ours(entry));
         if !remove {
-            let mut entry = json!({ "hooks": [{ "type": "command", "command": format!("\"{exe}\" hook {call}"), "timeout": 5 }] });
+            let mut entry = json!({ "hooks": [{ "type": "command", "command": format!("\"{exe}\" hook {call} {tool}"), "timeout": 5 }] });
             if let Some(matcher) = matcher {
                 entry["matcher"] = json!(matcher);
             }
@@ -125,27 +125,43 @@ pub fn setup(argv: &[String]) -> Result<String, Failure> {
         skill(dir, remove, dry, &mut said)?;
     }
 
-    let settings = home.join(".claude").join("settings.json");
-    if (args.has("hooks") || remove) && home.join(".claude").is_dir() {
+    // Claude Code and Codex keep their hooks in files of the same shape.
+    let exe = std::env::current_exe().map_err(refused)?;
+    for (dir, name, tool) in [(".claude", "settings.json", "claude-code"), (".codex", "hooks.json", "codex")]
+    {
+        let settings = home.join(dir).join(name);
+        if !(args.has("hooks") || remove) || !home.join(dir).is_dir() || (remove && !settings.exists()) {
+            continue;
+        }
         let before = std::fs::read_to_string(&settings).unwrap_or_else(|_| "{}".to_string());
         let parsed: Value = serde_json::from_str(&before).map_err(|e| {
             Failure::Refused(format!("{} is not JSON and was left alone: {e}", settings.display()))
         })?;
-        let exe = std::env::current_exe().map_err(refused)?;
-        let after = with_hooks(parsed.clone(), &exe.to_string_lossy(), remove);
+        let after = with_hooks(parsed.clone(), &exe.to_string_lossy(), tool, remove);
         if after == parsed {
             said.push(format!("current  {}", settings.display()));
-        } else {
-            if !dry {
-                let backup = settings.with_extension("json.before-nahuali");
-                if settings.exists() && !backup.exists() {
-                    std::fs::copy(&settings, &backup).map_err(refused)?;
-                }
+            continue;
+        }
+        if !dry {
+            let backup = settings.with_extension("json.before-nahuali");
+            if settings.exists() && !backup.exists() {
+                std::fs::copy(&settings, &backup).map_err(refused)?;
+            }
+            if after == json!({}) {
+                // Nothing of anyone's is left in it: it was ours alone.
+                std::fs::remove_file(&settings).map_err(refused)?;
+            } else {
                 let text = serde_json::to_string_pretty(&after).map_err(refused)? + "\n";
                 std::fs::write(&settings, text).map_err(refused)?;
             }
-            let what = if remove { "took the hooks out of" } else { "put the hooks in" };
-            said.push(format!("{what}  {}", settings.display()));
+        }
+        let what = if remove { "took the hooks out of" } else { "put the hooks in" };
+        said.push(format!("{what}  {}", settings.display()));
+        if tool == "codex" && !remove {
+            said.push(
+                "         Codex runs a new hook only after you review it: open Codex and type /hooks, once"
+                    .to_string(),
+            );
         }
     }
     let head = if dry { "would do (nothing was changed):\n" } else { "" };
@@ -166,31 +182,34 @@ mod tests {
             },
             "zeta": true,
         });
-        let once = with_hooks(theirs.clone(), "/bin/nahuali", false);
+        let once = with_hooks(theirs.clone(), "/bin/nahuali", "codex", false);
         assert_eq!(once["hooks"]["PreToolUse"].as_array().unwrap().len(), 2);
         assert_eq!(
             once["hooks"]["PreToolUse"][0]["hooks"][0]["command"], "their-guard",
             "theirs stays first"
         );
-        assert_eq!(once["hooks"]["PreToolUse"][1]["hooks"][0]["command"], "\"/bin/nahuali\" hook pre-tool");
         assert_eq!(
-            once["hooks"]["SessionStart"][0]["hooks"][0]["command"],
-            "\"/bin/nahuali\" hook session-start"
+            once["hooks"]["PreToolUse"][1]["hooks"][0]["command"],
+            "\"/bin/nahuali\" hook pre-tool codex"
         );
         assert_eq!(
-            with_hooks(once.clone(), "/bin/nahuali", false),
+            once["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+            "\"/bin/nahuali\" hook session-start codex"
+        );
+        assert_eq!(
+            with_hooks(once.clone(), "/bin/nahuali", "codex", false),
             once,
             "putting them in twice changes nothing"
         );
         assert_eq!(
-            with_hooks(once.clone(), "/other/nahuali", false)["hooks"]["PreToolUse"]
+            with_hooks(once.clone(), "/other/nahuali", "codex", false)["hooks"]["PreToolUse"]
                 .as_array()
                 .unwrap()
                 .len(),
             2
         );
         assert_eq!(
-            with_hooks(once, "/bin/nahuali", true),
+            with_hooks(once, "/bin/nahuali", "codex", true),
             theirs,
             "taking them out leaves exactly what was there"
         );
@@ -200,8 +219,8 @@ mod tests {
 
     #[test]
     fn an_empty_file_gets_only_the_hooks_and_loses_them_whole() {
-        let once = with_hooks(json!({}), "/bin/nahuali", false);
+        let once = with_hooks(json!({}), "/bin/nahuali", "codex", false);
         assert!(once["hooks"]["SessionStart"].is_array());
-        assert_eq!(with_hooks(once, "/bin/nahuali", true), json!({}));
+        assert_eq!(with_hooks(once, "/bin/nahuali", "codex", true), json!({}));
     }
 }

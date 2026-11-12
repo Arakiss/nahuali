@@ -575,31 +575,76 @@ fn setup_tells_the_tools_and_takes_it_back_leaving_their_files_as_they_were() {
     std::fs::create_dir_all(desk.root.join(".claude")).unwrap();
     std::fs::create_dir_all(desk.root.join(".codex")).unwrap();
     let settings = desk.root.join(".claude").join("settings.json");
+    let codex = desk.root.join(".codex").join("hooks.json");
     let theirs = "{\n  \"model\": \"x\",\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"their-stop\"\n          }\n        ]\n      }\n    ]\n  },\n  \"zeta\": true\n}\n";
     std::fs::write(&settings, theirs).unwrap();
 
     let dry = desk.feed(&["setup", "--hooks", "--dry-run"], "").ok();
     assert!(dry.starts_with("would do (nothing was changed):"), "{dry}");
     assert_eq!(std::fs::read_to_string(&settings).unwrap(), theirs);
-    assert!(!desk.root.join(".claude/skills").exists());
+    assert!(!desk.root.join(".claude/skills").exists() && !codex.exists());
 
     let done = desk.feed(&["setup", "--hooks"], "").ok();
-    assert_eq!(done.lines().count(), 3, "{done}");
+    assert!(done.contains("Codex runs a new hook only after you review it"), "{done}");
     for tool in [".claude", ".codex"] {
         let skill = std::fs::read_to_string(desk.root.join(tool).join("skills/nahuali/SKILL.md")).unwrap();
         assert!(skill.starts_with("---\nname: nahuali\n"), "{skill}");
     }
     let with: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
     assert!(
-        with["hooks"]["PreToolUse"][0]["hooks"][0]["command"].as_str().unwrap().ends_with("hook pre-tool")
+        with["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .ends_with("hook pre-tool claude-code")
     );
     assert_eq!(with["hooks"]["Stop"][0]["hooks"][0]["command"], "their-stop");
+    let with: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&codex).unwrap()).unwrap();
+    assert!(
+        with["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .ends_with("hook pre-tool codex")
+    );
+    assert_eq!(with["hooks"]["PreToolUse"][0]["matcher"], "Bash");
+    assert!(
+        with["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .ends_with("hook session-start codex")
+    );
     let again = desk.feed(&["setup", "--hooks"], "").ok();
     assert!(again.lines().all(|l| l.starts_with("current")), "a second run changes nothing: {again}");
 
     desk.feed(&["setup", "--remove"], "").ok();
     assert_eq!(std::fs::read_to_string(&settings).unwrap(), theirs, "their file is exactly as it was");
+    assert!(!codex.exists(), "a file that held only our hooks is gone");
     assert!(!desk.root.join(".claude/skills/nahuali").exists());
+}
+
+#[test]
+fn the_tool_that_calls_a_hook_is_who_showed_the_lesson() {
+    let desk = Desk::new("hook-who");
+    desk.run(&["learn", "Back up first", "--moment", "before a migration", "--when", "migrate up"]).ok();
+    let input = serde_json::json!({ "session_id": "c1", "cwd": desk.root.join("work"), "tool_name": "Bash", "tool_input": { "command": "./migrate up" } });
+    let said = Said::of({
+        use std::io::Write;
+        let mut child = desk
+            .command(&desk.root.join("work"))
+            .env("NAHUALI_PROJECT", "atlas")
+            .args(["hook", "pre-tool", "codex"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(input.to_string().as_bytes()).unwrap();
+        child.wait_with_output().unwrap()
+    })
+    .ok();
+    assert!(said.contains("Back up first"), "Codex takes the same answer as Claude Code: {said}");
+    let events = desk.run(&["export"]).ok();
+    let shown = events.lines().last().unwrap();
+    assert!(shown.contains(r#""by":{"agent":"codex"}"#) && shown.contains(r#""shown""#), "{shown}");
 }
 
 #[test]

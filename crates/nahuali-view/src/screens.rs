@@ -300,15 +300,19 @@ fn board(src: &dyn ViewSource, ui: &UiState) -> Screen {
                 selected: (at < b.asks.len()).then_some(at),
             }
         };
-        let works_node = if b.works.is_empty() {
+        // What is finished is told apart from what is in motion: by the
+        // end of a day there is more of it, and it needs nobody.
+        let active = b.works.iter().take_while(|w| w.status != WorkStatus::Done).count();
+        let in_works = at.checked_sub(b.asks.len());
+        let works_node = if active == 0 {
             Node::Empty {
                 title: "Nothing in motion".into(),
                 line: "Work shows up here when it starts.".into(),
             }
         } else {
             Node::List {
-                items: b.works.iter().map(|w| work_item(w, now)).collect(),
-                selected: (at >= b.asks.len()).then(|| at - b.asks.len()),
+                items: b.works[..active].iter().map(|w| work_item(w, now)).collect(),
+                selected: in_works.filter(|i| *i < active),
             }
         };
         let lessons_node = if b.lessons.is_empty() {
@@ -316,15 +320,26 @@ fn board(src: &dyn ViewSource, ui: &UiState) -> Screen {
         } else {
             Node::List { items: b.lessons.iter().map(lesson_item).collect(), selected: None }
         };
-        Node::Col(vec![
+        let mut cards = vec![
             Node::card(
                 format!("Waiting on you · {}", b.asks.len()),
                 if b.asks.is_empty() { Tone::Ok } else { Tone::Warn },
                 asks_node,
             ),
-            Node::card(format!("In motion · {}", b.works.len()), Tone::Accent, works_node),
+            Node::card(format!("In motion · {active}"), Tone::Accent, works_node),
             Node::card(format!("Learned this week · {}", b.lessons.len()), Tone::Accent, lessons_node),
-        ])
+        ];
+        if active < b.works.len() {
+            cards.push(Node::card(
+                format!("Done lately · {}", b.works.len() - active),
+                Tone::Ok,
+                Node::List {
+                    items: b.works[active..].iter().map(|w| work_item(w, now)).collect(),
+                    selected: in_works.filter(|i| *i >= active).map(|i| i - active),
+                },
+            ));
+        }
+        Node::Col(cards)
     };
 
     let status = vec![mascot_seg(&mood), trust_seg(verified, claimed)];
@@ -492,6 +507,9 @@ fn recall(src: &dyn ViewSource, ui: &UiState) -> Screen {
             Node::Col(cards)
         }
     };
-    let status = vec![mascot_seg(&mood), trust_seg(verified, claimed)];
+    let mut status = vec![mascot_seg(&mood)];
+    if !found.is_empty() {
+        status.push(trust_seg(verified, claimed));
+    }
     screen(src, ui, body, status)
 }

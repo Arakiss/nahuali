@@ -27,10 +27,10 @@ pub fn hook(argv: &[String]) -> Result<String, Failure> {
     let mut input = String::new();
     let _ = std::io::stdin().read_to_string(&mut input);
     let input: Value = serde_json::from_str(&input).unwrap_or(Value::Null);
-    Ok(run(kind, &input).unwrap_or_default())
+    Ok(run(kind, &input, argv.get(1).map(String::as_str)).unwrap_or_default())
 }
 
-fn run(kind: &str, input: &Value) -> Option<String> {
+fn run(kind: &str, input: &Value, tool: Option<&str>) -> Option<String> {
     if let Some(cwd) = input["cwd"].as_str() {
         std::env::set_current_dir(cwd).ok()?;
     }
@@ -44,7 +44,7 @@ fn run(kind: &str, input: &Value) -> Option<String> {
     let mind = Mind::open_as(journal, Some(me.clone())).ok()?;
     match kind {
         "session-start" => session_start(&mind, &project, &me),
-        "pre-tool" => pre_tool(mind, &project, input, me),
+        "pre-tool" => pre_tool(mind, &project, input, me, tool),
         _ => None,
     }
 }
@@ -74,7 +74,13 @@ fn session_start(mind: &Mind<Remote>, project: &str, me: &str) -> Option<String>
     )
 }
 
-fn pre_tool(mut mind: Mind<Remote>, project: &str, input: &Value, me: String) -> Option<String> {
+fn pre_tool(
+    mut mind: Mind<Remote>,
+    project: &str,
+    input: &Value,
+    me: String,
+    by: Option<&str>,
+) -> Option<String> {
     let tool = input["tool_name"].as_str().unwrap_or_default();
     let doing = match input["tool_input"]["command"].as_str() {
         // What the command carries along, a script or a file's text, is not the act.
@@ -111,7 +117,8 @@ fn pre_tool(mut mind: Mind<Remote>, project: &str, input: &Value, me: String) ->
         (said, applies.iter().map(|a| a.lesson.id.clone()).collect::<Vec<_>>(), stops)
     };
     let sig = Signature {
-        who: env::actor(None, None).unwrap_or_else(|_| Actor::Agent("unattended".to_string())),
+        // The tool that called says who it is; its environment may not.
+        who: env::actor(by, None).unwrap_or_else(|_| Actor::Agent("unattended".to_string())),
         at_ms: env::now_ms(),
         entropy: env::entropy(),
         project: project.to_string(),

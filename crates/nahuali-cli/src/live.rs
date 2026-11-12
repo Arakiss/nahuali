@@ -316,6 +316,24 @@ mod tests {
         let decided = live.recall("ship flag");
         assert_eq!(decided[0].kind, "decision", "the answered ask is found as a decision");
         assert_eq!(live.history(&decided[0].id).len(), 2, "with its past: asked, then answered");
+        // What is finished gets a card of its own, away from what moves.
+        let mut mind = Mind::open(FileJournal::at(&home)).unwrap();
+        let card = |work: &str, line: &str| WorkSet {
+            work: work.into(),
+            line: Some(line.into()),
+            ..WorkSet::default()
+        };
+        mind.update(
+            agent(5),
+            WorkSet { status: Some(nahuali_core::Status::Done), ..card("parser", "shipped") },
+        )
+        .unwrap();
+        mind.update(agent(6), card("docs", "writing")).unwrap();
+        let live = Live::new(Mind::open(FileJournal::at(&home)).unwrap(), "ada".into());
+        let screen = draw(&live, 110, 44);
+        assert!(screen.contains("In motion · 2") && screen.contains("Done lately · 1"), "{screen}");
+        let (moving, done) = (screen.find("docs").unwrap(), screen.find("parser").unwrap());
+        assert!(moving < done, "and comes after it:\n{screen}");
         let _ = std::fs::remove_dir_all(&home);
     }
 }

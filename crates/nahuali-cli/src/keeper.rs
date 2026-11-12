@@ -128,6 +128,8 @@ struct Keeper {
     leave: Notify,
     stamp: u64,
     meaning: Option<Arc<dyn Embedder>>,
+    /// Rung when there may be vectors to compute.
+    behind: Notify,
     /// The other machines of this memory, when there are any.
     node: Option<Node>,
     /// How the last meeting with each of them went.
@@ -234,7 +236,6 @@ impl Keeper {
     /// what is no longer held.
     async fn index(&self, held: &mut Held) -> Result<(), String> {
         let things = State::fold(&held.events).things();
-        self.embed(held, &things).await?;
         let mut seen = HashMap::with_capacity(things.len());
         for thing in &things {
             let words = thing.text();
@@ -280,42 +281,69 @@ impl Keeper {
             self.db.query("DELETE thing WHERE key = $key").bind(("key", gone.clone())).await.map_err(text)?;
         }
         held.indexed = seen;
+        if self.meaning.is_some() {
+            self.behind.notify_one();
+        }
         Ok(())
     }
 
-    /// Compute the vectors of the things that have none yet, and remember them.
-    async fn embed(&self, held: &mut Held, things: &[nahuali_core::Thing]) -> Result<(), String> {
-        let Some(model) = &self.meaning else { return Ok(()) };
-        let mut missing: Vec<String> = things
+    /// The texts held that have no vector yet, a few at a time.
+    fn lacking(&self, held: &Held, most: usize) -> Vec<String> {
+        let Some(model) = &self.meaning else { return Vec::new() };
+        let mut lacking: Vec<String> = State::fold(&held.events)
+            .things()
             .iter()
             .map(nahuali_core::Thing::text)
-            .filter(|w| !held.vectors.contains_key(&of(model.model(), w)))
+            .filter(|words| !held.vectors.contains_key(&of(model.model(), words)))
             .collect();
-        missing.sort();
-        missing.dedup();
-        if missing.is_empty() {
-            return Ok(());
+        lacking.sort();
+        lacking.dedup();
+        lacking.truncate(most);
+        lacking
+    }
+
+    /// Compute the vectors still lacking, a few at a time, and bring the
+    /// index up to them. The model runs away from whoever is waiting for
+    /// an answer, and nobody is kept out for longer than one handful takes.
+    /// Returns whether any is still lacking after `handfuls`.
+    async fn catch_up(&self, handfuls: usize) -> Result<bool, String> {
+        let Some(model) = self.meaning.clone() else { return Ok(false) };
+        for _ in 0..handfuls {
+            let texts = self.lacking(&*self.held.lock().await, 16);
+            if texts.is_empty() {
+                return Ok(false);
+            }
+            let (model_for, asked) = (model.clone(), texts.clone());
+            let vectors = tokio::task::spawn_blocking(move || {
+                let texts: Vec<&str> = asked.iter().map(String::as_str).collect();
+                model_for.embed_passages(&texts).map_err(|e| e.to_string())
+            })
+            .await
+            .map_err(text)??;
+            let mut held = self.held.lock().await;
+            for (words, vector) in texts.iter().zip(vectors) {
+                let key = of(model.model(), words);
+                self.db
+                    .query(format!("CREATE vector CONTENT {{ of: $of, v: {} }}", written(&vector)))
+                    .bind(("of", key.to_string()))
+                    .await
+                    .map_err(text)?
+                    .check()
+                    .map_err(text)?;
+                held.vectors.insert(key, vector);
+            }
+            self.index(&mut held).await?;
         }
-        let texts: Vec<&str> = missing.iter().map(String::as_str).collect();
-        let vectors = model.embed_passages(&texts).map_err(text)?;
-        for (words, vector) in missing.iter().zip(vectors) {
-            let key = of(model.model(), words);
-            self.db
-                .query(format!("CREATE vector CONTENT {{ of: $of, v: {} }}", written(&vector)))
-                .bind(("of", key.to_string()))
-                .await
-                .map_err(text)?
-                .check()
-                .map_err(text)?;
-            held.vectors.insert(key, vector);
-        }
-        Ok(())
+        Ok(!self.lacking(&*self.held.lock().await, 1).is_empty())
     }
 
     /// The things closest in meaning to what is asked, each with how alike
     /// it is, down to the line below which nothing is offered.
     async fn near(&self, request: &Value) -> Result<Vec<Value>, String> {
         let Some(model) = &self.meaning else { return Ok(Vec::new()) };
+        // What was just written has to be findable by whoever asks next. A
+        // memory that arrived all at once is caught up with behind.
+        self.catch_up(4).await?;
         let asked = request["q"].as_str().unwrap_or_default().trim();
         if asked.is_empty() {
             return Ok(Vec::new());
@@ -615,6 +643,7 @@ async fn run(home: &Path, stay: bool) -> Result<(), String> {
         leave: Notify::new(),
         stamp: remote::stamp(),
         meaning: meaning(home),
+        behind: Notify::new(),
         // A team's server already brings its machines together.
         node: if server.is_some() { None } else { Node::read(home) },
         met: Mutex::new(HashMap::new()),
@@ -674,6 +703,25 @@ async fn run(home: &Path, stay: bool) -> Result<(), String> {
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
                 tokio::spawn(keeper.clone().answer_peer(stream));
+            }
+        });
+    }
+    // Vectors are computed behind whoever is being answered.
+    if keeper.meaning.is_some() {
+        let keeper = keeper.clone();
+        tokio::spawn(async move {
+            loop {
+                keeper.behind.notified().await;
+                loop {
+                    match keeper.catch_up(8).await {
+                        Ok(true) => {}
+                        Ok(false) => break,
+                        Err(why) => {
+                            eprintln!("could not compute vectors: {why}");
+                            break;
+                        }
+                    }
+                }
             }
         });
     }

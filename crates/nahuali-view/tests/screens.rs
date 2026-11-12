@@ -366,3 +366,19 @@ fn on_recall_keys_type_and_escape_goes_back_one_step_at_a_time() {
     ui.apply(Action::Back, &src);
     assert_eq!(ui.view, View::Board);
 }
+
+#[test]
+fn what_is_finished_is_told_apart_from_what_is_in_motion() {
+    let src = MockSource::new();
+    src.answer("ask:importer-flag", "behind a flag").unwrap();
+    src.answer("ask:cover-logo", "the second").unwrap();
+    let board = src.board();
+    let done = board.works.iter().filter(|w| w.status == nahuali_view::source::WorkStatus::Done).count();
+    let body = said(&build(&src, &ui(View::Board)).body);
+    assert!(body.contains(&format!("In motion · {}", board.works.len() - done)), "{body}");
+    if done > 0 {
+        assert!(body.contains(&format!("Done lately · {done}")), "{body}");
+    } else {
+        assert!(!body.contains("Done lately"), "nothing finished, no card for it: {body}");
+    }
+}
