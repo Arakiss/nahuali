@@ -73,6 +73,15 @@ fn changes(past: &[nahuali_core::Change]) -> Vec<view::Change> {
         .collect()
 }
 
+fn lesson(l: &nahuali_core::Lesson) -> view::Lesson {
+    view::Lesson {
+        id: format!("lesson:{}", l.id),
+        rule: l.rule.clone(),
+        moment: l.moment.clone(),
+        marks: marks(&l.marks),
+    }
+}
+
 impl<J: Journal> ViewSource for Live<J> {
     fn person(&self) -> view::Person {
         view::Person { name: self.person.clone() }
@@ -116,11 +125,20 @@ impl<J: Journal> ViewSource for Live<J> {
                 marks: marks(&w.marks),
             })
             .collect();
-        view::Board { asks, works, lessons: Vec::new() }
+        // Lessons of the last seven days.
+        let week_ago = Time(Time::from_millis(env::now_ms()).0.saturating_sub(7 * 86_400));
+        let lessons = state
+            .lessons(Scope::Everything)
+            .into_iter()
+            .filter(|l| l.marks.at >= week_ago)
+            .map(lesson)
+            .collect();
+        view::Board { asks, works, lessons }
     }
 
     fn lessons(&self) -> Vec<view::Lesson> {
-        Vec::new()
+        self.refresh();
+        self.mind.borrow().state().lessons(Scope::Everything).into_iter().map(lesson).collect()
     }
 
     fn history(&self, id: &str) -> Vec<view::Change> {
@@ -128,6 +146,9 @@ impl<J: Journal> ViewSource for Live<J> {
         let state = mind.state();
         if let Some(name) = id.strip_prefix("ask:") {
             return state.ask(name).map(|a| changes(&state.ask_history(a))).unwrap_or_default();
+        }
+        if let Some(name) = id.strip_prefix("lesson:") {
+            return state.lesson(name).map(|l| changes(&state.lesson_history(l))).unwrap_or_default();
         }
         id.strip_prefix("work:")
             .and_then(|rest| rest.split_once('/'))

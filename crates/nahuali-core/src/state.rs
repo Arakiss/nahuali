@@ -5,11 +5,12 @@
 //! in any order, give the same state: that is what lets two machines share
 //! a log by copying files.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::event::{Actor, Event, Status, Sure, What};
 use crate::id;
 use crate::time::Time;
+use crate::words;
 
 /// The four marks of an item: who, how sure, as of when, how far it reaches.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -89,6 +90,80 @@ impl Ask {
     }
 }
 
+/// A rule learned from a failure, and the moment it applies.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Lesson {
+    pub id: String,
+    pub rule: String,
+    pub moment: String,
+    pub when: Vec<String>,
+    /// It applies to every project.
+    pub everywhere: bool,
+    /// It stops the act once, not only speaks to it.
+    pub stop: bool,
+    pub marks: Marks,
+    pub retired: Option<(String, Marks)>,
+    /// How many times it was shown to someone about to act, and when last.
+    pub shown: u32,
+    pub last_shown: Option<Time>,
+    /// How many of those times it stopped the act.
+    pub stopped: u32,
+    /// The sessions it was shown in: once each is enough.
+    pub sessions: BTreeSet<String>,
+}
+
+impl Lesson {
+    pub fn in_force(&self) -> bool {
+        self.retired.is_none()
+    }
+}
+
+/// Something worth knowing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Note {
+    pub id: String,
+    pub text: String,
+    pub tags: Vec<String>,
+    pub about: Option<String>,
+    pub marks: Marks,
+    pub forgotten: Option<(String, Marks)>,
+}
+
+/// A lesson that applies to what is about to be done, and why.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Applies<'a> {
+    pub lesson: &'a Lesson,
+    /// The terms of the act that brought it.
+    pub because: Vec<String>,
+}
+
+/// Anything held, as something that can be searched for: its words, its
+/// marks, and where it reaches.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Thing {
+    /// `work:atlas/importer`, `ask:k3f9q2`, `decision:k3f9q2`, `lesson:…`, `note:…`.
+    pub key: String,
+    pub kind: &'static str,
+    /// The first line shown for it.
+    pub title: String,
+    /// Every other line worth showing.
+    pub detail: Vec<String>,
+    pub marks: Marks,
+    pub everywhere: bool,
+}
+
+impl Thing {
+    /// All of its words, for whatever indexes it.
+    pub fn text(&self) -> String {
+        let mut text = self.title.clone();
+        for line in &self.detail {
+            text.push('\n');
+            text.push_str(line);
+        }
+        text
+    }
+}
+
 /// Where a piece of work stands, counting what waits on the person.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Standing {
@@ -143,14 +218,38 @@ impl Scope<'_> {
             Self::Everything => true,
         }
     }
+
+    /// As [`Scope::sees`], for what may be meant for every project: it
+    /// reaches a project it was not made in, unless it is private.
+    pub fn reaches(self, marks: &Marks, everywhere: bool) -> bool {
+        self.sees(marks) || (everywhere && !marks.private)
+    }
 }
 
-/// Why a name did not lead to one ask.
+/// Why a name did not lead to one thing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NoAsk {
     Unknown,
-    /// Several asks start like that.
+    /// Several start like that.
     Ambiguous(Vec<String>),
+}
+
+/// What a name leads to in a map: its whole name, with or without its kind
+/// in front, or the start of it when only one starts that way.
+fn find<'a, T>(map: &'a BTreeMap<String, T>, kind: &str, name: &str) -> Result<&'a T, NoAsk> {
+    let name = name.strip_prefix(kind).unwrap_or(name).to_ascii_lowercase();
+    if let Some(found) = map.get(&name) {
+        return Ok(found);
+    }
+    if name.is_empty() {
+        return Err(NoAsk::Unknown);
+    }
+    let mut found = map.range(name.clone()..).take_while(|(id, _)| id.starts_with(&name));
+    match (found.next(), found.next()) {
+        (Some((_, one)), None) => Ok(one),
+        (Some((a, _)), Some((b, _))) => Err(NoAsk::Ambiguous(vec![a.clone(), b.clone()])),
+        _ => Err(NoAsk::Unknown),
+    }
 }
 
 /// A finished piece of work leaves the board a day later.
@@ -160,6 +259,8 @@ const DONE_STAYS: u64 = 86_400;
 pub struct State {
     works: BTreeMap<(String, String), Work>,
     asks: BTreeMap<String, Ask>,
+    lessons: BTreeMap<String, Lesson>,
+    notes: BTreeMap<String, Note>,
     /// Events of a kind this version does not know.
     pub unknown: usize,
 }
@@ -256,6 +357,74 @@ impl State {
             What::Withdraw(withdraw) => {
                 self.close(&withdraw.ask, Closed::Withdrawn(withdraw.why.clone()), event)
             }
+            What::Learn(learn) => {
+                let name = if self.lessons.contains_key(&learn.lesson) {
+                    id::short(&event.id, 12)
+                } else {
+                    learn.lesson.clone()
+                };
+                self.lessons.entry(name.clone()).or_insert_with(|| Lesson {
+                    id: name,
+                    rule: learn.rule.clone(),
+                    moment: learn.moment.clone(),
+                    when: learn.when.clone(),
+                    everywhere: learn.everywhere,
+                    stop: learn.stop,
+                    marks: Marks::of(event),
+                    retired: None,
+                    shown: 0,
+                    last_shown: None,
+                    stopped: 0,
+                    sessions: BTreeSet::new(),
+                });
+            }
+            What::Retire(retire) => {
+                if let Some(lesson) = self.lessons.get_mut(&retire.lesson)
+                    && lesson.retired.is_none()
+                {
+                    lesson.retired = Some((retire.why.clone(), Marks::of(event)));
+                }
+            }
+            What::Note(new) => {
+                let name = if self.notes.contains_key(&new.note) {
+                    id::short(&event.id, 12)
+                } else {
+                    new.note.clone()
+                };
+                let mut marks = Marks::of(event);
+                if let Some(work) = &new.about
+                    && let Some(work) = self.works.get(&(event.project.clone(), work.clone()))
+                {
+                    marks.private |= work.marks.private;
+                }
+                self.notes.entry(name.clone()).or_insert_with(|| Note {
+                    id: name,
+                    text: new.text.clone(),
+                    tags: new.tags.clone(),
+                    about: new.about.clone(),
+                    marks,
+                    forgotten: None,
+                });
+            }
+            What::Forget(forget) => {
+                if let Some(note) = self.notes.get_mut(&forget.note)
+                    && note.forgotten.is_none()
+                {
+                    note.forgotten = Some((forget.why.clone(), Marks::of(event)));
+                }
+            }
+            What::Shown(shown) => {
+                for name in &shown.lessons {
+                    if let Some(lesson) = self.lessons.get_mut(name) {
+                        lesson.shown += 1;
+                        lesson.stopped += u32::from(shown.stopped);
+                        lesson.last_shown = Some(event.at);
+                        if let Some(session) = &shown.session {
+                            lesson.sessions.insert(session.clone());
+                        }
+                    }
+                }
+            }
             What::Unknown => self.unknown += 1,
         }
     }
@@ -272,7 +441,171 @@ impl State {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.works.is_empty() && self.asks.is_empty()
+        self.works.is_empty() && self.asks.is_empty() && self.lessons.is_empty() && self.notes.is_empty()
+    }
+
+    pub fn lesson(&self, id: &str) -> Option<&Lesson> {
+        self.lessons.get(id)
+    }
+
+    pub fn note(&self, id: &str) -> Option<&Note> {
+        self.notes.get(id)
+    }
+
+    pub fn find_lesson(&self, name: &str) -> Result<&Lesson, NoAsk> {
+        find(&self.lessons, "lesson:", name)
+    }
+
+    pub fn find_note(&self, name: &str) -> Result<&Note, NoAsk> {
+        find(&self.notes, "note:", name)
+    }
+
+    /// The lessons in force that reach this scope, the newest first.
+    pub fn lessons(&self, scope: Scope<'_>) -> Vec<&Lesson> {
+        let mut lessons: Vec<&Lesson> =
+            self.lessons.values().filter(|l| l.in_force() && scope.reaches(&l.marks, l.everywhere)).collect();
+        lessons.sort_by_key(|l| (std::cmp::Reverse(l.marks.at), l.id.clone()));
+        lessons
+    }
+
+    /// The lessons that apply to what is about to be done: those that stop
+    /// the act first, then the newest. Nothing that does not clearly belong
+    /// to the act is returned, and returning nothing is a correct answer.
+    pub fn check(&self, scope: Scope<'_>, doing: &str) -> Vec<Applies<'_>> {
+        let doing = words::terms(doing);
+        let mut applies: Vec<Applies<'_>> = self
+            .lessons(scope)
+            .into_iter()
+            .filter_map(|lesson| {
+                words::marks(&lesson.moment, &lesson.when, &doing).map(|because| Applies { lesson, because })
+            })
+            .collect();
+        applies.sort_by_key(|a| !a.lesson.stop);
+        applies
+    }
+
+    /// The notes still kept that this scope sees, the newest first.
+    pub fn notes(&self, scope: Scope<'_>) -> Vec<&Note> {
+        let mut notes: Vec<&Note> =
+            self.notes.values().filter(|n| n.forgotten.is_none() && scope.sees(&n.marks)).collect();
+        notes.sort_by_key(|n| (std::cmp::Reverse(n.marks.at), n.id.clone()));
+        notes
+    }
+
+    /// Everything held that can be searched for. What was withdrawn,
+    /// retired or forgotten is not among it.
+    pub fn things(&self) -> Vec<Thing> {
+        let mut things = Vec::new();
+        for work in self.works.values() {
+            let mut detail = vec![format!("{} · {}", self.standing(work).word(), work.line)];
+            detail.extend(work.goal.iter().map(|g| format!("goal: {g}")));
+            detail.extend(work.done.iter().map(|d| format!("done: {d}")));
+            detail.extend(work.next.iter().map(|n| format!("next: {n}")));
+            things.push(Thing {
+                key: format!("work:{}/{}", work.marks.project, work.slug),
+                kind: "work",
+                title: if work.title == work.slug {
+                    work.slug.clone()
+                } else {
+                    format!("{} ({})", work.title, work.slug)
+                },
+                detail,
+                marks: work.marks.clone(),
+                everywhere: false,
+            });
+        }
+        for ask in self.asks.values() {
+            match &ask.closed {
+                None => {
+                    let mut detail = Vec::new();
+                    detail.extend(ask.blocks.iter().map(|b| format!("blocks {b}")));
+                    detail.extend(ask.recommends.iter().map(|r| format!("recommends {r}")));
+                    things.push(Thing {
+                        key: format!("ask:{}", ask.id),
+                        kind: "ask",
+                        title: ask.question.clone(),
+                        detail,
+                        marks: ask.marks.clone(),
+                        everywhere: false,
+                    });
+                }
+                Some((Closed::Answered(text), marks)) => things.push(Thing {
+                    key: format!("decision:{}", ask.id),
+                    kind: "decision",
+                    title: ask.question.clone(),
+                    detail: vec![format!("answer: {text}")],
+                    marks: marks.clone(),
+                    everywhere: false,
+                }),
+                Some((Closed::Withdrawn(_), _)) => {}
+            }
+        }
+        for lesson in self.lessons.values().filter(|l| l.in_force()) {
+            things.push(Thing {
+                key: format!("lesson:{}", lesson.id),
+                kind: "lesson",
+                title: lesson.rule.clone(),
+                detail: vec![format!("when: {}", lesson.moment)],
+                marks: lesson.marks.clone(),
+                everywhere: lesson.everywhere,
+            });
+        }
+        for note in self.notes.values().filter(|n| n.forgotten.is_none()) {
+            let mut detail = Vec::new();
+            if !note.tags.is_empty() {
+                detail.push(format!("tags: {}", note.tags.join(", ")));
+            }
+            detail.extend(note.about.iter().map(|a| format!("about {a}")));
+            things.push(Thing {
+                key: format!("note:{}", note.id),
+                kind: "note",
+                title: note.text.clone(),
+                detail,
+                marks: note.marks.clone(),
+                everywhere: false,
+            });
+        }
+        things
+    }
+
+    /// What is known about something, without an index: the things that
+    /// hold every term asked for, the newest first. An empty answer is a
+    /// correct one. Whoever has a database asks it instead.
+    pub fn recall(&self, scope: Scope<'_>, about: &str) -> Vec<Thing> {
+        let wanted = words::terms(about);
+        if wanted.is_empty() {
+            return Vec::new();
+        }
+        let mut found: Vec<Thing> = self
+            .things()
+            .into_iter()
+            .filter(|t| scope.reaches(&t.marks, t.everywhere))
+            .filter(|t| wanted.is_subset(&words::terms(&t.text())))
+            .collect();
+        found.sort_by_key(|t| (std::cmp::Reverse(t.marks.at), t.key.clone()));
+        found
+    }
+
+    /// The past of a lesson, oldest first.
+    pub fn lesson_history(&self, lesson: &Lesson) -> Vec<Change> {
+        let mut past =
+            vec![Change { at: lesson.marks.at, by: lesson.marks.who.clone(), what: "learned".to_string() }];
+        if let Some(at) = lesson.last_shown {
+            let stopped = if lesson.stopped > 0 {
+                format!(", stopped the act {}", times(lesson.stopped))
+            } else {
+                String::new()
+            };
+            past.push(Change {
+                at,
+                by: lesson.marks.who.clone(),
+                what: format!("shown {}{stopped}", times(lesson.shown)),
+            });
+        }
+        if let Some((why, marks)) = &lesson.retired {
+            past.push(Change { at: marks.at, by: marks.who.clone(), what: format!("retired · {why}") });
+        }
+        past
     }
 
     pub fn work(&self, project: &str, slug: &str) -> Option<&Work> {
@@ -286,19 +619,7 @@ impl State {
     /// The ask a name leads to: its whole name, with or without `ask:`, or
     /// the start of it when only one ask starts that way.
     pub fn find_ask(&self, name: &str) -> Result<&Ask, NoAsk> {
-        let name = name.strip_prefix("ask:").unwrap_or(name).to_ascii_lowercase();
-        if let Some(ask) = self.asks.get(&name) {
-            return Ok(ask);
-        }
-        if name.is_empty() {
-            return Err(NoAsk::Unknown);
-        }
-        let mut found = self.asks.range(name.clone()..).take_while(|(id, _)| id.starts_with(&name));
-        match (found.next(), found.next()) {
-            (Some((_, ask)), None) => Ok(ask),
-            (Some((a, _)), Some((b, _))) => Err(NoAsk::Ambiguous(vec![a.clone(), b.clone()])),
-            _ => Err(NoAsk::Unknown),
-        }
+        find(&self.asks, "ask:", name)
     }
 
     /// Where a piece of work stands: its card, unless an open ask holds it.
@@ -371,4 +692,8 @@ impl State {
         }
         past
     }
+}
+
+fn times(n: u32) -> String {
+    if n == 1 { "once".to_string() } else { format!("{n} times") }
 }

@@ -5,9 +5,13 @@
 
 mod args;
 mod env;
+mod hook;
 mod keeper;
 mod live;
+mod mcp;
+mod more;
 mod remote;
+mod setup;
 mod text;
 
 use std::io::IsTerminal;
@@ -28,6 +32,10 @@ nahuali: a working memory for a person and their agents
   nahuali update WORK …       overwrite a work's card; the first update starts the work
   nahuali ask \"QUESTION\" …    put a question to the person; it stays in sight until closed
   nahuali answer ASK \"TEXT\"   close an ask; it becomes a decision
+  nahuali learn \"RULE\" …      record a lesson and the moment it applies
+  nahuali check \"DOING\"       say what you are about to do; get the lessons that apply
+  nahuali note \"TEXT\" …       keep something worth knowing
+  nahuali recall \"ABOUT\"      what is known about something; may be nothing
   nahuali where               where the memory lives, which project this is, who you are
   nahuali export              every event as one line of JSON, to read or keep without nahuali
 
@@ -51,6 +59,28 @@ ask \"QUESTION\"
 
 answer ASK \"TEXT\"
   --withdraw                  the ask no longer needs an answer; TEXT says why
+
+learn \"RULE\"
+  --moment \"WHEN\"             when it applies, in words: \"before spawning an agent in a worktree\"
+  --when \"WORDS\"              words that mark that moment in a command, all of them: \"worktree add\" (repeatable)
+  --everywhere                it applies to every project
+  --stop                      serious enough to stop the command once, not only to be told
+  nahuali lessons             every lesson in force here
+  nahuali retire LESSON \"WHY\" it stopped being true
+
+note \"TEXT\"
+  --tag WORD                  a word to find it by (repeatable)
+  --about WORK                the work it is about
+  nahuali forget NOTE \"WHY\"   it went stale or was wrong
+
+recall \"ABOUT\"
+  --all                       every project (nothing private to another project)
+  --json  --limit N
+
+other tools
+  nahuali setup [--hooks]     tell Claude Code and Codex about nahuali; --hooks brings the memory to
+                              an agent by itself; --remove takes it out; --dry-run only says
+  nahuali mcp                 the same verbs over the Model Context Protocol, on standard input
 
 everywhere
   --project NAME              default: the repository, or this directory
@@ -127,7 +157,7 @@ fn words<const N: usize>(args: &Args, what: &str) -> Result<[String; N], Failure
     <[String; N]>::try_from(args.words.clone()).map_err(|_| usage(what))
 }
 
-fn run(argv: &[String]) -> Result<String, Failure> {
+pub(crate) fn run(argv: &[String]) -> Result<String, Failure> {
     let (command, rest) = match argv.first().map(String::as_str) {
         None => (if std::io::stdout().is_terminal() { "board" } else { "status" }, argv),
         Some(first) if first.starts_with("--") && !matches!(first, "--help" | "--version") => {
@@ -145,6 +175,16 @@ fn run(argv: &[String]) -> Result<String, Failure> {
         "where" => place(rest),
         "board" => board(rest),
         "export" => export(rest),
+        "learn" => more::learn(rest),
+        "check" => more::check(rest),
+        "lessons" => more::lessons(rest),
+        "retire" => more::retire(rest),
+        "note" => more::note(rest),
+        "recall" => more::recall(rest),
+        "forget" => more::forget(rest),
+        "hook" => hook::hook(rest),
+        "mcp" => mcp::mcp(rest),
+        "setup" => setup::setup(rest),
         "serve" => serve(rest),
         "stop" => stop(rest),
         other => Err(usage(format!("`{other}` is not something nahuali does"))),

@@ -5,11 +5,14 @@
 use std::fmt;
 use std::io;
 
-use crate::event::{self, Actor, AskOpen, Event, Line, Status, Sure, VERSION, What, WorkSet};
+use crate::event::{
+    self, Actor, AskOpen, Event, Learn, Line, NoteNew, Shown, Status, Sure, VERSION, What, WorkSet,
+};
 use crate::id;
 use crate::journal::Journal;
-use crate::state::{Ask, Closed, NoAsk, State, Work};
+use crate::state::{Ask, Closed, Lesson, NoAsk, Note, State, Work};
 use crate::time::Time;
+use crate::words;
 
 /// Who writes a line, when, and with which marks.
 #[derive(Clone, Debug)]
@@ -34,6 +37,22 @@ pub struct NewAsk {
     pub blocks: Option<String>,
     pub recommends: Option<String>,
     pub work: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct NewLesson {
+    pub rule: String,
+    pub moment: String,
+    pub when: Vec<String>,
+    pub everywhere: bool,
+    pub stop: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct NewNote {
+    pub text: String,
+    pub tags: Vec<String>,
+    pub about: Option<String>,
 }
 
 #[derive(Debug)]
@@ -63,6 +82,19 @@ pub enum Error {
         ask: String,
         how: String,
     },
+    /// No lesson or note goes by that name, or several do.
+    NoSuch {
+        what: &'static str,
+        given: String,
+        could_be: Vec<String>,
+    },
+    /// It was retired or forgotten before.
+    Gone {
+        what: &'static str,
+        name: String,
+    },
+    /// A moment whose words mark nothing: the lesson would never be shown.
+    MarksNothing(String),
 }
 
 impl fmt::Display for Error {
@@ -84,6 +116,19 @@ impl fmt::Display for Error {
                 write!(f, "`{given}` could be ask:{}", could_be.join(" or ask:"))
             }
             Self::AlreadyClosed { ask, how } => write!(f, "ask:{ask} was already {how}"),
+            Self::NoSuch { what, given, could_be } if could_be.is_empty() => {
+                write!(f, "there is no {what} called `{given}`")
+            }
+            Self::NoSuch { what, given, could_be } => {
+                write!(f, "`{given}` could be {what}:{}", could_be.join(&format!(" or {what}:")))
+            }
+            Self::Gone { what, name } => write!(f, "{what}:{name} is no longer kept"),
+            Self::MarksNothing(text) => {
+                write!(
+                    f,
+                    "`{text}` has no word that marks a moment: say what the agent would be doing, as in --when \"worktree add\""
+                )
+            }
         }
     }
 }
@@ -276,6 +321,93 @@ impl<J: Journal> Mind<J> {
         self.close(sig, &ask, what)
     }
 
+    /// Record a lesson and the moment it applies.
+    pub fn learn(&mut self, sig: Signature, new: NewLesson) -> Result<Lesson, Error> {
+        let rule = said("a lesson", &new.rule, TEXT)?;
+        let moment = said("the moment it applies", &new.moment, LINE)?;
+        let when: Vec<String> =
+            new.when.iter().map(|w| said("a mark of the moment", w, LINE)).collect::<Result<_, _>>()?;
+        for entry in &when {
+            if words::terms(entry).is_empty() {
+                return Err(Error::MarksNothing(entry.clone()));
+            }
+        }
+        if when.is_empty() && words::terms(&moment).is_empty() {
+            return Err(Error::MarksNothing(moment));
+        }
+        let id = id::ulid(sig.at_ms, sig.entropy);
+        let name = [6, 8, 10, 12]
+            .into_iter()
+            .map(|len| id::short(&id, len))
+            .find(|name| self.state.lesson(name).is_none())
+            .expect("twelve characters of an id are not taken");
+        let learn =
+            Learn { lesson: name.clone(), rule, moment, when, everywhere: new.everywhere, stop: new.stop };
+        self.write(sig, What::Learn(learn))?;
+        Ok(self.state.lesson(&name).expect("it was just written").clone())
+    }
+
+    /// Retire a lesson that stopped being true.
+    pub fn retire(&mut self, mut sig: Signature, lesson: &str, why: &str) -> Result<Lesson, Error> {
+        let why = said("the reason", why, TEXT)?;
+        let found = self.state.find_lesson(lesson).map_err(|e| no_such("lesson", lesson, e))?.clone();
+        if !found.in_force() {
+            return Err(Error::Gone { what: "lesson", name: found.id });
+        }
+        sig.project = found.marks.project.clone();
+        self.write(sig, What::Retire(event::Retire { lesson: found.id.clone(), why }))?;
+        Ok(self.state.lesson(&found.id).expect("it was there").clone())
+    }
+
+    /// Keep something worth knowing.
+    pub fn note(&mut self, sig: Signature, new: NewNote) -> Result<Note, Error> {
+        let text = said("a note", &new.text, TEXT)?;
+        let tags: Vec<String> = new.tags.iter().map(|t| said("a tag", t, 48)).collect::<Result<_, _>>()?;
+        if let Some(work) = &new.about {
+            named("a piece of work", work)?;
+            if self.state.work(&sig.project, work).is_none() {
+                return Err(Error::NoSuchWork(work.clone()));
+            }
+        }
+        let id = id::ulid(sig.at_ms, sig.entropy);
+        let name = [6, 8, 10, 12]
+            .into_iter()
+            .map(|len| id::short(&id, len))
+            .find(|name| self.state.note(name).is_none())
+            .expect("twelve characters of an id are not taken");
+        self.write(sig, What::Note(NoteNew { note: name.clone(), text, tags, about: new.about }))?;
+        Ok(self.state.note(&name).expect("it was just written").clone())
+    }
+
+    /// Forget a note that went stale or was wrong.
+    pub fn forget(&mut self, mut sig: Signature, note: &str, why: &str) -> Result<Note, Error> {
+        let why = said("the reason", why, TEXT)?;
+        let found = self.state.find_note(note).map_err(|e| no_such("note", note, e))?.clone();
+        if found.forgotten.is_some() {
+            return Err(Error::Gone { what: "note", name: found.id });
+        }
+        sig.project = found.marks.project.clone();
+        sig.private |= found.marks.private;
+        self.write(sig, What::Forget(event::Forget { note: found.id.clone(), why }))?;
+        Ok(self.state.note(&found.id).expect("it was there").clone())
+    }
+
+    /// Record that lessons were shown to someone about to act.
+    pub fn shown(
+        &mut self,
+        sig: Signature,
+        lessons: Vec<String>,
+        doing: &str,
+        session: Option<String>,
+        stopped: bool,
+    ) -> Result<(), Error> {
+        if lessons.is_empty() {
+            return Ok(());
+        }
+        let doing: String = clean(doing).chars().take(LINE).collect();
+        self.write(sig, What::Shown(Shown { lessons, doing, session, stopped })).map(|_| ())
+    }
+
     /// Close an ask that no longer needs an answer.
     pub fn withdraw(&mut self, sig: Signature, ask: &str, why: &str) -> Result<Ask, Error> {
         let why = said("the reason", why, TEXT)?;
@@ -283,4 +415,12 @@ impl<J: Journal> Mind<J> {
         let what = What::Withdraw(event::Withdraw { ask: ask.id.clone(), why });
         self.close(sig, &ask, what)
     }
+}
+
+fn no_such(what: &'static str, given: &str, e: NoAsk) -> Error {
+    let could_be = match e {
+        NoAsk::Unknown => Vec::new(),
+        NoAsk::Ambiguous(names) => names,
+    };
+    Error::NoSuch { what, given: given.to_string(), could_be }
 }

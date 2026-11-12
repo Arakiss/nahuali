@@ -47,15 +47,39 @@ pub fn stamp() -> u64 {
 #[derive(Clone, Debug)]
 pub struct Remote {
     home: PathBuf,
+    patience: Duration,
 }
 
 impl Remote {
     pub fn at(home: impl Into<PathBuf>) -> Self {
-        Self { home: home.into() }
+        Self { home: home.into(), patience: PATIENCE }
+    }
+
+    /// Wait at most this long for a keeper: for callers that must not hold
+    /// anyone up.
+    pub fn patient(mut self, patience: Duration) -> Self {
+        self.patience = patience;
+        self
+    }
+
+    /// The keys of what holds every word of `words`, the best match first,
+    /// as far as `scope` (`project`, `all` or `everything`) reaches.
+    pub fn search(&self, words: &str, scope: &str, project: &str, limit: u64) -> io::Result<Vec<String>> {
+        if !self.exists() {
+            return Ok(Vec::new());
+        }
+        let answer =
+            self.call("search", json!({ "q": words, "scope": scope, "project": project, "limit": limit }))?;
+        Ok(answer["keys"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|k| k.as_str().map(str::to_string))
+            .collect())
     }
 
     /// A memory nobody has written to has no database and needs no keeper.
-    fn exists(&self) -> bool {
+    pub fn exists(&self) -> bool {
         self.home.join("db").exists() || self.home.join("log").exists()
     }
 
@@ -80,7 +104,7 @@ impl Remote {
 
     fn once(&self, request: &Value) -> io::Result<Value> {
         let mut stream = UnixStream::connect(socket(&self.home))?;
-        stream.set_read_timeout(Some(PATIENCE))?;
+        stream.set_read_timeout(Some(self.patience))?;
         stream.write_all(format!("{request}\n").as_bytes())?;
         let mut line = String::new();
         BufReader::new(stream).read_line(&mut line)?;
@@ -92,7 +116,7 @@ impl Remote {
     pub fn call(&self, op: &str, mut request: Value) -> io::Result<Value> {
         request["op"] = json!(op);
         request["stamp"] = json!(stamp());
-        let tries = (PATIENCE.as_millis() / STEP.as_millis()) as u32;
+        let tries = (self.patience.as_millis() / STEP.as_millis()).max(1) as u32;
         for attempt in 0..tries {
             match self.once(&request) {
                 Ok(answer) if answer["stale"] == true => {}

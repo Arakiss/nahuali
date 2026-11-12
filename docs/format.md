@@ -63,6 +63,11 @@ sure, as of, and reach. No event exists without them.
 | `ask` | `ask`, `question`, and optionally `blocks`, `recommends`, `work` | Opens a question for the person. |
 | `answer` | `ask`, `text` | Closes the ask. It is now a decision. |
 | `withdraw` | `ask`, `why` | Closes the ask without an answer. |
+| `learn` | `lesson`, `rule`, `moment`, and optionally `when`, `everywhere`, `stop` | Records a lesson and the moment it applies. |
+| `retire` | `lesson`, `why` | The lesson stopped being true. |
+| `note` | `note`, `text`, and optionally `tags`, `about` | Keeps something worth knowing. |
+| `forget` | `note`, `why` | The note went stale or was wrong. |
+| `shown` | `lessons`, `doing`, and optionally `session`, `stopped` | Lessons were shown to someone about to act. Written by the machine. |
 
 `status` is `"moving"`, `"not-started"`, `"done"` or `{"blocked":"by what"}`.
 "Waiting on the person" is never written: a work waits while an open ask
@@ -80,9 +85,40 @@ then `id`, applied one after another.
 - A card is whatever the latest `work` event left it as.
 - The first close of an ask stands. A later one changes nothing.
 - A work marked private stays private, whatever later events say.
+- A lesson is in force until it is retired, and a note is kept until it is
+  forgotten. Neither is ever changed: a better one is a new one.
 
 Because the order comes from the events themselves, the same events give
 the same state wherever they came from and however often they arrive.
+
+## When a lesson applies
+
+No model is asked. What is about to be done and what marks a lesson's
+moment both become sets of plain terms: lower case, accents folded, split
+where letters end, common words dropped, cut to a rough root.
+
+- With `when` given, one entry is enough, and every term of that entry has
+  to be in what is about to be done.
+- Without it, the moment's own words are used: three in five of them have
+  to be there, and never fewer than two unless the moment has only one.
+
+A lesson reaches the project it was learned in, or every project when it
+says so and is not private. A lesson marked `stop` refuses the command once
+per session; the second time it goes through. Every showing is an event,
+so a lesson knows how often it was shown and how often it stopped an act.
+
+## What can be searched
+
+The table `thing` holds one record for each card, open ask, decision,
+lesson in force and note, as they stand now, with a full-text index over
+their words (lower case, accents folded, English roots, ranked by BM25).
+It is derived from the events and rebuilt when a keeper starts, so it can
+never disagree with them for longer than one write.
+
+`recall` returns the things that hold every word asked for, as far as the
+asker's reach goes: its own project and what is meant for every project,
+or with `--all` everything that is not private to another project. What
+was withdrawn, retired or forgotten is not there to be found.
 
 ## Out, and in again
 
@@ -126,8 +162,9 @@ to run one. The format of the lines is the same.
   that answers an ask is shown as an agent.
 - It does not encrypt. The memory is as private as the disk it is on.
 - It reads every event on every command and folds them in the program.
-  That is fast for what a person and their agents write in years. The
-  search that notes and recall need will be done by the database.
+  That is fast for what a person and their agents write in years.
+- It does not search by meaning. Words find their other forms, and no more
+  than that.
 - The keeper speaks over a Unix socket. Windows is not supported yet.
 
 ## SurrealDB's licence

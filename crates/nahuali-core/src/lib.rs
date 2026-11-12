@@ -12,7 +12,8 @@
 //!
 //! - [`event`]: the lines.
 //! - [`state`]: the fold, and what can be read from it.
-//! - [`journal`]: where lines are kept; files by default.
+//! - [`journal`]: where lines are kept.
+//! - [`words`]: how a lesson's moment is recognised in what is about to be done.
 //! - [`mind`]: the verbs.
 
 pub mod event;
@@ -21,9 +22,10 @@ pub mod journal;
 pub mod mind;
 pub mod state;
 pub mod time;
+pub mod words;
 
 pub use event::{Actor, Event, Status, Sure, What};
 pub use journal::{FileJournal, Journal, MemJournal};
-pub use mind::{Error, Mind, NewAsk, Signature, Update};
-pub use state::{Ask, Change, Closed, Marks, Scope, Standing, State, Work};
+pub use mind::{Error, Mind, NewAsk, NewLesson, NewNote, Signature, Update};
+pub use state::{Applies, Ask, Change, Closed, Lesson, Marks, Note, Scope, Standing, State, Thing, Work};
 pub use time::Time;

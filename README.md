@@ -11,14 +11,14 @@
 
 # nahuali
 
-**A working memory for a person and their agents. It says where things stand, what is waiting on you, and how far each of those can be trusted.**
+**A working memory for a person and their agents. It says where things stand, what is waiting on you, what was learned, and how far each of those can be trusted.**
 
-When several agents work for you on several projects, the state of the work lives in chat scrollback and in each agent's head. Nahuali gives it one place. An agent says where its work stands and asks what it needs you to decide. You open one board, answer with one key, and the answer is where the agent looks next.
+When several agents work for you on several projects, the state of the work lives in chat scrollback and in each agent's head. Nahuali gives it one place. An agent says where its work stands and asks what it needs you to decide. You open one board, answer with one key, and the answer is where the agent looks next. What went wrong once is told to the next agent at the moment it is about to do it again.
 
 Nothing in it is a bare statement. Every card, question and decision carries who said it, whether it was verified or only claimed, when, and at which commit.
 
 > [!NOTE]
-> Nahuali is being built and has no release yet. It runs from source. Of the eight verbs in its design, four exist: `status`, `update`, `ask` and `answer`. The screens on this page are drawn by the real interface on invented data, and they show the lessons too, which the command does not write yet.
+> Nahuali is being built and has no release yet. It runs from source. The eight verbs of its design exist: `status`, `update`, `ask`, `answer`, `learn`, `check`, `note` and `recall`. The screens on this page are drawn by the real interface on invented data.
 
 ## Why
 
@@ -26,6 +26,8 @@ These happened in one working week, and each is a failure of memory, not of the 
 
 - After hours of work, nobody can say where things stand without digging through git and old messages.
 - A question for the person is asked at the end of a long message, goes unanswered, and is asked again ten times because it lives nowhere.
+- A lesson is written down somewhere and arrives after the mistake is made again.
+- Automatic recall brings in something unrelated, once something private.
 - Nobody can tell what was verified from what an agent merely reported.
 - Writing things down costs a forced paragraph at every stop.
 
@@ -36,6 +38,8 @@ These happened in one working week, and each is a failure of memory, not of the 
 | Work | A named piece of work with one card: what is true now, what is done, what is next | The card is overwritten. Its past stays readable behind it |
 | Ask | A question for you, with what it blocks and the answer the agent would give | Open and in sight until someone closes it. It never expires |
 | Decision | An answered ask | Kept, with who decided |
+| Lesson | A rule learned from a failure, with the moment it applies | Shown when that moment comes. Retired when it stops being true |
+| Note | Something worth knowing | Kept until it goes stale and is forgotten |
 
 Every one of them carries the same four marks.
 
@@ -115,7 +119,63 @@ DECIDED IN THE LAST 7 DAYS
 
 A piece of work is never set to "waiting on the person" by hand. It waits while an open ask names it and stops waiting when that ask is closed. An agent that answers an ask itself is shown as an agent.
 
-What an agent is told about Nahuali is one page: [`skills/nahuali/SKILL.md`](skills/nahuali/SKILL.md).
+### A lesson arrives at the moment of the act
+
+A lesson has a rule and the moment it applies. It is not read out at the start of a session, where it would be one more paragraph to skim. It is shown when an agent is about to do the thing it is about.
+
+```sh
+nahuali learn "Agent worktrees start from the default branch, not from the branch you are on" \
+  --moment "before spawning an agent in its own worktree" \
+  --when "worktree add"
+```
+
+```text
+$ git worktree add ../atlas-side -b side
+
+nahuali · learned before, and it applies to what you are about to do
+  lesson:k39s92  Agent worktrees start from the default branch, not from the branch you are on
+                 when: before spawning an agent in its own worktree
+                 matched: add, worktree · learned by claude-code, an agent · 3 d ago · shown twice
+```
+
+| Rule | In practice |
+| --- | --- |
+| No model decides | A lesson applies when the words that mark its moment are all in the command. The answer is the same every time and says which words brought it |
+| Strict | Half a moment is not the moment. "No lesson applies" is the usual answer |
+| Once per session | An agent that has been told is not told again |
+| It can stop the act | A lesson marked `--stop` refuses the command once. Running it again goes through, and the stop is recorded |
+| It can be wrong | `nahuali retire` takes a lesson out when it stops being true |
+
+With `nahuali setup --hooks` this runs by itself before each command in Claude Code. Anywhere else an agent asks: `nahuali check "what I am about to do"`.
+
+### Recall that can come back empty
+
+```sh
+nahuali note "The audit is on the 20th; the client sends the files a week before" --tag dates
+nahuali recall "audit"
+```
+
+```text
+atlas · 2 things known about "audit"
+  decision:n2kmb3  Ship the importer behind a flag?
+                   answer: Behind a flag, until the audit.
+                   decided by ada · 2 d ago
+  note:yzsycy  The audit is on the 20th; the client sends the files a week before
+               tags: dates
+               claude-code, an agent · 5 d ago
+```
+
+Recall searches the cards, the decisions, the lessons and the notes with the database's full-text index. A word finds its other forms, so `exporting` finds `exports` and `decision` finds `decisión`. Every word asked for has to be there, nothing private to another project is ever offered, and "nothing known" is a normal answer that an agent is told to repeat instead of guessing.
+
+### Any tool
+
+```sh
+nahuali setup            # writes the one page an agent reads, for Claude Code and Codex
+nahuali setup --hooks    # also: the board at the start of a session, and lessons before a command
+nahuali mcp              # the same eight verbs over the Model Context Protocol
+```
+
+`nahuali setup --remove` takes out exactly what it put in and leaves the tools' own files as they were. What an agent is told about Nahuali is one page: [`skills/nahuali/SKILL.md`](skills/nahuali/SKILL.md).
 
 ## The memory is yours
 
@@ -153,7 +213,7 @@ The rules live in [`nahuali-core`](crates/nahuali-core), which has no clock, no 
 | Crate | What it is |
 | --- | --- |
 | [`nahuali-core`](crates/nahuali-core) | The events, the fold and the verbs |
-| [`nahuali-cli`](crates/nahuali-cli) | The `nahuali` command, and the keeper of the database |
+| [`nahuali-cli`](crates/nahuali-cli) | The `nahuali` command, the keeper of the database, the hooks and the MCP server |
 | [`nahuali-view`](crates/nahuali-view) | The screens as a view model, with no dependencies |
 | [`nahuali-tui`](crates/nahuali-tui) | The terminal renderer, with the animated axolotl |
 
@@ -183,17 +243,20 @@ This repository is kept, from its first commit, as if it were already public. Wh
 - It does not prove who is speaking. "Who" is what the speaker declared.
 - It does not encrypt. The memory is as private as the disk it is on.
 - It does not run on Windows yet.
-- It has no lessons, notes or recall yet. They are next.
+- It does not understand meaning. A lesson is matched and a note is found by their words, which is exact and explainable, and misses what is said in other words. Search by meaning is next.
+- The hooks are written for Claude Code. Other tools use the command or MCP.
 
 ## Roadmap
 
 In this order, each when it is done. There are no dates.
 
 1. ~~The cards and the asks, the verbs `status`, `update`, `ask` and `answer`, and the board on real work.~~
-2. Lessons, and `check`. An agent says what it is about to do and is told the lessons that apply, at that moment.
-3. Notes and `recall`, strict enough that an empty answer is a normal one.
-4. The same verbs over MCP, so no agent tool is special.
-5. Releases you can install without a toolchain.
+2. ~~Lessons, and `check`. An agent about to do something is told the lessons that apply, at that moment.~~
+3. ~~Notes and `recall`, strict enough that an empty answer is a normal one.~~
+4. ~~The same verbs over MCP, so no agent tool is special.~~
+5. Search by meaning beside search by words, with the database's vector index.
+6. A team: several people on one memory, each seeing what reaches them.
+7. Releases you can install without a toolchain.
 
 The definition the design starts from is [`docs/product.md`](docs/product.md).
 

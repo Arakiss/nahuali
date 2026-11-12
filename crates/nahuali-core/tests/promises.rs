@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use nahuali_core::event::WorkSet;
 use nahuali_core::{
-    Actor, Closed, Error, FileJournal, Journal, MemJournal, Mind, NewAsk, Scope, Signature, Standing, Status,
-    Sure, Time,
+    Actor, Closed, Error, FileJournal, Journal, MemJournal, Mind, NewAsk, NewLesson, NewNote, Scope,
+    Signature, Standing, Status, Sure, Time,
 };
 
 const T0: u64 = 1_794_496_800_000;
@@ -393,4 +393,182 @@ fn two_machines_share_a_memory_by_copying_files() {
     // The person answers on the laptop, in the laptop's own file.
     a.answer(ada(3), &ask.id, "The blue one").unwrap();
     assert_eq!(std::fs::read_dir(laptop.0.join("log")).unwrap().count(), 2);
+}
+
+fn lesson(rule: &str, moment: &str, when: &[&str]) -> NewLesson {
+    NewLesson {
+        rule: rule.into(),
+        moment: moment.into(),
+        when: when.iter().map(|w| w.to_string()).collect(),
+        ..NewLesson::default()
+    }
+}
+
+#[test]
+fn a_lesson_arrives_when_the_act_is_its_moment_and_not_otherwise() {
+    let mut m = mind();
+    let worktrees = m
+        .learn(
+            agent(0, "atlas"),
+            lesson(
+                "Agent worktrees start from the default branch",
+                "before spawning an agent in its own worktree",
+                &["worktree add"],
+            ),
+        )
+        .unwrap();
+    m.learn(
+        agent(1, "atlas"),
+        lesson(
+            "Nine build directories filled the disk: share one",
+            "before building in more than two worktrees",
+            &[],
+        ),
+    )
+    .unwrap();
+
+    let applies = m.state().check(Scope::Project("atlas"), "git worktree add ../atlas-side -b side");
+    assert_eq!(applies.len(), 1);
+    assert_eq!(applies[0].lesson.id, worktrees.id);
+    assert_eq!(applies[0].because, ["add", "worktree"], "it says which words brought it");
+
+    for unrelated in ["cargo test", "git worktree list", "git add README.md", "rm -rf target"] {
+        assert!(
+            m.state().check(Scope::Project("atlas"), unrelated).is_empty(),
+            "`{unrelated}` is nobody's moment"
+        );
+    }
+    assert!(
+        m.state().check(Scope::Project("borealis"), "git worktree add ../x").is_empty(),
+        "a lesson stays in its project"
+    );
+}
+
+#[test]
+fn a_lesson_for_everywhere_reaches_every_project_unless_it_is_private() {
+    let mut m = mind();
+    let everywhere = NewLesson {
+        everywhere: true,
+        ..lesson("Never force-push a shared branch", "before force pushing", &["push force"])
+    };
+    m.learn(agent(0, "atlas"), everywhere.clone()).unwrap();
+    m.learn(
+        Signature { private: true, ..agent(1, "atlas") },
+        NewLesson { rule: "The client hates force pushes".into(), ..everywhere },
+    )
+    .unwrap();
+    let from_borealis = m.state().check(Scope::Project("borealis"), "git push --force origin main");
+    assert_eq!(from_borealis.len(), 1);
+    assert_eq!(from_borealis[0].lesson.rule, "Never force-push a shared branch");
+    assert_eq!(m.state().check(Scope::Project("atlas"), "git push --force").len(), 2);
+}
+
+#[test]
+fn a_lesson_that_stops_comes_first_and_a_retired_one_is_gone() {
+    let mut m = mind();
+    let told = m
+        .learn(agent(0, "atlas"), lesson("Prefer a fresh database", "before migrating", &["migrate"]))
+        .unwrap();
+    let stops = m
+        .learn(
+            agent(1, "atlas"),
+            NewLesson { stop: true, ..lesson("Back up before migrating", "before migrating", &["migrate"]) },
+        )
+        .unwrap();
+    let order: Vec<&str> = m
+        .state()
+        .check(Scope::Project("atlas"), "run migrate now")
+        .iter()
+        .map(|a| a.lesson.id.as_str())
+        .collect();
+    assert_eq!(order, [stops.id.as_str(), told.id.as_str()]);
+
+    m.shown(agent(2, "atlas"), vec![stops.id.clone()], "run migrate now", Some("session-1".into()), true)
+        .unwrap();
+    let seen = m.state().lesson(&stops.id).unwrap();
+    assert_eq!((seen.shown, seen.stopped), (1, 1), "the stop is recorded");
+    assert!(seen.sessions.contains("session-1"));
+
+    m.retire(ada(3), &stops.id[..4], "migrations are reversible now").unwrap();
+    assert_eq!(m.state().check(Scope::Project("atlas"), "run migrate now").len(), 1);
+    assert!(matches!(m.retire(ada(4), &stops.id, "again").unwrap_err(), Error::Gone { .. }));
+    let past: Vec<String> =
+        m.state().lesson_history(m.state().lesson(&stops.id).unwrap()).into_iter().map(|c| c.what).collect();
+    assert_eq!(
+        past,
+        ["learned", "shown once, stopped the act once", "retired · migrations are reversible now"]
+    );
+}
+
+#[test]
+fn a_lesson_whose_moment_marks_nothing_is_refused() {
+    let mut m = mind();
+    assert!(matches!(
+        m.learn(agent(0, "atlas"), lesson("Be careful", "before it", &[])).unwrap_err(),
+        Error::MarksNothing(_)
+    ));
+    assert!(matches!(
+        m.learn(agent(0, "atlas"), lesson("Be careful", "before deploying", &["the"])).unwrap_err(),
+        Error::MarksNothing(_)
+    ));
+    assert!(m.events().is_empty());
+}
+
+#[test]
+fn recall_returns_what_holds_every_word_and_nothing_else() {
+    let mut m = mind();
+    m.update(agent(0, "atlas"), card("importer", "reads the three export formats")).unwrap();
+    let ask =
+        m.ask(agent(1, "atlas"), question("Ship the importer behind a flag?", Some("importer"))).unwrap();
+    m.answer(ada(2), &ask.id, "Behind a flag, until the audit.").unwrap();
+    m.learn(agent(3, "atlas"), lesson("Exports from 2019 lack a header", "before parsing old exports", &[]))
+        .unwrap();
+    let note = m
+        .note(
+            agent(4, "atlas"),
+            NewNote {
+                text: "The audit is on the 20th".into(),
+                tags: vec!["dates".into()],
+                about: Some("importer".into()),
+            },
+        )
+        .unwrap();
+    m.note(
+        Signature { private: true, ..agent(5, "borealis") },
+        NewNote { text: "The audit fee is private".into(), ..NewNote::default() },
+    )
+    .unwrap();
+
+    let keys = |m: &Mind<MemJournal>, scope, about: &str| {
+        m.state().recall(scope, about).into_iter().map(|t| t.key).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        keys(&m, Scope::Project("atlas"), "audit"),
+        [format!("note:{}", note.id), format!("decision:{}", ask.id)],
+        "newest first"
+    );
+    assert_eq!(keys(&m, Scope::Project("atlas"), "importer flag"), [format!("decision:{}", ask.id)]);
+    assert_eq!(
+        keys(&m, Scope::Project("atlas"), "exports"),
+        ["lesson:".to_string() + &m.state().lessons(Scope::Everything)[0].id, "work:atlas/importer".into()]
+    );
+    assert!(
+        keys(&m, Scope::Project("atlas"), "kubernetes").is_empty(),
+        "an empty answer is a correct answer"
+    );
+    assert!(keys(&m, Scope::Project("atlas"), "the of").is_empty());
+    assert!(!keys(&m, Scope::AllFrom("atlas"), "audit").iter().any(|k| k.contains("fee")));
+    assert_eq!(
+        keys(&m, Scope::AllFrom("atlas"), "audit fee"),
+        Vec::<String>::new(),
+        "nothing private is offered to another project"
+    );
+    assert_eq!(keys(&m, Scope::Everything, "audit fee").len(), 1);
+
+    m.forget(ada(6), &note.id, "it moved").unwrap();
+    assert_eq!(
+        keys(&m, Scope::Project("atlas"), "audit"),
+        [format!("decision:{}", ask.id)],
+        "what was forgotten is not recalled"
+    );
 }

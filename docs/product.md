@@ -140,8 +140,8 @@ Measured on the person and the agents who use it first.
 
 The smallest version the two of us would use tomorrow: the cards and the
 asks, the verbs `status`, `update`, `ask` and `answer`, and the first
-screen. This part exists: see `docs/format.md` for how it is kept.
-Lessons and `check` come second. Notes and recall come third.
+screen. Lessons and `check` come second. Notes and recall come third.
+All three exist: see `docs/format.md` for how they are kept.
 
 ## Beyond a desk
 

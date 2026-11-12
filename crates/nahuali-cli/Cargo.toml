@@ -19,7 +19,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 nahuali-core = { version = "0.1.0", path = "../nahuali-core" }
 nahuali-tui = { version = "0.1.0", path = "../nahuali-tui" }
 nahuali-view = { version = "0.1.0", path = "../nahuali-view" }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 surrealdb = { version = "4.0.1", default-features = false, features = ["kv-surrealkv"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "time", "sync"] }
 

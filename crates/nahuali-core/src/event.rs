@@ -145,6 +145,65 @@ pub struct Withdraw {
     pub why: String,
 }
 
+/// A rule learned from a failure, and the moment it applies.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Learn {
+    /// The short name it is called by.
+    pub lesson: String,
+    pub rule: String,
+    /// When it applies, in words: "before spawning an agent in a worktree".
+    pub moment: String,
+    /// What marks that moment in what an agent is about to do. Each entry
+    /// is a few words that must all be there: "worktree add".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub when: Vec<String>,
+    /// It applies to every project, not only the one it was learned in.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub everywhere: bool,
+    /// Serious enough to stop the act once, not only to be told.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub stop: bool,
+}
+
+/// A lesson that stopped being true.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Retire {
+    pub lesson: String,
+    pub why: String,
+}
+
+/// Something worth knowing.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoteNew {
+    pub note: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// The piece of work it is about.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub about: Option<String>,
+}
+
+/// A note that went stale or was wrong.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Forget {
+    pub note: String,
+    pub why: String,
+}
+
+/// Lessons were shown to someone about to act. Written by the machine.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Shown {
+    pub lessons: Vec<String>,
+    /// What they were about to do.
+    pub doing: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// The act was stopped once, not only spoken to.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub stopped: bool,
+}
+
 /// What happened.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -153,6 +212,11 @@ pub enum What {
     Ask(AskOpen),
     Answer(Answer),
     Withdraw(Withdraw),
+    Learn(Learn),
+    Retire(Retire),
+    Note(NoteNew),
+    Forget(Forget),
+    Shown(Shown),
     /// A kind this version does not know. Read, never written.
     #[serde(skip_serializing)]
     Unknown,

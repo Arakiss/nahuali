@@ -2,7 +2,7 @@
 //! who said each thing, how sure they were and as of when. Written for an
 //! agent to read at the start of its work, and short enough for a person.
 
-use nahuali_core::{Ask, Closed, Marks, Scope, Standing, State, Time, Work};
+use nahuali_core::{Ask, Closed, Lesson, Marks, Scope, Standing, State, Thing, Time, Work};
 use serde_json::{Value, json};
 
 /// Decisions stay in `status` this long, so whoever asked finds the answer.
@@ -60,16 +60,30 @@ impl Report<'_> {
         parts.join(" · ")
     }
 
+    /// No work, no ask and no decision of this project is held. Lessons do
+    /// not count: they arrive at their moment, not at the start.
+    pub fn is_empty(&self) -> bool {
+        self.asks().is_empty() && self.works().is_empty() && self.decided().is_empty()
+    }
+
     pub fn text(&self) -> String {
         let (asks, works, decided) = (self.asks(), self.works(), self.decided());
         let whose = if self.wide() { "every project" } else { self.project };
         let mut out = String::new();
-        if asks.is_empty() && works.is_empty() && decided.is_empty() {
-            out.push_str(&format!("{whose} · nothing held yet\n"));
+        let lessons = self.state.lessons(self.scope).len();
+        let count = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+        let learned = if lessons == 0 {
+            String::new()
         } else {
-            let count = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+            format!(" · {} in force", count(lessons, "lesson", "lessons"))
+        };
+        if asks.is_empty() && works.is_empty() && decided.is_empty() {
+            let held =
+                if lessons == 0 { "nothing held yet".to_string() } else { format!("no work held{learned}") };
+            out.push_str(&format!("{whose} · {held}\n"));
+        } else {
             out.push_str(&format!(
-                "{whose} · {} waiting on the person · {}\n",
+                "{whose} · {} waiting on the person · {}{learned}\n",
                 asks.len(),
                 count(works.len(), "piece of work", "pieces of work")
             ));
@@ -233,4 +247,66 @@ pub fn work_line(state: &State, work: &Work) -> String {
     };
     let line = if work.line.is_empty() { String::new() } else { format!(" · {}", work.line) };
     format!("{}/{} · {standing}{line}", work.marks.project, work.slug)
+}
+
+/// Who said something and when, with what an agent's word is worth.
+fn said(marks: &Marks, now: Time) -> String {
+    let who =
+        if marks.who.is_person() { marks.who.line() } else { format!("{}, an agent", marks.who.line()) };
+    let private = if marks.private { " · private" } else { "" };
+    format!("{who} · {}{private}", marks.at.ago(now))
+}
+
+/// A lesson as it is shown to someone about to act: the rule, its moment,
+/// and what brought it.
+pub fn lesson_block(lesson: &Lesson, because: &[String], now: Time) -> String {
+    let name = format!("lesson:{}", lesson.id);
+    let pad = " ".repeat(name.chars().count() + 4);
+    let mut out = format!("  {name}  {}\n{pad}when: {}\n", lesson.rule, lesson.moment);
+    let mut marks = Vec::new();
+    if !because.is_empty() {
+        marks.push(format!("matched: {}", because.join(", ")));
+    }
+    marks.push(format!("learned by {}", said(&lesson.marks, now)));
+    if lesson.everywhere {
+        marks.push("every project".to_string());
+    }
+    if lesson.shown > 0 {
+        marks.push(format!(
+            "shown {}",
+            if lesson.shown == 1 { "once".to_string() } else { format!("{} times", lesson.shown) }
+        ));
+    }
+    if lesson.stop {
+        marks.push("stops the act once".to_string());
+    }
+    out.push_str(&format!("{pad}{}\n", marks.join(" · ")));
+    out
+}
+
+/// Anything recalled, with its marks.
+pub fn thing_block(thing: &Thing, wide: bool, now: Time) -> String {
+    let pad = " ".repeat(thing.key.chars().count() + 4);
+    let mut out = format!("  {}  {}\n", thing.key, thing.title);
+    for line in &thing.detail {
+        out.push_str(&format!("{pad}{line}\n"));
+    }
+    let mut marks = match thing.kind {
+        "work" => {
+            let mut parts = vec![thing.marks.who.line(), thing.marks.sure.line(), thing.marks.at.ago(now)];
+            parts.extend(thing.marks.commit.iter().map(|c| format!("commit {c}")));
+            if thing.marks.private {
+                parts.push("private".to_string());
+            }
+            parts.join(" · ")
+        }
+        "decision" => format!("decided by {}", said(&thing.marks, now)),
+        "ask" => format!("asked by {}", said(&thing.marks, now)),
+        _ => said(&thing.marks, now),
+    };
+    if wide && thing.kind != "work" {
+        marks.push_str(&format!(" · {}", thing.marks.project));
+    }
+    out.push_str(&format!("{pad}{marks}\n"));
+    out
 }
