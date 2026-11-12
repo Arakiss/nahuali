@@ -1,0 +1,40 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(View::Intentions, 120, 36, | _, _ | {})"
+---
+                                          ╭────────────╮
+  nahuali   │     Today       Journal     │ Intentions │     Health       Search       Proposals                   ada
+                                          ╰────────────╯
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ╭────────────────────────────────────╮ ╭────────────────────────────────────╮ ╭──────────────────────────────────────╮
+ │  Overdue (2)                       │ │  Open (5)                          │ │  Closed this week (5)                │
+ │                                    │ │                                    │ │                                      │
+ │  !  Renew the TLS certificate on…  │ │  ·  Write the v1 import report     │ │  ✓  Freeze the v0 contracts   Nov 5  │
+ │     due Nov 2 · infra              │ │     due Nov 6 · nahuali            │ │                                      │
+ │                                    │ │                                    │ │  ✓  Study the omp TUI         Nov 5  │
+ │  !  Send the October invoice rem…  │ │  ·  Run the restore drill for th…  │ │                                      │
+ │     due Nov 4 · studio             │ │     due Nov 9 · nahuali            │ │  ✓  Memory eval, 15 questio…  Nov 5  │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │  ·  Draw the remaining axolotl s…  │ │  ✓  Port the vault mirror     Nov 4  │
+ │                                    │ │     due Nov 12 · nahuali           │ │                                      │
+ │                                    │ │                                    │ │  ✓  Ledger gaps report        Nov 3  │
+ │                                    │ │  ·  Book the dog's booster shot    │ │                                      │
+ │                                    │ │     no date · home                 │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │  ·  Try FTS5 trigram search on t…  │ │                                      │
+ │                                    │ │     no date · lab                  │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ │                                    │ │                                    │ │                                      │
+ ╰────────────────────────────────────╯ ╰────────────────────────────────────╯ ╰──────────────────────────────────────╯
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · 2 overdue · 1 review   7 open                    h l column   j k move   c close   ? help   q quit

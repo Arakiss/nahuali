@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "name": "nahuali axolotl v1 (4x2 sheet: happy row, worried row)",
+  "sheets": {
+    "v1": { "file": "spritesheet.png", "grid": [4, 2] }
+  },
+  "states": {
+    "idle": {
+      "frames": [
+        { "sheet": "v1", "cell": 0, "ms": 2600, "jitter_ms": 3400 },
+        { "sheet": "v1", "cell": 2, "ms": 125 },
+        { "sheet": "v1", "cell": 0, "ms": 1800 },
+        { "sheet": "v1", "cell": 1, "ms": 2200, "jitter_ms": 1600 },
+        { "sheet": "v1", "cell": 3, "ms": 1500 }
+      ]
+    },
+    "happy": {
+      "frames": [
+        { "sheet": "v1", "cell": 2, "ms": 2800, "jitter_ms": 1500 },
+        { "sheet": "v1", "cell": 0, "ms": 900 },
+        { "sheet": "v1", "cell": 2, "ms": 2000 },
+        { "sheet": "v1", "cell": 3, "ms": 700 }
+      ]
+    },
+    "worried": {
+      "frames": [
+        { "sheet": "v1", "cell": 4, "ms": 1400, "jitter_ms": 900 },
+        { "sheet": "v1", "cell": 5, "ms": 600 },
+        { "sheet": "v1", "cell": 6, "ms": 1200 },
+        { "sheet": "v1", "cell": 7, "ms": 600 }
+      ]
+    }
+  },
+  "fallback": {
+    "greeting": "happy",
+    "listening": "idle",
+    "thinking": "idle",
+    "writing": "idle",
+    "dreaming": "happy",
+    "proud": "happy",
+    "alarmed": "worried"
+  }
+}

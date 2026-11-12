@@ -1,0 +1,40 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(View::Journal, 120, 36, | _, _ | {})"
+---
+                            ╭─────────╮
+  nahuali   │     Today     │ Journal │     Intentions       Health       Search       Proposals                   ada
+                            ╰─────────╯
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ╭───────────────────────────────────╮ ╭──────────────────────────────────────────────────────────────────────────────╮
+ │  November 2026                    │ │  Wed 4 Nov 2026                                                              │
+ │                                   │ │                                                                              │
+ │  Mo Tu We Th Fr Sa Su             │ │  What happened                                                               │
+ │                     1             │ │  07:30  Paid the October electricity bill                        ada · home  │
+ │   2  3  4  5  6  7  8             │ │                                                                              │
+ │   9 10 11 12 13 14 15             │ │  09:12  Worked on Nahuali v2: the UI pass             claude-code · nahuali  │
+ │  16 17 18 19 20 21 22             │ │                                                                              │
+ │  23 24 25 26 27 28 29             │ │  11:40  Audit of v1: most compile time comes from the emb…  codex · nahuali  │
+ │  30                               │ │                                                                              │
+ │                                   │ │  16:05  Agreed the Q4 scope with the client                    ada · studio  │
+ │  ● agents  ◆ decision  ∗ private  │ │                                                                              │
+ │                                   │ │  18:20  Reconciled the October bank export; two gaps…  claude-code · studio  │
+ │  Wed  4  ● ◆ ∗                11  │ │                                                                              │
+ │                                   │ │  21:00  Booked the boiler service for next week                  ada · home  │
+ │  Tue  3  ●                     6  │ │                                                                              │
+ │                                   │ │  Decisions                                                                   │
+ │  Mon  2  ● ◆                   9  │ │  ◆  Terminal UI → first-class, with an animated axolotl        review Dec 5  │
+ │                                   │ │                                                                              │
+ │  Sun  1      ∗                 1  │ │  ◆  Recall → local only, no hosted embeddings in v0            review Dec 5  │
+ │                                   │ │                                                                              │
+ │  Sat 31  ●                     2  │ │  Learned                                                                     │
+ │                                   │ │  ·  Ratatui does not wrap frames in synchronized updates by itself           │
+ │  Fri 30  ● ◆                   7  │ │                                                                              │
+ │                                   │ │  ·  The v1 binary weighed 211 MB, mostly from the embedded store             │
+ │                                   │ │                                                                              │
+ │                                   │ │                                                                              │
+ │                                   │ │                                                                              │
+ ╰───────────────────────────────────╯ ╰──────────────────────────────────────────────────────────────────────────────╯
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · 2 overdue · 1 review   27 episodes this month     j k day   1-6 views   / search   ? help   q quit

@@ -1,0 +1,6 @@
+/target
+*.log
+
+# Agent worktrees and private working notes never ship
+.claude/
+.handoff/

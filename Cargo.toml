@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+members = ["crates/nahuali-tui", "crates/nahuali-view"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "LicenseRef-Private"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"

@@ -1,0 +1,40 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(View::Health, 120, 36, | _, _ | {})"
+---
+                                                           ╭────────╮
+  nahuali   │     Today       Journal       Intentions     │ Health │     Search       Proposals                   ada
+                                                           ╰────────╯
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ╭─────────────────────────────────────────────────────────────────────────────╮ ╭────────────────────────────────────╮
+ │  Integrity                                                                  │ │  Ingest                            │
+ │  ✓  event chain verified to seq 48211                                       │ │  24h  ▃▂▁▁▁▁▂▃▅▇▆▅▄▅▇█▇▅▄▃▅▆▅▄     │
+ │  ✓  checkpoint 03:10 · signed                                               │ │                                    │
+ │  ·  48,211 events                                              last 2m ago  │ │  ●  claude-code  2m ago · 9 today  │
+ ╰─────────────────────────────────────────────────────────────────────────────╯ │  ●  codex        9m ago · 4 today  │
+                                                                                 │  ○  cursor       3d ago · 0 today  │
+ ╭─────────────────────────────────────────────────────────────────────────────╮ ╰────────────────────────────────────╯
+ │  Export & backup                                                            │
+ │  ✓  export 03:12 · JSONL + Markdown                                         │ ╭────────────────────────────────────╮
+ │  ✓  round-trip 03:15 · lossless                                             │ │  Store                             │
+ │  ✓  vault 03:20 · encrypted                                                 │ │  engine   SurrealDB 4.0.0          │
+ ╰─────────────────────────────────────────────────────────────────────────────╯ │  address  127.0.0.1:8746           │
+                                                                                 │  events   48,211                   │
+ ╭─────────────────────────────────────────────────────────────────────────────╮ ╰────────────────────────────────────╯
+ │  Loops                                                                      │
+ │  ✓  baseline frozen 4d ago                                                  │
+ │     at 78b721d0c2e1                                                         │
+ │  ●  2 waiting for review                                     2/3 this week  │
+ │  ·  recall · 2 runs · 1 approved                         kill 1/4 · 4d ago  │
+ │  ·  skills · 0 runs · 0 approved                          kill 0/4 · never  │
+ │  ·  product · 0 runs · 0 approved                         kill 0/4 · never  │
+ │  ·  dev 14/15 · holdout 13/20                                               │
+ │  ·  1,204 recalls recorded                                0 write failures  │
+ ╰─────────────────────────────────────────────────────────────────────────────╯
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · 2 overdue · 1 review   ✓ chain ok   ✓ export 03:12 ok   ● ingest live              ? help   q quit

@@ -1,0 +1,2 @@
+# Exact lines ops/privacy-check.sh lets through: path rule sha256-of-the-line  # why
+# The hash pins the line: editing it ends the allowance. Keep this list short.

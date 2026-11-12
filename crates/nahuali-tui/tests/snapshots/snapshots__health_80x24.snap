@@ -1,0 +1,28 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(View::Health, 80, 24, | _, _ | {})"
+---
+  nahuali   │  Today   Journal   Intentions   Health   Search   Proposals
+ ──────────────────────────────────────────────────────────────────────────────
+ ╭─ Integrity ────────────────────────────────╮ ╭─ Ingest ────────────────────╮
+ │ ✓  event chain verified to seq 48211       │ │ 24h                         │
+ │ ✓  checkpoint 03:10 · signed               │ │ ▃▂▁▁▁▁▂▃▅▇▆▅▄▅▇█▇▅▄▃▅▆▅▄    │
+ │ ·  48,211 events               last 2m ago │ │                             │
+ ╰────────────────────────────────────────────╯ │ ●  claud…  2m ago · 9 today │
+ ╭─ Export & backup ──────────────────────────╮ │ ●  codex   9m ago · 4 today │
+ │ ✓  export 03:12 · JSONL + Markdown         │ │ ○  cursor  3d ago · 0 today │
+ │ ✓  round-trip 03:15 · lossless             │ ╰─────────────────────────────╯
+ │ ✓  vault 03:20 · encrypted                 │ ╭─ Store ─────────────────────╮
+ ╰────────────────────────────────────────────╯ │ engine   SurrealDB 4.0.0    │
+ ╭─ Loops ────────────────────────────────────╮ │ address  127.0.0.1:8746     │
+ │ ✓  baseline frozen 4d ago                  │ │ events   48,211             │
+ │    at 78b721d0c2e1                         │ ╰─────────────────────────────╯
+ │ ●  2 waiting for review      2/3 this week │
+ │ ·  recall · 2 runs · 1…  kill 1/4 · 4d ago │
+ │ ·  skills · 0 runs · 0…   kill 0/4 · never │
+ │ ·  product · 0 runs · 0…  kill 0/4 · never │
+ │ ·  dev 14/15 · holdout 13/20               │
+ │ ·  1,204 recalls record…  0 write failures │
+ ╰────────────────────────────────────────────╯
+ ──────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · 2 overdue · 1 review   ✓ chain ok                   ? help

@@ -1,0 +1,294 @@
+{
+  "version": 1,
+  "name": "Nahuali axolotl v2",
+  "states": {
+    "idle": {
+      "frames": [
+        {
+          "file": "idle/frame-01.png",
+          "ms": 450
+        },
+        {
+          "file": "idle/frame-02.png",
+          "ms": 450
+        },
+        {
+          "file": "idle/frame-01.png",
+          "ms": 450
+        },
+        {
+          "file": "idle/frame-04.png",
+          "ms": 450
+        },
+        {
+          "file": "idle/frame-01.png",
+          "ms": 350
+        },
+        {
+          "file": "idle/frame-03.png",
+          "ms": 120
+        }
+      ]
+    },
+    "happy": {
+      "frames": [
+        {
+          "file": "happy/frame-01.png",
+          "ms": 300
+        },
+        {
+          "file": "happy/frame-02.png",
+          "ms": 200
+        },
+        {
+          "file": "happy/frame-04.png",
+          "ms": 160
+        },
+        {
+          "file": "happy/frame-02.png",
+          "ms": 200
+        },
+        {
+          "file": "happy/frame-03.png",
+          "ms": 350
+        },
+        {
+          "file": "happy/frame-01.png",
+          "ms": 250
+        }
+      ]
+    },
+    "worried": {
+      "frames": [
+        {
+          "file": "worried/frame-01.png",
+          "ms": 450
+        },
+        {
+          "file": "worried/frame-03.png",
+          "ms": 500
+        },
+        {
+          "file": "worried/frame-04.png",
+          "ms": 600
+        },
+        {
+          "file": "worried/frame-03.png",
+          "ms": 400
+        },
+        {
+          "file": "worried/frame-01.png",
+          "ms": 350
+        },
+        {
+          "file": "worried/frame-02.png",
+          "ms": 130
+        }
+      ]
+    },
+    "greeting": {
+      "frames": [
+        {
+          "file": "greeting/frame-01.png",
+          "ms": 180
+        },
+        {
+          "file": "greeting/frame-02.png",
+          "ms": 180
+        },
+        {
+          "file": "greeting/frame-01.png",
+          "ms": 180
+        },
+        {
+          "file": "greeting/frame-03.png",
+          "ms": 180
+        },
+        {
+          "file": "greeting/frame-01.png",
+          "ms": 180
+        },
+        {
+          "file": "greeting/frame-02.png",
+          "ms": 180
+        },
+        {
+          "file": "greeting/frame-01.png",
+          "ms": 250
+        },
+        {
+          "file": "greeting/frame-04.png",
+          "ms": 130
+        }
+      ]
+    },
+    "listening": {
+      "frames": [
+        {
+          "file": "listening/frame-01.png",
+          "ms": 400
+        },
+        {
+          "file": "listening/frame-02.png",
+          "ms": 250
+        },
+        {
+          "file": "listening/frame-01.png",
+          "ms": 300
+        },
+        {
+          "file": "listening/frame-04.png",
+          "ms": 500
+        },
+        {
+          "file": "listening/frame-01.png",
+          "ms": 350
+        },
+        {
+          "file": "listening/frame-03.png",
+          "ms": 120
+        }
+      ]
+    },
+    "thinking": {
+      "frames": [
+        {
+          "file": "thinking/frame-01.png",
+          "ms": 350
+        },
+        {
+          "file": "thinking/frame-02.png",
+          "ms": 300
+        },
+        {
+          "file": "thinking/frame-03.png",
+          "ms": 300
+        },
+        {
+          "file": "thinking/frame-04.png",
+          "ms": 450
+        },
+        {
+          "file": "thinking/frame-05.png",
+          "ms": 120
+        },
+        {
+          "file": "thinking/frame-04.png",
+          "ms": 350
+        }
+      ]
+    },
+    "writing": {
+      "frames": [
+        {
+          "file": "writing/frame-01.png",
+          "ms": 250
+        },
+        {
+          "file": "writing/frame-02.png",
+          "ms": 250
+        },
+        {
+          "file": "writing/frame-01.png",
+          "ms": 250
+        },
+        {
+          "file": "writing/frame-02.png",
+          "ms": 250
+        },
+        {
+          "file": "writing/frame-04.png",
+          "ms": 450
+        },
+        {
+          "file": "writing/frame-01.png",
+          "ms": 300
+        },
+        {
+          "file": "writing/frame-03.png",
+          "ms": 130
+        }
+      ]
+    },
+    "dreaming": {
+      "frames": [
+        {
+          "file": "dreaming/frame-01.png",
+          "ms": 600
+        },
+        {
+          "file": "dreaming/frame-02.png",
+          "ms": 600
+        },
+        {
+          "file": "dreaming/frame-03.png",
+          "ms": 600
+        },
+        {
+          "file": "dreaming/frame-04.png",
+          "ms": 700
+        },
+        {
+          "file": "dreaming/frame-05.png",
+          "ms": 800
+        },
+        {
+          "file": "dreaming/frame-04.png",
+          "ms": 700
+        }
+      ]
+    },
+    "alarmed": {
+      "frames": [
+        {
+          "file": "alarmed/frame-01.png",
+          "ms": 150
+        },
+        {
+          "file": "alarmed/frame-04.png",
+          "ms": 90
+        },
+        {
+          "file": "alarmed/frame-02.png",
+          "ms": 90
+        },
+        {
+          "file": "alarmed/frame-05.png",
+          "ms": 90
+        },
+        {
+          "file": "alarmed/frame-03.png",
+          "ms": 150
+        },
+        {
+          "file": "alarmed/frame-01.png",
+          "ms": 200
+        }
+      ]
+    },
+    "proud": {
+      "frames": [
+        {
+          "file": "proud/frame-01.png",
+          "ms": 450
+        },
+        {
+          "file": "proud/frame-02.png",
+          "ms": 200
+        },
+        {
+          "file": "proud/frame-03.png",
+          "ms": 300
+        },
+        {
+          "file": "proud/frame-04.png",
+          "ms": 450
+        },
+        {
+          "file": "proud/frame-02.png",
+          "ms": 300
+        }
+      ]
+    }
+  }
+}

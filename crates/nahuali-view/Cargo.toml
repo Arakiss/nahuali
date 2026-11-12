@@ -1,0 +1,19 @@
+[package]
+name = "nahuali-view"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Renderer-agnostic view model for Nahuali screens"
+
+[lints]
+workspace = true
+
+[features]
+mock = []
+
+# The tests render the mock source: `cargo test -p nahuali-view` alone has
+# to turn it on, as the workspace's other crates do when built together.
+[dev-dependencies]
+nahuali-view = { path = ".", features = ["mock"] }

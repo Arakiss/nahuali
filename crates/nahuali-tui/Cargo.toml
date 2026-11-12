@@ -1,0 +1,29 @@
+[package]
+name = "nahuali-tui"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Portable terminal renderer for the Nahuali view model"
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "0.22.1"
+crossterm = "0.29.0"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+nahuali-view = { version = "0.1.0", path = "../nahuali-view" }
+palette = "0.7.7"
+ratatui = "0.30.2"
+ratatui-image = { version = "11.1.0", default-features = false }
+rust-embed = { version = "8.13.0", features = ["debug-embed", "include-exclude"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-width = "0.2.3"
+
+[dev-dependencies]
+ab_glyph = "0.2.32"
+insta = "1.49.0"
+nahuali-view = { path = "../nahuali-view", features = ["mock"] }

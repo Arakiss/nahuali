@@ -1,0 +1,28 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(View::Proposals, 80, 24,\n|_: &MockSource, ui: &mut UiState| { ui.detail = true })"
+---
+  nahuali   │  Today   Journal   Intentions   Health   Search   Proposals
+ ──────────────────────────────────────────────────────────────────────────────
+ status  pending
+ loop    recall
+ branch  loop/recall-2 @ 5d1c0a9e7b3f
+ diff    1 file changed, 1 insertion(+), 1 deletion(-) (+1 −1)
+ cost    41 min · 380k tokens
+
+ Hypothesis  Raising the coverage share finds paraphrased questions (Q07, Q12
+ were partial)
+
+ Changes  Recall ranks records that match more of the query words higher.
+ ╭─ Gates ────────────────────────────────────────────────────────────────────╮
+ │ ✓  frozen-hashes                                                           │
+ │ ✓  tests                                                                   │
+ │ ✓  clippy                                                                  │
+ │ +3 more                                                                    │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+ ╭─ Motivating events ────────────────────────────────────────────────────────╮
+ │ ·  correction.observed                               fact · nahuali:recall │
+ │ ·  eval.ran                                          dev 14/15 · worst Q07 │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+ ──────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · 2 overdue · 1 review        j k move   enter diff   ? help
