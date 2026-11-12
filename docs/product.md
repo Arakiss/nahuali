@@ -120,7 +120,8 @@ one key.
 - Not an archive of everything that was said.
 - Not a memory service for other people's applications.
 - Not a place where agents coordinate a fleet. That may come later.
-- Not a compliance product, and not multi-tenant.
+- Not a compliance product.
+- Not one big shared system: an installation serves one person or one team.
 
 ## How we will know it works
 
@@ -140,7 +141,15 @@ The smallest version the two of us would use tomorrow: the cards and the
 asks, the verbs `status`, `update`, `ask` and `answer`, and the first
 screen. Lessons and `check` come second. Notes and recall come third.
 
+## How it is offered
+
+Open source, to run on your own machine or server, and a hosted service
+beside it for those who would rather not run it. The hosted service runs
+this same program, one separate installation per customer; nothing is held
+back from the open version to make the hosted one better. What goes in this
+repository and what stays out is in `docs/boundaries.md`.
+
 ## Decided later, on purpose
 
-How it is stored, how two machines share it, what a team adds, and what it
-costs. None of them changes anything above.
+How it is stored, how two machines share it, what a team adds, the licence,
+and what the hosted service costs. None of them changes anything above.

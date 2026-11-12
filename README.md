@@ -9,10 +9,13 @@ what a person sees:
 
 - `crates/nahuali-view`: the screens as a view model, with no dependencies.
 - `crates/nahuali-tui`: the terminal renderer for that model.
-- `assets/`: the mascot and the rest of the art.
+- `assets/`: the axolotl as the program draws it.
 
 To see the terminal interface on sample data:
 
 ```sh
 cargo run -p nahuali-tui --example board
 ```
+
+Where this is going is in `docs/product.md`. What belongs in this repository
+and what never does is in `docs/boundaries.md`.

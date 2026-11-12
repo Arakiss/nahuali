@@ -26,7 +26,7 @@ impl ColorMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
-/// Raw palette, sampled from `assets/screens/sketches/today-terminal.png`.
+/// Raw palette, sampled from the first sketch of the terminal interface.
 pub mod raw {
     use super::Rgb;
     pub const BG: Rgb = Rgb(27, 16, 12);
