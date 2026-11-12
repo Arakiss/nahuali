@@ -1,0 +1,28 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(MockSource::empty(), View::Board, 80, 24, |_, _| {})"
+---
+  nahuali   │  Board   Lessons                                             ada
+ ──────────────────────────────────────────────────────────────────────────────
+     ▄       ▄    idle · resting
+    ▄█▀▀██▀▀▀▄▄
+    ▀▀█▀███▀▀▀
+      ▀▀██▀█▄▀
+       ▀▀▀▀▀▀
+
+ ╭─ Waiting on you · 0 ───────────────────────────────────────────────────────╮
+ │ Nothing waits on you                                                       │
+ │ Questions for you show up here until you answer them.                      │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+ ╭─ In motion · 0 ────────────────────────────────────────────────────────────╮
+ │ Nothing in motion                                                          │
+ │ Work shows up here when it starts.                                         │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+ ╭─ Learned this week · 0 ────────────────────────────────────────────────────╮
+ │ Nothing new                                                                │
+ │ No lesson was recorded this week.                                          │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+
+
+ ──────────────────────────────────────────────────────────────────────────────
+  ≋(•ᴗ•)≋ idle · resting             j k move   enter open   a answer   ? help

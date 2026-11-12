@@ -1,12 +1,13 @@
 //! Nahuali's renderer-agnostic view model.
 //!
-//! - [`model`]: the frozen tree (`Screen`, `Node`, `Tone`, `MascotState`, ...).
-//! - [`source`]: the [`ViewSource`](source::ViewSource) trait the store implements.
-//! - [`screens`]: builders for Today, Journal, Intentions, Health and Search.
+//! - [`model`]: the tree a renderer paints (`Screen`, `Node`, `Tone`, `MascotState`, ...).
+//! - [`source`]: what the screens read, and the [`ViewSource`](source::ViewSource)
+//!   trait whatever holds the memory implements.
+//! - [`screens`]: builders for the Board and Lessons.
 //! - [`keymap`]: one binding table per view, shared by key handling, footer
 //!   hints and the help card.
 //! - [`state`]: UI state and the pure transitions keys trigger.
-//! - [`mock`] (feature `mock`): an invented mind for demos and tests.
+//! - [`mock`] (feature `mock`): an invented memory for demos and tests.
 
 pub mod date;
 pub mod keymap;

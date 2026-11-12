@@ -27,25 +27,25 @@ use ratatui::layout::Rect;
 struct Shot {
     name: &'static str,
     view: View,
-    alarm: bool,
-    query: &'static str,
+    /// Row to select before drawing.
+    row: usize,
+    detail: bool,
+    empty: bool,
     help: bool,
 }
 
+const fn shot(name: &'static str, view: View) -> Shot {
+    Shot { name, view, row: 0, detail: false, empty: false, help: false }
+}
+
 const SHOTS: &[Shot] = &[
-    Shot { name: "today", view: View::Today, alarm: false, query: "", help: false },
-    Shot { name: "journal", view: View::Journal, alarm: false, query: "", help: false },
-    Shot { name: "intentions", view: View::Intentions, alarm: false, query: "", help: false },
-    Shot { name: "health", view: View::Health, alarm: false, query: "", help: false },
-    Shot { name: "health-alarm", view: View::Health, alarm: true, query: "", help: false },
-    Shot {
-        name: "search",
-        view: View::Search,
-        alarm: false,
-        query: "why did we keep the store local",
-        help: false,
-    },
-    Shot { name: "today-help", view: View::Today, alarm: false, query: "", help: true },
+    shot("board", View::Board),
+    Shot { detail: true, ..shot("board-question", View::Board) },
+    Shot { row: 2, detail: true, ..shot("board-work", View::Board) },
+    Shot { empty: true, ..shot("board-empty", View::Board) },
+    shot("lessons", View::Lessons),
+    Shot { detail: true, ..shot("lesson-open", View::Lessons) },
+    Shot { help: true, ..shot("board-help", View::Board) },
 ];
 
 fn to3(rgb: raw_rgb::Rgb) -> [u8; 3] {
@@ -120,12 +120,11 @@ fn main() {
     let bg = to3(raw::BG);
     for shot in SHOTS {
         for (w, h) in [(120u16, 36u16), (80, 24)] {
-            let src = MockSource::new();
-            src.set_chain_broken(shot.alarm);
+            let src = if shot.empty { MockSource::empty() } else { MockSource::new() };
             let mut ui = UiState::new(false);
             ui.view = shot.view;
-            ui.query = shot.query.to_string();
-            ui.searching = !shot.query.is_empty();
+            ui.select(shot.view, shot.row);
+            ui.detail = shot.detail;
             let draw = |sprites: Sprites| {
                 let mut app = App::new(&src, ui.clone(), sprites, theme);
                 app.help = shot.help;
@@ -174,7 +173,7 @@ fn main() {
         let mut buf = Buffer::empty(area);
         app.render(area, &mut buf);
         let image = raster::rasterize(&buf, &fonts, ink, bg);
-        let name = format!("today-{w}x{h}-256color.png");
+        let name = format!("board-{w}x{h}-256color.png");
         image.save(out.join(&name)).expect("save png");
         println!("{name}");
     }

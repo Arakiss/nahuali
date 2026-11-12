@@ -12,7 +12,6 @@ use crossterm::terminal::{
     SetTitle,
 };
 use crossterm::{cursor, execute, queue};
-use nahuali_view::source::Extensions;
 use nahuali_view::{Effect, MascotState, Screen, UiState, ViewSource, build, keymap};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -33,7 +32,7 @@ const SEARCH_SETTLE: Duration = Duration::from_millis(700);
 /// Run options.
 #[derive(Clone, Debug)]
 pub struct Options {
-    /// Expose the demo keys (`m` cycles the mascot, `!` toggles the alarm).
+    /// Expose the demo key (`m` cycles the mascot).
     pub demo: bool,
     pub motion: Motion,
     /// Skip the image-protocol query and draw half blocks.
@@ -61,9 +60,6 @@ pub enum Flow {
     Continue,
     Redraw,
     Quit,
-    ToggleAlarm,
-    /// Step aside and install the pending update.
-    InstallUpdate,
 }
 
 /// UI state, current screen and sprites. Terminal-free, so tests drive it
@@ -76,20 +72,21 @@ pub struct App<'a> {
     pub sprites: Sprites,
     pub theme: Theme,
     search_settle: Option<Instant>,
-    pub closed: Vec<String>,
+    /// The questions answered in this run, for the farewell line.
+    pub answered: Vec<String>,
 }
 
 impl<'a> App<'a> {
     pub fn new(src: &'a dyn ViewSource, ui: UiState, sprites: Sprites, theme: Theme) -> Self {
         let screen = build(src, &ui);
-        Self { src, ui, screen, help: false, sprites, theme, search_settle: None, closed: Vec::new() }
+        Self { src, ui, screen, help: false, sprites, theme, search_settle: None, answered: Vec::new() }
     }
 
     pub fn rebuild(&mut self) {
         self.screen = build(self.src, &self.ui);
     }
 
-    /// The state the mind asks the axolotl to show.
+    /// The state the screen asks the axolotl to show.
     pub fn mascot_target(&self) -> MascotState {
         self.screen.mascot().unwrap_or_default()
     }
@@ -102,8 +99,7 @@ impl<'a> App<'a> {
             return Flow::Redraw;
         }
         let notice_before = self.ui.notice.clone();
-        let ext = Extensions::of(self.src);
-        let effect = match keymap::resolve(self.ui.view, key, self.ui.demo, ext) {
+        let effect = match keymap::resolve(self.ui.view, key, self.ui.demo) {
             _ if self.ui.prompt.is_some() => self.ui.prompt_key(key, typed, self.src),
             Some(action) => self.ui.apply(action, self.src),
             None => match typed {
@@ -114,11 +110,11 @@ impl<'a> App<'a> {
         if self.ui.searching {
             self.search_settle = Some(now + SEARCH_SETTLE);
         }
-        // Count a close once: only when this key produced the notice.
+        // Count an answer once: only when this key produced the notice.
         if self.ui.notice != notice_before
-            && let Some(text) = self.ui.notice.as_deref().and_then(|n| n.strip_prefix("closed · "))
+            && let Some(text) = self.ui.notice.as_deref().and_then(|n| n.strip_prefix("answered · "))
         {
-            self.closed.push(text.to_string());
+            self.answered.push(text.to_string());
         }
         match effect {
             Effect::None => Flow::Continue,
@@ -131,8 +127,6 @@ impl<'a> App<'a> {
                 Flow::Redraw
             }
             Effect::Quit => Flow::Quit,
-            Effect::ToggleAlarm => Flow::ToggleAlarm,
-            Effect::InstallUpdate => Flow::InstallUpdate,
         }
     }
 
@@ -159,8 +153,7 @@ impl<'a> App<'a> {
 
     pub fn render(&mut self, area: Rect, buf: &mut Buffer) {
         self.sprites.clear_placements();
-        let ext = Extensions::of(self.src);
-        let help = self.help.then(|| keymap::help(self.ui.view, self.ui.demo, ext));
+        let help = self.help.then(|| keymap::help(self.ui.view, self.ui.demo));
         draw_screen(&self.screen, area, buf, &self.theme, &mut self.sprites, help.as_ref());
     }
 }
@@ -331,22 +324,17 @@ fn backend(options: &Options) -> Backend {
     }
 }
 
-/// Run the TUI until the user quits. `on_alarm` backs the demo `!` key.
-pub fn run(src: &dyn ViewSource, options: Options, on_alarm: Option<&dyn Fn()>) -> io::Result<()> {
+/// Run the TUI until the user quits.
+pub fn run(src: &dyn ViewSource, options: Options) -> io::Result<()> {
     let mut terminal = enter()?;
-    let result = run_inner(&mut terminal, src, &options, on_alarm);
+    let result = run_inner(&mut terminal, src, &options);
     leave()?;
-    let closed = result?;
-    farewell(&closed);
+    let answered = result?;
+    farewell(&answered);
     Ok(())
 }
 
-fn run_inner(
-    terminal: &mut Term,
-    src: &dyn ViewSource,
-    options: &Options,
-    on_alarm: Option<&dyn Fn()>,
-) -> io::Result<Vec<String>> {
+fn run_inner(terminal: &mut Term, src: &dyn ViewSource, options: &Options) -> io::Result<Vec<String>> {
     let theme = Theme::new(options.color);
     let now = Instant::now();
     let clock = Clock::new(now);
@@ -396,30 +384,9 @@ fn run_inner(
                                 let sprites = app.sprites.release();
                                 terminal.backend_mut().write_all(&sprites)?;
                                 terminal.backend_mut().flush()?;
-                                return Ok(app.closed);
+                                return Ok(app.answered);
                             }
                             Flow::Redraw => scheduler.request(Reason::Input),
-                            Flow::ToggleAlarm => {
-                                if let Some(toggle) = on_alarm {
-                                    toggle();
-                                }
-                                app.rebuild();
-                                scheduler.request(Reason::Input);
-                            }
-                            Flow::InstallUpdate => {
-                                let sprites = app.sprites.release();
-                                terminal.backend_mut().write_all(&sprites)?;
-                                terminal.backend_mut().flush()?;
-                                leave()?;
-                                let installed = install_update(src);
-                                *terminal = enter()?;
-                                terminal.clear()?;
-                                if installed {
-                                    return Ok(app.closed);
-                                }
-                                app.rebuild();
-                                scheduler.request(Reason::Input);
-                            }
                             Flow::Continue => {}
                         }
                     }
@@ -442,36 +409,14 @@ fn run_inner(
     }
 }
 
-/// Run the install on the plain terminal, where its prompts can be answered,
-/// and wait for Enter after a failure so its message can be read. `true`
-/// when it installed: the TUI then closes and the new binary takes over.
-fn install_update(src: &dyn ViewSource) -> bool {
-    let Some(updates) = src.updates() else {
-        return false;
-    };
-    println!("Installing the staged update. It may ask for a password.\n");
-    match updates.install() {
-        Ok(line) => {
-            println!("\n{line}");
-            true
-        }
-        Err(e) => {
-            println!("\nNot installed: {e}\nPress Enter to go back.");
-            let mut answer = String::new();
-            let _ = io::stdin().read_line(&mut answer);
-            false
-        }
-    }
-}
-
 /// Leave a trace in the scrollback: the face and what changed.
-fn farewell(closed: &[String]) {
+fn farewell(answered: &[String]) {
     let mut out = io::stdout();
     let mark = format!("{}{}{}", "≋".red().bold(), "(•ᴗ•)", "≋".red().bold());
-    let line = match closed.len() {
+    let line = match answered.len() {
         0 => "nahuali · see you".to_string(),
-        1 => format!("nahuali · closed 1 intention: {}", closed[0]),
-        n => format!("nahuali · closed {n} intentions"),
+        1 => format!("nahuali · answered: {}", answered[0]),
+        n => format!("nahuali · answered {n} questions"),
     };
     let _ = writeln!(out, "{mark} {}", line.dark_grey());
 }
@@ -487,34 +432,62 @@ mod tests {
         App::new(src, UiState::new(true), Sprites::for_tests(ColorMode::TrueColor, theme.bg()), theme)
     }
 
-    #[test]
-    fn a_close_is_counted_once() {
-        let src = MockSource::new();
-        let mut app = app(&src);
-        let now = Instant::now();
-        assert_eq!(app.key("c", Some('c'), now), Flow::Redraw);
-        assert_eq!(app.closed.len(), 1);
-        app.key("x", Some('x'), now);
-        app.key("j", Some('j'), now);
-        assert_eq!(app.closed.len(), 1);
+    fn type_text(app: &mut App<'_>, text: &str, now: Instant) {
+        for c in text.chars() {
+            app.key(&c.to_string(), Some(c), now);
+        }
     }
 
     #[test]
-    fn typing_makes_the_axolotl_think_until_the_query_settles() {
+    fn an_answer_is_typed_recorded_and_counted_once() {
         let src = MockSource::new();
         let mut app = app(&src);
         let now = Instant::now();
-        app.key("/", Some('/'), now);
-        assert_eq!(app.ui.view, View::Search);
-        for c in "store".chars() {
-            app.key(&c.to_string(), Some(c), now);
-        }
-        assert_eq!(app.ui.query, "store");
-        assert_eq!(app.mascot_target(), MascotState::Thinking);
-        assert!(app.next_deadline().is_some());
-        assert!(app.tick(now + SEARCH_SETTLE));
-        assert!(!app.ui.searching);
-        assert_ne!(app.mascot_target(), MascotState::Thinking);
+        assert_eq!(app.key("a", Some('a'), now), Flow::Redraw);
+        assert!(app.ui.prompt.is_some(), "the first row is a question");
+        // While the prompt is open, letters that are keys elsewhere are text.
+        type_text(&mut app, "behind a flag, q for quality", now);
+        assert_eq!(app.key("enter", None, now), Flow::Redraw);
+        assert_eq!(
+            src.answers(),
+            vec![("ask:importer-flag".to_string(), "behind a flag, q for quality".to_string())]
+        );
+        assert_eq!(app.answered.len(), 1);
+        app.key("j", Some('j'), now);
+        app.key("k", Some('k'), now);
+        assert_eq!(app.answered.len(), 1);
+        assert_eq!(src.board().asks.len(), 1, "the answered question left the board");
+    }
+
+    #[test]
+    fn an_empty_answer_is_not_recorded_and_esc_cancels() {
+        let src = MockSource::new();
+        let mut app = app(&src);
+        let now = Instant::now();
+        app.key("a", Some('a'), now);
+        app.key("enter", None, now);
+        assert!(src.answers().is_empty());
+        assert!(app.ui.prompt.is_some(), "the prompt stays open for the words");
+        app.key("esc", None, now);
+        assert!(app.ui.prompt.is_none());
+        assert!(src.answers().is_empty());
+    }
+
+    #[test]
+    fn the_axolotl_follows_what_is_owed() {
+        let src = MockSource::new();
+        let mut app = app(&src);
+        let now = Instant::now();
+        assert_eq!(app.mascot_target(), MascotState::Worried, "a question has waited two days");
+        app.key("a", Some('a'), now);
+        type_text(&mut app, "flag", now);
+        app.key("enter", None, now);
+        assert_eq!(app.mascot_target(), MascotState::Listening, "one question still waits");
+        app.key("a", Some('a'), now);
+        type_text(&mut app, "the second", now);
+        app.key("enter", None, now);
+        assert_eq!(app.mascot_target(), MascotState::Happy, "nothing waits any more");
+        assert_eq!(app.ui.view, View::Board);
     }
 
     #[test]

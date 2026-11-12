@@ -191,13 +191,13 @@ fn seg_piece(seg: &Seg, theme: &Theme) -> Piece {
 }
 
 /// Drop order for hints: global shortcuts go first, the view's own keys
-/// and `?` stay longest (help lists everything that was dropped).
+/// stay longer, and `?` and the answer key stay longest (help lists
+/// everything that was dropped; answering is what the board is for).
 fn hint_priority(hint: &KeyHint) -> u8 {
     match hint.key.as_str() {
-        "?" => 1,
+        "?" | "a" => 1,
         "q" | "esc" => 3,
-        "/" => 5,
-        "1-6" => 6,
+        key if key.starts_with("1-") => 6,
         _ => 2,
     }
 }

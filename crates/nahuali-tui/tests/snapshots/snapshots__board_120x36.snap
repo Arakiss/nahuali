@@ -1,0 +1,40 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(MockSource :: new(), View::Board, 120, 36, | _, _ | {})"
+---
+                ╭───────╮
+  nahuali   │   │ Board │     Lessons                                                                              ada
+                ╰───────╯
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                 │
+         ▄▄             ▄▄       │  ╭─────────────────────────────────────────────────────────────────────────────────╮
+         █▀▄   ▄▄▄▄    ▄▀█       │  │  Waiting on you · 2                                                             │
+      █▀▄▀▀▀▄▀██████▀▀▄█▀▀▄▀     │  │                                                                                 │
+      ▀▀▀▀▀▀█▀███████▀█▀▀▀▀▀     │  │  ▸  atlas  Ship the importer behind a flag, or wait for the audit?      2d ago  │
+        ▀▀█▀▀█▀████▀█▀▀█▀▀▀      │  │     blocks release 0.4 · recommended: behind a flag                             │
+       ▀▀▀▀█▀▀▀█▀▀█▀▀▀▀▀▀▀██     │  │                                                                                 │
+           ▀▀▀███████▀▀▀         │  │  ▸  borealis  Which of the two logos goes on the cover?                 1h ago  │
+             ▀▀▀▀▀▀█▀▀▀▄▀▀▀      │  ╰─────────────────────────────────────────────────────────────────────────────────╯
+             ▀█▀▀▀▀██▀▀▀▀▀▀      │
+             ▀▀▀▀▀▀▀▀▀▀          │  ╭─────────────────────────────────────────────────────────────────────────────────╮
+                                 │  │  In motion · 3                                                                  │
+     worried · a question has    │  │                                                                                 │
+          waited 2 days          │  │  ●  atlas  importer · tests green, review left                         12m ago  │
+                                 │  │                                                                                 │
+  ────────────────────────────── │  │  ●  borealis  cover · two candidates drawn                              3h ago  │
+                                 │  │     waiting on you                                                              │
+  How sure                       │  │                                                                                 │
+                                 │  │  ○  cobalt  pricing page · waits for the importer                      17h ago  │
+  verified  5                    │  ╰─────────────────────────────────────────────────────────────────────────────────╯
+  claimed   2                    │
+                                 │  ╭─────────────────────────────────────────────────────────────────────────────────╮
+                                 │  │  Learned this week · 2                                                          │
+                                 │  │                                                                                 │
+                                 │  │  !  Agent worktrees start from the default branch                               │
+                                 │  │     when: before spawning an agent in its own worktree                          │
+                                 │  │  !  Nine build directories filled the disk: share one                           │
+                                 │  │     when: before building in more than two worktrees                            │
+                                 │  ╰─────────────────────────────────────────────────────────────────────────────────╯
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · a question has waited 2 days   ✗ 2 only claimed          j k move   enter open   a answer   ? help

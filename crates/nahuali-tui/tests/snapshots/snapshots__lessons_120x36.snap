@@ -1,0 +1,40 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(MockSource :: new(), View::Lessons, 120, 36, | _, _ | {})"
+---
+                            ╭─────────╮
+  nahuali   │     Board     │ Lessons │                                                                            ada
+                            ╰─────────╯
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │  Lessons · 3                                                                                                       │
+ │                                                                                                                    │
+ │  !  Agent worktrees start from the default branch                                                 atlas · 18h ago  │
+ │     when: before spawning an agent in its own worktree                                                             │
+ │                                                                                                                    │
+ │  !  Nine build directories filled the disk: share one                                             atlas · 16h ago  │
+ │     when: before building in more than two worktrees                                                               │
+ │                                                                                                                    │
+ │  !  The printer rejects logos under 300 dpi                                                     borealis · 8d ago  │
+ │     when: before sending artwork to print                                                                          │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ │                                                                                                                    │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · a question has waited 2 days   ✗ 1 only claimed          j k move   enter open   esc back   ? help

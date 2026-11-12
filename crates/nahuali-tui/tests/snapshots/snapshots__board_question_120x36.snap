@@ -1,0 +1,40 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(MockSource::new(), View::Board, 120, 36,\n|_: &MockSource, ui: &mut UiState| { ui.detail = true })"
+---
+                ╭───────╮
+  nahuali   │   │ Board │     Lessons                                                                              ada
+                ╰───────╯
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                 │
+         ▄▄             ▄▄       │  ╭─────────────────────────────────────────────────────────────────────────────────╮
+         █▀▄   ▄▄▄▄    ▄▀█       │  │  Question · atlas                                                               │
+      █▀▄▀▀▀▄▀██████▀▀▄█▀▀▄▀     │  │                                                                                 │
+      ▀▀▀▀▀▀█▀███████▀█▀▀▀▀▀     │  │  Ship the importer behind a flag, or wait for the audit?                        │
+        ▀▀█▀▀█▀████▀█▀▀█▀▀▀      │  │  blocks       release 0.4                                                       │
+       ▀▀▀▀█▀▀▀█▀▀█▀▀▀▀▀▀▀██     │  │  recommended  behind a flag                                                     │
+           ▀▀▀███████▀▀▀         │  │                                                                                 │
+             ▀▀▀▀▀▀█▀▀▀▄▀▀▀      │  │  Marks                                                                          │
+             ▀█▀▀▀▀██▀▀▀▀▀▀      │  │  who       observed by claude-code                                              │
+             ▀▀▀▀▀▀▀▀▀▀          │  │  how sure  verified · the release checklist                                     │
+                                 │  │  as of     2d ago                                                               │
+     worried · a question has    │  │  reach     atlas                                                                │
+          waited 2 days          │  │                                                                                 │
+                                 │  │  Past                                                                           │
+  ────────────────────────────── │  │  Nov 10  asked                                            claude-code · 2d ago  │
+                                 │  ╰─────────────────────────────────────────────────────────────────────────────────╯
+  How sure                       │
+                                 │
+  verified  5                    │
+  claimed   2                    │
+                                 │
+                                 │
+                                 │
+                                 │
+                                 │
+                                 │
+                                 │
+                                 │
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · a question has waited 2 days   ✗ 2 only claimed          j k move   enter open   a answer   ? help

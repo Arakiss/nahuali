@@ -1,0 +1,40 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(MockSource::new(), View::Board, 120, 36,\n|src: &MockSource, _: &mut UiState|\n{\n    use nahuali_view::ViewSource;\n    src.answer(\"ask:importer-flag\", \"behind a flag\").unwrap();\n    src.answer(\"ask:cover-logo\", \"the second\").unwrap();\n})"
+---
+                ╭───────╮
+  nahuali   │   │ Board │     Lessons                                                                              ada
+                ╰───────╯
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                 │
+                                 │  ╭─────────────────────────────────────────────────────────────────────────────────╮
+        ▄▄              ▄▄       │  │  Waiting on you · 0                                                             │
+        ▀▀▀▄▄▀▀▀██▀▀▄▄▄▀▀▀       │  │                                                                                 │
+      ▀▄█▀▀▀██████████▀▀▀▄▄▄     │  │  Nothing waits on you                                                           │
+      ▀▀▀▀▀████████████▀▀▀▀      │  │  Questions for you show up here until you answer them.                          │
+      ▄▄▄▀█▀▀▀█████▀▀▀█▀▀▄▄      │  ╰─────────────────────────────────────────────────────────────────────────────────╯
+      ▀▀▀▀▀▀▀██▀▀▀███▀▀▀▀▀▀      │
+            ▀▀▀████▀▀▀▄▄▀▀       │  ╭─────────────────────────────────────────────────────────────────────────────────╮
+            ██▀▀▀▀▀█▀▀▀▀▀▀       │  │  In motion · 3                                                                  │
+            ▀▀▀▀▀▀▀▀▀▀▀          │  │                                                                                 │
+                                 │  │  ●  atlas  importer · tests green, review left                         12m ago  │
+   happy · nothing waits on you  │  │                                                                                 │
+                                 │  │  ●  borealis  cover · two candidates drawn                              3h ago  │
+  ────────────────────────────── │  │                                                                                 │
+                                 │  │  ○  cobalt  pricing page · waits for the importer                      17h ago  │
+  How sure                       │  ╰─────────────────────────────────────────────────────────────────────────────────╯
+                                 │
+  verified  4                    │  ╭─────────────────────────────────────────────────────────────────────────────────╮
+  claimed   1                    │  │  Learned this week · 2                                                          │
+                                 │  │                                                                                 │
+                                 │  │  !  Agent worktrees start from the default branch                               │
+                                 │  │     when: before spawning an agent in its own worktree                          │
+                                 │  │                                                                                 │
+                                 │  │  !  Nine build directories filled the disk: share one                           │
+                                 │  │     when: before building in more than two worktrees                            │
+                                 │  ╰─────────────────────────────────────────────────────────────────────────────────╯
+                                 │
+                                 │
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ≋(•ᴗ•)≋ happy · nothing waits on you   ✗ 1 only claimed         j k move   enter open   a answer   esc back   ? help

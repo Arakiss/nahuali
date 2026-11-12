@@ -1,0 +1,40 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(MockSource::new(), View::Board, 120, 36,\n|_: &MockSource, ui: &mut UiState|\n{ ui.select(View::Board, 2); ui.detail = true; })"
+---
+                ╭───────╮
+  nahuali   │   │ Board │     Lessons                                                                              ada
+                ╰───────╯
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                 │
+         ▄▄             ▄▄       │  ╭─────────────────────────────────────────────────────────────────────────────────╮
+         █▀▄   ▄▄▄▄    ▄▀█       │  │  Work · atlas                                                                   │
+      █▀▄▀▀▀▄▀██████▀▀▄█▀▀▄▀     │  │  importer                                                                       │
+      ▀▀▀▀▀▀█▀███████▀█▀▀▀▀▀     │  │  status  moving                                                                 │
+        ▀▀█▀▀█▀████▀█▀▀█▀▀▀      │  │  now     tests green, review left                                               │
+       ▀▀▀▀█▀▀▀█▀▀█▀▀▀▀▀▀▀██     │  │                                                                                 │
+           ▀▀▀███████▀▀▀         │  │  Done                                                                           │
+             ▀▀▀▀▀▀█▀▀▀▄▀▀▀      │  │  ✓  reads the three export formats                                              │
+             ▀█▀▀▀▀██▀▀▀▀▀▀      │  │  ✓  refuses a file it cannot verify                                             │
+             ▀▀▀▀▀▀▀▀▀▀          │  │                                                                                 │
+                                 │  │  Next                                                                           │
+     worried · a question has    │  │  →  review by a second agent                                                    │
+          waited 2 days          │  │  →  the flag, once it is decided                                                │
+                                 │  │                                                                                 │
+  ────────────────────────────── │  │  Marks                                                                          │
+                                 │  │  who       observed by claude-code                                              │
+  How sure                       │  │  how sure  verified · cargo test, 212 passed                                    │
+  verified  5                    │  │  as of     12m ago · commit 4c1e9a2                                             │
+  claimed   2                    │  │  reach     atlas                                                                │
+                                 │  │                                                                                 │
+                                 │  │  Past                                                                           │
+                                 │  │  Nov 12  tests green, review left                        claude-code · 12m ago  │
+                                 │  │  Nov 12  refuses a file it cannot verify                  claude-code · 1h ago  │
+                                 │  │  Nov 11  reads the three export formats                  claude-code · 15h ago  │
+                                 │  │  Nov 10  started                                                  ada · 2d ago  │
+                                 │  ╰─────────────────────────────────────────────────────────────────────────────────╯
+                                 │
+                                 │
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · a question has waited 2 days   ✗ 2 only claimed          j k move   enter open   a answer   ? help

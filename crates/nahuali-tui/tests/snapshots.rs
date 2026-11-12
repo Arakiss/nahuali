@@ -5,7 +5,6 @@ use nahuali_tui::App;
 use nahuali_tui::mascot::Sprites;
 use nahuali_tui::theme::{ColorMode, Theme};
 use nahuali_view::mock::MockSource;
-use nahuali_view::source::{Extensions, Principal, PrincipalKind};
 use nahuali_view::{UiState, View};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -24,17 +23,7 @@ fn text(buf: &Buffer) -> String {
     out
 }
 
-fn render(view: View, w: u16, h: u16, setup: impl Fn(&MockSource, &mut UiState)) -> String {
-    render_from(MockSource::new(), view, w, h, setup)
-}
-
-fn render_from(
-    src: MockSource,
-    view: View,
-    w: u16,
-    h: u16,
-    setup: impl Fn(&MockSource, &mut UiState),
-) -> String {
+fn render(src: MockSource, view: View, w: u16, h: u16, setup: impl Fn(&MockSource, &mut UiState)) -> String {
     let mut ui = UiState::new(false);
     ui.view = view;
     setup(&src, &mut ui);
@@ -55,55 +44,36 @@ fn render_from(
 
 macro_rules! snap {
     ($name:ident, $view:expr) => {
-        snap!($name, $view, |_, _| {});
+        snap!($name, MockSource::new(), $view, |_, _| {});
     };
-    ($name:ident, $view:expr, $setup:expr) => {
-        #[test]
-        fn $name() {
-            insta::assert_snapshot!(concat!(stringify!($name), "_120x36"), render($view, 120, 36, $setup));
-            insta::assert_snapshot!(concat!(stringify!($name), "_80x24"), render($view, 80, 24, $setup));
-        }
-    };
-}
-
-snap!(today, View::Today);
-snap!(journal, View::Journal);
-snap!(intentions, View::Intentions);
-snap!(health, View::Health);
-snap!(health_alarm, View::Health, |src: &MockSource, _: &mut UiState| { src.set_chain_broken(true) });
-snap!(search_empty, View::Search);
-snap!(search, View::Search, |_: &MockSource, ui: &mut UiState| {
-    ui.query = "why did we keep the store local".into();
-    ui.searching = true;
-});
-snap!(proposals, View::Proposals);
-snap!(proposals_diff, View::Proposals, |_: &MockSource, ui: &mut UiState| { ui.detail = true });
-snap!(search_record, View::Search, |_: &MockSource, ui: &mut UiState| {
-    ui.query = "why did we keep the store local".into();
-    ui.detail = true;
-});
-
-/// The core alone: five tabs, no loops card, no candidate or update rows.
-macro_rules! snap_from {
-    ($name:ident, $src:expr, $view:expr) => {
+    ($name:ident, $src:expr, $view:expr, $setup:expr) => {
         #[test]
         fn $name() {
             insta::assert_snapshot!(
                 concat!(stringify!($name), "_120x36"),
-                render_from($src, $view, 120, 36, |_, _| {})
+                render($src, $view, 120, 36, $setup)
             );
             insta::assert_snapshot!(
                 concat!(stringify!($name), "_80x24"),
-                render_from($src, $view, 80, 24, |_, _| {})
+                render($src, $view, 80, 24, $setup)
             );
         }
     };
 }
 
-snap_from!(core_today, MockSource::new().with_extensions(Extensions::NONE), View::Today);
-snap_from!(core_health, MockSource::new().with_extensions(Extensions::NONE), View::Health);
-snap_from!(
-    team_today,
-    MockSource::new().with_principal(Principal::new("infra", PrincipalKind::Team)),
-    View::Today
-);
+snap!(board, View::Board);
+snap!(board_empty, MockSource::empty(), View::Board, |_, _| {});
+snap!(board_question, MockSource::new(), View::Board, |_: &MockSource, ui: &mut UiState| {
+    ui.detail = true
+});
+snap!(board_work, MockSource::new(), View::Board, |_: &MockSource, ui: &mut UiState| {
+    ui.select(View::Board, 2);
+    ui.detail = true;
+});
+snap!(board_answered, MockSource::new(), View::Board, |src: &MockSource, _: &mut UiState| {
+    use nahuali_view::ViewSource;
+    src.answer("ask:importer-flag", "behind a flag").unwrap();
+    src.answer("ask:cover-logo", "the second").unwrap();
+});
+snap!(lessons, View::Lessons);
+snap!(lesson_open, MockSource::new(), View::Lessons, |_: &MockSource, ui: &mut UiState| { ui.detail = true });

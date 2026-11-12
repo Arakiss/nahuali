@@ -1,15 +1,9 @@
-//! The frozen v0 view model (`docs/contracts.md`, "View model").
+//! The view model: what a screen is, whatever paints it.
 //!
-//! A [`Screen`] is a renderer-agnostic tree. The portable terminal renderer
-//! (`nahuali-tui`) paints it with cells; a later Tern adapter can map every
-//! node 1:1 onto Tern Surface Protocol elements. Nothing here knows about
-//! terminals, colours or widths: tones are semantic and layout is decided by
-//! the renderer.
-//!
-//! The contract fixes the names and the shape of [`Screen`], [`Node`],
-//! [`Tone`] and [`MascotState`]. The helper types it references without
-//! spelling out ([`Span`], [`Item`], [`Seg`], [`Icon`], [`KeyHint`]) are
-//! defined here.
+//! A [`Screen`] is a renderer-agnostic tree. The terminal renderer
+//! (`nahuali-tui`) paints it with cells; another renderer can map every node
+//! onto its own elements. Nothing here knows about terminals, colours or
+//! widths: tones are semantic and layout is decided by the renderer.
 
 /// Semantic colour role. Renderers map each tone to their own palette.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]

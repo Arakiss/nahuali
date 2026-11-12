@@ -1,51 +1,56 @@
-//! UI state and the pure transitions keys trigger. The renderer turns a key
-//! into an [`Action`] through the keymap and calls [`UiState::apply`]; no
-//! terminal code is involved, so every transition is unit-testable.
+//! UI state and the pure transitions keys trigger. Nothing here draws: an
+//! [`Effect`] tells the renderer what to do next.
 
 use crate::keymap::{Action, View};
 use crate::model::MascotState;
-use crate::screens::{Need, intention_columns, needs_of};
-use crate::source::{Extensions, Verdict, ViewSource};
+use crate::source::{Ask, Board, ViewSource, Work};
 
-/// What the caller should do after an action.
+/// What the renderer has to do after a key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Effect {
-    /// Nothing visible changed.
     None,
-    /// Rebuild and redraw.
     Redraw,
-    /// Toggle the help overlay.
     Help,
-    /// Leave the UI.
     Quit,
-    /// Demo: the caller owns the mock and flips its alarm.
-    ToggleAlarm,
-    /// Hand the terminal back and install the pending update.
-    InstallUpdate,
 }
 
-/// A verdict whose reason is being typed.
+/// An answer being typed for one ask.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Prompt {
-    pub verdict: Verdict,
-    pub id: String,
-    pub target: String,
-    pub reason: String,
+    pub ask: String,
+    pub question: String,
+    pub text: String,
+}
+
+/// The selected row of the board: asks come first, then work.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Picked<'a> {
+    Ask(&'a Ask),
+    Work(&'a Work),
+}
+
+/// The board's row at `index`, clamped to its last row.
+pub fn picked(board: &Board, index: usize) -> Option<Picked<'_>> {
+    let len = board.asks.len() + board.works.len();
+    if len == 0 {
+        return None;
+    }
+    let i = index.min(len - 1);
+    match board.asks.get(i) {
+        Some(ask) => Some(Picked::Ask(ask)),
+        None => board.works.get(i - board.asks.len()).map(Picked::Work),
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct UiState {
     pub view: View,
-    selected: [usize; 6],
-    /// Proposals: the literal diff is shown. Search: the selected record is
-    /// open with its history.
+    selected: [usize; 2],
+    /// The selected item is open with its past and its marks.
     pub detail: bool,
-    /// Proposals: a decision prompt is open; keys type its reason.
+    /// An answer is being typed; keys go into it.
     pub prompt: Option<Prompt>,
-    /// Focused column on Intentions (0 overdue, 1 open, 2 closed).
-    pub column: usize,
-    pub query: String,
-    /// A recall is running (the axolotl thinks).
+    /// Kept for renderers that show a thinking state; no view searches yet.
     pub searching: bool,
     pub mascot_override: Option<MascotState>,
     pub demo: bool,
@@ -58,8 +63,7 @@ impl UiState {
         Self { demo, ..Self::default() }
     }
 
-    /// The same state shown on `view`: what a screen falls back to when its
-    /// own view is missing.
+    /// The same state shown on `view`.
     pub fn on(&self, view: View) -> Self {
         Self { view, detail: false, prompt: None, ..self.clone() }
     }
@@ -73,20 +77,12 @@ impl UiState {
     }
 
     fn list_len(&self, src: &dyn ViewSource) -> usize {
-        let now = src.now();
         match self.view {
-            View::Today => needs_of(src, now).len(),
-            View::Journal => src.journal_days(now.date).len(),
-            View::Intentions => intention_columns(&src.intentions(), now)[self.column.min(2)].len(),
-            View::Health => 0,
-            View::Proposals => src.loops().map_or(0, |l| l.proposals().len()),
-            View::Search => {
-                if self.query.trim().is_empty() {
-                    0
-                } else {
-                    src.recall(&self.query, 20).items.len()
-                }
+            View::Board => {
+                let board = src.board();
+                board.asks.len() + board.works.len()
             }
+            View::Lessons => src.lessons().len(),
         }
     }
 
@@ -104,8 +100,8 @@ impl UiState {
         Effect::Redraw
     }
 
-    fn go(&mut self, view: View, ext: Extensions) -> Effect {
-        if self.view == view || !view.available(ext) {
+    fn go(&mut self, view: View) -> Effect {
+        if self.view == view {
             return Effect::None;
         }
         self.view = view;
@@ -113,17 +109,9 @@ impl UiState {
         Effect::Redraw
     }
 
-    /// Type one character into the query (text-taking views only).
-    pub fn type_char(&mut self, c: char) -> Effect {
-        if !self.view.takes_text() || c.is_control() {
-            return Effect::None;
-        }
-        self.notice = None;
-        self.query.push(c);
-        self.detail = false;
-        self.select(View::Search, 0);
-        self.searching = true;
-        Effect::Redraw
+    /// Type one character on a view that takes text. No view does yet.
+    pub fn type_char(&mut self, _c: char) -> Effect {
+        Effect::None
     }
 
     /// Apply one action.
@@ -134,72 +122,26 @@ impl UiState {
     }
 
     fn apply_inner(&mut self, action: Action, src: &dyn ViewSource) -> Effect {
-        let ext = Extensions::of(src);
         match action {
-            Action::NextView => self.go(self.view.next(ext), ext),
-            Action::PrevView => self.go(self.view.prev(ext), ext),
-            Action::GoTo(view) => self.go(view, ext),
-            Action::FocusSearch => self.go(View::Search, ext),
+            Action::NextView => self.go(self.view.next()),
+            Action::PrevView => self.go(self.view.prev()),
+            Action::GoTo(view) => self.go(view),
             Action::Down => self.step(src, 1),
             Action::Up => self.step(src, -1),
-            Action::Left | Action::Right if self.view == View::Intentions => {
-                let next = if action == Action::Left {
-                    self.column.saturating_sub(1)
-                } else {
-                    (self.column + 1).min(2)
-                };
-                if next == self.column {
+            Action::Open => {
+                if self.list_len(src) == 0 {
                     return Effect::None;
                 }
-                self.column = next;
-                self.select(View::Intentions, 0);
-                Effect::Redraw
-            }
-            Action::Left | Action::Right => Effect::None,
-            Action::Open if self.view == View::Proposals && ext.loops => {
                 self.detail = !self.detail;
                 Effect::Redraw
             }
-            Action::Open if self.view == View::Search => self.open_record(src),
-            Action::Open => self.open(src),
-            Action::Close => self.close(src),
-            Action::Approve if self.view == View::Today => self.candidate(src, true),
-            Action::Reject if self.view == View::Today => self.candidate(src, false),
-            Action::Approve => self.start_prompt(Verdict::Approve, src),
-            Action::Reject => self.start_prompt(Verdict::Reject, src),
-            Action::Defer => self.start_prompt(Verdict::Defer, src),
-            Action::Back if matches!(self.view, View::Proposals | View::Search) && self.detail => {
+            Action::Back if self.detail => {
                 self.detail = false;
                 Effect::Redraw
             }
-            Action::Back => {
-                if self.query.is_empty() {
-                    self.go(View::Today, ext)
-                } else {
-                    self.query.clear();
-                    self.searching = false;
-                    Effect::Redraw
-                }
-            }
-            Action::DeleteChar => {
-                if self.query.pop().is_some() {
-                    self.detail = false;
-                    self.select(View::Search, 0);
-                    self.searching = !self.query.is_empty();
-                    Effect::Redraw
-                } else {
-                    Effect::None
-                }
-            }
-            Action::ClearQuery => {
-                if self.query.is_empty() {
-                    return Effect::None;
-                }
-                self.query.clear();
-                self.detail = false;
-                self.searching = false;
-                Effect::Redraw
-            }
+            Action::Back => self.go(View::Board),
+            Action::Answer => self.start_answer(src),
+            Action::DeleteChar => Effect::None,
             Action::Help => Effect::Help,
             Action::Quit => Effect::Quit,
             Action::CycleMascot => {
@@ -213,200 +155,61 @@ impl UiState {
                 });
                 Effect::Redraw
             }
-            Action::ToggleAlarm => Effect::ToggleAlarm,
-            Action::Update if self.view == View::Today => match src.updates() {
-                Some(u) if u.staged().is_some() => Effect::InstallUpdate,
-                Some(_) => {
-                    self.notice = Some("no update is waiting".into());
-                    Effect::Redraw
-                }
-                None => Effect::None,
-            },
-            Action::Update => Effect::None,
         }
     }
 
-    fn start_prompt(&mut self, verdict: Verdict, src: &dyn ViewSource) -> Effect {
-        let Some(loops) = src.loops().filter(|_| self.view == View::Proposals) else {
+    fn start_answer(&mut self, src: &dyn ViewSource) -> Effect {
+        if self.view != View::Board {
             return Effect::None;
-        };
-        let list = loops.proposals();
-        let Some(p) = list.get(self.selected(View::Proposals).min(list.len().saturating_sub(1))) else {
-            self.notice = Some("no proposal selected".into());
-            return Effect::Redraw;
-        };
-        if !p.is_open() {
-            self.notice = Some(format!("{} is already {}", p.id, p.status));
-            return Effect::Redraw;
         }
-        if verdict == Verdict::Approve && !p.gates_ok() {
-            self.notice = Some(format!("cannot approve {}: a gate did not pass (frozen {})", p.id, p.frozen));
-            return Effect::Redraw;
+        let board = src.board();
+        match picked(&board, self.selected(View::Board)) {
+            Some(Picked::Ask(ask)) => {
+                self.prompt =
+                    Some(Prompt { ask: ask.id.clone(), question: ask.question.clone(), text: String::new() });
+            }
+            Some(Picked::Work(_)) => {
+                self.notice = Some("select a question to answer it".into());
+            }
+            None => self.notice = Some("nothing waits on you".into()),
         }
-        self.prompt =
-            Some(Prompt { verdict, id: p.id.clone(), target: p.target.clone(), reason: String::new() });
         Effect::Redraw
     }
 
-    /// Handle one key while a decision prompt is open: enter records it, esc
-    /// cancels, printable characters type the reason.
+    /// Handle one key while an answer is being typed: enter records it, esc
+    /// cancels, printable characters type it.
     pub fn prompt_key(&mut self, key: &str, typed: Option<char>, src: &dyn ViewSource) -> Effect {
         let Some(prompt) = self.prompt.as_mut() else {
             return Effect::None;
         };
-        let action = crate::keymap::PROMPT.iter().find(|b| b.keys.contains(&key)).map(|b| b.action);
-        match action {
-            Some(Action::Quit) => Effect::Quit,
-            Some(Action::Back) => {
-                self.prompt = None;
-                self.notice = Some("cancelled".into());
-                Effect::Redraw
+        self.notice = None;
+        match key {
+            "ctrl+c" => return Effect::Quit,
+            "esc" => self.prompt = None,
+            "backspace" => {
+                prompt.text.pop();
             }
-            Some(Action::DeleteChar) => {
-                prompt.reason.pop();
-                Effect::Redraw
-            }
-            Some(_) => {
-                let reason = prompt.reason.trim().to_string();
-                if prompt.verdict == Verdict::Reject && reason.is_empty() {
-                    self.notice = Some("a rejection needs a reason".into());
+            "enter" => {
+                let text = prompt.text.trim().to_string();
+                if text.is_empty() {
+                    self.notice = Some("an answer needs words".into());
                     return Effect::Redraw;
                 }
-                let (id, target, verdict) = (prompt.id.clone(), prompt.target.clone(), prompt.verdict);
-                self.prompt = None;
-                self.notice = Some(match src.loops().map(|l| l.decide(&id, verdict, &reason)) {
-                    Some(Ok(())) => format!("{} · {target}", verdict.decision()),
-                    Some(Err(error)) => format!("could not record it: {error}"),
-                    None => "this mind runs no improvement loops".into(),
-                });
-                Effect::Redraw
-            }
-            None => match typed {
-                Some(c) if !c.is_control() => {
-                    prompt.reason.push(c);
-                    Effect::Redraw
+                let (ask, question) = (prompt.ask.clone(), prompt.question.clone());
+                match src.answer(&ask, &text) {
+                    Ok(()) => {
+                        self.notice = Some(format!("answered · {question}"));
+                        self.prompt = None;
+                        self.detail = false;
+                    }
+                    Err(e) => self.notice = Some(format!("not recorded: {e}")),
                 }
-                _ => Effect::None,
+            }
+            _ => match typed {
+                Some(c) if !c.is_control() => prompt.text.push(c),
+                _ => return Effect::None,
             },
         }
-    }
-
-    fn open(&mut self, src: &dyn ViewSource) -> Effect {
-        if self.view != View::Today {
-            return Effect::None;
-        }
-        let now = src.now();
-        let needs = needs_of(src, now);
-        let Some((_, need)) = needs.get(self.selected(View::Today).min(needs.len().saturating_sub(1))) else {
-            return Effect::None;
-        };
-        match need {
-            Need::Intention { id, .. } => {
-                let columns = intention_columns(&src.intentions(), now);
-                for (c, list) in columns.iter().enumerate() {
-                    if let Some(i) = list.iter().position(|x| &x.id == id) {
-                        self.column = c;
-                        self.select(View::Intentions, i);
-                        return self.go(View::Intentions, Extensions::of(src));
-                    }
-                }
-                Effect::None
-            }
-            Need::Decision { decided_on, .. } => {
-                let days = src.journal_days(*decided_on);
-                if let Some(i) = days.iter().position(|d| d.date == *decided_on) {
-                    self.select(View::Journal, i);
-                }
-                self.go(View::Journal, Extensions::of(src))
-            }
-            Need::Candidate { .. } => {
-                self.notice = Some("a accepts it as a decision · x dismisses it".into());
-                Effect::Redraw
-            }
-            Need::Update => {
-                self.notice =
-                    Some("u installs it: the TUI steps aside while it installs, then reopens".into());
-                Effect::Redraw
-            }
-        }
-    }
-
-    /// Search: open the selected result with its history.
-    fn open_record(&mut self, src: &dyn ViewSource) -> Effect {
-        if self.query.trim().is_empty() {
-            return Effect::None;
-        }
-        let page = src.recall(&self.query, 20);
-        let Some(item) = page.items.get(self.selected(View::Search).min(page.items.len().saturating_sub(1)))
-        else {
-            return Effect::None;
-        };
-        if src.record(&item.id).is_none() {
-            self.notice = Some(format!("{} cannot be opened here", item.id));
-            return Effect::Redraw;
-        }
-        self.detail = true;
-        self.searching = false;
-        Effect::Redraw
-    }
-
-    /// Today: accept or dismiss the selected decision candidate.
-    fn candidate(&mut self, src: &dyn ViewSource, accept: bool) -> Effect {
-        let Some(candidates) = src.candidates() else {
-            return Effect::None;
-        };
-        let needs = needs_of(src, src.now());
-        let Some((_, Need::Candidate { id, question })) = needs.get(self.selected(View::Today)) else {
-            self.notice = Some("no decision candidate selected".into());
-            return Effect::Redraw;
-        };
-        let (id, question) = (id.clone(), question.clone());
-        self.notice = Some(if accept {
-            match candidates.accept(&id) {
-                Ok(decision) => format!("recorded {decision} · {question}"),
-                Err(e) => format!("could not accept: {e}"),
-            }
-        } else {
-            match candidates.dismiss(&id) {
-                Ok(()) => format!("dismissed · {question}"),
-                Err(e) => format!("could not dismiss: {e}"),
-            }
-        });
-        let len = self.list_len(src);
-        let current = self.selected(View::Today);
-        self.select(View::Today, current.min(len.saturating_sub(1)));
-        Effect::Redraw
-    }
-
-    fn close(&mut self, src: &dyn ViewSource) -> Effect {
-        let now = src.now();
-        let target = match self.view {
-            View::Today => {
-                let needs = needs_of(src, now);
-                match needs.get(self.selected(View::Today)) {
-                    Some((_, Need::Intention { id, text })) => Some((id.clone(), text.clone())),
-                    _ => None,
-                }
-            }
-            View::Intentions if self.column < 2 => {
-                let columns = intention_columns(&src.intentions(), now);
-                columns[self.column]
-                    .get(self.selected(View::Intentions))
-                    .map(|i| (i.id.clone(), i.text.clone()))
-            }
-            _ => None,
-        };
-        let Some((id, text)) = target else {
-            self.notice = Some("nothing to close here".into());
-            return Effect::Redraw;
-        };
-        self.notice = Some(match src.close_intention(&id) {
-            Ok(()) => format!("closed · {text}"),
-            Err(error) => format!("could not close: {error}"),
-        });
-        let len = self.list_len(src);
-        let current = self.selected(self.view);
-        self.select(self.view, current.min(len.saturating_sub(1)));
         Effect::Redraw
     }
 }

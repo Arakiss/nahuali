@@ -1,0 +1,28 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(MockSource :: new(), View::Board, 80, 24, | _, _ | {})"
+---
+  nahuali   │  Board   Lessons                                             ada
+ ──────────────────────────────────────────────────────────────────────────────
+     ▀      ▄▄    worried · a question has waited 2 days
+    ▀█▀████▀█▀▀
+    ▄▀▀▀██▀▀█▀▄
+      ▀████▀▄▄
+       ▀▀▀▀▀▀▀
+
+ ╭─ Waiting on you · 2 ───────────────────────────────────────────────────────╮
+ │ ▸  atlas  Ship the importer behind a flag, or wait for the audit?   2d ago │
+ │    blocks release 0.4 · recommended: behind a flag                         │
+ │ ▸  borealis  Which of the two logos goes on the cover?              1h ago │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+ ╭─ In motion · 3 ────────────────────────────────────────────────────────────╮
+ │ ●  atlas  importer · tests green, review left                      12m ago │
+ │ ●  borealis  cover · two candidates drawn                           3h ago │
+ │ ○  cobalt  pricing page · waits for the importer                   17h ago │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+ ╭─ Learned this week · 2 ────────────────────────────────────────────────────╮
+ │ !  Agent worktrees start from the default branch                           │
+ │ !  Nine build directories filled the disk: share one                       │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+ ──────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · a question has waited 2 days             a answer   ? help

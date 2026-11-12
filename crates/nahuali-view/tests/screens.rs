@@ -1,378 +1,275 @@
+//! The screens against the promises of `docs/product.md`, on the mock memory.
+
 use nahuali_view::mock::MockSource;
-use nahuali_view::model::{Icon, MascotState, Node};
-use nahuali_view::screens::{Mood, Need, arbitrate, needs_of, needs_you};
-use nahuali_view::source::{
-    DecisionCandidate, Extensions, PendingUpdate, Principal, PrincipalKind, RecordKind,
-};
-use nahuali_view::{Action, Effect, UiState, View, ViewSource, build};
+use nahuali_view::screens::board_mood;
+use nahuali_view::source::{Sure, ViewSource};
+use nahuali_view::state::{Picked, picked};
+use nahuali_view::{Action, Effect, Item, MascotState, Node, Screen, UiState, View, build};
 
 fn ui(view: View) -> UiState {
-    let mut state = UiState::new(false);
-    state.view = view;
-    state
+    let mut ui = UiState::new(false);
+    ui.view = view;
+    ui
 }
 
+fn cards(node: &Node, out: &mut Vec<String>) {
+    match node {
+        Node::Card { title, body, .. } => {
+            out.push(title.clone());
+            cards(body, out);
+        }
+        Node::Col(children) | Node::Row(children) => children.iter().for_each(|c| cards(c, out)),
+        _ => {}
+    }
+}
+
+fn card_titles(screen: &Screen) -> Vec<String> {
+    let mut out = Vec::new();
+    cards(&screen.body, &mut out);
+    out
+}
+
+fn kv(node: &Node, out: &mut Vec<(String, String)>) {
+    match node {
+        Node::Kv(pairs) => out.extend(pairs.iter().cloned()),
+        Node::Card { body, .. } => kv(body, out),
+        Node::Col(children) | Node::Row(children) => children.iter().for_each(|c| kv(c, out)),
+        _ => {}
+    }
+}
+
+fn pairs(screen: &Screen) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    kv(&screen.body, &mut out);
+    out
+}
+
+fn item_text(item: &Item) -> String {
+    item.text.iter().map(|s| s.text.as_str()).collect()
+}
+
+fn type_answer(ui: &mut UiState, src: &MockSource, text: &str) {
+    for c in text.chars() {
+        ui.prompt_key(&c.to_string(), Some(c), src);
+    }
+}
+
+// --- State before history ---------------------------------------------------
+
 #[test]
-fn today_shows_a_worried_axolotl_with_its_reason() {
+fn the_first_screen_says_what_is_owed_before_anything_else() {
     let src = MockSource::new();
-    let screen = build(&src, &ui(View::Today));
+    let screen = build(&src, &UiState::new(false));
     assert_eq!(screen.active_tab, 0);
-    assert_eq!(screen.tabs.len(), 6);
-    assert_eq!(screen.mascot(), Some(MascotState::Worried));
-    let Node::Row(columns) = &screen.body else {
-        panic!("Today is a row");
-    };
-    let Node::Col(sidebar) = &columns[0] else {
-        panic!("sidebar is a column");
-    };
-    match &sidebar[0] {
-        Node::Mascot { caption, .. } => assert_eq!(caption, "worried · 2 overdue · 1 review"),
-        other => panic!("expected the mascot first, got {other:?}"),
-    }
+    assert_eq!(screen.tabs, ["Board", "Lessons"]);
+    assert_eq!(screen.who, "ada");
+    let titles = card_titles(&screen);
+    let at = |needle: &str| titles.iter().position(|t| t.starts_with(needle)).unwrap();
+    assert!(at("Waiting on you · 2") < at("In motion · 3"));
+    assert!(at("In motion · 3") < at("Learned this week · 2"));
 }
 
 #[test]
-fn needs_you_lists_overdue_then_reviews_then_soon() {
+fn a_work_row_says_where_it_stands_in_one_line() {
     let src = MockSource::new();
-    let rows = needs_of(&src, src.now());
-    let texts: Vec<String> =
-        rows.iter().map(|(item, _)| item.text.iter().map(|s| s.text.as_str()).collect()).collect();
-    assert_eq!(texts[0], "Renew the TLS certificate on the staging box");
-    assert_eq!(texts[1], "Send the October invoice reminders");
-    assert!(texts[2].starts_with("Review: "));
-    assert_eq!(texts[3], "Write the v1 import report");
-    assert_eq!(rows[0].0.meta[0].text, "3d overdue");
+    let board = src.board();
+    let Some(Picked::Work(importer)) = picked(&board, 2) else { panic!("row 2 is the importer") };
+    assert_eq!(importer.line, "tests green, review left");
+    let mut open = ui(View::Board);
+    open.select(View::Board, 2);
+    open.detail = true;
+    let screen = build(&src, &open);
+    assert!(card_titles(&screen).iter().any(|t| t == "Work · atlas"));
+    let rows = pairs(&screen);
+    assert!(rows.contains(&("status".into(), "moving".into())));
+    assert!(rows.contains(&("now".into(), "tests green, review left".into())));
 }
 
+// --- Nothing owed is lost ---------------------------------------------------
+
 #[test]
-fn needs_you_explains_stale_worry_with_important_intentions_only() {
-    use nahuali_view::source::{Intention, IntentionStatus, Priority};
+fn an_ask_stays_in_view_until_it_is_answered() {
     let src = MockSource::new();
-    let mut b = src.briefing();
-    let stale = |id: &str, priority| Intention {
-        id: id.into(),
-        text: format!("stale {id}"),
-        priority,
-        due: None,
-        project: None,
-        status: IntentionStatus::Open,
-        closed_at: None,
-    };
-    b.stale = vec![
-        stale("normal", Priority::Normal),
-        stale("high", Priority::High),
-        stale("critical", Priority::Critical),
-        stale("high-2", Priority::High),
-        stale("high-3", Priority::High),
-    ];
-    let texts: Vec<String> = needs_you(&b, &[], None, src.now())
-        .iter()
-        .filter(|(item, _)| item.meta.first().is_some_and(|m| m.text == "stale"))
-        .map(|(item, _)| item.text.iter().map(|s| s.text.as_str()).collect())
-        .collect();
-    assert_eq!(texts.len(), 3, "at most three stale rows");
-    assert_eq!(texts[0], "stale critical", "critical first");
-    assert!(!texts.contains(&"stale normal".to_string()), "normal priority stays out");
+    let mut ui = UiState::new(false);
+    assert_eq!(src.board().asks.len(), 2);
+    assert_eq!(ui.apply(Action::Answer, &src), Effect::Redraw);
+    let prompt = ui.prompt.clone().expect("the first row is a question");
+    assert_eq!(prompt.ask, "ask:importer-flag");
+    // Enter with no words records nothing and keeps the prompt.
+    ui.prompt_key("enter", None, &src);
+    assert!(src.answers().is_empty() && ui.prompt.is_some());
+    type_answer(&mut ui, &src, "behind a flag");
+    ui.prompt_key("enter", None, &src);
+    assert_eq!(src.answers(), vec![("ask:importer-flag".to_string(), "behind a flag".to_string())]);
+    assert!(ui.prompt.is_none());
+    let board = src.board();
+    assert_eq!(board.asks.len(), 1, "it left the board");
+    assert_eq!(board.asks[0].id, "ask:cover-logo", "and the other one did not");
 }
 
 #[test]
-fn alarm_beats_every_other_mood() {
+fn only_a_question_can_be_answered() {
     let src = MockSource::new();
-    src.set_chain_broken(true);
-    for view in View::ALL {
-        let screen = build(&src, &ui(view));
-        if view == View::Search {
-            continue;
-        }
-        assert_eq!(screen.mascot(), Some(MascotState::Alarmed), "{view:?}");
-    }
-    let mood = arbitrate(vec![]);
-    assert_eq!(mood.state, MascotState::Idle);
-    let mood = arbitrate(vec![
-        Mood { state: MascotState::Proud, reason: "x".into() },
-        Mood { state: MascotState::Worried, reason: "y".into() },
-    ]);
-    assert_eq!(mood.caption(), "worried · y");
+    let mut ui = UiState::new(false);
+    ui.select(View::Board, 3);
+    ui.apply(Action::Answer, &src);
+    assert!(ui.prompt.is_none());
+    assert_eq!(ui.notice.as_deref(), Some("select a question to answer it"));
+    let empty = MockSource::empty();
+    let mut ui = UiState::new(false);
+    ui.apply(Action::Answer, &empty);
+    assert_eq!(ui.notice.as_deref(), Some("nothing waits on you"));
 }
 
 #[test]
-fn health_shows_the_alarm_band_only_when_the_chain_breaks() {
+fn an_answer_moves_the_work_it_blocked() {
     let src = MockSource::new();
-    let calm = build(&src, &ui(View::Health));
-    assert!(calm.body.mascot().is_none());
-    assert!(matches!(calm.status[0].icon, Some(Icon::Mascot(MascotState::Worried))));
-    src.set_chain_broken(true);
-    let alarmed = build(&src, &ui(View::Health));
-    assert_eq!(alarmed.body.mascot(), Some(MascotState::Alarmed));
+    let cover = |src: &MockSource| src.board().works.into_iter().find(|w| w.id == "work:cover").unwrap();
+    assert_eq!(cover(&src).status.word(), "waiting on you");
+    src.answer("ask:cover-logo", "the second").unwrap();
+    assert_eq!(cover(&src).status.word(), "moving");
+    assert!(src.answer("ask:cover-logo", "again").is_err(), "an ask is answered once");
 }
 
+// --- Provenance in sight ----------------------------------------------------
+
 #[test]
-fn search_ranks_and_explains() {
+fn every_open_item_shows_its_four_marks() {
     let src = MockSource::new();
-    let mut state = ui(View::Search);
-    for c in "why did we keep the store local".chars() {
-        assert_eq!(state.type_char(c), Effect::Redraw);
-    }
-    let page = src.recall(&state.query, 20);
-    assert!(page.items.len() >= 3);
-    assert_eq!(page.items[0].kind, RecordKind::Decision);
-    assert!(page.items.windows(2).all(|w| w[0].score >= w[1].score));
-    let screen = build(&src, &state);
-    assert_eq!(screen.mascot(), Some(MascotState::Thinking));
-    let (items, selected) = screen.body.selectable_list().expect("results list");
-    assert_eq!(selected, 0);
-    assert_eq!(items.len(), page.items.len());
-}
-
-#[test]
-fn navigation_is_clamped_and_wraps_views() {
-    let src = MockSource::new();
-    let mut state = ui(View::Today);
-    assert_eq!(state.apply(Action::Up, &src), Effect::None);
-    for _ in 0..50 {
-        state.apply(Action::Down, &src);
-    }
-    let len = needs_of(&src, src.now()).len();
-    assert_eq!(state.selected(View::Today), len - 1);
-    assert_eq!(state.apply(Action::PrevView, &src), Effect::Redraw);
-    assert_eq!(state.view, View::Proposals);
-    assert_eq!(state.apply(Action::Back, &src), Effect::Redraw);
-    assert_eq!(state.view, View::Today);
-    assert_eq!(state.apply(Action::Quit, &src), Effect::Quit);
-}
-
-#[test]
-fn open_jumps_to_the_intention_and_close_removes_it() {
-    let src = MockSource::new();
-    let mut state = ui(View::Today);
-    assert_eq!(state.apply(Action::Open, &src), Effect::Redraw);
-    assert_eq!(state.view, View::Intentions);
-    assert_eq!(state.column, 0);
-    state.apply(Action::Close, &src);
-    assert_eq!(state.notice.as_deref(), Some("closed · Renew the TLS certificate on the staging box"));
-    let screen = build(&src, &state);
-    assert_eq!(screen.status[0].text, state.notice.clone().unwrap());
-    let rows = needs_of(&src, src.now());
-    assert_eq!(rows.len(), 5, "six needs before, one closed");
-}
-
-#[test]
-fn demo_cycle_visits_every_state_then_returns_to_the_mind() {
-    let src = MockSource::new();
-    let mut state = UiState::new(true);
-    let mut seen = Vec::new();
-    for _ in 0..MascotState::ALL.len() {
-        state.apply(Action::CycleMascot, &src);
-        seen.push(build(&src, &state).mascot().unwrap());
-    }
-    assert_eq!(seen, MascotState::ALL.to_vec());
-    state.apply(Action::CycleMascot, &src);
-    assert_eq!(state.mascot_override, None);
-}
-
-#[test]
-fn journal_lists_days_and_shows_the_selected_one() {
-    let src = MockSource::new();
-    let mut state = ui(View::Journal);
-    let screen = build(&src, &state);
-    let Node::Row(cols) = &screen.body else { panic!() };
-    match &cols[1] {
-        Node::Card { title, .. } => assert_eq!(title, "Wed 4 Nov 2026"),
-        other => panic!("{other:?}"),
-    }
-    state.apply(Action::Down, &src);
-    let screen = build(&src, &state);
-    let Node::Row(cols) = &screen.body else { panic!() };
-    match &cols[1] {
-        Node::Card { title, .. } => assert_eq!(title, "Tue 3 Nov 2026"),
-        other => panic!("{other:?}"),
-    }
-}
-
-#[test]
-fn proposals_refuse_approval_when_a_gate_failed_and_rejection_needs_a_reason() {
-    let src = MockSource::new();
-    let mut state = ui(View::Proposals);
-    // The second proposal edited the eval: its frozen gate failed.
-    state.apply(Action::Down, &src);
-    assert_eq!(state.apply(Action::Approve, &src), Effect::Redraw);
-    assert!(state.prompt.is_none());
-    assert!(state.notice.as_deref().unwrap().contains("cannot approve"), "{:?}", state.notice);
-
-    state.apply(Action::Reject, &src);
-    assert!(state.prompt.is_some());
-    state.prompt_key("enter", None, &src);
-    assert_eq!(state.notice.as_deref(), Some("a rejection needs a reason"));
-    for c in "edits the eval".chars() {
-        state.prompt_key(&c.to_string(), Some(c), &src);
-    }
-    state.prompt_key("enter", None, &src);
-    assert!(state.prompt.is_none());
-    assert_eq!(src.loops().unwrap().proposals()[1].status, "rejected");
-    assert!(state.notice.as_deref().unwrap().starts_with("rejected · "));
-}
-
-#[test]
-fn proposals_approve_records_the_decision_and_esc_cancels() {
-    let src = MockSource::new();
-    let mut state = ui(View::Proposals);
-    state.apply(Action::Approve, &src);
-    assert_eq!(state.prompt_key("esc", None, &src), Effect::Redraw);
-    assert!(state.prompt.is_none());
-    assert_eq!(src.loops().unwrap().proposals()[0].status, "pending");
-
-    state.apply(Action::Approve, &src);
-    let screen = build(&src, &state);
-    assert!(screen.keys.iter().any(|k| k.key == "enter" && k.label == "record"), "{:?}", screen.keys);
-    assert!(screen.status[0].text.starts_with("approve nahuali:recall-ranking"));
-    state.prompt_key("enter", None, &src);
-    assert_eq!(src.loops().unwrap().proposals()[0].status, "approved");
-    // A decided proposal cannot be decided again.
-    state.apply(Action::Reject, &src);
-    assert!(state.notice.as_deref().unwrap().contains("already approved"));
-}
-
-#[test]
-fn proposals_show_gates_and_the_diff_on_enter() {
-    let src = MockSource::new();
-    let mut state = ui(View::Proposals);
-    let screen = build(&src, &state);
-    assert_eq!(screen.active_tab, 5);
-    assert!(matches!(screen.body, Node::Row(_)));
-    state.apply(Action::Open, &src);
-    let screen = build(&src, &state);
-    let Node::Col(parts) = &screen.body else { panic!("detail is a column") };
-    assert!(parts.iter().any(|n| matches!(n, Node::Card { title, .. } if title == "Diff")));
-    state.apply(Action::Back, &src);
-    assert!(!state.detail);
-    assert_eq!(state.view, View::Proposals);
-}
-
-fn candidate(id: &str, q: &str) -> DecisionCandidate {
-    DecisionCandidate { id: id.into(), question: q.into(), chosen: "A".into() }
-}
-
-#[test]
-fn a_decision_candidate_is_accepted_or_dismissed_from_today() {
-    let src = MockSource::new().with_candidates(vec![candidate("c1", "A or B?"), candidate("c2", "C or D?")]);
-    let rows = needs_of(&src, src.now());
-    let first = rows
-        .iter()
-        .position(|(item, _)| item.text.iter().any(|s| s.text.contains("A or B?")))
-        .expect("a candidate row");
-    assert!(first > 0 && first < rows.len() - 1, "after what is overdue, before the rest");
-    let mut state = ui(View::Today);
-    state.apply(Action::Approve, &src);
-    assert_eq!(
-        state.notice.as_deref(),
-        Some("no decision candidate selected"),
-        "an intention is not a candidate"
-    );
-    state.select(View::Today, first);
-    assert_eq!(state.apply(Action::Approve, &src), Effect::Redraw);
-    assert_eq!(state.notice.as_deref(), Some("recorded decision:C1 · A or B?"));
-    state.apply(Action::Reject, &src);
-    assert_eq!(state.notice.as_deref(), Some("dismissed · C or D?"));
-    assert!(src.candidates().unwrap().pending().is_empty());
-}
-
-#[test]
-fn a_staged_update_tops_today_and_u_installs_it() {
-    let update =
-        PendingUpdate { headline: "Refile records (+1 more)".into(), commit: Some("f9c53ec".into()) };
-    let src = MockSource::new().with_update(Some(update));
-    let rows = needs_of(&src, src.now());
-    assert!(
-        rows[0].0.text.iter().any(|s| s.text == "Update ready: Refile records (+1 more)"),
-        "first, before anything overdue"
-    );
-    let mut state = ui(View::Today);
-    assert_eq!(state.apply(Action::Update, &src), Effect::InstallUpdate);
-    assert_eq!(state.apply(Action::Open, &src), Effect::Redraw);
-    assert!(state.notice.as_deref().is_some_and(|n| n.starts_with("u installs it")));
-
-    let none = MockSource::new();
-    assert!(!needs_of(&none, none.now()).iter().any(|(_, need)| *need == Need::Update));
-    assert_eq!(state.apply(Action::Update, &none), Effect::Redraw);
-    assert_eq!(state.notice.as_deref(), Some("no update is waiting"));
-    let mut elsewhere = ui(View::Journal);
-    assert_eq!(elsewhere.apply(Action::Update, &src), Effect::None, "only Today installs");
-}
-
-/// The core alone: no Proposals tab, no loops card, no candidate or update
-/// rows, and the keys that would reach them do nothing.
-#[test]
-fn without_extensions_nothing_of_them_shows_or_answers() {
-    let update = PendingUpdate { headline: "x".into(), commit: None };
-    let src = MockSource::new()
-        .with_extensions(Extensions::NONE)
-        .with_candidates(vec![candidate("c1", "A or B?")])
-        .with_update(Some(update));
-    let today = build(&src, &ui(View::Today));
-    assert_eq!(today.tabs, ["Today", "Journal", "Intentions", "Health", "Search"]);
-    assert!(today.keys.iter().any(|k| k.key == "1-5"), "{:?}", today.keys);
-    let needs = needs_of(&src, src.now());
-    assert!(needs.iter().all(|(_, n)| matches!(n, Need::Intention { .. } | Need::Decision { .. })));
-
-    let mut state = ui(View::Today);
-    assert_eq!(state.apply(Action::Update, &src), Effect::None);
-    assert_eq!(state.apply(Action::GoTo(View::Proposals), &src), Effect::None);
-    assert_eq!(state.view, View::Today);
-    assert_eq!(state.apply(Action::PrevView, &src), Effect::Redraw);
-    assert_eq!(state.view, View::Search, "tab order skips the missing view");
-
-    let health = build(&src, &ui(View::Health));
-    fn has_card(node: &Node, title: &str) -> bool {
-        match node {
-            Node::Card { title: t, body, .. } => t == title || has_card(body, title),
-            Node::Col(children) | Node::Row(children) => children.iter().any(|c| has_card(c, title)),
-            _ => false,
+    let rows = src.board().asks.len() + src.board().works.len();
+    for row in 0..rows {
+        let mut open = ui(View::Board);
+        open.select(View::Board, row);
+        open.detail = true;
+        let keys: Vec<String> = pairs(&build(&src, &open)).into_iter().map(|(k, _)| k).collect();
+        for mark in ["who", "how sure", "as of", "reach"] {
+            assert!(keys.iter().any(|k| k == mark), "row {row} hides `{mark}`");
         }
     }
-    assert!(!has_card(&health.body, "Loops"));
-    assert!(has_card(&build(&MockSource::new(), &ui(View::Health)).body, "Loops"));
-
-    // A state left on a missing view renders Today instead of an empty pane.
-    let stuck = build(&src, &ui(View::Proposals));
-    assert_eq!(stuck.active_tab, 0);
-    assert!(has_card(&stuck.body, "Needs attention"));
-}
-
-#[test]
-fn the_screen_names_its_principal_and_measures_from_its_last_visit() {
-    let own = build(&MockSource::new(), &ui(View::Today));
-    assert_eq!(own.who, "ada");
-    assert_eq!(own.title, "nahuali · ada · Today");
-    let team = MockSource::new().with_principal(Principal::new("infra", PrincipalKind::Team));
-    let screen = build(&team, &ui(View::Today));
-    assert_eq!(screen.who, "infra · team");
-    let Node::Row(columns) = &screen.body else { panic!("Today is a row") };
-    let Node::Col(sidebar) = &columns[0] else { panic!("sidebar is a column") };
-    match &sidebar[1] {
-        Node::Card { title, .. } => assert_eq!(title, "Since last visit · 21h ago"),
-        other => panic!("{other:?}"),
+    for row in 0..src.lessons().len() {
+        let mut open = ui(View::Lessons);
+        open.select(View::Lessons, row);
+        open.detail = true;
+        let keys: Vec<String> = pairs(&build(&src, &open)).into_iter().map(|(k, _)| k).collect();
+        for mark in ["who", "how sure", "as of", "reach", "when"] {
+            assert!(keys.iter().any(|k| k == mark), "lesson {row} hides `{mark}`");
+        }
     }
 }
 
 #[test]
-fn enter_on_a_result_opens_the_record_and_its_history() {
+fn the_marks_tell_verified_from_claimed_and_whose_word_it_is() {
     let src = MockSource::new();
-    let mut state = ui(View::Search);
-    assert_eq!(state.apply(Action::Open, &src), Effect::None, "nothing to open without a query");
-    for c in "store local".chars() {
-        state.type_char(c);
+    let mut open = ui(View::Board);
+    open.select(View::Board, 2);
+    open.detail = true;
+    let rows = pairs(&build(&src, &open));
+    assert!(rows.contains(&("who".into(), "observed by claude-code".into())));
+    assert!(rows.contains(&("how sure".into(), "verified · cargo test, 212 passed".into())));
+    assert!(rows.contains(&("as of".into(), "12m ago · commit 4c1e9a2".into())));
+    assert!(rows.contains(&("reach".into(), "atlas".into())));
+    // Something an agent passes on from someone else is never shown as verified.
+    let printer = src.lessons().into_iter().find(|l| l.id == "lesson:logo-sizes").unwrap();
+    assert_eq!(printer.marks.who.line(), "reported by the print shop");
+    assert_eq!(printer.marks.sure, Sure::Claimed);
+}
+
+#[test]
+fn the_status_line_counts_what_was_only_claimed() {
+    let src = MockSource::new();
+    let screen = build(&src, &UiState::new(false));
+    assert!(screen.status.iter().any(|s| s.text == "2 only claimed"), "{:?}", screen.status);
+    let side = pairs(&screen);
+    assert!(side.contains(&("verified".into(), "5".into())));
+    assert!(side.contains(&("claimed".into(), "2".into())));
+    let empty = build(&MockSource::empty(), &UiState::new(false));
+    assert!(empty.status.iter().any(|s| s.text == "nothing held yet"));
+}
+
+// --- The lesson and its moment ----------------------------------------------
+
+#[test]
+fn a_lesson_is_a_rule_and_the_moment_it_applies() {
+    let src = MockSource::new();
+    let screen = build(&src, &ui(View::Lessons));
+    let Some((items, selected)) = screen.body.selectable_list() else { panic!("a list of lessons") };
+    assert_eq!((items.len(), selected), (3, 0));
+    assert!(item_text(&items[0]).starts_with("Agent worktrees start from the default branch"));
+    let moment: String = items[0].sub.iter().map(|s| s.text.as_str()).collect();
+    assert_eq!(moment, "when: before spawning an agent in its own worktree");
+    // The board shows only the last week; the lessons view shows all in force.
+    assert_eq!(src.board().lessons.len(), 2);
+}
+
+// --- The axolotl ------------------------------------------------------------
+
+#[test]
+fn the_axolotl_follows_what_is_owed() {
+    let src = MockSource::new();
+    let now = src.now();
+    let mood = board_mood(&src.board(), now);
+    assert_eq!(mood.state, MascotState::Worried);
+    assert_eq!(mood.caption(), "worried · a question has waited 2 days");
+    src.answer("ask:importer-flag", "behind a flag").unwrap();
+    let mood = board_mood(&src.board(), now);
+    assert_eq!(mood.caption(), "listening · 1 question waits for you");
+    src.answer("ask:cover-logo", "the second").unwrap();
+    assert_eq!(board_mood(&src.board(), now).caption(), "happy · nothing waits on you");
+    assert_eq!(board_mood(&MockSource::empty().board(), now).state, MascotState::Idle);
+}
+
+#[test]
+fn the_demo_key_cycles_every_state_and_returns() {
+    let src = MockSource::new();
+    let mut ui = UiState::new(true);
+    for state in MascotState::ALL {
+        ui.apply(Action::CycleMascot, &src);
+        assert_eq!(build(&src, &ui).mascot(), Some(state));
     }
-    assert_eq!(state.apply(Action::Open, &src), Effect::Redraw);
-    assert!(state.detail);
-    let screen = build(&src, &state);
-    let Node::Col(parts) = &screen.body else { panic!() };
-    let Node::Row(panes) = &parts[1] else { panic!() };
-    let Node::Card { title, .. } = &panes[1] else { panic!() };
-    assert_eq!(title, "decision");
-    assert_eq!(state.apply(Action::Back, &src), Effect::Redraw);
-    assert!(!state.detail);
-    assert_eq!(state.view, View::Search, "esc closes the record first");
-    state.apply(Action::Open, &src);
-    state.type_char('s');
-    assert!(!state.detail, "typing goes back to the results");
+    ui.apply(Action::CycleMascot, &src);
+    assert_eq!(build(&src, &ui).mascot(), Some(MascotState::Worried), "back to the real mood");
+}
+
+// --- Moving around ----------------------------------------------------------
+
+#[test]
+fn the_selection_walks_from_questions_into_work_and_stops_at_the_ends() {
+    let src = MockSource::new();
+    let mut ui = UiState::new(false);
+    assert_eq!(ui.apply(Action::Up, &src), Effect::None);
+    for expected in 1..=4 {
+        assert_eq!(ui.apply(Action::Down, &src), Effect::Redraw);
+        assert_eq!(ui.selected(View::Board), expected);
+    }
+    assert_eq!(ui.apply(Action::Down, &src), Effect::None, "five rows, no wrap");
+    let board = src.board();
+    assert!(matches!(picked(&board, 1), Some(Picked::Ask(_))));
+    assert!(matches!(picked(&board, 2), Some(Picked::Work(_))));
+    assert!(matches!(picked(&board, 99), Some(Picked::Work(w)) if w.id == "work:pricing-page"));
+}
+
+#[test]
+fn back_closes_what_is_open_and_then_returns_to_the_board() {
+    let src = MockSource::new();
+    let mut ui = ui(View::Lessons);
+    ui.apply(Action::Open, &src);
+    assert!(ui.detail);
+    ui.apply(Action::Back, &src);
+    assert!(!ui.detail && ui.view == View::Lessons);
+    ui.apply(Action::Back, &src);
+    assert_eq!(ui.view, View::Board);
+    assert_eq!(ui.apply(Action::Back, &src), Effect::None);
+    // Nothing to open in an empty memory.
+    assert_eq!(UiState::new(false).apply(Action::Open, &MockSource::empty()), Effect::None);
+}
+
+#[test]
+fn a_notice_lasts_until_the_next_key() {
+    let src = MockSource::new();
+    let mut ui = UiState::new(false);
+    ui.select(View::Board, 4);
+    ui.apply(Action::Answer, &src);
+    assert!(build(&src, &ui).status[0].text.starts_with("select a question"));
+    assert_eq!(ui.apply(Action::Down, &src), Effect::Redraw, "the notice clears even when nothing moves");
+    assert!(ui.notice.is_none());
 }

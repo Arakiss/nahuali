@@ -14,5 +14,5 @@ what a person sees:
 To see the terminal interface on sample data:
 
 ```sh
-cargo run -p nahuali-tui --example today
+cargo run -p nahuali-tui --example board
 ```

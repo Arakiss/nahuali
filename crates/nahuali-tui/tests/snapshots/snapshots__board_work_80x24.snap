@@ -1,0 +1,28 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(MockSource::new(), View::Board, 80, 24,\n|_: &MockSource, ui: &mut UiState|\n{ ui.select(View::Board, 2); ui.detail = true; })"
+---
+  nahuali   │  Board   Lessons                                             ada
+ ──────────────────────────────────────────────────────────────────────────────
+     ▀      ▄▄    worried · a question has waited 2 days
+    ▀█▀████▀█▀▀
+    ▄▀▀▀██▀▀█▀▄
+      ▀████▀▄▄
+       ▀▀▀▀▀▀▀
+
+ ╭─ Work · atlas ─────────────────────────────────────────────────────────────╮
+ │ importer                                                                   │
+ │ status  moving                                                             │
+ │                                                                            │
+ │ Done                                                                       │
+ │ +2 more                                                                    │
+ │                                                                            │
+ │ Next                                                                       │
+ │ +2 more                                                                    │
+ │                                                                            │
+ │ Marks                                                                      │
+ │ who       observed by claude-code                                          │
+ │                                                                            │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+ ──────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · a question has waited 2 days             a answer   ? help
