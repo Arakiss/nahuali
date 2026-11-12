@@ -131,11 +131,14 @@ struct Keeper {
     /// The other machines of this memory, when there are any.
     node: Option<Node>,
     /// How the last meeting with each of them went.
-    met: Mutex<HashMap<String, Result<(usize, usize), String>>>,
+    met: Mutex<HashMap<String, Met>>,
 }
 
 /// The stack of each of the keeper's threads.
 const STACK: usize = 32 * 1024 * 1024;
+
+/// How a meeting went: how many events were taken and given, or why not.
+type Met = Result<(usize, usize), String>;
 
 /// A meeting with another machine takes no longer than this.
 const MEETING: Duration = Duration::from_secs(30);
@@ -691,7 +694,7 @@ async fn run(home: &Path, stay: bool) -> Result<(), String> {
                     eprintln!("could not look at the team's server: {why}");
                 }
                 seconds += 1;
-                if goes && seconds % EVERY == 0 {
+                if goes && seconds.is_multiple_of(EVERY) {
                     let keeper = keeper.clone();
                     tokio::spawn(async move { keeper.consolidate().await });
                 }
