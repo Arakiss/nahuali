@@ -680,7 +680,7 @@ fn what_is_said_in_other_words_is_found_and_said_to_be_a_likeness() {
 }
 
 #[test]
-fn a_likeness_tells_a_lesson_but_only_its_words_stop_a_command() {
+fn a_likeness_is_for_whoever_asks_and_unasked_only_the_words_speak() {
     let desk = Desk::with_meaning("near-lesson");
     desk.run(&["learn", "Back up first", "--moment", "before a migration", "--when", "migrate up", "--stop"])
         .ok();
@@ -689,9 +689,7 @@ fn a_likeness_tells_a_lesson_but_only_its_words_stop_a_command() {
     assert!(asked.starts_with("1 lesson applies to this\n") && asked.contains("close in meaning"), "{asked}");
     assert_eq!(desk.run(&["check", "cargo test"]).ok(), "no lesson applies\n");
 
-    let told = desk.before("s1", "alembic upgrade");
-    assert!(told["hookSpecificOutput"]["permissionDecision"].is_null(), "a likeness never refuses: {told}");
-    assert!(told["hookSpecificOutput"]["additionalContext"].as_str().unwrap().contains("not the same words"));
+    assert!(desk.before("s1", "alembic upgrade").is_null(), "before a command, a likeness says nothing");
     assert_eq!(
         desk.before("s2", "./migrate up")["hookSpecificOutput"]["permissionDecision"],
         "deny",
@@ -727,6 +725,11 @@ fn a_long_script_that_holds_the_words_somewhere_is_nobodys_moment() {
         "x = x + 1  # and so on, line after line\n".repeat(8)
     );
     assert!(desk.before("s2", &script).is_null(), "the words are there, far apart, and mean nothing");
+    // Right next to each other, but inside what the command writes.
+    let written = "cat > notes.txt <<'EOF'\nreplace database\nEOF";
+    assert!(desk.before("s3", written).is_null(), "what a command writes is not what it does");
+    let near = "cat schema.sql | grep replace && echo the whole of the old database is fine";
+    assert!(desk.before("s4", near).is_null(), "nor words that are near and not a phrase");
 }
 
 /// A SurrealDB server in memory, gone when the test ends. `None` when no

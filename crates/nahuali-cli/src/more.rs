@@ -51,9 +51,10 @@ pub struct Told<'a> {
 }
 
 /// The lessons that apply to what is about to be done. Those brought by
-/// their words come first; then, when this memory has a model, those close
-/// in meaning that the words missed.
-pub fn told<'a>(mind: &'a Mind<Remote>, project: &str, doing: &str, line: Option<f64>) -> Vec<Told<'a>> {
+/// their words come first; then, with `meaning` and a model in this memory,
+/// those close in meaning that the words missed. Meaning is for whoever
+/// asks: on real commands, unasked, it brought lessons nobody needed.
+pub fn told<'a>(mind: &'a Mind<Remote>, project: &str, doing: &str, meaning: bool) -> Vec<Told<'a>> {
     let scope = Scope::Project(project);
     let state = mind.state();
     let mut told: Vec<Told<'a>> = state
@@ -63,13 +64,13 @@ pub fn told<'a>(mind: &'a Mind<Remote>, project: &str, doing: &str, line: Option
         .collect();
     // A long script is close to everything and to nothing: only a command
     // short enough to be about one thing is compared by meaning.
-    if doing.chars().count() > 400 {
+    if !meaning || doing.chars().count() > 400 {
         return told;
     }
     // No model, or a keeper that does not answer: the words are enough.
     let near = mind
         .journal()
-        .near(doing, "project", project, Some("lesson"), 3, line)
+        .near(doing, "project", project, Some("lesson"), 3, None)
         .map(|(near, _)| near)
         .unwrap_or_default();
     for (key, alike) in near {
@@ -95,7 +96,7 @@ pub fn check(argv: &[String]) -> Result<String, Failure> {
     let sig = sign(&args)?;
     let now = Time::from_millis(sig.at_ms);
     let (out, names) = {
-        let applies = told(&mind, &sig.project, &doing, None);
+        let applies = told(&mind, &sig.project, &doing, true);
         let out = if args.has("json") {
             let lessons: Vec<_> = applies
                 .iter()

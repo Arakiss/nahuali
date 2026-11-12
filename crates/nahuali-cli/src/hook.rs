@@ -74,13 +74,11 @@ fn session_start(mind: &Mind<Remote>, project: &str, me: &str) -> Option<String>
     )
 }
 
-/// A likeness nobody asked for has to be closer than one that was asked for.
-const UNASKED: f64 = 0.72;
-
 fn pre_tool(mut mind: Mind<Remote>, project: &str, input: &Value, me: String) -> Option<String> {
     let tool = input["tool_name"].as_str().unwrap_or_default();
     let doing = match input["tool_input"]["command"].as_str() {
-        Some(command) => command.to_string(),
+        // What the command carries along, a script or a file's text, is not the act.
+        Some(command) => nahuali_core::words::act(command),
         None => format!("{tool} {}", input["tool_input"]["file_path"].as_str().unwrap_or_default()),
     };
     // Talking to the memory is nobody's moment.
@@ -90,7 +88,7 @@ fn pre_tool(mut mind: Mind<Remote>, project: &str, input: &Value, me: String) ->
     let session = input["session_id"].as_str().map(str::to_string);
     let now = Time::from_millis(env::now_ms());
     let (said, names, stops) = {
-        let applies: Vec<_> = crate::more::told(&mind, project, &doing, Some(UNASKED))
+        let applies: Vec<_> = crate::more::told(&mind, project, &doing, false)
             .into_iter()
             .filter(|a| session.as_ref().is_none_or(|s| !a.lesson.sessions.contains(s)))
             .collect();

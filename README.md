@@ -147,11 +147,12 @@ nahuali · learned before, and it applies to what you are about to do
 
 | Rule | In practice |
 | --- | --- |
-| Its words decide | A lesson applies when the words that mark its moment are all in the command, within a few words of each other. The answer is the same every time and says which words brought it |
+| Its words decide | A lesson applies when the words that mark its moment are in the command as a phrase: in their order and almost unbroken. What a command writes, a script or a file's text, does not count. The answer is the same every time and says which words brought it |
 | Strict | Half a moment is not the moment. "No lesson applies" is the usual answer |
 | Once per session | An agent that has been told is not told again |
 | It can stop the act | A lesson marked `--stop` refuses the command once. Running it again goes through, and the stop is recorded |
-| Meaning only tells | With the model installed, a lesson close in meaning to the command is shown too, marked as a likeness. A likeness never stops a command |
+| Meaning is for whoever asks | `nahuali check` also shows lessons close in meaning, marked as likenesses. Before a command, unasked, only the words speak: replayed on 600 real commands, meaning brought five lessons and none was needed |
+| Measured on real work | On those 600 commands a lesson was brought nine times by its words, seven of them exactly where it belonged |
 | It can be wrong | `nahuali retire` takes a lesson out when it stops being true |
 
 With `nahuali setup --hooks` this runs by itself before each command in Claude Code. Anywhere else an agent asks: `nahuali check "what I am about to do"`.

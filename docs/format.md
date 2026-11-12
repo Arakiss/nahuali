@@ -99,10 +99,11 @@ No model is asked. What is about to be done and what marks a lesson's
 moment both become sets of plain terms: lower case, accents folded, split
 where letters end, common words dropped, cut to a rough root.
 
-- With `when` given, one entry is enough, and every term of that entry has
-  to be in what is about to be done, within eight terms of each other. A
-  script of two hundred lines has every word somewhere; a command has them
-  together.
+- With `when` given, one entry is enough: its terms have to be in what is
+  about to be done as a phrase is, in their order and with at most two
+  other terms between one and the next. `git push origin main --force` is
+  "push force"; `cat Cargo.toml` ten words before an `install` is not
+  "cargo install".
 - Without it, the moment's own words are used: three in five of them have
   to be there, near each other, and never fewer than two unless the moment
   has only one.
@@ -144,9 +145,15 @@ least 0.65 alike is offered, after what the words found, apart from it,
 and named a likeness. `NAHUALI_NEAR` moves the line. The measurement
 behind it is `cargo run --release -p nahuali-embed --example near`.
 
-For lessons the same holds, with two limits. A command longer than 400
-characters is not compared by meaning. And a lesson that only meaning
-brought is told and never stops a command: only its words do that.
+For lessons, meaning is for whoever asks: `nahuali check` shows the
+lessons close in meaning to what is about to be done, after those its
+words brought, and says they are likenesses. Before a command, unasked,
+only the words speak. Replayed over six hundred real commands, meaning
+brought five lessons and none was needed, while the words brought nine and
+seven belonged exactly there.
+
+Before a command, what the command carries along is left out: the body of
+a here-document is something written, not something done.
 
 At the size of one person's memory every vector is compared. SurrealDB's
 approximate index (HNSW) answers the same question for millions; it is not

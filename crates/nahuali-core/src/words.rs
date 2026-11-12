@@ -100,18 +100,72 @@ fn together(wanted: &BTreeSet<String>, doing: &[String], span: usize) -> Vec<Str
     best
 }
 
+/// How many other terms may stand between two terms of a mark: `push
+/// origin main --force` is still "push force", and `cat Cargo.toml` ten
+/// words before an `install` is not "cargo install".
+const GAP: usize = 2;
+
+/// Whether the terms of `phrase` stand in `doing` in their order, each
+/// within a few terms of the one before.
+fn in_order(phrase: &[String], doing: &[String]) -> bool {
+    let Some((first, rest)) = phrase.split_first() else { return false };
+    doing.iter().enumerate().filter(|(_, term)| *term == first).any(|(start, _)| {
+        let mut at = start;
+        rest.iter().all(|wanted| {
+            let reach = doing.len().min(at + 2 + GAP);
+            match doing[at + 1..reach].iter().position(|term| term == wanted) {
+                Some(found) => {
+                    at += 1 + found;
+                    true
+                }
+                None => false,
+            }
+        })
+    })
+}
+
+/// What someone is about to do, without the text it carries along: the
+/// body of a here-document is something written, not something done.
+pub fn act(command: &str) -> String {
+    let mut out = String::new();
+    let mut until: Option<String> = None;
+    for line in command.lines() {
+        if let Some(end) = &until {
+            if line.trim() == end {
+                until = None;
+            }
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+        if let Some(at) = line.find("<<") {
+            let word: String = line[at + 2..]
+                .trim_start_matches('-')
+                .trim_start()
+                .trim_start_matches(['\'', '"', '\\'])
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !word.is_empty() && !line[at + 2..].starts_with('<') {
+                until = Some(word);
+            }
+        }
+    }
+    out
+}
+
 /// Whether a moment is in what is about to be done, and by which terms.
 /// `doing` is [`sequence`] of it: the order matters.
 ///
-/// With `when` given, one entry is enough, and every term of that entry has
-/// to be there, within a few words of each other. Without it, the moment's
-/// own words are used: most of them have to be there, near each other, and
-/// never fewer than two unless it has only one.
+/// With `when` given, one entry is enough: its terms have to be there in
+/// their order, almost next to each other, as a phrase is. Without it, the
+/// moment's own words are used: most of them have to be there, near each
+/// other in any order, and never fewer than two unless it has only one.
 pub fn marks(moment: &str, when: &[String], doing: &[String]) -> Option<Vec<String>> {
     for entry in when {
-        let wanted = terms(entry);
-        if !wanted.is_empty() && together(&wanted, doing, SPAN.max(wanted.len() * 3)).len() == wanted.len() {
-            return Some(wanted.into_iter().collect());
+        let phrase = sequence(entry);
+        if in_order(&phrase, doing) {
+            return Some(terms(entry).into_iter().collect());
         }
     }
     if !when.is_empty() {
@@ -188,5 +242,40 @@ mod tests {
         let moment = "before building in more than two worktrees";
         let far = format!("cargo build {} more worktree", "then run tests again and again ".repeat(6));
         assert!(marks(moment, &[], &sequence(&far)).is_none());
+    }
+
+    #[test]
+    fn a_mark_is_a_phrase_in_its_order_and_almost_unbroken() {
+        let mark = |when: &str, doing: &str| marks("x", &[when.to_string()], &sequence(doing)).is_some();
+        assert!(mark("cargo install", "PATH=x cargo install --path crates/cli --locked"));
+        assert!(!mark(
+            "cargo install",
+            "cat Cargo.toml && cat crates/laws/Cargo.toml && ls crates && npm install"
+        ));
+        assert!(mark("push force", "git push origin main --force"));
+        assert!(!mark("push force", "git push origin main and then, much later, use the force"));
+        assert!(
+            !mark("worktree add", "git add . && git worktree list"),
+            "the other way round is another phrase"
+        );
+        assert!(mark("migrate", "./migrate up"));
+        assert!(!mark("the", "anything at all"));
+    }
+
+    #[test]
+    fn what_a_command_writes_is_not_what_it_does() {
+        let command = "python3 - <<'EOF'\ns = s.replace(a, b)  # git worktree add\nEOF\ngit status";
+        assert_eq!(act(command), "python3 - <<'EOF'\ngit status\n");
+        assert_eq!(
+            act("cat > f.txt <<-END\n\tcargo install\n\tEND\necho done"),
+            "cat > f.txt <<-END\necho done\n"
+        );
+        assert_eq!(act("git worktree add ../side"), "git worktree add ../side\n");
+        assert_eq!(
+            act("cat <<< 'cargo install'"),
+            "cat <<< 'cargo install'\n",
+            "a here-string is one line and stays"
+        );
+        assert_eq!(act("cat <<EOF\nnever closed"), "cat <<EOF\n");
     }
 }
