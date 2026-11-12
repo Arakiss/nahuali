@@ -149,8 +149,8 @@ For lessons, meaning is for whoever asks: `nahuali check` shows the
 lessons close in meaning to what is about to be done, after those its
 words brought, and says they are likenesses. Before a command, unasked,
 only the words speak. Replayed over six hundred real commands, meaning
-brought five lessons and none was needed, while the words brought nine and
-seven belonged exactly there.
+brought five lessons and none was needed. With phrases alone, the words
+brought fourteen and twelve belonged exactly there.
 
 Before a command, what the command carries along is left out: the body of
 a here-document is something written, not something done.
