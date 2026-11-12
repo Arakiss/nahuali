@@ -180,7 +180,8 @@ impl Stamp {
     pub fn age(self, now: Stamp) -> String {
         let minutes = (now.minutes() - self.minutes()).max(0);
         match minutes {
-            0 => "now".to_string(),
+            // Every screen says "… ago": less than a minute is "moments ago".
+            0 => "moments".to_string(),
             1..=59 => format!("{minutes}m"),
             60..=1439 => format!("{}h", minutes / 60),
             1440..=20159 => format!("{}d", minutes / 1440),
@@ -224,5 +225,12 @@ mod tests {
         assert_eq!(Stamp::new(Date::new(2026, 11, 5), 4, 40).age(now), "14h");
         assert_eq!(Stamp::new(Date::new(2026, 11, 2), 18, 40).age(now), "3d");
         assert_eq!(Date::new(2026, 11, 2).days_until(now.date), 3);
+    }
+
+    #[test]
+    fn an_age_reads_well_before_the_word_ago() {
+        let at = Stamp::new(Date::new(2026, 11, 12), 10, 20);
+        assert_eq!(at.age(at), "moments");
+        assert_eq!(at.age(Stamp::new(Date::new(2026, 11, 12), 10, 32)), "12m");
     }
 }
