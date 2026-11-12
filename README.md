@@ -244,7 +244,10 @@ No copy of Nahuali has to be trusted for these to hold: they are permissions of 
 nahuali setup            # writes the one page an agent reads, for Claude Code and Codex
 nahuali setup --hooks    # also, in Claude Code and Codex: the board at the start of a session, lessons before a command
 nahuali mcp              # the same eight verbs over the Model Context Protocol
+nahuali doctor           # whether every part is right, and what to do about the ones that are not
 ```
+
+With the hooks, an agent is also reminded when its card may be old: when you next speak and there were commits since the card was written, once for each commit, stopping nothing.
 
 `nahuali setup --remove` takes out exactly what it put in and leaves the tools' own files as they were. What an agent is told about Nahuali is one page: [`skills/nahuali/SKILL.md`](skills/nahuali/SKILL.md).
 

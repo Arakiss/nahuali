@@ -1,6 +1,6 @@
 //! `nahuali setup`: tell the tools that run agents on this machine about
 //! Nahuali. It writes the one page an agent reads (the skill) and, with
-//! `--hooks`, the two calls that bring the memory to an agent by itself.
+//! `--hooks`, the three calls that bring the memory to an agent by itself.
 //! `--remove` takes out exactly what it put in. `--dry-run` only says.
 
 use std::path::{Path, PathBuf};
@@ -30,9 +30,11 @@ fn with_hooks(mut settings: Value, exe: &str, tool: &str, remove: bool) -> Value
     if !settings.is_object() {
         settings = json!({});
     }
-    for (event, call, matcher) in
-        [("SessionStart", "session-start", None), ("PreToolUse", "pre-tool", Some("Bash"))]
-    {
+    for (event, call, matcher) in [
+        ("SessionStart", "session-start", None),
+        ("PreToolUse", "pre-tool", Some("Bash")),
+        ("UserPromptSubmit", "prompt", None),
+    ] {
         let mut entries: Vec<Value> = settings["hooks"][event].as_array().cloned().unwrap_or_default();
         entries.retain(|entry| !ours(entry));
         if !remove {

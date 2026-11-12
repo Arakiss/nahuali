@@ -568,6 +568,17 @@ impl Keeper {
                 .map(|near| json!({ "ok": true, "near": near, "meaning": self.meaning.is_some() })),
             Some("consolidate") => Ok(self.consolidate().await),
             Some("node") => Ok(self.met_so_far().await),
+            Some("health") => {
+                let held = self.held.lock().await;
+                Ok(json!({
+                    "ok": true,
+                    "events": held.events.len(),
+                    "things": held.indexed.len(),
+                    "lacking": self.lacking(&held, usize::MAX).len(),
+                    "meaning": self.meaning.is_some(),
+                    "up": self.started.elapsed().as_secs(),
+                }))
+            }
             Some("ping") => Ok(json!({ "ok": true })),
             Some("stop") => {
                 self.leave.notify_one();

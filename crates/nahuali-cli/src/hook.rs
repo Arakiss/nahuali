@@ -7,6 +7,10 @@
 //!   to run, once per session each. A lesson marked to stop refuses the
 //!   command that once; running it again goes through.
 //!
+//! - `nahuali hook prompt`: when the person speaks again, and there were
+//!   commits since this project's card was last written, a reminder that
+//!   the card may be old. Once for each commit, and it stops nothing.
+//!
 //! A hook never breaks the session it runs in. Whatever goes wrong, it
 //! says nothing and exits well.
 
@@ -35,7 +39,13 @@ fn run(kind: &str, input: &Value, tool: Option<&str>) -> Option<String> {
         std::env::set_current_dir(cwd).ok()?;
     }
     let home = env::home(None).ok()?;
+    // Leave a trace that this tool calls: it is how `doctor` knows that
+    // hooks which are in place are also run. Only in a memory that exists.
+    if let Some(tool) = tool.filter(|_| home.join("local").is_dir()) {
+        let _ = std::fs::write(home.join("local").join(format!("called-{tool}")), "");
+    }
     let me = crate::me_at(&home);
+    let local = home.join("local");
     let journal = Remote::at(home).patient(PATIENCE);
     if !journal.exists() {
         return None;
@@ -45,6 +55,7 @@ fn run(kind: &str, input: &Value, tool: Option<&str>) -> Option<String> {
     match kind {
         "session-start" => session_start(&mind, &project, &me),
         "pre-tool" => pre_tool(mind, &project, input, me, tool),
+        "prompt" => prompt(&mind, &project, &local),
         _ => None,
     }
 }
@@ -136,4 +147,61 @@ fn pre_tool(
         json!({ "hookEventName": "PreToolUse", "additionalContext": said })
     };
     Some(json!({ "hookSpecificOutput": output }).to_string())
+}
+
+fn git(args: &[&str]) -> Option<String> {
+    let out = std::process::Command::new("git").args(args).output().ok()?;
+    let said = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !said.is_empty()).then_some(said)
+}
+
+/// The card of this project that moves and was written longest ago may be
+/// old when there are commits after it. Said once for each commit, when
+/// the person next speaks; an agent that has nothing to add ignores it.
+fn prompt(mind: &Mind<Remote>, project: &str, local: &std::path::Path) -> Option<String> {
+    let head = git(&["rev-parse", "--short", "HEAD"])?;
+    let committed: u64 = git(&["log", "-1", "--format=%ct"])?.parse().ok()?;
+    let now = Time::from_millis(env::now_ms());
+    let state = mind.state();
+    let works = state.works(Scope::Project(project), now);
+    // The card last written, if it still moves: the one the work is on.
+    let card = works.iter().filter(|w| w.status != nahuali_core::Status::Done).max_by_key(|w| w.marks.at)?;
+    if card.marks.at.0 >= committed || card.marks.commit.as_deref() == Some(head.as_str()) {
+        return None;
+    }
+    // Once for each commit.
+    let said_for = local.join(format!("reminded-{project}"));
+    if std::fs::read_to_string(&said_for).is_ok_and(|last| last.trim() == head) {
+        return None;
+    }
+    let _ = std::fs::write(&said_for, &head);
+    let since = card
+        .marks
+        .commit
+        .as_ref()
+        .and_then(|from| git(&["rev-list", "--count", &format!("{from}..HEAD")]))
+        .and_then(|n| n.parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .map_or_else(
+            || "there are commits".to_string(),
+            |n| {
+                format!(
+                    "there {} {n} commit{}",
+                    if n == 1 { "is" } else { "are" },
+                    if n == 1 { "" } else { "s" }
+                )
+            },
+        );
+    let said = format!(
+        "nahuali · the card `{}` of {project} says \"{}\" ({}), and {since} since. \
+         If where the work stands changed, say so in one line: nahuali update {} --line \"…\". If it did not, ignore this.",
+        card.slug,
+        card.line,
+        card.marks.at.ago(now),
+        card.slug
+    );
+    Some(
+        json!({ "hookSpecificOutput": { "hookEventName": "UserPromptSubmit", "additionalContext": said } })
+            .to_string(),
+    )
 }

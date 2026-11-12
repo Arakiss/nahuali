@@ -4,6 +4,7 @@
 //! (and says why), 2 when the command line made no sense.
 
 mod args;
+mod doctor;
 mod env;
 mod hook;
 mod keeper;
@@ -39,6 +40,7 @@ nahuali: a working memory for a person and their agents
   nahuali note \"TEXT\" …       keep something worth knowing
   nahuali recall \"ABOUT\"      what is known about something; may be nothing
   nahuali where               where the memory lives, which project this is, who you are
+  nahuali doctor              whether every part is right, and what to do about the ones that are not
   nahuali export              every event as one line of JSON, to read or keep without nahuali
 
 status
@@ -120,6 +122,8 @@ enum Failure {
     Usage(String),
     /// The memory refused.
     Refused(String),
+    /// Something is not right, and this says what, as its whole answer.
+    Told(String),
 }
 
 impl From<nahuali_core::Error> for Failure {
@@ -145,6 +149,10 @@ fn main() -> ExitCode {
         }
         Err(Failure::Refused(text)) => {
             eprintln!("nahuali: {text}");
+            ExitCode::from(1)
+        }
+        Err(Failure::Told(text)) => {
+            print!("{text}");
             ExitCode::from(1)
         }
     }
@@ -221,6 +229,7 @@ pub(crate) fn run(argv: &[String]) -> Result<String, Failure> {
         "setup" => setup::setup(rest),
         "team" => team::team(rest),
         "node" => node::node(rest),
+        "doctor" => doctor::doctor(rest),
         "serve" => serve(rest),
         "stop" => stop(rest),
         other => Err(usage(format!("`{other}` is not something nahuali does"))),

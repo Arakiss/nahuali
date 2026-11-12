@@ -1041,3 +1041,106 @@ fn a_machine_without_the_key_takes_nothing_and_gives_nothing() {
         std::fs::metadata(pc.home().join("local").join("node.json")).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600);
 }
+
+#[test]
+fn doctor_says_what_is_not_right_and_what_to_do_about_it() {
+    let desk = Desk::new("doctor");
+    let nothing = desk.feed(&["doctor"], "");
+    assert_eq!(nothing.code, 0, "{}", nothing.out);
+    assert!(
+        nothing.out.contains("nothing written yet") && nothing.out.ends_with("everything is right\n"),
+        "{}",
+        nothing.out
+    );
+
+    // A tool that runs agents and was never told.
+    std::fs::create_dir_all(desk.root.join(".claude")).unwrap();
+    desk.run(&["update", "importer", "--line", "started"]).ok();
+    let untold = desk.feed(&["doctor"], "");
+    assert_eq!(untold.code, 1);
+    assert!(
+        untold.out.contains("!!  claude-code") && untold.out.contains("does not know about nahuali"),
+        "{}",
+        untold.out
+    );
+    assert!(untold.out.contains("ok  keeper") && untold.out.contains("1 events"), "{}", untold.out);
+    assert!(untold.out.ends_with("1 thing to look at\n"), "{}", untold.out);
+
+    // Told, with hooks, but never called: hooks in place are not hooks that run.
+    desk.feed(&["setup", "--hooks"], "").ok();
+    let silent = desk.feed(&["doctor"], "");
+    assert!(silent.out.contains("hooks in place but never called"), "{}", silent.out);
+    desk.feed(&["hook", "session-start", "claude-code"], "{}").ok();
+    let right = desk.feed(&["doctor"], "");
+    assert_eq!(right.code, 0, "{}", right.out);
+    assert!(right.out.contains("last called moments ago"), "{}", right.out);
+    let json: serde_json::Value = serde_json::from_str(&desk.feed(&["doctor", "--json"], "").ok()).unwrap();
+    assert_eq!(json["fine"], true);
+
+    // A keeper that fell over is started again by the next command: only its own words show it.
+    let log = desk.home().join("local").join("keeper.log");
+    let before = std::fs::read_to_string(&log).unwrap();
+    std::fs::write(&log, format!("{before}thread 'x' has overflowed its stack\n")).unwrap();
+    let fell = desk.feed(&["doctor"], "");
+    assert_eq!(fell.code, 1);
+    assert!(fell.out.contains("!!  keeper") && fell.out.contains("fell over 1 time"), "{}", fell.out);
+    std::fs::write(&log, before).unwrap();
+}
+
+#[test]
+fn a_card_older_than_the_commits_is_remembered_once_when_the_person_speaks() {
+    let desk = Desk::new("remind");
+    let repo = desk.root.join("atlas");
+    std::fs::create_dir_all(&repo).unwrap();
+    let git = |args: &[&str]| {
+        let out = Command::new("git")
+            .current_dir(&repo)
+            .args(["-c", "user.name=ada", "-c", "user.email=ada@example.com", "-c", "commit.gpgsign=false"])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    };
+    let nahuali = |args: &[&str]| {
+        Said::of(desk.command(&repo).env("NAHUALI_ACTOR", "builder").args(args).output().unwrap()).ok()
+    };
+    let spoken = || {
+        use std::io::Write;
+        let mut child = desk
+            .command(&repo)
+            .args(["hook", "prompt", "claude-code"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let input = serde_json::json!({ "session_id": "s1", "cwd": repo, "prompt": "go on" }).to_string();
+        child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+        String::from_utf8_lossy(&child.wait_with_output().unwrap().stdout).to_string()
+    };
+    git(&["init", "-q"]);
+    git(&["commit", "-q", "--allow-empty", "--no-verify", "-m", "first"]);
+    assert_eq!(spoken(), "", "no card, nothing to remember");
+
+    nahuali(&["update", "importer", "--line", "tests green, review left"]);
+    assert_eq!(spoken(), "", "the card was written at this commit");
+
+    // The clock of a commit counts whole seconds: let one pass.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    git(&["commit", "-q", "--allow-empty", "--no-verify", "-m", "second"]);
+    let said: serde_json::Value = serde_json::from_str(&spoken()).unwrap();
+    let context = said["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
+    assert_eq!(said["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit");
+    assert!(
+        context.contains("the card `importer` of atlas") && context.contains("there is 1 commit since"),
+        "{context}"
+    );
+    assert!(context.contains("ignore this"), "it asks for nothing that is not there: {context}");
+    assert_eq!(spoken(), "", "once for each commit");
+
+    nahuali(&["update", "importer", "--line", "merged"]);
+    assert_eq!(spoken(), "", "a card written after the commit is not old");
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    git(&["commit", "-q", "--allow-empty", "--no-verify", "-m", "third"]);
+    nahuali(&["update", "importer", "--status", "done"]);
+    assert_eq!(spoken(), "", "finished work is not asked about");
+}

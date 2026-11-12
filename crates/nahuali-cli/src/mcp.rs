@@ -177,7 +177,7 @@ fn call(params: &Value) -> Result<Value, String> {
         .ok_or_else(|| format!("nahuali has no tool called `{name}`"))?;
     let (said, failed) = match crate::run(&argv(tool, &params["arguments"])) {
         Ok(out) => (out, false),
-        Err(Failure::Usage(why) | Failure::Refused(why)) => (why, true),
+        Err(Failure::Usage(why) | Failure::Refused(why) | Failure::Told(why)) => (why, true),
     };
     Ok(json!({ "content": [{ "type": "text", "text": said }], "isError": failed }))
 }
