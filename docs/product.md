@@ -139,7 +139,22 @@ Measured on the person and the agents who use it first.
 
 The smallest version the two of us would use tomorrow: the cards and the
 asks, the verbs `status`, `update`, `ask` and `answer`, and the first
-screen. Lessons and `check` come second. Notes and recall come third.
+screen. This part exists: see `docs/format.md` for how it is kept.
+Lessons and `check` come second. Notes and recall come third.
+
+## Beyond a desk
+
+Nothing here is built for a machine that acts in the world, and nothing
+here stands in its way. A robot that works with people has the same four
+questions: where things stand, what it is waiting to be told, what it
+learned, and how far each of those can be trusted. Three choices are kept
+so that the same memory could one day sit inside one:
+
+- The part that holds the memory has no clock, no network and no process of
+  its own. Whatever runs it says what time it is and who is speaking.
+- The log survives losing power in the middle of a line.
+- "Who" is anything that can say or observe something. A person and a
+  coding agent are the first two, not the only two.
 
 ## How it is offered
 
@@ -151,5 +166,6 @@ repository and what stays out is in `docs/boundaries.md`.
 
 ## Decided later, on purpose
 
-How it is stored, how two machines share it, what a team adds, the licence,
-and what the hosted service costs. None of them changes anything above.
+What a team adds, the licence, and what the hosted service costs. None of
+them changes anything above. How it is stored and how two machines share it
+were decided when the first part was built, and are in `docs/format.md`.
