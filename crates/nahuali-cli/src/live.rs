@@ -109,6 +109,8 @@ impl<J: Journal> ViewSource for Live<J> {
         let asks = state
             .open_asks(Scope::Everything)
             .into_iter()
+            // What waits on someone else is theirs to answer, on their board.
+            .filter(|a| a.is_for(&self.person))
             .map(|a| view::Ask {
                 id: format!("ask:{}", a.id),
                 question: a.question.clone(),
@@ -210,6 +212,8 @@ impl<J: Journal> ViewSource for Live<J> {
             commit: None,
             private: false,
             sure: Sure::Claimed,
+            person: Some(self.person.clone()),
+            mine: false,
         };
         mind.answer(sig, ask, text).map(|_| ()).map_err(|e| e.to_string())
     }
@@ -251,6 +255,8 @@ mod tests {
             commit: Some("abc1234".into()),
             private: false,
             sure: Sure::Verified("cargo test".into()),
+            person: Some("ada".into()),
+            mine: false,
         };
         let mut mind = Mind::open(FileJournal::at(&home)).unwrap();
         mind.update(

@@ -129,6 +129,9 @@ pub struct AskOpen {
     /// The piece of work that waits on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub work: Option<String>,
+    /// Who is asked, when it is not the person the asker works for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
 }
 
 /// Close an ask with an answer: it becomes a decision.
@@ -239,6 +242,13 @@ pub struct Event {
     pub id: String,
     pub at: Time,
     pub by: Actor,
+    /// The person the speaker works for: themselves, when a person speaks.
+    /// Absent in lines written before people were told apart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person: Option<String>,
+    /// Only that person and their agents see it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub mine: bool,
     pub project: String,
     /// Not to be offered to work on another project.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -274,8 +284,18 @@ impl Event {
         match value.get("v").and_then(serde_json::Value::as_u64) {
             None => Line::Damaged,
             Some(v) if v > u64::from(VERSION) => Line::Newer,
-            Some(_) => match serde_json::from_value(value) {
-                Ok(event) => Line::Event(Box::new(event)),
+            Some(_) => match serde_json::from_value::<Event>(value) {
+                Ok(mut event) => {
+                    // A line is one person's. If it says another person
+                    // spoke, it is read as what it is: someone working for
+                    // the line's own person, saying so.
+                    if let (Actor::Person(said), Some(owner)) = (&event.by, &event.person)
+                        && said != owner
+                    {
+                        event.by = Actor::Reported { by: owner.clone(), from: said.clone() };
+                    }
+                    Line::Event(Box::new(event))
+                }
                 Err(_) => Line::Damaged,
             },
         }
@@ -292,6 +312,8 @@ mod tests {
             id: crate::id::ulid(1_794_496_811_000, 7),
             at: Time(1_794_496_811),
             by: Actor::Agent("claude-code".into()),
+            person: None,
+            mine: false,
             project: "atlas".into(),
             private: false,
             sure: Sure::Verified("cargo test".into()),
@@ -339,5 +361,16 @@ mod tests {
         assert_eq!(Event::read(r#"{"v":1,"id":"01","at":"2026-11-1"#), Line::Damaged);
         assert_eq!(Event::read("hello"), Line::Damaged);
         assert_eq!(Event::read(r#"{"id":"01"}"#), Line::Damaged);
+    }
+
+    #[test]
+    fn a_line_cannot_speak_as_a_person_it_does_not_belong_to() {
+        let line = r#"{"v":1,"id":"01","at":"2026-11-12T15:20:11Z","by":{"person":"ada"},"person":"bob","project":"atlas","what":{"answer":{"ask":"k3f9q2","text":"yes"}}}"#;
+        let Line::Event(e) = Event::read(line) else { panic!("it is a readable line") };
+        assert_eq!(e.by, Actor::Reported { by: "bob".into(), from: "ada".into() });
+        assert!(!e.by.is_person());
+        let own = line.replace(r#""person":"bob""#, r#""person":"ada""#);
+        let Line::Event(e) = Event::read(&own) else { panic!("it is a readable line") };
+        assert_eq!(e.by, Actor::Person("ada".into()));
     }
 }

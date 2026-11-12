@@ -718,3 +718,179 @@ fn a_long_script_that_holds_the_words_somewhere_is_nobodys_moment() {
     );
     assert!(desk.before("s2", &script).is_null(), "the words are there, far apart, and mean nothing");
 }
+
+/// A SurrealDB server in memory, gone when the test ends. `None` when no
+/// `surreal` is installed here: the team's tests are then skipped, and say so.
+struct TeamServer {
+    child: std::process::Child,
+    url: String,
+}
+
+impl TeamServer {
+    fn start() -> Option<Self> {
+        let port = std::net::TcpListener::bind("127.0.0.1:0").ok()?.local_addr().ok()?.port();
+        let child = Command::new("surreal")
+            .args([
+                "start",
+                "memory",
+                "--bind",
+                &format!("127.0.0.1:{port}"),
+                "--user",
+                "root",
+                "--pass",
+                "test-root",
+                "--log",
+                "error",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .ok()?;
+        let server = Self { child, url: format!("ws://127.0.0.1:{port}") };
+        for _ in 0..100 {
+            if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                return Some(server);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        None
+    }
+
+    /// Run as whoever runs the server.
+    fn owner(&self, desk: &Desk, args: &[&str]) -> Said {
+        Said::of(
+            desk.command(&desk.root)
+                .env("NAHUALI_ROOT_USER", "root")
+                .env("NAHUALI_ROOT_PASS", "test-root")
+                .args(args)
+                .output()
+                .unwrap(),
+        )
+    }
+
+    /// Add a person and put `desk` on the team as them.
+    fn join(&self, desk: &Desk, name: &str) {
+        let said = self.owner(desk, &["team", "add", name, &self.url]).ok();
+        let pass = said.split("NAHUALI_PASS=").nth(1).unwrap().split_whitespace().next().unwrap().to_string();
+        let joined = Said::of(
+            desk.command(&desk.root)
+                .env("NAHUALI_PASS", pass)
+                .args(["team", "join", &self.url, "--name", name])
+                .output()
+                .unwrap(),
+        );
+        assert!(joined.ok().contains(&format!("you are {name} on it")));
+    }
+}
+
+impl Drop for TeamServer {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[test]
+fn a_team_shares_one_memory_and_the_server_keeps_each_to_their_reach() {
+    let Some(server) = TeamServer::start() else {
+        eprintln!("no `surreal` on PATH: the team's test was skipped");
+        return;
+    };
+    let (ada, bob) = (Desk::new("team-ada"), Desk::new("team-bob"));
+    ada.run(&["update", "notebook", "--line", "written before joining"]).ok();
+    assert!(
+        server.owner(&ada, &["team", "init", &server.url]).ok().contains("is ready to hold a team's memory")
+    );
+    server.join(&ada, "ada");
+    server.join(&bob, "bob");
+    assert_eq!(server.owner(&ada, &["team", "add", "ada", &server.url]).code, 1, "a name is one person");
+    let wrong = Said::of(
+        bob.command(&bob.root)
+            .env("NAHUALI_PASS", "not-it")
+            .args(["team", "join", &server.url, "--name", "ada"])
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(wrong.code, 1, "a wrong passphrase lets nobody in: {}", wrong.err);
+
+    ada.run(&["update", "importer", "--line", "tests green", "--verified", "cargo test"]).ok();
+    ada.run(&["note", "The audit is on the 20th"]).ok();
+    ada.run(&["note", "My own reminder about salaries", "--mine"]).ok();
+    ada.run(&["ask", "Which logo goes on the cover?", "--to", "bob"]).ok();
+
+    // Bob has written nothing yet, and sees what is shared.
+    let seen = bob.run(&["status"]).ok();
+    assert!(
+        seen.contains("importer  moving · tests green") && seen.contains("Which logo goes on the cover?"),
+        "{seen}"
+    );
+    assert!(!seen.contains("notebook"), "what ada wrote before joining stayed on her machine: {seen}");
+    assert!(bob.run(&["recall", "audit"]).ok().starts_with("atlas · 1 thing known"));
+    assert_eq!(
+        bob.run(&["recall", "salaries"]).ok(),
+        "atlas · nothing known about \"salaries\"\n",
+        "what is only ada's never reaches bob"
+    );
+    assert!(
+        ada.run(&["recall", "salaries"]).ok().contains("only")
+            || ada.run(&["recall", "salaries"]).ok().starts_with("atlas · 1 thing known")
+    );
+    assert_eq!(bob.run(&["recall", "salaries", "--keys"]).ok(), "", "not even into the index on his machine");
+    let hers = ada.run(&["status"]).ok();
+    assert!(hers.contains("for bob"), "ada sees that the question waits on bob: {hers}");
+
+    // Bob answers; ada finds the decision.
+    let ask = first_ask(&bob);
+    bob.run(&["answer", &ask, "The blue one."]).ok();
+    assert!(ada.run(&["status"]).ok().contains("answer: The blue one."));
+
+    // A line that carries ada's name, sent from bob's machine, as a changed
+    // copy of nahuali would send it: the server refuses it.
+    bob.run(&["stop"]).ok();
+    std::fs::create_dir_all(bob.home().join("log")).unwrap();
+    let forged = r#"{"v":1,"id":"01M7ZZZZZZZZZZZZZZZZFORGED","at":"2026-11-12T10:00:00Z","by":{"person":"ada"},"person":"ada","project":"atlas","sure":"claimed","what":{"work":{"work":"forged","line":"in ada's name"}}}"#;
+    // And one in bob's own name that says ada spoke: it arrives, and is read as bob saying so.
+    let pretended = r#"{"v":1,"id":"01M7ZZZZZZZZZZZZZZZPRETEND","at":"2026-11-12T10:00:01Z","by":{"person":"ada"},"person":"bob","project":"atlas","sure":"claimed","what":{"work":{"work":"pretended","line":"bob says ada said"}}}"#;
+    std::fs::write(bob.home().join("log").join("sent.jsonl"), format!("{forged}\n{pretended}\n")).unwrap();
+    bob.run(&["status"]).ok();
+    let after = ada.run(&["status"]).ok();
+    assert!(!after.contains("forged"), "{after}");
+    assert!(after.contains("pretended") && after.contains("bob (from ada)"), "{after}");
+
+    // Leaving goes back to what was on the machine.
+    assert!(
+        Said::of(ada.command(&ada.root).args(["team", "leave"]).output().unwrap())
+            .ok()
+            .starts_with("back to the memory on this machine")
+    );
+    let alone = ada.run(&["status"]).ok();
+    assert!(alone.contains("notebook") && !alone.contains("importer"), "{alone}");
+}
+
+#[test]
+fn only_yours_and_asked_of_someone_work_on_one_machine_too() {
+    let desk = Desk::new("people");
+    let as_person = |person: &str, args: &[&str]| {
+        Said::of(
+            desk.command(&desk.root.join("work"))
+                .env("NAHUALI_PERSON", person)
+                .env("NAHUALI_ACTOR", "builder")
+                .env("NAHUALI_PROJECT", "atlas")
+                .args(args)
+                .output()
+                .unwrap(),
+        )
+        .ok()
+    };
+    as_person("ada", &["note", "Shared between us"]);
+    as_person("ada", &["note", "Only for ada", "--mine"]);
+    as_person("ada", &["ask", "Bob, which logo?", "--to", "bob"]);
+    assert_eq!(as_person("ada", &["recall", "ada"]).lines().count(), 3);
+    assert_eq!(as_person("bob", &["recall", "ada"]), "atlas · nothing known about \"ada\"\n");
+    assert!(as_person("ada", &["status"]).contains("for bob"));
+    assert!(!as_person("bob", &["status"]).contains("for bob"), "bob is not told it is for someone else");
+    let json: serde_json::Value = serde_json::from_str(&as_person("bob", &["status", "--json"])).unwrap();
+    assert_eq!(json["asks"][0]["to"], "bob");
+    assert_eq!(json["asks"][0]["marks"]["person"], "ada");
+}

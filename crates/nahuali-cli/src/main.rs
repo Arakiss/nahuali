@@ -12,6 +12,7 @@ mod mcp;
 mod more;
 mod remote;
 mod setup;
+mod team;
 mod text;
 
 use std::io::IsTerminal;
@@ -56,6 +57,7 @@ ask \"QUESTION\"
   --blocks \"WHAT\"             what cannot go on until it is answered
   --recommends \"ANSWER\"       the answer you would give
   --work WORK                 the work that waits on it
+  --to PERSON                 who is asked, when it is not the person you work for
 
 answer ASK \"TEXT\"
   --withdraw                  the ask no longer needs an answer; TEXT says why
@@ -84,11 +86,19 @@ other tools
                               runs on this machine; nothing leaves it)
   nahuali mcp                 the same verbs over the Model Context Protocol, on standard input
 
+a team
+  nahuali team                where this memory is kept, and who you are on it
+  nahuali team init URL       make a SurrealDB server ready to hold a team's memory
+  nahuali team add NAME URL   a person, and the passphrase they join with
+  nahuali team join URL --name NAME    keep this memory on the team's server (NAHUALI_PASS)
+  nahuali team leave          back to the memory on this machine
+
 everywhere
   --project NAME              default: the repository, or this directory
   --as NAME                   which agent is speaking; default: the tool that runs it
   --from NAME                 you pass on what NAME told you
   --private                   not to be offered to work on another project
+  --mine                      only the person you work for, and their agents, see it
   --home DIR                  where the memory lives; default: NAHUALI_HOME, or your data directory
 
 The commit, the time and the project are recorded for you.
@@ -133,13 +143,24 @@ fn main() -> ExitCode {
 
 fn parse(argv: &[String], valued: &[&str], flags: &[&str]) -> Result<Args, Failure> {
     let valued: Vec<&str> = EVERYWHERE.iter().chain(valued).copied().collect();
-    let flags: Vec<&str> = ["private"].iter().chain(flags).copied().collect();
+    let flags: Vec<&str> = ["private", "mine"].iter().chain(flags).copied().collect();
     Args::parse(argv, &valued, &flags).map_err(Failure::Usage)
 }
 
 fn open(args: &Args) -> Result<Mind<Remote>, Failure> {
     let home = env::home(args.value("home")).map_err(Failure::Usage)?;
-    Ok(Mind::open(Remote::at(home))?)
+    let me = me_at(&home);
+    Ok(Mind::open_as(Remote::at(home), Some(me))?)
+}
+
+/// The person this installation works for: who it is on its team's server,
+/// or else whoever owns this machine's memory.
+pub(crate) fn me_at(home: &std::path::Path) -> String {
+    team::Server::read(home).map_or_else(env::person, |server| server.name)
+}
+
+fn me(args: &Args) -> String {
+    env::home(args.value("home")).map_or_else(|_| env::person(), |home| me_at(&home))
 }
 
 fn sign(args: &Args) -> Result<Signature, Failure> {
@@ -152,6 +173,8 @@ fn sign(args: &Args) -> Result<Signature, Failure> {
         project,
         private: args.has("private"),
         sure: args.value("verified").map_or(Sure::Claimed, |by| Sure::Verified(by.to_string())),
+        person: Some(me(args)),
+        mine: args.has("mine"),
     })
 }
 
@@ -187,6 +210,7 @@ pub(crate) fn run(argv: &[String]) -> Result<String, Failure> {
         "hook" => hook::hook(rest),
         "mcp" => mcp::mcp(rest),
         "setup" => setup::setup(rest),
+        "team" => team::team(rest),
         "serve" => serve(rest),
         "stop" => stop(rest),
         other => Err(usage(format!("`{other}` is not something nahuali does"))),
@@ -205,6 +229,7 @@ fn status(argv: &[String]) -> Result<String, Failure> {
         now: Time::from_millis(env::now_ms()),
         damaged: mind.damaged,
         newer: mind.newer,
+        me: &me(&args),
     };
     Ok(if args.has("json") { format!("{}\n", report.json()) } else { report.text() })
 }
@@ -241,13 +266,14 @@ fn update(argv: &[String]) -> Result<String, Failure> {
 }
 
 fn ask(argv: &[String]) -> Result<String, Failure> {
-    let args = parse(argv, &["blocks", "recommends", "work"], &[])?;
+    let args = parse(argv, &["blocks", "recommends", "work", "to"], &[])?;
     let [question] = words(&args, "ask takes one question, in quotes: nahuali ask \"Ship behind a flag?\"")?;
     let new = NewAsk {
         question,
         blocks: args.value("blocks").map(str::to_string),
         recommends: args.value("recommends").map(str::to_string),
         work: args.value("work").map(str::to_string),
+        to: args.value("to").map(str::to_string),
     };
     let mut mind = open(&args)?;
     let ask = mind.ask(sign(&args)?, new)?;
@@ -289,6 +315,8 @@ fn sign_anywhere(args: &Args) -> Result<Signature, Failure> {
         commit: None,
         private: args.has("private"),
         sure: Sure::Claimed,
+        person: Some(me(args)),
+        mine: args.has("mine"),
     })
 }
 
@@ -329,14 +357,15 @@ fn board(argv: &[String]) -> Result<String, Failure> {
     }
     let mind = open(&args)?;
     let journal = mind.journal().clone();
-    let src = live::Live::new(mind, env::person()).finding(Box::new(move |about| {
+    let src = live::Live::new(mind, me(&args)).finding(Box::new(move |about| {
         let asked = nahuali_core::words::plain(about).join(" ");
         let keys = if asked.is_empty() {
             Vec::new()
         } else {
             journal.search(&asked, "everything", "", 12).unwrap_or_default()
         };
-        let near = journal.near(about, "everything", "", None, 5).map(|(near, _)| near).unwrap_or_default();
+        let near =
+            journal.near(about, "everything", "", None, 5, None).map(|(near, _)| near).unwrap_or_default();
         (keys, near)
     }));
     nahuali_tui::run(&src, options)

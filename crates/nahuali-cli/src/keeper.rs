@@ -32,6 +32,7 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Mutex, Notify};
 
 use crate::remote;
+use crate::team::Server;
 
 /// How long the keeper stays with nobody speaking to it.
 const IDLE: u64 = 600;
@@ -60,6 +61,18 @@ struct Held {
     indexed: HashMap<String, u64>,
     /// Vectors already computed, by the model and the text they are of.
     vectors: HashMap<u64, Vec<f32>>,
+    /// How many lines the events' database held at the last look.
+    seen: usize,
+}
+
+fn read_events(lines: &[String]) -> Vec<Event> {
+    lines
+        .iter()
+        .filter_map(|line| match Event::read(line) {
+            Line::Event(event) => Some(*event),
+            _ => None,
+        })
+        .collect()
 }
 
 /// How alike two texts have to be for one to be offered for the other.
@@ -100,7 +113,13 @@ fn reach(scope: Option<&str>) -> &'static str {
 }
 
 struct Keeper {
+    /// The database on this machine: what is derived, and the events too
+    /// unless a team's server holds them.
     db: Surreal<Any>,
+    /// Where the events are: here, or on the team's server.
+    events: Surreal<Any>,
+    /// Who this installation is on the team's server, when there is one.
+    member: Option<String>,
     held: Mutex<Held>,
     started: Instant,
     /// Seconds after `started` when someone last spoke.
@@ -133,17 +152,23 @@ impl Keeper {
             What::Unknown => "unknown",
         };
         let mut held = self.held.lock().await;
+        // Whose it is: what the line says, or whoever brings in a line
+        // from before people were told apart.
+        let person = event.person.clone().or_else(|| self.member.clone()).unwrap_or_default();
         let mut answer = self
-            .db
+            .events
             .query(
                 "INSERT IGNORE INTO event { id: $id, at: <datetime> $at, project: $project, by: $by, \
-                 person: $person, verified: $verified, private: $private, kind: $kind, line: $line } RETURN VALUE id",
+                 person: $person, mine: $mine, said_by_person: $said, verified: $verified, private: $private, \
+                 kind: $kind, line: $line } RETURN VALUE id",
             )
             .bind(("id", event.id.clone()))
             .bind(("at", event.at.rfc3339()))
             .bind(("project", event.project.clone()))
             .bind(("by", event.by.name().to_string()))
-            .bind(("person", event.by.is_person()))
+            .bind(("person", person))
+            .bind(("mine", event.mine))
+            .bind(("said", event.by.is_person()))
             .bind(("verified", event.sure.is_verified()))
             .bind(("private", event.private))
             .bind(("kind", kind))
@@ -152,8 +177,30 @@ impl Keeper {
             .map_err(text)?;
         let kept: Vec<Value> = answer.take(0).map_err(text)?;
         if kept.is_empty() {
+            // Already there, or the server would not have it.
+            let mut there = self
+                .events
+                .query("SELECT VALUE id FROM event WHERE id = $id")
+                .bind(("id", format!("event:{}", event.id)))
+                .await
+                .map_err(text)?;
+            let there: Vec<Value> = there.take(0).unwrap_or_default();
+            let mut by_key = self
+                .events
+                .query("SELECT VALUE line FROM event WHERE line = $line LIMIT 1")
+                .bind(("line", line.to_string()))
+                .await
+                .map_err(text)?;
+            let by_key: Vec<String> = by_key.take(0).unwrap_or_default();
+            if there.is_empty() && by_key.is_empty() {
+                let who = self.member.as_deref().unwrap_or("you");
+                return Err(format!(
+                    "the team's server refused it: on it you are {who}, and you write only in that name"
+                ));
+            }
             return Ok(false);
         }
+        held.seen += 1;
         held.events.push(*event);
         self.index(&mut held).await?;
         Ok(true)
@@ -250,7 +297,12 @@ impl Keeper {
             return Ok(Vec::new());
         }
         let vector = model.embed_query(asked).map_err(text)?;
-        let line = std::env::var("NAHUALI_NEAR").ok().and_then(|v| v.parse().ok()).unwrap_or(NEAR);
+        // Whoever asks may ask for a higher line; the environment moves it for everyone.
+        let line = std::env::var("NAHUALI_NEAR")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .or(request["line"].as_f64())
+            .unwrap_or(NEAR);
         let kind = if request["kind"].is_string() { "AND kind = $kind" } else { "" };
         let query = format!(
             "SELECT key, vector::similarity::cosine(vec, {}) AS sim FROM thing WHERE vec != NONE AND {} {kind} \
@@ -275,8 +327,43 @@ impl Keeper {
     }
 
     async fn lines(&self) -> Result<Vec<String>, String> {
-        let mut answer = self.db.query("SELECT VALUE line FROM event ORDER BY id ASC").await.map_err(text)?;
-        answer.take(0).map_err(text)
+        if self.member.is_none() {
+            let mut answer =
+                self.events.query("SELECT VALUE line FROM event ORDER BY id ASC").await.map_err(text)?;
+            return answer.take(0).map_err(text);
+        }
+        // The server vouches for who wrote each record, not for what the
+        // line inside it says. A line that names another person as its
+        // own is not this team's line.
+        let mut answer =
+            self.events.query("SELECT person, line FROM event ORDER BY id ASC").await.map_err(text)?;
+        let rows: Vec<Value> = answer.take(0).map_err(text)?;
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                let (wrote, line) = (row["person"].as_str()?, row["line"].as_str()?);
+                match Event::read(line) {
+                    Line::Event(event) if event.person.as_deref().is_some_and(|said| said != wrote) => None,
+                    _ => Some(line.to_string()),
+                }
+            })
+            .collect())
+    }
+
+    /// Take what others wrote on the team's server since the last look.
+    async fn sync(&self) -> Result<(), String> {
+        let mut counted =
+            self.events.query("SELECT VALUE count() FROM event GROUP ALL").await.map_err(text)?;
+        let counted: Vec<u64> = counted.take(0).unwrap_or_default();
+        let there = counted.first().copied().unwrap_or(0) as usize;
+        let mut held = self.held.lock().await;
+        if there == held.seen {
+            return Ok(());
+        }
+        let lines = self.lines().await?;
+        held.seen = lines.len();
+        held.events = read_events(&lines);
+        self.index(&mut held).await
     }
 
     /// The keys of the things that hold every word asked for, the best
@@ -379,8 +466,16 @@ async fn run(home: &Path) -> Result<(), String> {
         .map_err(text)?;
     db.use_ns("nahuali").use_db("memory").await.map_err(text)?;
     db.query(SCHEMA).await.map_err(text)?.check().map_err(text)?;
+    // A team's events are on its server, signed in to as this person.
+    let server = Server::read(home);
+    let events = match &server {
+        Some(server) => server.connect().await?,
+        None => db.clone(),
+    };
     let keeper = Arc::new(Keeper {
         db,
+        events,
+        member: server.as_ref().map(|s| s.name.clone()),
         held: Mutex::new(Held::default()),
         started: Instant::now(),
         spoken: AtomicU64::new(0),
@@ -400,15 +495,9 @@ async fn run(home: &Path) -> Result<(), String> {
             };
             held.vectors.insert(of, v.iter().filter_map(|x| x.as_f64().map(|x| x as f32)).collect());
         }
-        held.events = keeper
-            .lines()
-            .await?
-            .iter()
-            .filter_map(|line| match Event::read(line) {
-                Line::Event(event) => Some(*event),
-                _ => None,
-            })
-            .collect();
+        let lines = keeper.lines().await?;
+        held.seen = lines.len();
+        held.events = read_events(&lines);
         keeper.index(&mut held).await?;
     }
     take_in(&keeper, home).await;
@@ -431,6 +520,11 @@ async fn run(home: &Path) -> Result<(), String> {
             }
             () = keeper.leave.notified() => break,
             () = tokio::time::sleep(Duration::from_secs(1)) => {
+                if keeper.member.is_some()
+                    && let Err(why) = keeper.sync().await
+                {
+                    eprintln!("could not look at the team's server: {why}");
+                }
                 if keeper.started.elapsed().as_secs().saturating_sub(keeper.spoken.load(Ordering::Relaxed)) >= idle {
                     break;
                 }

@@ -48,6 +48,8 @@ table `event`. Out of it, it is one line of JSON:
 | `id` | Unique, and sorts by the moment it was made (a ULID). It is the record's id. |
 | `at` | When, in UTC. |
 | `by` | Who: `{"person":"ada"}`, `{"agent":"claude-code"}`, or `{"reported":{"by":"lead","from":"scout"}}` when one passes on what another said. |
+| `person` | The person the speaker works for: themselves, when a person speaks. Absent in lines from before people were told apart. |
+| `mine` | Present and `true` when only that person and their agents may see it. |
 | `project` | Where it belongs. |
 | `private` | Present and `true` when it must not be offered to work on another project. |
 | `sure` | `"claimed"`, or `{"verified":"by what"}`. |
@@ -60,7 +62,7 @@ sure, as of, and reach. No event exists without them.
 | Kind | Fields | Effect |
 |---|---|---|
 | `work` | `work`, and any of `title`, `goal`, `status`, `line`, `done`, `next` | Overwrites that work's card. A field left out keeps what it had; `done` adds; `next` replaces. The first one starts the work. |
-| `ask` | `ask`, `question`, and optionally `blocks`, `recommends`, `work` | Opens a question for the person. |
+| `ask` | `ask`, `question`, and optionally `blocks`, `recommends`, `work`, `to` | Opens a question for a person: the one named in `to`, or else the person the asker works for. |
 | `answer` | `ask`, `text` | Closes the ask. It is now a decision. |
 | `withdraw` | `ask`, `why` | Closes the ask without an answer. |
 | `learn` | `lesson`, `rule`, `moment`, and optionally `when`, `everywhere`, `stop` | Records a lesson and the moment it applies. |
@@ -150,6 +152,46 @@ At the size of one person's memory every vector is compared. SurrealDB's
 approximate index (HNSW) answers the same question for millions; it is not
 defined yet because it is not needed yet.
 
+## A team
+
+A team's events live in a SurrealDB server that every member reaches
+(`nahuali team init`, `add`, `join`). Everything above stays the same; what
+changes is where the table `event` is, and who is let do what with it.
+
+```
+<home>/local/server.json     the server's address, who you are on it, your passphrase
+<home>/db/                   still here: the search index and the vectors, derived on this machine
+```
+
+Each machine keeps its own keeper. It signs in to the server as its
+person, writes events there, looks every second for what others wrote, and
+derives its own index from the events it is let read.
+
+The server keeps each person to their reach, with its own permissions:
+
+| A member may | Because |
+|---|---|
+| read an event that is not `mine`, or that is their own | `FOR select WHERE mine = false OR person = $auth.name` |
+| write an event only as themselves | `FOR create WHERE person = $auth.name` |
+| change or delete nothing | `FOR update, delete NONE` |
+| read no other member's record | `person` is readable only by its own member |
+
+So what is only one person's is never sent to another's machine, and a
+copy of Nahuali that was changed cannot write as someone else. The server
+vouches for who wrote a record, not for what the line inside it says, so
+two more rules are kept by every reader: a record whose line names another
+person as its own is left out, and a line that says another person spoke
+is read as its own person reporting what the other said.
+
+A passphrase is drawn at random by `team add`, shown once, and kept by the
+server only as an argon2 hash. On the member's machine it is in
+`server.json`, readable by that user alone.
+
+Joining does not move anything: what was on the machine stays in its own
+database, and `nahuali team leave` goes back to it. To bring it to the
+team, export it and put the lines in `log/` after joining; they are taken
+in as yours.
+
 ## Out, and in again
 
 `nahuali export` prints every event as one line. That file is yours: it
@@ -187,9 +229,11 @@ to run one. The format of the lines is the same.
 
 ## What it does not do
 
-- It does not prove who is speaking. `by` is what the speaker declared: a
-  tool that runs agents names them, and an agent can name itself. An agent
-  that answers an ask is shown as an agent.
+- On one machine it does not prove who is speaking. `by` is what the
+  speaker declared: a tool that runs agents names them, and an agent can
+  name itself. An agent that answers an ask is shown as an agent. On a
+  team's server the person is proven; their agents are still whoever they
+  say they are.
 - It does not encrypt. The memory is as private as the disk it is on.
 - It reads every event on every command and folds them in the program.
   That is fast for what a person and their agents write in years.

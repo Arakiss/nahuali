@@ -16,6 +16,8 @@ pub struct Report<'a> {
     /// Lines of the log nobody could read, and lines from a newer version.
     pub damaged: usize,
     pub newer: usize,
+    /// The person whoever reads this works for.
+    pub me: &'a str,
 }
 
 impl Report<'_> {
@@ -56,6 +58,9 @@ impl Report<'_> {
         }
         if marks.private {
             parts.push("private".to_string());
+        }
+        if marks.mine {
+            parts.push("only yours".to_string());
         }
         parts.join(" · ")
     }
@@ -100,6 +105,9 @@ impl Report<'_> {
                 }
                 if let Some(work) = &ask.work {
                     about.push(format!("holds {work}"));
+                }
+                if let Some(to) = ask.to.as_deref().filter(|to| *to != self.me) {
+                    about.push(format!("for {to}"));
                 }
                 if let Some(recommends) = &ask.recommends {
                     about.push(format!("recommends {recommends}"));
@@ -186,6 +194,8 @@ impl Report<'_> {
                 "commit": m.commit,
                 "project": m.project,
                 "private": m.private,
+                "person": m.person,
+                "mine": m.mine,
             })
         };
         let asks: Vec<Value> = self
@@ -194,7 +204,7 @@ impl Report<'_> {
             .map(|a| {
                 json!({
                     "ask": a.id, "question": a.question, "blocks": a.blocks,
-                    "recommends": a.recommends, "work": a.work, "marks": marks(&a.marks),
+                    "recommends": a.recommends, "work": a.work, "to": a.to, "marks": marks(&a.marks),
                 })
             })
             .collect();

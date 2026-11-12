@@ -87,6 +87,7 @@ impl Remote {
         project: &str,
         kind: Option<&str>,
         limit: u64,
+        line: Option<f64>,
     ) -> io::Result<(Vec<(String, f64)>, bool)> {
         if !self.exists() {
             return Ok((Vec::new(), false));
@@ -94,6 +95,9 @@ impl Remote {
         let mut request = json!({ "q": asked, "scope": scope, "project": project, "limit": limit });
         if let Some(kind) = kind {
             request["kind"] = json!(kind);
+        }
+        if let Some(line) = line {
+            request["line"] = json!(line);
         }
         let answer = self.call("near", request)?;
         let near = answer["near"]
@@ -107,7 +111,10 @@ impl Remote {
 
     /// A memory nobody has written to has no database and needs no keeper.
     pub fn exists(&self) -> bool {
-        self.home.join("db").exists() || self.home.join("log").exists()
+        // A memory kept on a team's server exists even before this machine wrote to it.
+        self.home.join("db").exists()
+            || self.home.join("log").exists()
+            || self.home.join("local").join("server.json").exists()
     }
 
     fn start(&self) -> io::Result<()> {

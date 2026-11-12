@@ -34,20 +34,22 @@ fn run(kind: &str, input: &Value) -> Option<String> {
     if let Some(cwd) = input["cwd"].as_str() {
         std::env::set_current_dir(cwd).ok()?;
     }
-    let journal = Remote::at(env::home(None).ok()?).patient(PATIENCE);
+    let home = env::home(None).ok()?;
+    let me = crate::me_at(&home);
+    let journal = Remote::at(home).patient(PATIENCE);
     if !journal.exists() {
         return None;
     }
     let project = env::project(None).ok()?;
-    let mind = Mind::open(journal).ok()?;
+    let mind = Mind::open_as(journal, Some(me.clone())).ok()?;
     match kind {
-        "session-start" => session_start(&mind, &project),
-        "pre-tool" => pre_tool(mind, &project, input),
+        "session-start" => session_start(&mind, &project, &me),
+        "pre-tool" => pre_tool(mind, &project, input, me),
         _ => None,
     }
 }
 
-fn session_start(mind: &Mind<Remote>, project: &str) -> Option<String> {
+fn session_start(mind: &Mind<Remote>, project: &str, me: &str) -> Option<String> {
     let now = Time::from_millis(env::now_ms());
     let report = text::Report {
         state: mind.state(),
@@ -56,6 +58,7 @@ fn session_start(mind: &Mind<Remote>, project: &str) -> Option<String> {
         now,
         damaged: 0,
         newer: 0,
+        me,
     };
     if report.is_empty() {
         return None;
@@ -71,7 +74,10 @@ fn session_start(mind: &Mind<Remote>, project: &str) -> Option<String> {
     )
 }
 
-fn pre_tool(mut mind: Mind<Remote>, project: &str, input: &Value) -> Option<String> {
+/// A likeness nobody asked for has to be closer than one that was asked for.
+const UNASKED: f64 = 0.72;
+
+fn pre_tool(mut mind: Mind<Remote>, project: &str, input: &Value, me: String) -> Option<String> {
     let tool = input["tool_name"].as_str().unwrap_or_default();
     let doing = match input["tool_input"]["command"].as_str() {
         Some(command) => command.to_string(),
@@ -84,7 +90,7 @@ fn pre_tool(mut mind: Mind<Remote>, project: &str, input: &Value) -> Option<Stri
     let session = input["session_id"].as_str().map(str::to_string);
     let now = Time::from_millis(env::now_ms());
     let (said, names, stops) = {
-        let applies: Vec<_> = crate::more::told(&mind, project, &doing)
+        let applies: Vec<_> = crate::more::told(&mind, project, &doing, Some(UNASKED))
             .into_iter()
             .filter(|a| session.as_ref().is_none_or(|s| !a.lesson.sessions.contains(s)))
             .collect();
@@ -114,6 +120,8 @@ fn pre_tool(mut mind: Mind<Remote>, project: &str, input: &Value) -> Option<Stri
         commit: None,
         private: false,
         sure: Sure::Claimed,
+        person: Some(me),
+        mine: false,
     };
     // If the showing cannot be recorded, it is still shown.
     let _ = mind.shown(sig, names, &doing, session, stops);

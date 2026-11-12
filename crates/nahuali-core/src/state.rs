@@ -21,6 +21,10 @@ pub struct Marks {
     pub commit: Option<String>,
     pub project: String,
     pub private: bool,
+    /// The person the speaker works for, when the line says.
+    pub person: Option<String>,
+    /// Only that person and their agents see it.
+    pub mine: bool,
 }
 
 impl Marks {
@@ -32,6 +36,8 @@ impl Marks {
             commit: event.commit.clone(),
             project: event.project.clone(),
             private: event.private,
+            person: event.person.clone(),
+            mine: event.mine,
         }
     }
 }
@@ -79,6 +85,8 @@ pub struct Ask {
     pub recommends: Option<String>,
     /// The piece of work that waits on it, in the same project.
     pub work: Option<String>,
+    /// Who is asked: the one named, or the person the asker works for.
+    pub to: Option<String>,
     /// The marks of the asking.
     pub marks: Marks,
     pub closed: Option<(Closed, Marks)>,
@@ -87,6 +95,11 @@ pub struct Ask {
 impl Ask {
     pub fn is_open(&self) -> bool {
         self.closed.is_none()
+    }
+
+    /// Whether it waits on `person`: it names them, or it names nobody.
+    pub fn is_for(&self, person: &str) -> bool {
+        self.to.as_deref().is_none_or(|to| to == person)
     }
 }
 
@@ -352,6 +365,7 @@ impl State {
                     blocks: open.blocks.clone(),
                     recommends: open.recommends.clone(),
                     work: open.work.clone(),
+                    to: open.to.clone().or_else(|| event.person.clone()),
                     marks,
                     closed: None,
                 });

@@ -53,7 +53,7 @@ pub struct Told<'a> {
 /// The lessons that apply to what is about to be done. Those brought by
 /// their words come first; then, when this memory has a model, those close
 /// in meaning that the words missed.
-pub fn told<'a>(mind: &'a Mind<Remote>, project: &str, doing: &str) -> Vec<Told<'a>> {
+pub fn told<'a>(mind: &'a Mind<Remote>, project: &str, doing: &str, line: Option<f64>) -> Vec<Told<'a>> {
     let scope = Scope::Project(project);
     let state = mind.state();
     let mut told: Vec<Told<'a>> = state
@@ -69,7 +69,7 @@ pub fn told<'a>(mind: &'a Mind<Remote>, project: &str, doing: &str) -> Vec<Told<
     // No model, or a keeper that does not answer: the words are enough.
     let near = mind
         .journal()
-        .near(doing, "project", project, Some("lesson"), 3)
+        .near(doing, "project", project, Some("lesson"), 3, line)
         .map(|(near, _)| near)
         .unwrap_or_default();
     for (key, alike) in near {
@@ -95,7 +95,7 @@ pub fn check(argv: &[String]) -> Result<String, Failure> {
     let sig = sign(&args)?;
     let now = Time::from_millis(sig.at_ms);
     let (out, names) = {
-        let applies = told(&mind, &sig.project, &doing);
+        let applies = told(&mind, &sig.project, &doing, None);
         let out = if args.has("json") {
             let lessons: Vec<_> = applies
                 .iter()
@@ -202,8 +202,11 @@ pub fn recall(argv: &[String]) -> Result<String, Failure> {
     // whoever wants to see that its own reach is right.
     if args.has("keys") {
         let reach = if args.has("all") { "all" } else { "project" };
-        let near =
-            mind.journal().near(&about, reach, &project, None, 5).map(|(near, _)| near).unwrap_or_default();
+        let near = mind
+            .journal()
+            .near(&about, reach, &project, None, 5, None)
+            .map(|(near, _)| near)
+            .unwrap_or_default();
         let near = near.iter().filter(|(key, _)| !keys.contains(key)).map(|(key, _)| format!("near {key}\n"));
         return Ok(keys.iter().map(|k| format!("{k}\n")).chain(near).collect());
     }
@@ -220,7 +223,7 @@ pub fn recall(argv: &[String]) -> Result<String, Failure> {
     // be so: it is a likeness, not a match.
     let near: Vec<(Thing, f64)> = mind
         .journal()
-        .near(&about, if args.has("all") { "all" } else { "project" }, &project, None, 5)
+        .near(&about, if args.has("all") { "all" } else { "project" }, &project, None, 5, None)
         .map(|(near, _)| near)
         .unwrap_or_default()
         .into_iter()

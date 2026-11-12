@@ -32,6 +32,7 @@ const EVERYWHERE: &[(&str, Kind, &str)] = &[
     ("project", Kind::Value, "The project. Default: the repository or directory the server runs in."),
     ("as", Kind::Value, "Which agent is speaking. Default: the client's name."),
     ("private", Kind::Flag, "Not to be offered to work on another project."),
+    ("mine", Kind::Flag, "Only the person you work for, and their agents, see it."),
 ];
 
 const TOOLS: &[Tool] = &[
@@ -67,6 +68,7 @@ const TOOLS: &[Tool] = &[
             ("recommends", Kind::Value, "The answer you would give."),
             ("blocks", Kind::Value, "What cannot go on until it is answered."),
             ("work", Kind::Value, "The work that waits on it."),
+            ("to", Kind::Value, "Who is asked, when it is not the person you work for."),
         ],
     },
     Tool {

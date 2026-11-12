@@ -26,6 +26,10 @@ pub struct Signature {
     pub commit: Option<String>,
     pub private: bool,
     pub sure: Sure,
+    /// The person the speaker works for.
+    pub person: Option<String>,
+    /// Only that person and their agents are to see it.
+    pub mine: bool,
 }
 
 /// A card update: a field left out keeps what it had.
@@ -37,6 +41,8 @@ pub struct NewAsk {
     pub blocks: Option<String>,
     pub recommends: Option<String>,
     pub work: Option<String>,
+    /// Who is asked, when it is not the person the asker works for.
+    pub to: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -176,11 +182,20 @@ pub struct Mind<J> {
     pub damaged: usize,
     /// Lines written by a newer version.
     pub newer: usize,
+    /// Whose eyes this is: what is only another person's is not here.
+    viewer: Option<String>,
 }
 
 impl<J: Journal> Mind<J> {
     pub fn open(journal: J) -> Result<Self, Error> {
-        let mut mind = Self { journal, events: Vec::new(), state: State::default(), damaged: 0, newer: 0 };
+        Self::open_as(journal, None)
+    }
+
+    /// Open as one person sees it: an event that is only another person's
+    /// is left out before anything is folded, as if it had never arrived.
+    pub fn open_as(journal: J, viewer: Option<String>) -> Result<Self, Error> {
+        let mut mind =
+            Self { journal, events: Vec::new(), state: State::default(), damaged: 0, newer: 0, viewer };
         mind.reload()?;
         Ok(mind)
     }
@@ -190,6 +205,7 @@ impl<J: Journal> Mind<J> {
         let (mut events, mut damaged, mut newer) = (Vec::new(), 0, 0);
         for line in self.journal.read()? {
             match Event::read(&line) {
+                Line::Event(event) if event.mine && self.viewer.is_some() && event.person != self.viewer => {}
                 Line::Event(event) => events.push(*event),
                 Line::Damaged => damaged += 1,
                 Line::Newer => newer += 1,
@@ -219,6 +235,8 @@ impl<J: Journal> Mind<J> {
             id: id::ulid(sig.at_ms, sig.entropy),
             at: Time::from_millis(sig.at_ms),
             by: sig.who,
+            person: sig.person,
+            mine: sig.mine,
             project: sig.project,
             private: sig.private,
             sure: sig.sure,
@@ -285,7 +303,14 @@ impl<J: Journal> Mind<J> {
             .map(|len| id::short(&id, len))
             .find(|name| self.state.ask(name).is_none())
             .expect("twelve characters of an id are not taken");
-        let open = AskOpen { ask: name.clone(), question, blocks, recommends, work: new.work };
+        let to = match &new.to {
+            Some(to) => {
+                named("a person", to)?;
+                Some(to.clone())
+            }
+            None => None,
+        };
+        let open = AskOpen { ask: name.clone(), question, blocks, recommends, work: new.work, to };
         self.write(sig, What::Ask(open))?;
         Ok(self.state.ask(&name).expect("it was just written").clone())
     }

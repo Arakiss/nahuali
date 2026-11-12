@@ -22,6 +22,8 @@ fn agent(minute: u64, project: &str) -> Signature {
         commit: Some("abc1234".into()),
         private: false,
         sure: Sure::Claimed,
+        person: Some("ada".into()),
+        mine: false,
     }
 }
 
@@ -591,4 +593,59 @@ fn finished_work_has_nothing_next_unless_it_says_so() {
         ..card("importer", "shipped")
     };
     assert_eq!(m.update(agent(2, "atlas"), follow).unwrap().next, ["watch the logs for a day"]);
+}
+
+fn bob(minute: u64) -> Signature {
+    Signature { who: Actor::Agent("codex".into()), person: Some("bob".into()), ..agent(minute, "atlas") }
+}
+
+#[test]
+fn what_is_only_one_persons_is_not_there_for_another() {
+    let mut shared = mind();
+    shared.update(agent(0, "atlas"), card("importer", "ready")).unwrap();
+    shared
+        .update(Signature { mine: true, ..agent(1, "atlas") }, card("salary-talk", "notes for me"))
+        .unwrap();
+    shared
+        .note(
+            Signature { mine: true, ..bob(2) },
+            NewNote { text: "Bob's own reminder".into(), ..NewNote::default() },
+        )
+        .unwrap();
+    let lines = shared.journal().0.clone();
+
+    let seen = |who: Option<&str>| {
+        let m = Mind::open_as(MemJournal(lines.clone()), who.map(str::to_string)).unwrap();
+        let mut keys: Vec<String> =
+            m.state().things().into_iter().map(|t| t.kind.to_string() + ":" + &t.title).collect();
+        keys.sort();
+        keys
+    };
+    assert_eq!(seen(Some("ada")), ["work:importer", "work:salary-talk"]);
+    assert_eq!(seen(Some("bob")), ["note:Bob's own reminder", "work:importer"]);
+    assert_eq!(seen(Some("carol")), ["work:importer"]);
+    assert_eq!(seen(None).len(), 3, "a memory with nobody named sees all of it, as before");
+}
+
+#[test]
+fn an_ask_waits_on_whoever_it_names_or_on_the_askers_person() {
+    let mut m = mind();
+    let own = m.ask(agent(0, "atlas"), question("Flag?", None)).unwrap();
+    let named =
+        m.ask(agent(1, "atlas"), NewAsk { to: Some("bob".into()), ..question("Which logo?", None) }).unwrap();
+    assert_eq!(own.to.as_deref(), Some("ada"), "an agent asks the person it works for");
+    assert_eq!(named.to.as_deref(), Some("bob"));
+    assert!(own.is_for("ada") && !own.is_for("bob"));
+    assert!(named.is_for("bob") && !named.is_for("ada"));
+    assert!(matches!(
+        m.ask(agent(2, "atlas"), NewAsk { to: Some("Bob Smith".into()), ..question("x?", None) })
+            .unwrap_err(),
+        Error::BadName { .. }
+    ));
+
+    // A line from before people were told apart waits on whoever looks.
+    let old = r#"{"v":1,"id":"01","at":"2026-11-12T15:20:11Z","by":{"agent":"x"},"project":"atlas","what":{"ask":{"ask":"old001","question":"From before?"}}}"#;
+    let m = Mind::open(MemJournal(vec![old.to_string()])).unwrap();
+    let ask = m.state().ask("old001").unwrap();
+    assert!(ask.is_for("ada") && ask.is_for("bob"));
 }

@@ -195,6 +195,30 @@ With the model installed every thing also carries a vector, kept in the database
 
 What the words find always comes first and is called a match. What only the meaning finds comes after, apart, with how alike it is, and is called a likeness. The line below which nothing is offered was measured, not guessed: at 0.65, eight of nine things offered were answers, and half of the answers that shared no word were found. `cargo run --release -p nahuali-embed --example near -- MODELS_DIR` repeats the measurement.
 
+### A team
+
+```sh
+nahuali team init ws://memory.example.com:8000    # once, by whoever runs the SurrealDB server
+nahuali team add bob ws://memory.example.com:8000 # prints the passphrase bob joins with, once
+NAHUALI_PASS=… nahuali team join ws://memory.example.com:8000 --name bob
+```
+
+Several people, each with their own agents, on one memory. Every verb works as before, and two things are new.
+
+```sh
+nahuali ask "Which of the two logos goes on the cover?" --to bob   # it waits on bob's board, not yours
+nahuali note "What I want to raise in my review" --mine           # only you and your agents ever see it
+```
+
+| Rule | Who keeps it |
+| --- | --- |
+| A person reads what is shared and what is only theirs | The database server. What is only someone else's is never sent to your machine |
+| A person writes only in their own name | The database server. A changed copy of Nahuali cannot write as someone else |
+| Nothing written is changed or deleted | The database server |
+| A line cannot say another person spoke | Every reader. It is read as its own person reporting what the other said |
+
+No copy of Nahuali has to be trusted for these to hold: they are permissions of the SurrealDB server, defined by `nahuali team init`. Each machine keeps its own keeper, which signs in as its person and keeps the search index and the vectors on its own disk. `nahuali team leave` goes back to the memory on the machine, which was never touched.
+
 ### Any tool
 
 ```sh
@@ -269,7 +293,8 @@ This repository is kept, from its first commit, as if it were already public. Wh
 
 ## What it does not do yet
 
-- It does not prove who is speaking. "Who" is what the speaker declared.
+- On one machine it does not prove who is speaking: "who" is what the speaker declared. On a team's server the person is proven by their passphrase, and their agents are still whoever they say they are.
+- A team's passphrase is kept in a file only your user can read, not in a keychain.
 - It does not encrypt. The memory is as private as the disk it is on.
 - It does not run on Windows yet.
 - Meaning is a likeness, not an understanding. It finds about half of what is said in other words and is kept apart from what the words find. Without the model there are only the words.
@@ -284,8 +309,9 @@ In this order, each when it is done. There are no dates.
 3. ~~Notes and `recall`, strict enough that an empty answer is a normal one.~~
 4. ~~The same verbs over MCP, so no agent tool is special.~~
 5. ~~Search by meaning beside search by words, on this machine.~~
-6. A team: several people on one memory, each seeing what reaches them.
-7. Releases you can install without a toolchain.
+6. ~~A team: several people on one memory, each seeing what reaches them.~~
+7. A hosted service: the same server, run for you, one per customer.
+8. Releases you can install without a toolchain.
 
 The definition the design starts from is [`docs/product.md`](docs/product.md).
 

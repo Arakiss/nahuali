@@ -118,6 +118,11 @@ and use it only if it is really about what you asked.
 
 ## Reach
 
+When several people share the memory, `nahuali ask … --to NAME` puts the
+question to that person instead of the one you work for, and `--mine` on
+anything keeps it to the person you work for and their agents: use it for
+what is personal, never for what the team needs to know.
+
 Add `--private` to anything that must not be shown to work on another
 project. `--all` on `status` and `recall` shows every project, without what
 is private to another one.
