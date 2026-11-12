@@ -1,5 +1,9 @@
 //! Where lines are kept. A journal knows nothing of what a line means.
 //!
+//! The `nahuali` command keeps them in a database, behind its own journal.
+//! The two here need nothing: [`MemJournal`] for tests, and [`FileJournal`]
+//! for a machine with no database.
+//!
 //! [`FileJournal`] keeps them in plain files a person owns:
 //!
 //! ```text

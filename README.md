@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/status-being%20built-F7913D?style=flat-square&labelColor=1B100C" alt="Status: being built">
   <img src="https://img.shields.io/badge/runs-on%20your%20machine-F6F0E8?style=flat-square&labelColor=1B100C" alt="Runs on your machine">
-  <img src="https://img.shields.io/badge/memory-plain%20text%20you%20own-F6F0E8?style=flat-square&labelColor=1B100C" alt="The memory is plain text you own">
+  <img src="https://img.shields.io/badge/built%20on-SurrealDB%204-F6F0E8?style=flat-square&labelColor=1B100C" alt="Built on SurrealDB 4">
   <img src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-F6F0E8?style=flat-square&labelColor=1B100C" alt="Works with Claude Code, Codex and Cursor">
 </p>
 
@@ -119,41 +119,41 @@ What an agent is told about Nahuali is one page: [`skills/nahuali/SKILL.md`](ski
 
 ## The memory is yours
 
-A Nahuali memory is a folder of plain text files. There is no database and no service to keep running.
+The memory lives in a database on your own machine, an embedded [SurrealDB](https://surrealdb.com), and comes out of it as plain lines of text whenever you ask.
 
 ```text
 ~/.local/share/nahuali/
-  README.txt            what these files are, for whoever finds them
-  log/<writer>.jsonl    everything that happened, one line per event
-  local/writer          this installation's name
+  db/                  the database
+  log/*.jsonl          lines to take in, from an export or from another machine
 ```
 
 | Property | In practice |
 | --- | --- |
-| Readable without Nahuali | Each line is JSON with the time in UTC, who wrote it, how sure they were and what happened |
-| Shared by copying files | Each installation appends only to its own file. Two machines share a memory by copying `log/` both ways with rsync, a synced folder or git. There is nothing to merge |
-| Order does not matter | The state is the lines in order of their time. The same lines give the same state however they are split, copied or repeated |
-| Survives a crash | A line torn by losing power spoils itself and nothing after it |
-| Survives other versions | A line from a newer version, or of a kind this version does not know, is skipped and counted. Nothing is refused |
+| Nothing to install or manage | The first command that needs the memory starts the one process that keeps the database open. It leaves by itself when nobody speaks to it. No service, no password |
+| Many at once | The board stays open while a dozen agents write. They all talk to that one keeper |
+| Out as plain text | `nahuali export` prints every event as one line of JSON, with the time, who wrote it, how sure they were and what happened |
+| In again, anywhere | A memory takes in the lines it finds in its `log/` folder, each one once. A backup, a move to another machine and two machines sharing a memory are all that same step |
+| Order does not matter | The state is the events in order of their time. The same events give the same state wherever they came from and however often they arrive |
 
 The whole format is in [`docs/format.md`](docs/format.md).
 
 ## How it works
 
 ```text
-agents ── nahuali update / ask ──▶  log/<writer>.jsonl  ◀── nahuali answer ── you, on the board
-                                          │
-                                          └─ folded in order of time ─▶ cards, open asks, decisions
+agents ── nahuali update / ask ──▶ the keeper ◀── nahuali answer ── you, on the board
+                                       │
+                                       ├─ SurrealDB: every event, added and never changed
+                                       └─ folded in order of time ─▶ cards, open asks, decisions
 ```
 
-Everything that happens is one line appended to a log. What is true now is that log folded in order, and nothing else is stored, so there is no index to fall out of step with the files.
+Everything that happens is one event, added and never changed. What is true now is those events folded in order, so any card can be explained by the events behind it.
 
-The part that holds the memory, [`nahuali-core`](crates/nahuali-core), has no clock, no network and no process of its own. Whatever runs it says what time it is and who is speaking. The same code runs behind a command line today and could sit inside a long-lived program or a machine with no terminal at all.
+The rules live in [`nahuali-core`](crates/nahuali-core), which has no clock, no network and no process of its own, and does not know where events are kept. Whatever runs it says what time it is and who is speaking. Behind the command it is kept by SurrealDB. It also ships a store of plain files with no database at all, for a machine too small or too simple to run one.
 
 | Crate | What it is |
 | --- | --- |
-| [`nahuali-core`](crates/nahuali-core) | The log, the fold and the verbs |
-| [`nahuali-cli`](crates/nahuali-cli) | The `nahuali` command |
+| [`nahuali-core`](crates/nahuali-core) | The events, the fold and the verbs |
+| [`nahuali-cli`](crates/nahuali-cli) | The `nahuali` command, and the keeper of the database |
 | [`nahuali-view`](crates/nahuali-view) | The screens as a view model, with no dependencies |
 | [`nahuali-tui`](crates/nahuali-tui) | The terminal renderer, with the animated axolotl |
 
@@ -181,7 +181,8 @@ This repository is kept, from its first commit, as if it were already public. Wh
 ## What it does not do yet
 
 - It does not prove who is speaking. "Who" is what the speaker declared.
-- It does not encrypt. The folder is as private as the disk it is on.
+- It does not encrypt. The memory is as private as the disk it is on.
+- It does not run on Windows yet.
 - It has no lessons, notes or recall yet. They are next.
 
 ## Roadmap

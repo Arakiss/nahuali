@@ -5,7 +5,9 @@
 
 mod args;
 mod env;
+mod keeper;
 mod live;
+mod remote;
 mod text;
 
 use std::io::IsTerminal;
@@ -13,9 +15,10 @@ use std::process::ExitCode;
 
 use args::Args;
 use nahuali_core::event::WorkSet;
-use nahuali_core::{FileJournal, Mind, NewAsk, Scope, Signature, Status, Sure, Time};
+use nahuali_core::{Mind, NewAsk, Scope, Signature, Status, Sure, Time};
 use nahuali_tui::anim::Motion;
 use nahuali_tui::theme::ColorMode;
+use remote::Remote;
 
 const HELP: &str = "\
 nahuali: a working memory for a person and their agents
@@ -26,6 +29,7 @@ nahuali: a working memory for a person and their agents
   nahuali ask \"QUESTION\" …    put a question to the person; it stays in sight until closed
   nahuali answer ASK \"TEXT\"   close an ask; it becomes a decision
   nahuali where               where the memory lives, which project this is, who you are
+  nahuali export              every event as one line of JSON, to read or keep without nahuali
 
 status
   --all                       every project (nothing private to another project)
@@ -101,9 +105,9 @@ fn parse(argv: &[String], valued: &[&str], flags: &[&str]) -> Result<Args, Failu
     Args::parse(argv, &valued, &flags).map_err(Failure::Usage)
 }
 
-fn open(args: &Args) -> Result<Mind<FileJournal>, Failure> {
+fn open(args: &Args) -> Result<Mind<Remote>, Failure> {
     let home = env::home(args.value("home")).map_err(Failure::Usage)?;
-    Ok(Mind::open(FileJournal::at(home))?)
+    Ok(Mind::open(Remote::at(home))?)
 }
 
 fn sign(args: &Args) -> Result<Signature, Failure> {
@@ -140,6 +144,9 @@ fn run(argv: &[String]) -> Result<String, Failure> {
         "answer" => answer(rest),
         "where" => place(rest),
         "board" => board(rest),
+        "export" => export(rest),
+        "serve" => serve(rest),
+        "stop" => stop(rest),
         other => Err(usage(format!("`{other}` is not something nahuali does"))),
     }
 }
@@ -278,4 +285,31 @@ fn board(argv: &[String]) -> Result<String, Failure> {
     nahuali_tui::run(&src, options)
         .map_err(|e| Failure::Refused(format!("the terminal could not be drawn: {e}")))?;
     Ok(String::new())
+}
+
+/// Every event, as the lines a person can read and another memory can take in.
+fn export(argv: &[String]) -> Result<String, Failure> {
+    let args = parse(argv, &[], &[])?;
+    let [] = words(&args, "export takes no words")?;
+    let mind = open(&args)?;
+    Ok(mind.events().iter().map(|e| e.line() + "\n").collect())
+}
+
+/// Be the keeper of a memory. Commands start one when they need it.
+fn serve(argv: &[String]) -> Result<String, Failure> {
+    let args = parse(argv, &[], &[])?;
+    let home = env::home(args.value("home")).map_err(Failure::Usage)?;
+    keeper::serve(&home).map_err(Failure::Refused)?;
+    Ok(String::new())
+}
+
+/// Tell the keeper of a memory to leave. The next command starts another.
+fn stop(argv: &[String]) -> Result<String, Failure> {
+    let args = parse(argv, &[], &[])?;
+    let home = env::home(args.value("home")).map_err(Failure::Usage)?;
+    Ok(if Remote::at(home).stop() {
+        "the keeper left\n".to_string()
+    } else {
+        "there was no keeper\n".to_string()
+    })
 }

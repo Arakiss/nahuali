@@ -67,8 +67,9 @@ Every one of them carries the same four marks:
    what is next. No stop demands a paragraph.
 7. **Any tool.** One small protocol, usable from a command line and over
    MCP. No agent tool is special.
-8. **Yours.** Local first, private by default, in files the person owns and
-   can read without Nahuali.
+8. **Yours.** Local first, private by default, in a database on the person's
+   own machine, and out of it at any time as plain lines they can read
+   without Nahuali.
 
 ## What an agent does with it
 
@@ -150,9 +151,11 @@ questions: where things stand, what it is waiting to be told, what it
 learned, and how far each of those can be trusted. Three choices are kept
 so that the same memory could one day sit inside one:
 
-- The part that holds the memory has no clock, no network and no process of
+- The part that holds the rules has no clock, no network and no process of
   its own. Whatever runs it says what time it is and who is speaking.
-- The log survives losing power in the middle of a line.
+- It does not know where events are kept. Behind the command they are in a
+  database; on a machine too small for one they can be plain files, which
+  survive losing power in the middle of a line.
 - "Who" is anything that can say or observe something. A person and a
   coding agent are the first two, not the only two.
 

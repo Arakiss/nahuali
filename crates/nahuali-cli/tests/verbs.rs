@@ -22,7 +22,8 @@ impl Desk {
 
     fn command(&self, dir: &Path) -> Command {
         let mut c = Command::new(env!("CARGO_BIN_EXE_nahuali"));
-        c.current_dir(dir).env("NAHUALI_HOME", self.home());
+        // A keeper nobody stops leaves by itself soon after the test.
+        c.current_dir(dir).env("NAHUALI_HOME", self.home()).env("NAHUALI_IDLE_SECS", "20");
         for marker in ["CLAUDECODE", "CODEX_SANDBOX", "CODEX_THREAD_ID", "CURSOR_AGENT", "CURSOR_TRACE_ID"] {
             c.env_remove(marker);
         }
@@ -46,6 +47,7 @@ impl Desk {
 
 impl Drop for Desk {
     fn drop(&mut self) {
+        let _ = self.command(&self.root).arg("stop").output();
         let _ = std::fs::remove_dir_all(&self.root);
     }
 }
@@ -189,7 +191,7 @@ fn a_mistake_on_the_command_line_is_told_apart_from_a_refusal() {
         let said = desk.run(args);
         assert_eq!(said.code, 1, "{args:?}: {}", said.err);
     }
-    assert!(!desk.home().join("log").exists(), "nothing refused was written");
+    assert!(!desk.home().exists(), "nothing refused was written, and no keeper was started for it");
 }
 
 #[test]
@@ -246,4 +248,65 @@ fn a_worktree_belongs_to_its_repository_and_carries_its_commit() {
     )
     .ok();
     assert!(out.contains("commit   none"), "{out}");
+}
+
+#[test]
+fn many_agents_write_at_once_while_another_reads_and_nothing_is_lost() {
+    let desk = Desk::new("many");
+    desk.run(&["update", "first", "--line", "starts the keeper"]).ok();
+    let writers: Vec<_> = (0..12)
+        .map(|i| {
+            let mut c = desk.command(&desk.root.join("work"));
+            c.env("NAHUALI_ACTOR", format!("agent-{i}")).env("NAHUALI_PROJECT", "atlas");
+            c.args(["update", &format!("work-{i}"), "--line", "written while others write"]).spawn().unwrap()
+        })
+        .collect();
+    let read_meanwhile = desk.run(&["status"]).ok();
+    assert!(read_meanwhile.starts_with("atlas · "), "{read_meanwhile}");
+    for mut writer in writers {
+        assert!(writer.wait().unwrap().success());
+    }
+    let status = desk.run(&["status"]).ok();
+    assert!(status.starts_with("atlas · 0 waiting on the person · 13 pieces of work\n"), "{status}");
+    assert!(desk.home().join("db").exists(), "it is kept in the database");
+}
+
+#[test]
+fn everything_comes_out_as_plain_lines_and_goes_into_another_memory() {
+    let desk = Desk::new("export");
+    desk.run(&["update", "importer", "--line", "ready", "--verified", "cargo test"]).ok();
+    desk.run(&["ask", "Ship behind a flag?", "--work", "importer"]).ok();
+    let lines = desk.run(&["export"]).ok();
+    assert_eq!(lines.lines().count(), 2);
+    for line in lines.lines() {
+        let event: serde_json::Value = serde_json::from_str(line).unwrap();
+        assert_eq!(event["project"], "atlas");
+        assert!(event["at"].as_str().unwrap().ends_with('Z'));
+    }
+
+    // Another memory takes the lines in from its log folder, once.
+    let other = Desk::new("import");
+    std::fs::create_dir_all(other.home().join("log")).unwrap();
+    std::fs::write(
+        other.home().join("log").join("from-elsewhere.jsonl"),
+        format!("{lines}{lines}not a line\n"),
+    )
+    .unwrap();
+    assert_eq!(other.run(&["status"]).ok(), desk.run(&["status"]).ok());
+    assert_eq!(other.run(&["export"]).ok(), lines, "taken in once, however many times it is there");
+}
+
+#[test]
+fn a_memory_has_one_keeper_and_it_comes_back_by_itself() {
+    let desk = Desk::new("keeper");
+    desk.run(&["update", "importer", "--line", "ready"]).ok();
+    let second = Said::of(desk.command(&desk.root).arg("serve").output().unwrap());
+    assert_eq!(second.code, 1, "a second keeper is refused: {}", second.err);
+    assert_eq!(desk.run(&["stop"]).ok(), "the keeper left\n");
+    assert_eq!(desk.run(&["stop"]).ok(), "there was no keeper\n");
+    let status = desk.run(&["status"]).ok();
+    assert!(
+        status.contains("importer  moving · ready"),
+        "what was kept is there when the next keeper starts: {status}"
+    );
 }

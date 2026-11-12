@@ -5,7 +5,7 @@ use std::cell::{Cell, RefCell};
 use std::time::{Duration, Instant};
 
 use chrono::{Datelike, Local, TimeZone, Timelike};
-use nahuali_core::{Actor, FileJournal, Marks, Mind, Scope, Signature, Standing, Sure, Time};
+use nahuali_core::{Actor, Journal, Marks, Mind, Scope, Signature, Standing, Sure, Time};
 use nahuali_view::date::{Date, Stamp};
 use nahuali_view::source::{self as view, ViewSource};
 
@@ -14,14 +14,14 @@ use crate::env;
 /// How stale the board may be: agents write while the person looks.
 const FRESH: Duration = Duration::from_secs(1);
 
-pub struct Live {
-    mind: RefCell<Mind<FileJournal>>,
+pub struct Live<J> {
+    mind: RefCell<Mind<J>>,
     read: Cell<Instant>,
     person: String,
 }
 
-impl Live {
-    pub fn new(mind: Mind<FileJournal>, person: String) -> Self {
+impl<J: Journal> Live<J> {
+    pub fn new(mind: Mind<J>, person: String) -> Self {
         Self { mind: RefCell::new(mind), read: Cell::new(Instant::now()), person }
     }
 
@@ -73,7 +73,7 @@ fn changes(past: &[nahuali_core::Change]) -> Vec<view::Change> {
         .collect()
 }
 
-impl ViewSource for Live {
+impl<J: Journal> ViewSource for Live<J> {
     fn person(&self) -> view::Person {
         view::Person { name: self.person.clone() }
     }
@@ -155,13 +155,13 @@ impl ViewSource for Live {
 
 #[cfg(test)]
 mod tests {
-    use nahuali_core::NewAsk;
     use nahuali_core::event::WorkSet;
+    use nahuali_core::{FileJournal, NewAsk};
 
     use super::*;
 
     /// One frame of the real interface, as text.
-    fn draw(live: &Live, w: u16, h: u16) -> String {
+    fn draw(live: &Live<FileJournal>, w: u16, h: u16) -> String {
         use nahuali_tui::theme::{ColorMode, Theme};
         let theme = Theme::new(ColorMode::TrueColor);
         let sprites = nahuali_tui::mascot::Sprites::for_tests(ColorMode::TrueColor, theme.bg());

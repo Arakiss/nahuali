@@ -9,6 +9,11 @@ rust-version = "1.99"
 license = "LicenseRef-Private"
 publish = false
 
+# Dependencies carry no debug information: the database alone would make
+# every test binary hundreds of megabytes.
+[profile.dev.package."*"]
+debug = false
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
