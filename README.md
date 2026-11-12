@@ -195,6 +195,24 @@ With the model installed every thing also carries a vector, kept in the database
 
 What the words find always comes first and is called a match. What only the meaning finds comes after, apart, with how alike it is, and is called a likeness. The line below which nothing is offered was measured, not guessed: at 0.65, eight of nine things offered were answers, and half of the answers that shared no word were found. `cargo run --release -p nahuali-embed --example near -- MODELS_DIR` repeats the measurement.
 
+### Your own machines
+
+```sh
+nahuali node listen                                  # on the computer that stays on at home
+NAHUALI_KEY=… nahuali node join pc.local:8746        # once, on each of your other machines
+```
+
+Every machine keeps a whole memory and works with no network. When two of them can see each other, each takes from the other the events it lacks. A memory is a set of events that never change, so there is nothing to merge and nothing to decide: the same events give the same state everywhere.
+
+| Rule | In practice |
+| --- | --- |
+| Local first | A machine out of reach works on, and catches up when it is back |
+| One that stays on is enough | Two laptops that only ever go to the computer at home end up holding the same |
+| No server to install | The machine at home runs `nahuali`, nothing else |
+| Sealed with one key | Drawn once and shared by your machines. Someone else on the Wi-Fi can neither read a message nor put an event in |
+
+How to set up the machine at home, on Linux or inside Windows with WSL, is in [`docs/home.md`](docs/home.md).
+
 ### A team
 
 ```sh
@@ -296,7 +314,7 @@ This repository is kept, from its first commit, as if it were already public. Wh
 - On one machine it does not prove who is speaking: "who" is what the speaker declared. On a team's server the person is proven by their passphrase, and their agents are still whoever they say they are.
 - A team's passphrase is kept in a file only your user can read, not in a keychain.
 - It does not encrypt. The memory is as private as the disk it is on.
-- It does not run on Windows yet.
+- It does not run on Windows itself. It runs on Linux inside Windows (WSL), where it has not been tried yet.
 - Meaning is a likeness, not an understanding. It finds about half of what is said in other words and is kept apart from what the words find. Without the model there are only the words.
 - The hooks are written for Claude Code. Other tools use the command or MCP.
 
@@ -310,8 +328,10 @@ In this order, each when it is done. There are no dates.
 4. ~~The same verbs over MCP, so no agent tool is special.~~
 5. ~~Search by meaning beside search by words, on this machine.~~
 6. ~~A team: several people on one memory, each seeing what reaches them.~~
-7. A hosted service: the same server, run for you, one per customer.
+7. ~~Your own machines: each with its memory, brought together when they meet.~~
 8. Releases you can install without a toolchain.
+
+A hosted service is not on this list. It may come one day; for now Nahuali is for one person, their agents and their own machines.
 
 The definition the design starts from is [`docs/product.md`](docs/product.md).
 

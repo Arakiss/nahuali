@@ -152,6 +152,31 @@ At the size of one person's memory every vector is compared. SurrealDB's
 approximate index (HNSW) answers the same question for millions; it is not
 defined yet because it is not needed yet.
 
+## Your own machines
+
+One person's machines each keep a whole memory and bring them together
+when they meet (`nahuali node listen`, `join`, `sync`, `forget`). Setting
+it up is in `docs/home.md`.
+
+```
+<home>/local/node.json       the memory's key, where this machine answers, which machines it goes to
+```
+
+A machine that goes to another asks it which events it holds, takes the
+ones it lacks and gives the ones the other lacks. Events are never changed,
+so nothing has to be merged; the rules of "What is true now" make the same
+events the same state on every machine. A keeper goes to each machine it
+knows every half minute while it runs, and a machine that listens answers
+whoever comes.
+
+Every message is one frame: four bytes of length, twenty-four bytes used
+once, and one line of JSON sealed with the memory's key by
+XChaCha20-Poly1305. A frame that does not open with the key ends the talk.
+Inside, three questions: `ids` (which events are here), `give` (these
+ids, please), `take` (here are lines you lack).
+
+The search index and the vectors stay on each machine: they are derived.
+
 ## A team
 
 A team's events live in a SurrealDB server that every member reaches

@@ -85,6 +85,16 @@ impl Desk {
 impl Drop for Desk {
     fn drop(&mut self) {
         let _ = self.command(&self.root).arg("stop").output();
+        // A keeper that fell over is started again by the next command, so
+        // nothing else would ever show it. Its own words do.
+        let said = std::fs::read_to_string(self.home().join("local").join("keeper.log")).unwrap_or_default();
+        let fell = said.contains("overflowed its stack")
+            || said.contains("panicked")
+            || said.contains("fatal runtime error");
+        if fell && !std::thread::panicking() {
+            let _ = std::fs::remove_dir_all(&self.root);
+            panic!("a keeper fell over during this test:\n{said}");
+        }
         let _ = std::fs::remove_dir_all(&self.root);
     }
 }
@@ -893,4 +903,93 @@ fn only_yours_and_asked_of_someone_work_on_one_machine_too() {
     let json: serde_json::Value = serde_json::from_str(&as_person("bob", &["status", "--json"])).unwrap();
     assert_eq!(json["asks"][0]["to"], "bob");
     assert_eq!(json["asks"][0]["marks"]["person"], "ada");
+}
+
+/// Make `desk` answer other machines on a port of its own; returns where,
+/// and the key the others join with.
+fn listening(desk: &Desk) -> (String, String) {
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let addr = format!("127.0.0.1:{port}");
+    let said = desk.run(&["node", "listen", &addr]).ok();
+    let key = said.split("NAHUALI_KEY=").nth(1).unwrap().split_whitespace().next().unwrap().to_string();
+    assert_eq!(key.len(), 64, "{said}");
+    (addr, key)
+}
+
+fn joining(desk: &Desk, addr: &str, key: &str) -> Said {
+    Said::of(
+        desk.command(&desk.root.join("work"))
+            .env("NAHUALI_ACTOR", "builder")
+            .env("NAHUALI_PROJECT", "atlas")
+            .env("NAHUALI_KEY", key)
+            .args(["node", "join", addr])
+            .output()
+            .unwrap(),
+    )
+}
+
+#[test]
+fn machines_that_worked_alone_hold_the_same_once_they_meet() {
+    let (pc, laptop, mini) = (Desk::new("node-pc"), Desk::new("node-laptop"), Desk::new("node-mini"));
+    assert_eq!(pc.run(&["node"]).ok(), "this memory keeps to this machine\n");
+    pc.run(&["update", "server-room", "--line", "written on the pc"]).ok();
+    laptop.run(&["update", "importer", "--line", "written on a train"]).ok();
+    laptop.run(&["note", "The audit is on the 20th"]).ok();
+    mini.run(&["learn", "Back up before migrating", "--moment", "before a migration", "--when", "migrate"])
+        .ok();
+
+    let (addr, key) = listening(&pc);
+    assert!(joining(&laptop, &addr, &key).ok().contains("took 1, gave 2"));
+    assert!(joining(&mini, &addr, &key).ok().contains("took 3, gave 1"));
+    // The laptop never talks to the mini: it finds its lesson on the pc.
+    assert!(laptop.run(&["node", "sync"]).ok().contains("took 1, gave 0"));
+    let held: Vec<String> = [&pc, &laptop, &mini].iter().map(|d| d.run(&["export"]).ok()).collect();
+    assert_eq!(held[0].lines().count(), 4);
+    assert!(held[0] == held[1] && held[1] == held[2], "every machine holds the same events");
+    assert!(
+        laptop.run(&["check", "./migrate up"]).ok().starts_with("1 lesson applies"),
+        "and what one learned, all know"
+    );
+    assert!(
+        laptop.run(&["recall", "server room"]).ok().contains("written on the pc"),
+        "the index follows what arrives"
+    );
+    assert!(mini.run(&["node", "sync"]).ok().contains("took 0, gave 0"), "meeting again exchanges nothing");
+
+    // With the pc off, the laptop works on, and says the pc does not answer.
+    pc.run(&["stop"]).ok();
+    laptop.run(&["update", "importer", "--line", "more work, with the pc off"]).ok();
+    assert!(laptop.run(&["node", "sync"]).ok().contains("does not answer"));
+    pc.run(&["status"]).ok();
+    // Told to, or by itself at the next half minute: either way it arrives.
+    assert!(!laptop.run(&["node", "sync"]).ok().contains("does not answer"));
+    assert!(pc.run(&["status", "--all"]).ok().contains("more work, with the pc off"));
+
+    assert!(laptop.run(&["node", "forget"]).ok().starts_with("this memory keeps to this machine again"));
+    assert!(laptop.run(&["status", "--all"]).ok().contains("server-room"), "what it took stays");
+}
+
+#[test]
+fn a_machine_without_the_key_takes_nothing_and_gives_nothing() {
+    let (pc, stranger) = (Desk::new("node-home"), Desk::new("node-stranger"));
+    pc.run(&["note", "Something only this house knows"]).ok();
+    stranger.run(&["note", "Something planted from outside"]).ok();
+    let (addr, key) = listening(&pc);
+    let said = joining(&stranger, &addr, &"7".repeat(64)).ok();
+    assert!(said.contains("does not share this memory's key"), "{said}");
+    assert_eq!(stranger.run(&["export"]).ok().lines().count(), 1, "it took nothing");
+    pc.run(&["status"]).ok();
+    assert_eq!(pc.run(&["export"]).ok().lines().count(), 1, "and nothing of its own got in");
+    assert_eq!(joining(&stranger, &addr, "not-a-key").code, 2);
+    assert_eq!(
+        joining(&stranger, &addr, &key).code,
+        1,
+        "a memory shares one key: the other has to be forgotten first"
+    );
+
+    // The key file is for this user alone.
+    use std::os::unix::fs::PermissionsExt;
+    let mode =
+        std::fs::metadata(pc.home().join("local").join("node.json")).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
 }

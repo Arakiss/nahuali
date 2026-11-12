@@ -10,6 +10,7 @@ mod keeper;
 mod live;
 mod mcp;
 mod more;
+mod node;
 mod remote;
 mod setup;
 mod team;
@@ -85,6 +86,14 @@ other tools
   nahuali setup --meaning     install the model that finds what is said in other words (220 MB, once,
                               runs on this machine; nothing leaves it)
   nahuali mcp                 the same verbs over the Model Context Protocol, on standard input
+
+your own machines
+  nahuali node                who this machine talks to, and how the last time went
+  nahuali node listen [ADDR]  this machine answers your others (default 0.0.0.0:8746)
+  nahuali node join HOST:PORT bring this memory together with that one (NAHUALI_KEY)
+  nahuali node sync           now, instead of at the next half minute
+  nahuali node forget         keep to this machine again
+  nahuali serve --stay        keep answering with nobody using it: for a service
 
 a team
   nahuali team                where this memory is kept, and who you are on it
@@ -211,6 +220,7 @@ pub(crate) fn run(argv: &[String]) -> Result<String, Failure> {
         "mcp" => mcp::mcp(rest),
         "setup" => setup::setup(rest),
         "team" => team::team(rest),
+        "node" => node::node(rest),
         "serve" => serve(rest),
         "stop" => stop(rest),
         other => Err(usage(format!("`{other}` is not something nahuali does"))),
@@ -383,9 +393,9 @@ fn export(argv: &[String]) -> Result<String, Failure> {
 
 /// Be the keeper of a memory. Commands start one when they need it.
 fn serve(argv: &[String]) -> Result<String, Failure> {
-    let args = parse(argv, &[], &[])?;
+    let args = parse(argv, &[], &["stay"])?;
     let home = env::home(args.value("home")).map_err(Failure::Usage)?;
-    keeper::serve(&home).map_err(Failure::Refused)?;
+    keeper::serve(&home, args.has("stay")).map_err(Failure::Refused)?;
     Ok(String::new())
 }
 

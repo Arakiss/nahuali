@@ -31,6 +31,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Mutex, Notify};
 
+use crate::node::{self, Node};
 use crate::remote;
 use crate::team::Server;
 
@@ -127,6 +128,26 @@ struct Keeper {
     leave: Notify,
     stamp: u64,
     meaning: Option<Arc<dyn Embedder>>,
+    /// The other machines of this memory, when there are any.
+    node: Option<Node>,
+    /// How the last meeting with each of them went.
+    met: Mutex<HashMap<String, Result<(usize, usize), String>>>,
+}
+
+/// The stack of each of the keeper's threads.
+const STACK: usize = 32 * 1024 * 1024;
+
+/// A meeting with another machine takes no longer than this.
+const MEETING: Duration = Duration::from_secs(30);
+/// How often this machine goes to the others.
+const EVERY: u64 = 30;
+
+/// The id an event line carries, without reading the rest of it.
+fn id_of(line: &str) -> Option<String> {
+    match Event::read(line) {
+        Line::Event(event) => Some(event.id),
+        _ => None,
+    }
 }
 
 fn text(e: impl std::fmt::Display) -> String {
@@ -350,6 +371,113 @@ impl Keeper {
             .collect())
     }
 
+    /// Every event held, by its id.
+    async fn by_id(&self) -> Result<HashMap<String, String>, String> {
+        Ok(self.lines().await?.into_iter().filter_map(|line| id_of(&line).map(|id| (id, line))).collect())
+    }
+
+    /// Answer another machine of this memory: say which events are here,
+    /// give the ones it asks for, take the ones it brings.
+    async fn answer_peer(self: Arc<Self>, mut stream: tokio::net::TcpStream) {
+        let Some(cipher) = self.node.as_ref().and_then(|n| n.cipher().ok()) else { return };
+        // Whatever is not sealed with this memory's key ends the talk.
+        while let Ok(request) = node::receive(&mut stream, &cipher).await {
+            self.spoken.store(self.started.elapsed().as_secs(), Ordering::Relaxed);
+            let answer = match request["op"].as_str() {
+                Some("ids") => match self.by_id().await {
+                    Ok(held) => json!({ "ids": held.keys().collect::<Vec<_>>() }),
+                    Err(why) => json!({ "error": why }),
+                },
+                Some("give") => match self.by_id().await {
+                    Ok(held) => {
+                        let wanted =
+                            request["ids"].as_array().into_iter().flatten().filter_map(Value::as_str);
+                        json!({ "lines": wanted.filter_map(|id| held.get(id)).collect::<Vec<_>>() })
+                    }
+                    Err(why) => json!({ "error": why }),
+                },
+                Some("take") => {
+                    let mut new = 0;
+                    for line in request["lines"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                        new += usize::from(self.keep(line).await.unwrap_or(false));
+                    }
+                    json!({ "new": new })
+                }
+                _ => json!({ "error": "this machine does not know that" }),
+            };
+            if node::send(&mut stream, &cipher, &answer).await.is_err() {
+                break;
+            }
+        }
+    }
+
+    /// Go to one machine: take the events it has and this one lacks, and
+    /// give it the ones it lacks. Returns how many went each way.
+    async fn meet(&self, addr: &str) -> Result<(usize, usize), String> {
+        let cipher = self.node.as_ref().ok_or("this memory keeps to this machine")?.cipher()?;
+        let mut stream = tokio::time::timeout(Duration::from_secs(3), tokio::net::TcpStream::connect(addr))
+            .await
+            .map_err(|_| "no answer in three seconds".to_string())?
+            .map_err(|e| e.to_string())?;
+        node::send(&mut stream, &cipher, &json!({ "op": "ids" })).await?;
+        let theirs = node::receive(&mut stream, &cipher)
+            .await
+            .map_err(|_| "it does not share this memory's key".to_string())?;
+        let theirs: std::collections::HashSet<String> = theirs["ids"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|id| id.as_str().map(str::to_string))
+            .collect();
+        let mine = self.by_id().await?;
+
+        let wanted: Vec<&String> = theirs.iter().filter(|id| !mine.contains_key(*id)).collect();
+        let mut took = 0;
+        if !wanted.is_empty() {
+            node::send(&mut stream, &cipher, &json!({ "op": "give", "ids": wanted })).await?;
+            let given = node::receive(&mut stream, &cipher).await?;
+            for line in given["lines"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                took += usize::from(self.keep(line).await.unwrap_or(false));
+            }
+        }
+        let lacking: Vec<&String> =
+            mine.iter().filter(|(id, _)| !theirs.contains(*id)).map(|(_, line)| line).collect();
+        let mut gave = 0;
+        if !lacking.is_empty() {
+            node::send(&mut stream, &cipher, &json!({ "op": "take", "lines": lacking })).await?;
+            gave = node::receive(&mut stream, &cipher).await?["new"].as_u64().unwrap_or(0) as usize;
+        }
+        Ok((took, gave))
+    }
+
+    /// Go to every machine this one knows, and remember how each went.
+    async fn consolidate(&self) -> Value {
+        let peers = self.node.as_ref().map(|n| n.peers.clone()).unwrap_or_default();
+        for addr in &peers {
+            let how = match tokio::time::timeout(MEETING, self.meet(addr)).await {
+                Ok(how) => how,
+                Err(_) => Err("it took too long".to_string()),
+            };
+            self.met.lock().await.insert(addr.clone(), how);
+        }
+        self.met_so_far().await
+    }
+
+    async fn met_so_far(&self) -> Value {
+        let met = self.met.lock().await;
+        let peers: Vec<Value> = self
+            .node
+            .iter()
+            .flat_map(|n| &n.peers)
+            .map(|addr| match met.get(addr) {
+                Some(Ok((took, gave))) => json!({ "addr": addr, "took": took, "gave": gave }),
+                Some(Err(why)) => json!({ "addr": addr, "error": why }),
+                None => json!({ "addr": addr }),
+            })
+            .collect();
+        json!({ "ok": true, "peers": peers })
+    }
+
     /// Take what others wrote on the team's server since the last look.
     async fn sync(&self) -> Result<(), String> {
         let mut counted =
@@ -407,6 +535,8 @@ impl Keeper {
                 .near(request)
                 .await
                 .map(|near| json!({ "ok": true, "near": near, "meaning": self.meaning.is_some() })),
+            Some("consolidate") => Ok(self.consolidate().await),
+            Some("node") => Ok(self.met_so_far().await),
             Some("ping") => Ok(json!({ "ok": true })),
             Some("stop") => {
                 self.leave.notify_one();
@@ -457,7 +587,7 @@ async fn take_in(keeper: &Keeper, home: &Path) {
     }
 }
 
-async fn run(home: &Path) -> Result<(), String> {
+async fn run(home: &Path, stay: bool) -> Result<(), String> {
     std::fs::create_dir_all(home.join("local")).map_err(text)?;
     // Opening the database is what makes this the only keeper: a second
     // one is refused here and leaves.
@@ -482,6 +612,9 @@ async fn run(home: &Path) -> Result<(), String> {
         leave: Notify::new(),
         stamp: remote::stamp(),
         meaning: meaning(home),
+        // A team's server already brings its machines together.
+        node: if server.is_some() { None } else { Node::read(home) },
+        met: Mutex::new(HashMap::new()),
     });
     {
         let mut held = keeper.held.lock().await;
@@ -509,8 +642,40 @@ async fn run(home: &Path) -> Result<(), String> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600)).map_err(text)?;
     }
-    let idle = std::env::var("NAHUALI_IDLE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(IDLE);
-    eprintln!("keeping {} (leaves after {idle} s of silence)", home.display());
+    let idle = if stay {
+        u64::MAX
+    } else {
+        std::env::var("NAHUALI_IDLE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(IDLE)
+    };
+    if stay {
+        eprintln!("keeping {} (stays until told to leave)", home.display());
+    } else {
+        eprintln!("keeping {} (leaves after {idle} s of silence)", home.display());
+    }
+    // The other machines of this memory: answer them here, and go to them.
+    let answering = match keeper.node.as_ref().and_then(|n| n.listen.clone()) {
+        Some(addr) => match tokio::net::TcpListener::bind(&addr).await {
+            Ok(listener) => {
+                eprintln!("answering the other machines at {addr}");
+                Some(listener)
+            }
+            Err(why) => {
+                eprintln!("cannot answer the other machines at {addr}: {why}");
+                None
+            }
+        },
+        None => None,
+    };
+    if let Some(listener) = answering {
+        let keeper = keeper.clone();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(keeper.clone().answer_peer(stream));
+            }
+        });
+    }
+    let goes = keeper.node.as_ref().is_some_and(|n| !n.peers.is_empty());
+    let mut seconds: u64 = EVERY - 1;
     loop {
         tokio::select! {
             accepted = listener.accept() => {
@@ -525,6 +690,11 @@ async fn run(home: &Path) -> Result<(), String> {
                 {
                     eprintln!("could not look at the team's server: {why}");
                 }
+                seconds += 1;
+                if goes && seconds % EVERY == 0 {
+                    let keeper = keeper.clone();
+                    tokio::spawn(async move { keeper.consolidate().await });
+                }
                 if keeper.started.elapsed().as_secs().saturating_sub(keeper.spoken.load(Ordering::Relaxed)) >= idle {
                     break;
                 }
@@ -538,6 +708,15 @@ async fn run(home: &Path) -> Result<(), String> {
     Ok(())
 }
 
-pub fn serve(home: &Path) -> Result<(), String> {
-    tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(text)?.block_on(run(home))
+/// Be the keeper of the memory at `home`. With `stay` it never leaves by
+/// itself: for a machine that is there for the others.
+pub fn serve(home: &Path, stay: bool) -> Result<(), String> {
+    // The database runs its queries deep: with the stack a thread gets by
+    // default, an unoptimised build falls off the end of it.
+    tokio::runtime::Builder::new_multi_thread()
+        .thread_stack_size(STACK)
+        .enable_all()
+        .build()
+        .map_err(text)?
+        .block_on(run(home, stay))
 }
