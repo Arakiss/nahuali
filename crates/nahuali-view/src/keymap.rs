@@ -17,15 +17,18 @@ pub enum View {
     Board,
     /// What was learned, and when each lesson applies.
     Lessons,
+    /// Ask the memory what it knows about something.
+    Recall,
 }
 
 impl View {
-    pub const ALL: [Self; 2] = [Self::Board, Self::Lessons];
+    pub const ALL: [Self; 3] = [Self::Board, Self::Lessons, Self::Recall];
 
     pub fn title(self) -> &'static str {
         match self {
             Self::Board => "Board",
             Self::Lessons => "Lessons",
+            Self::Recall => "Recall",
         }
     }
 
@@ -42,10 +45,9 @@ impl View {
         Self::ALL[(self.index() + Self::ALL.len() - 1) % Self::ALL.len()]
     }
 
-    /// Whether printable keys type into a text field on this view. No view
-    /// does yet: text is typed only into the answer prompt.
+    /// Whether printable keys type into a text field on this view.
     pub fn takes_text(self) -> bool {
-        false
+        matches!(self, Self::Recall)
     }
 }
 
@@ -102,7 +104,7 @@ const NAV: &[Binding] = &[
     bind(&["ctrl+c"], Action::Quit, "quit", None),
 ];
 
-const DIGITS: [&[&str]; 2] = [&["1"], &["2"]];
+const DIGITS: [&[&str]; 3] = [&["1"], &["2"], &["3"]];
 
 const GLOBAL: &[Binding] = &[
     bind(&["?"], Action::Help, "keys", Some(("?", "help"))),
@@ -125,6 +127,22 @@ const LESSONS: &[Binding] = &[
     bind(&["esc"], Action::Back, "close what is open, then back to the board", Some(("esc", "back"))),
 ];
 
+/// Recall is a text field: letters, digits and `?` type into it, so only
+/// keys that are not characters do anything else.
+const RECALL: &[Binding] = &[
+    bind(&["down"], Action::Down, "next result", Some(("up down", "move"))),
+    bind(&["up"], Action::Up, "previous result", Some(("up down", "move"))),
+    bind(&["enter"], Action::Open, "open it with its past and its marks", Some(("enter", "open"))),
+    bind(&["backspace"], Action::DeleteChar, "delete a character", None),
+    bind(
+        &["esc"],
+        Action::Back,
+        "close what is open, then clear, then back to the board",
+        Some(("esc", "back")),
+    ),
+    bind(&["tab"], Action::NextView, "next view", Some(("tab", "views"))),
+];
+
 /// Bindings while an answer is being typed: the text goes into the answer.
 pub const PROMPT: &[Binding] = &[
     bind(&["enter"], Action::Open, "record the answer", Some(("enter", "record"))),
@@ -138,9 +156,14 @@ pub fn bindings(view: View, demo: bool) -> Vec<Binding> {
     let mut own: Vec<Binding> = match view {
         View::Board => BOARD.to_vec(),
         View::Lessons => LESSONS.to_vec(),
+        View::Recall => {
+            let mut own = RECALL.to_vec();
+            own.extend(NAV.iter().filter(|b| b.keys != ["tab"]).copied());
+            return own;
+        }
     };
     for (i, v) in View::ALL.into_iter().enumerate() {
-        own.push(bind(DIGITS[i], Action::GoTo(v), v.title(), Some(("1-2", "views"))));
+        own.push(bind(DIGITS[i], Action::GoTo(v), v.title(), Some(("1-3", "views"))));
     }
     own.extend_from_slice(GLOBAL);
     own.extend_from_slice(NAV);
@@ -232,10 +255,12 @@ mod tests {
         for view in View::ALL {
             assert_eq!(resolve(view, "tab", false), Some(Action::NextView));
             assert_eq!(resolve(view, "ctrl+c", false), Some(Action::Quit));
-            assert_eq!(resolve(view, "q", false), Some(Action::Quit));
+            // Where letters are typed, `q` is a letter: ctrl+c quits.
+            let q = if view.takes_text() { None } else { Some(Action::Quit) };
+            assert_eq!(resolve(view, "q", false), q);
         }
-        assert_eq!(View::Lessons.next(), View::Board);
-        assert_eq!(View::Board.prev(), View::Lessons);
+        assert_eq!(View::Recall.next(), View::Board);
+        assert_eq!(View::Board.prev(), View::Recall);
     }
 
     #[test]

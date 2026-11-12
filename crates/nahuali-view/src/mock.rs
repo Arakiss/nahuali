@@ -5,7 +5,9 @@
 use std::cell::RefCell;
 
 use crate::date::{Date, Stamp};
-use crate::source::{Ask, Board, Change, Lesson, Marks, Person, Sure, ViewSource, Who, Work, WorkStatus};
+use crate::source::{
+    Ask, Board, Change, Found, Lesson, Marks, Person, Sure, ViewSource, Who, Work, WorkStatus,
+};
 
 /// The mock's own person.
 pub const OWNER: &str = "ada";
@@ -191,6 +193,65 @@ impl ViewSource for MockSource {
             }
             _ => Vec::new(),
         }
+    }
+
+    /// What holds every word asked for, among what the board and the
+    /// lessons show; and, for "release", one thing only alike in meaning.
+    fn recall(&self, about: &str) -> Vec<Found> {
+        let words: Vec<String> = about.to_lowercase().split_whitespace().map(str::to_string).collect();
+        let holds = |text: &str| !words.is_empty() && words.iter().all(|w| text.to_lowercase().contains(w));
+        let board = self.board();
+        let mut found = Vec::new();
+        for a in &board.asks {
+            if holds(&format!("{} {}", a.question, a.blocks.as_deref().unwrap_or_default())) {
+                let detail = a.recommends.iter().map(|r| format!("recommends {r}")).collect();
+                found.push(Found {
+                    id: a.id.clone(),
+                    kind: "ask".into(),
+                    title: a.question.clone(),
+                    detail,
+                    marks: a.marks.clone(),
+                    alike: None,
+                });
+            }
+        }
+        for w in &board.works {
+            if holds(&format!("{} {}", w.title, w.line)) {
+                found.push(Found {
+                    id: w.id.clone(),
+                    kind: "work".into(),
+                    title: w.title.clone(),
+                    detail: vec![format!("{} · {}", w.status.word(), w.line)],
+                    marks: w.marks.clone(),
+                    alike: None,
+                });
+            }
+        }
+        for l in self.lessons() {
+            if holds(&format!("{} {}", l.rule, l.moment)) {
+                found.push(Found {
+                    id: l.id.clone(),
+                    kind: "lesson".into(),
+                    title: l.rule.clone(),
+                    detail: vec![format!("when: {}", l.moment)],
+                    marks: l.marks.clone(),
+                    alike: None,
+                });
+            }
+        }
+        if about.to_lowercase().contains("release")
+            && let Some(w) = board.works.first().filter(|w| !found.iter().any(|f| f.id == w.id))
+        {
+            found.push(Found {
+                id: w.id.clone(),
+                kind: "work".into(),
+                title: w.title.clone(),
+                detail: vec![format!("{} · {}", w.status.word(), w.line)],
+                marks: w.marks.clone(),
+                alike: Some(71),
+            });
+        }
+        found
     }
 
     fn answer(&self, ask: &str, text: &str) -> Result<(), String> {

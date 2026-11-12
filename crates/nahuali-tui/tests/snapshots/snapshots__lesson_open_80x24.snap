@@ -2,7 +2,7 @@
 source: crates/nahuali-tui/tests/snapshots.rs
 expression: "render(MockSource::new(), View::Lessons, 80, 24,\n|_: &MockSource, ui: &mut UiState| { ui.detail = true })"
 ---
-  nahuali   │  Board   Lessons                                             ada
+  nahuali   │  Board   Lessons   Recall                                    ada
  ──────────────────────────────────────────────────────────────────────────────
  ╭─ Lesson · atlas ───────────────────────────────────────────────────────────╮
  │ Agent worktrees start from the default branch                              │

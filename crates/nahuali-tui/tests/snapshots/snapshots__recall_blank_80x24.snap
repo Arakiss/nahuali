@@ -1,0 +1,28 @@
+---
+source: crates/nahuali-tui/tests/snapshots.rs
+expression: "render(MockSource :: new(), View::Recall, 80, 24, | _, _ | {})"
+---
+  nahuali   │  Board   Lessons   Recall                                    ada
+ ──────────────────────────────────────────────────────────────────────────────
+ ╭─ Ask the memory ───────────────────────────────────────────────────────────╮
+ │ › ▏                                                                        │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+ ╭─ Recall ───────────────────────────────────────────────────────────────────╮
+ │ Type what you want to know                                                 │
+ │ Cards, decisions, lessons and notes that hold every word you type.         │
+ ╰────────────────────────────────────────────────────────────────────────────╯
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────
+  ≋(•△•)≋ worried · a question has waited 2 days     up down move   enter open

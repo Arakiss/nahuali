@@ -2,7 +2,7 @@
 source: crates/nahuali-tui/tests/snapshots.rs
 expression: "render(MockSource::new(), View::Board, 80, 24,\n|src: &MockSource, _: &mut UiState|\n{\n    use nahuali_view::ViewSource;\n    src.answer(\"ask:importer-flag\", \"behind a flag\").unwrap();\n    src.answer(\"ask:cover-logo\", \"the second\").unwrap();\n})"
 ---
-  nahuali   │  Board   Lessons                                             ada
+  nahuali   │  Board   Lessons   Recall                                    ada
  ──────────────────────────────────────────────────────────────────────────────
     ▄             happy · nothing waits on you
     ██▄▀█▀▀▄▀▄

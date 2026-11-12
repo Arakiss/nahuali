@@ -32,10 +32,12 @@ struct Shot {
     detail: bool,
     empty: bool,
     help: bool,
+    /// What is typed on the recall view.
+    query: &'static str,
 }
 
 const fn shot(name: &'static str, view: View) -> Shot {
-    Shot { name, view, row: 0, detail: false, empty: false, help: false }
+    Shot { name, view, row: 0, detail: false, empty: false, help: false, query: "" }
 }
 
 const SHOTS: &[Shot] = &[
@@ -46,6 +48,8 @@ const SHOTS: &[Shot] = &[
     shot("lessons", View::Lessons),
     Shot { detail: true, ..shot("lesson-open", View::Lessons) },
     Shot { help: true, ..shot("board-help", View::Board) },
+    Shot { query: "release", ..shot("recall", View::Recall) },
+    Shot { query: "kubernetes", ..shot("recall-nothing", View::Recall) },
 ];
 
 fn to3(rgb: raw_rgb::Rgb) -> [u8; 3] {
@@ -125,6 +129,7 @@ fn main() {
             ui.view = shot.view;
             ui.select(shot.view, shot.row);
             ui.detail = shot.detail;
+            ui.query = shot.query.to_string();
             let draw = |sprites: Sprites| {
                 let mut app = App::new(&src, ui.clone(), sprites, theme);
                 app.help = shot.help;

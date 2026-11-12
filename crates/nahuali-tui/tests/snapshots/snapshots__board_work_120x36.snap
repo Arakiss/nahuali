@@ -3,7 +3,7 @@ source: crates/nahuali-tui/tests/snapshots.rs
 expression: "render(MockSource::new(), View::Board, 120, 36,\n|_: &MockSource, ui: &mut UiState|\n{ ui.select(View::Board, 2); ui.detail = true; })"
 ---
                 ╭───────╮
-  nahuali   │   │ Board │     Lessons                                                                              ada
+  nahuali   │   │ Board │     Lessons       Recall                                                                 ada
                 ╰───────╯
  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                                  │

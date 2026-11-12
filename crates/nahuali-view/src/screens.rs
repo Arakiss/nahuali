@@ -4,7 +4,7 @@
 use crate::date::Stamp;
 use crate::keymap::{self, View};
 use crate::model::{Icon, Item, MascotState, Node, Screen, Seg, Span, Tone};
-use crate::source::{Ask, Board, Change, Lesson, Marks, ViewSource, Work, WorkStatus};
+use crate::source::{Ask, Board, Change, Found, Lesson, Marks, ViewSource, Work, WorkStatus};
 use crate::state::{Picked, UiState, picked};
 
 const TITLE: &str = "nahuali";
@@ -16,6 +16,7 @@ pub fn build(src: &dyn ViewSource, ui: &UiState) -> Screen {
     match ui.view {
         View::Board => board(src, ui),
         View::Lessons => lessons(src, ui),
+        View::Recall => recall(src, ui),
     }
 }
 
@@ -369,6 +370,126 @@ fn lessons(src: &dyn ViewSource, ui: &UiState) -> Screen {
                     selected: Some(at),
                 },
             )
+        }
+    };
+    let status = vec![mascot_seg(&mood), trust_seg(verified, claimed)];
+    screen(src, ui, body, status)
+}
+
+// ---------------------------------------------------------------------------
+// Recall: ask the memory what it knows about something.
+
+fn found_item(f: &Found, now: Stamp) -> Item {
+    let (lead, tone) = match f.kind.as_str() {
+        "ask" => ("▸", Tone::Warn),
+        "decision" => ("✓", Tone::Ok),
+        "lesson" => ("!", Tone::Warn),
+        "note" => ("·", Tone::Accent),
+        _ => ("●", Tone::Accent),
+    };
+    let mut meta = format!("{} · {} ago", f.kind, f.marks.as_of.age(now));
+    if let Some(alike) = f.alike {
+        meta = format!("0.{alike:02} alike · {meta}");
+    }
+    let mut item =
+        Item::new(vec![Span::strong(format!("{}  ", f.marks.project), Tone::Accent), Span::plain(&f.title)])
+            .with_lead(Span::new(lead, tone))
+            .with_meta(vec![Span::muted(meta)]);
+    if let Some(first) = f.detail.first() {
+        item = item.with_sub(vec![Span::muted(first)]);
+    }
+    item
+}
+
+fn found_card(f: &Found, history: &[Change], now: Stamp) -> Node {
+    let mut parts = vec![Node::Text(vec![Span::strong(&f.title, Tone::Neutral)])];
+    if !f.detail.is_empty() {
+        parts.push(Node::List {
+            items: f.detail.iter().map(|d| Item::new(vec![Span::plain(d)])).collect(),
+            selected: None,
+        });
+    }
+    if let Some(alike) = f.alike {
+        parts.push(Node::Text(vec![Span::new(
+            format!("Found by its meaning, not by its words: 0.{alike:02} alike. Judge whether it is about what you asked."),
+            Tone::Warn,
+        )]));
+    }
+    parts.extend(marks_node(&f.marks, now));
+    parts.extend(history_node(history, now));
+    Node::card(format!("{} · {}", f.kind, f.marks.project), Tone::Accent, Node::Col(parts))
+}
+
+fn recall(src: &dyn ViewSource, ui: &UiState) -> Screen {
+    let now = src.now();
+    let asked = ui.query.trim();
+    let found = if asked.is_empty() { Vec::new() } else { src.recall(asked) };
+    let mood = if ui.searching {
+        Mood::new(MascotState::Thinking, "looking")
+    } else {
+        resolve_mood(ui, board_mood(&src.board(), now))
+    };
+    let (verified, claimed) = trust(found.iter().map(|f| &f.marks));
+
+    let question = Node::card(
+        "Ask the memory",
+        Tone::Accent,
+        Node::Text(vec![Span::new("› ", Tone::Accent), Span::plain(&ui.query), Span::new("▏", Tone::Accent)]),
+    );
+    let body = if asked.is_empty() {
+        Node::Col(vec![
+            question,
+            Node::card(
+                "Recall",
+                Tone::Accent,
+                Node::Empty {
+                    title: "Type what you want to know".into(),
+                    line: "Cards, decisions, lessons and notes that hold every word you type.".into(),
+                },
+            ),
+        ])
+    } else if found.is_empty() {
+        Node::Col(vec![
+            question,
+            Node::card(
+                "Recall",
+                Tone::Ok,
+                Node::Empty {
+                    title: "Nothing known about that".into(),
+                    line: "An empty answer is a correct answer.".into(),
+                },
+            ),
+        ])
+    } else {
+        let at = ui.selected(View::Recall).min(found.len() - 1);
+        if ui.detail {
+            found_card(&found[at], &src.history(&found[at].id), now)
+        } else {
+            // What the words found comes first; what only the meaning found
+            // comes after, apart, and is named for what it is.
+            let matches = found.iter().take_while(|f| f.alike.is_none()).count();
+            let mut cards = vec![question];
+            if matches > 0 {
+                cards.push(Node::card(
+                    format!("Found · {matches}"),
+                    Tone::Accent,
+                    Node::List {
+                        items: found[..matches].iter().map(|f| found_item(f, now)).collect(),
+                        selected: (at < matches).then_some(at),
+                    },
+                ));
+            }
+            if matches < found.len() {
+                cards.push(Node::card(
+                    format!("Close in meaning · {} (not the same words)", found.len() - matches),
+                    Tone::Warn,
+                    Node::List {
+                        items: found[matches..].iter().map(|f| found_item(f, now)).collect(),
+                        selected: (at >= matches).then(|| at - matches),
+                    },
+                ));
+            }
+            Node::Col(cards)
         }
     };
     let status = vec![mascot_seg(&mood), trust_seg(verified, claimed)];

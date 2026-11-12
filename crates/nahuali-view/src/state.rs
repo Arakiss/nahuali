@@ -45,12 +45,14 @@ pub fn picked(board: &Board, index: usize) -> Option<Picked<'_>> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct UiState {
     pub view: View,
-    selected: [usize; 2],
+    selected: [usize; 3],
     /// The selected item is open with its past and its marks.
     pub detail: bool,
     /// An answer is being typed; keys go into it.
     pub prompt: Option<Prompt>,
-    /// Kept for renderers that show a thinking state; no view searches yet.
+    /// What is being asked on the recall view.
+    pub query: String,
+    /// The query just changed: renderers show the axolotl thinking.
     pub searching: bool,
     pub mascot_override: Option<MascotState>,
     pub demo: bool,
@@ -83,6 +85,8 @@ impl UiState {
                 board.asks.len() + board.works.len()
             }
             View::Lessons => src.lessons().len(),
+            View::Recall if self.query.trim().is_empty() => 0,
+            View::Recall => src.recall(&self.query).len(),
         }
     }
 
@@ -109,9 +113,16 @@ impl UiState {
         Effect::Redraw
     }
 
-    /// Type one character on a view that takes text. No view does yet.
-    pub fn type_char(&mut self, _c: char) -> Effect {
-        Effect::None
+    /// Type one character into the recall view's question.
+    pub fn type_char(&mut self, c: char) -> Effect {
+        if self.view != View::Recall || self.detail || c.is_control() {
+            return Effect::None;
+        }
+        self.notice = None;
+        self.query.push(c);
+        self.select(View::Recall, 0);
+        self.searching = true;
+        Effect::Redraw
     }
 
     /// Apply one action.
@@ -139,8 +150,21 @@ impl UiState {
                 self.detail = false;
                 Effect::Redraw
             }
+            Action::Back if self.view == View::Recall && !self.query.is_empty() => {
+                self.query.clear();
+                self.select(View::Recall, 0);
+                Effect::Redraw
+            }
             Action::Back => self.go(View::Board),
             Action::Answer => self.start_answer(src),
+            Action::DeleteChar if self.view == View::Recall && !self.detail => {
+                if self.query.pop().is_none() {
+                    return Effect::None;
+                }
+                self.select(View::Recall, 0);
+                self.searching = true;
+                Effect::Redraw
+            }
             Action::DeleteChar => Effect::None,
             Action::Help => Effect::Help,
             Action::Quit => Effect::Quit,

@@ -77,3 +77,10 @@ snap!(board_answered, MockSource::new(), View::Board, |src: &MockSource, _: &mut
 });
 snap!(lessons, View::Lessons);
 snap!(lesson_open, MockSource::new(), View::Lessons, |_: &MockSource, ui: &mut UiState| { ui.detail = true });
+snap!(recall_blank, View::Recall);
+snap!(recall, MockSource::new(), View::Recall, |_: &MockSource, ui: &mut UiState| {
+    ui.query = "release".into()
+});
+snap!(recall_nothing, MockSource::new(), View::Recall, |_: &MockSource, ui: &mut UiState| {
+    ui.query = "kubernetes".into()
+});

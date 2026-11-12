@@ -2,7 +2,7 @@
 source: crates/nahuali-tui/tests/snapshots.rs
 expression: "render(MockSource::empty(), View::Board, 80, 24, |_, _| {})"
 ---
-  nahuali   │  Board   Lessons                                             ada
+  nahuali   │  Board   Lessons   Recall                                    ada
  ──────────────────────────────────────────────────────────────────────────────
      ▄       ▄    idle · resting
     ▄█▀▀██▀▀▀▄▄

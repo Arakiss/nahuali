@@ -140,6 +140,20 @@ pub struct Lesson {
     pub marks: Marks,
 }
 
+/// Something recall found: a card, an ask, a decision, a lesson or a note.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Found {
+    pub id: String,
+    /// `work`, `ask`, `decision`, `lesson` or `note`.
+    pub kind: String,
+    pub title: String,
+    pub detail: Vec<String>,
+    pub marks: Marks,
+    /// How alike it is, in hundredths, when it was found by its meaning
+    /// and not by its words.
+    pub alike: Option<u8>,
+}
+
 /// One step in the past of an item.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Change {
@@ -179,6 +193,9 @@ pub trait ViewSource {
     fn lessons(&self) -> Vec<Lesson>;
     /// The past of one item, newest first.
     fn history(&self, id: &str) -> Vec<Change>;
+    /// What is known about something: first what holds every word asked
+    /// for, then what is only close in meaning. Empty is a correct answer.
+    fn recall(&self, about: &str) -> Vec<Found>;
     /// Answer an ask: it leaves the board and becomes a decision.
     fn answer(&self, ask: &str, text: &str) -> Result<(), String>;
 }

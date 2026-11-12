@@ -14,7 +14,12 @@ use crate::env;
 /// How stale the board may be: agents write while the person looks.
 const FRESH: Duration = Duration::from_secs(1);
 
+/// What a database answers about a question: the keys of what holds its
+/// words, and the keys of what is only close in meaning with how alike.
+pub type Finder = Box<dyn Fn(&str) -> (Vec<String>, Vec<(String, f64)>)>;
+
 pub struct Live<J> {
+    finder: Option<Finder>,
     mind: RefCell<Mind<J>>,
     read: Cell<Instant>,
     person: String,
@@ -22,7 +27,13 @@ pub struct Live<J> {
 
 impl<J: Journal> Live<J> {
     pub fn new(mind: Mind<J>, person: String) -> Self {
-        Self { mind: RefCell::new(mind), read: Cell::new(Instant::now()), person }
+        Self { finder: None, mind: RefCell::new(mind), read: Cell::new(Instant::now()), person }
+    }
+
+    /// Ask a database instead of looking through the events here.
+    pub fn finding(mut self, finder: Finder) -> Self {
+        self.finder = Some(finder);
+        self
     }
 
     fn refresh(&self) {
@@ -141,9 +152,39 @@ impl<J: Journal> ViewSource for Live<J> {
         self.mind.borrow().state().lessons(Scope::Everything).into_iter().map(lesson).collect()
     }
 
+    fn recall(&self, about: &str) -> Vec<view::Found> {
+        self.refresh();
+        let mind = self.mind.borrow();
+        let state = mind.state();
+        let found = |t: nahuali_core::Thing, alike: Option<f64>| view::Found {
+            id: t.key.clone(),
+            kind: t.kind.to_string(),
+            title: t.title.clone(),
+            detail: t.detail.clone(),
+            marks: marks(&t.marks),
+            alike: alike.map(|a| (a * 100.0).round().clamp(0.0, 99.0) as u8),
+        };
+        // The person looking at their own memory sees all of it.
+        let Some(finder) = &self.finder else {
+            return state.recall(Scope::Everything, about).into_iter().map(|t| found(t, None)).collect();
+        };
+        let (keys, near) = finder(about);
+        let mut held: std::collections::HashMap<String, nahuali_core::Thing> =
+            state.things().into_iter().map(|t| (t.key.clone(), t)).collect();
+        let mut all: Vec<view::Found> =
+            keys.iter().filter_map(|k| held.remove(k)).map(|t| found(t, None)).collect();
+        all.extend(
+            near.into_iter().filter_map(|(key, alike)| held.remove(&key).map(|t| found(t, Some(alike)))),
+        );
+        all
+    }
+
     fn history(&self, id: &str) -> Vec<view::Change> {
         let mind = self.mind.borrow();
         let state = mind.state();
+        if let Some(name) = id.strip_prefix("decision:") {
+            return state.ask(name).map(|a| changes(&state.ask_history(a))).unwrap_or_default();
+        }
         if let Some(name) = id.strip_prefix("ask:") {
             return state.ask(name).map(|a| changes(&state.ask_history(a))).unwrap_or_default();
         }
@@ -253,6 +294,11 @@ mod tests {
         assert!(board.works[0].marks.sure.is_verified());
         assert_eq!(live.history("work:atlas/importer").len(), 1);
 
+        let found = live.recall("ship flag");
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].kind.as_str(), found[0].alike), ("ask", None));
+        assert!(live.recall("kubernetes").is_empty(), "an empty answer is a correct answer");
+
         live.answer(&board.asks[0].id, "Behind a flag.").unwrap();
         let board = live.board();
         assert!(board.asks.is_empty(), "the answer is on the board at once, not a second later");
@@ -261,6 +307,9 @@ mod tests {
         assert_eq!(past[0].by, "ada", "newest first, and said by the person");
         assert!(past[0].what.starts_with("answered"));
         assert!(live.answer(&format!("ask:{}", ask.id), "again").is_err());
+        let decided = live.recall("ship flag");
+        assert_eq!(decided[0].kind, "decision", "the answered ask is found as a decision");
+        assert_eq!(live.history(&decided[0].id).len(), 2, "with its past: asked, then answered");
         let _ = std::fs::remove_dir_all(&home);
     }
 }

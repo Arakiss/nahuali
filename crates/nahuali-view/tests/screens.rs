@@ -61,7 +61,7 @@ fn the_first_screen_says_what_is_owed_before_anything_else() {
     let src = MockSource::new();
     let screen = build(&src, &UiState::new(false));
     assert_eq!(screen.active_tab, 0);
-    assert_eq!(screen.tabs, ["Board", "Lessons"]);
+    assert_eq!(screen.tabs, ["Board", "Lessons", "Recall"]);
     assert_eq!(screen.who, "ada");
     let titles = card_titles(&screen);
     let at = |needle: &str| titles.iter().position(|t| t.starts_with(needle)).unwrap();
@@ -272,4 +272,97 @@ fn a_notice_lasts_until_the_next_key() {
     assert!(build(&src, &ui).status[0].text.starts_with("select a question"));
     assert_eq!(ui.apply(Action::Down, &src), Effect::Redraw, "the notice clears even when nothing moves");
     assert!(ui.notice.is_none());
+}
+
+/// Every string of a screen's body, joined: enough to ask what it says.
+fn said(node: &Node) -> String {
+    match node {
+        Node::Col(nodes) | Node::Row(nodes) => nodes.iter().map(said).collect::<Vec<_>>().join("\n"),
+        Node::Card { title, body, .. } => format!("{title}\n{}", said(body)),
+        Node::List { items, .. } => items
+            .iter()
+            .map(|i| i.text.iter().chain(&i.sub).chain(&i.meta).map(|s| s.text.as_str()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Node::Text(spans) => spans.iter().map(|s| s.text.as_str()).collect(),
+        Node::Kv(rows) => rows.iter().map(|(k, v)| format!("{k} {v}")).collect::<Vec<_>>().join("\n"),
+        Node::Empty { title, line } => format!("{title}\n{line}"),
+        _ => String::new(),
+    }
+}
+
+fn typed(ui: &mut UiState, text: &str) {
+    for c in text.chars() {
+        assert_eq!(ui.type_char(c), Effect::Redraw);
+    }
+}
+
+#[test]
+fn the_memory_is_asked_by_typing_and_an_empty_answer_is_said_plainly() {
+    let src = MockSource::new();
+    let mut ui = ui(View::Recall);
+    assert!(said(&build(&src, &ui).body).contains("Type what you want to know"));
+
+    typed(&mut ui, "importer");
+    assert!(ui.searching, "the axolotl thinks while the question changes");
+    let body = said(&build(&src, &ui).body);
+    assert!(body.contains("› importer▏"), "{body}");
+    assert!(body.contains("Found · "), "{body}");
+    assert!(!body.contains("Close in meaning"), "{body}");
+
+    typed(&mut ui, " kubernetes");
+    let body = said(&build(&src, &ui).body);
+    assert!(
+        body.contains("Nothing known about that") && body.contains("An empty answer is a correct answer."),
+        "{body}"
+    );
+    assert_eq!(ui.apply(Action::Open, &src), Effect::None, "there is nothing to open");
+}
+
+#[test]
+fn what_only_the_meaning_found_is_shown_apart_and_named_a_likeness() {
+    let src = MockSource::new();
+    let mut ui = ui(View::Recall);
+    typed(&mut ui, "release");
+    let found = src.recall("release");
+    let matches = found.iter().take_while(|f| f.alike.is_none()).count();
+    assert!(matches >= 1 && matches < found.len(), "the sample holds both kinds");
+    let body = said(&build(&src, &ui).body);
+    assert!(body.contains(&format!("Found · {matches}")), "{body}");
+    assert!(body.contains("Close in meaning · 1 (not the same words)"), "{body}");
+    assert!(body.contains("0.71 alike"), "{body}");
+
+    // The last row is the likeness: opened, it says how it was found.
+    for _ in 0..found.len() {
+        ui.apply(Action::Down, &src);
+    }
+    ui.apply(Action::Open, &src);
+    let open = said(&build(&src, &ui).body);
+    assert!(open.contains("Found by its meaning, not by its words"), "{open}");
+    assert!(open.contains("who") && open.contains("how sure"), "it carries its marks: {open}");
+}
+
+#[test]
+fn on_recall_keys_type_and_escape_goes_back_one_step_at_a_time() {
+    use nahuali_view::keymap::resolve;
+    let src = MockSource::new();
+    for key in ["q", "j", "k", "1", "?", "a"] {
+        assert_eq!(resolve(View::Recall, key, false), None, "`{key}` is a letter to type here");
+    }
+    assert_eq!(resolve(View::Recall, "tab", false), Some(Action::NextView));
+    assert_eq!(resolve(View::Recall, "ctrl+c", false), Some(Action::Quit));
+
+    let mut ui = ui(View::Recall);
+    typed(&mut ui, "importer");
+    ui.apply(Action::DeleteChar, &src);
+    assert_eq!(ui.query, "importe");
+    ui.apply(Action::Open, &src);
+    assert!(ui.detail);
+    assert_eq!(ui.type_char('x'), Effect::None, "an open item is not a text field");
+    ui.apply(Action::Back, &src);
+    assert!(!ui.detail && ui.query == "importe");
+    ui.apply(Action::Back, &src);
+    assert!(ui.query.is_empty() && ui.view == View::Recall);
+    ui.apply(Action::Back, &src);
+    assert_eq!(ui.view, View::Board);
 }

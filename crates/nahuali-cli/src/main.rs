@@ -327,7 +327,18 @@ fn board(argv: &[String]) -> Result<String, Failure> {
     if let Some(fps) = args.value("fps") {
         options.fps = fps.parse().map_err(|_| usage("--fps takes a number"))?;
     }
-    let src = live::Live::new(open(&args)?, env::person());
+    let mind = open(&args)?;
+    let journal = mind.journal().clone();
+    let src = live::Live::new(mind, env::person()).finding(Box::new(move |about| {
+        let asked = nahuali_core::words::plain(about).join(" ");
+        let keys = if asked.is_empty() {
+            Vec::new()
+        } else {
+            journal.search(&asked, "everything", "", 12).unwrap_or_default()
+        };
+        let near = journal.near(about, "everything", "", None, 5).map(|(near, _)| near).unwrap_or_default();
+        (keys, near)
+    }));
     nahuali_tui::run(&src, options)
         .map_err(|e| Failure::Refused(format!("the terminal could not be drawn: {e}")))?;
     Ok(String::new())

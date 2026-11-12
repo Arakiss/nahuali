@@ -69,9 +69,16 @@ Every one of them carries the same four marks.
       <br><sub>A piece of work. The card says what is true now, and its past is one step behind.</sub>
     </td>
     <td width="50%" valign="top">
+      <img src="docs/screenshots/tui/recall-120x36.png" alt="The recall screen: a question typed at the top, one thing found by its words, and under it, apart, one thing close in meaning with how alike it is">
+      <br><sub>Asking the memory. What the words find comes first; what only the meaning finds is apart, and says so.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
       <img src="docs/screenshots/tui/board-80x24.png" alt="The same board in a terminal of 80 by 24 characters">
       <br><sub>The same board at 80×24. The axolotl falls back to half blocks where a terminal has no images.</sub>
     </td>
+    <td width="50%" valign="top"></td>
   </tr>
 </table>
 
