@@ -78,6 +78,33 @@ impl Remote {
             .collect())
     }
 
+    /// What is closest in meaning to `asked`, each with how alike it is,
+    /// and whether this memory has a model to tell at all.
+    pub fn near(
+        &self,
+        asked: &str,
+        scope: &str,
+        project: &str,
+        kind: Option<&str>,
+        limit: u64,
+    ) -> io::Result<(Vec<(String, f64)>, bool)> {
+        if !self.exists() {
+            return Ok((Vec::new(), false));
+        }
+        let mut request = json!({ "q": asked, "scope": scope, "project": project, "limit": limit });
+        if let Some(kind) = kind {
+            request["kind"] = json!(kind);
+        }
+        let answer = self.call("near", request)?;
+        let near = answer["near"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|pair| Some((pair[0].as_str()?.to_string(), pair[1].as_f64()?)))
+            .collect();
+        Ok((near, answer["meaning"] == true))
+    }
+
     /// A memory nobody has written to has no database and needs no keeper.
     pub fn exists(&self) -> bool {
         self.home.join("db").exists() || self.home.join("log").exists()

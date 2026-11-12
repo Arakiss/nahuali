@@ -475,7 +475,7 @@ impl State {
     /// the act first, then the newest. Nothing that does not clearly belong
     /// to the act is returned, and returning nothing is a correct answer.
     pub fn check(&self, scope: Scope<'_>, doing: &str) -> Vec<Applies<'_>> {
-        let doing = words::terms(doing);
+        let doing = words::sequence(doing);
         let mut applies: Vec<Applies<'_>> = self
             .lessons(scope)
             .into_iter()

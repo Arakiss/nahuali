@@ -83,12 +83,35 @@ fn skill(dir: &Path, remove: bool, dry: bool, said: &mut Vec<String>) -> Result<
 }
 
 pub fn setup(argv: &[String]) -> Result<String, Failure> {
-    let args = parse(argv, &[], &["hooks", "remove", "dry-run"])?;
+    let args = parse(argv, &[], &["hooks", "remove", "dry-run", "meaning"])?;
     let [] = words(&args, "setup takes no words")?;
     let (remove, dry) = (args.has("remove"), args.has("dry-run"));
     let home =
         PathBuf::from(std::env::var("HOME").map_err(|_| Failure::Refused("there is no HOME".to_string()))?);
     let mut said = Vec::new();
+
+    if args.has("meaning") && !remove {
+        let memory = crate::env::home(args.value("home")).map_err(Failure::Usage)?;
+        let spec = nahuali_embed::spec(nahuali_embed::DEFAULT_MODEL).map_err(refused)?;
+        if nahuali_embed::installed(&memory.join("models"), spec) {
+            said.push(format!("current  the model {}", spec.id));
+        } else if dry {
+            said.push(format!(
+                "download the model {} (about 220 MB) into {}",
+                spec.id,
+                memory.join("models").display()
+            ));
+        } else {
+            nahuali_embed::install(&memory.join("models"), spec).map_err(refused)?;
+            // The keeper loads the model when it starts.
+            crate::remote::Remote::at(&memory).stop();
+            said.push(format!("installed the model {} in {}", spec.id, memory.join("models").display()));
+        }
+        if !args.has("hooks") {
+            let head = if dry { "would do (nothing was changed):\n" } else { "" };
+            return Ok(format!("{head}{}\n", said.join("\n")));
+        }
+    }
 
     let tools: Vec<PathBuf> =
         [".claude", ".codex"].iter().map(|d| home.join(d)).filter(|d| d.is_dir()).collect();

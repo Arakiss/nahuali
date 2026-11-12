@@ -84,19 +84,19 @@ fn pre_tool(mut mind: Mind<Remote>, project: &str, input: &Value) -> Option<Stri
     let session = input["session_id"].as_str().map(str::to_string);
     let now = Time::from_millis(env::now_ms());
     let (said, names, stops) = {
-        let applies: Vec<_> = mind
-            .state()
-            .check(Scope::Project(project), &doing)
+        let applies: Vec<_> = crate::more::told(&mind, project, &doing)
             .into_iter()
             .filter(|a| session.as_ref().is_none_or(|s| !a.lesson.sessions.contains(s)))
             .collect();
         if applies.is_empty() {
             return None;
         }
-        let stops = applies.iter().any(|a| a.lesson.stop);
+        // Only a lesson brought by its words stops a command. A likeness
+        // is told and never refuses.
+        let stops = applies.iter().any(|a| a.lesson.stop && a.alike.is_none());
         let mut said = String::from("nahuali · learned before, and it applies to what you are about to do\n");
         for a in &applies {
-            said.push_str(&text::lesson_block(a.lesson, &a.because, now));
+            said.push_str(&text::lesson_block(a.lesson, &a.because, a.alike, now));
         }
         if stops {
             said.push_str(

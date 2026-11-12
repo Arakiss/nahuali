@@ -1,0 +1,23 @@
+[package]
+name = "nahuali-embed"
+description = "Local multilingual text embeddings for Nahuali's recall: no server, no cloud."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+candle-core = "0.11.1"
+candle-nn = "0.11.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11.1"
+spm_precompiled = "0.1.4"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"

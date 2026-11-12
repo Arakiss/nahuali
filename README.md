@@ -140,10 +140,11 @@ nahuali · learned before, and it applies to what you are about to do
 
 | Rule | In practice |
 | --- | --- |
-| No model decides | A lesson applies when the words that mark its moment are all in the command. The answer is the same every time and says which words brought it |
+| Its words decide | A lesson applies when the words that mark its moment are all in the command, within a few words of each other. The answer is the same every time and says which words brought it |
 | Strict | Half a moment is not the moment. "No lesson applies" is the usual answer |
 | Once per session | An agent that has been told is not told again |
 | It can stop the act | A lesson marked `--stop` refuses the command once. Running it again goes through, and the stop is recorded |
+| Meaning only tells | With the model installed, a lesson close in meaning to the command is shown too, marked as a likeness. A likeness never stops a command |
 | It can be wrong | `nahuali retire` takes a lesson out when it stops being true |
 
 With `nahuali setup --hooks` this runs by itself before each command in Claude Code. Anywhere else an agent asks: `nahuali check "what I am about to do"`.
@@ -166,6 +167,26 @@ atlas · 2 things known about "audit"
 ```
 
 Recall searches the cards, the decisions, the lessons and the notes with the database's full-text index. A word finds its other forms, so `exporting` finds `exports` and `decision` finds `decisión`. Every word asked for has to be there, nothing private to another project is ever offered, and "nothing known" is a normal answer that an agent is told to repeat instead of guessing.
+
+### What is said in other words
+
+```sh
+nahuali setup --meaning     # once: a multilingual model, 220 MB, that runs on this machine
+nahuali recall "cuándo es la auditoría"
+```
+
+```text
+atlas · nothing holds the words "cuándo es la auditoría"; 1 thing is close in meaning
+
+CLOSE IN MEANING (not the same words; judge them)
+  note:bzpnpp  The audit is on the 20th; the client sends the files a week before
+               tags: dates
+               claude-code, an agent · 5 d ago · 0.70 alike
+```
+
+With the model installed every thing also carries a vector, kept in the database beside its words. Nothing leaves the machine: the model runs in the keeper, on the CPU, in about seven milliseconds a question.
+
+What the words find always comes first and is called a match. What only the meaning finds comes after, apart, with how alike it is, and is called a likeness. The line below which nothing is offered was measured, not guessed: at 0.65, eight of nine things offered were answers, and half of the answers that shared no word were found. `cargo run --release -p nahuali-embed --example near -- MODELS_DIR` repeats the measurement.
 
 ### Any tool
 
@@ -214,6 +235,7 @@ The rules live in [`nahuali-core`](crates/nahuali-core), which has no clock, no 
 | --- | --- |
 | [`nahuali-core`](crates/nahuali-core) | The events, the fold and the verbs |
 | [`nahuali-cli`](crates/nahuali-cli) | The `nahuali` command, the keeper of the database, the hooks and the MCP server |
+| [`nahuali-embed`](crates/nahuali-embed) | The model that turns text into vectors, run in process on the CPU |
 | [`nahuali-view`](crates/nahuali-view) | The screens as a view model, with no dependencies |
 | [`nahuali-tui`](crates/nahuali-tui) | The terminal renderer, with the animated axolotl |
 
@@ -243,7 +265,7 @@ This repository is kept, from its first commit, as if it were already public. Wh
 - It does not prove who is speaking. "Who" is what the speaker declared.
 - It does not encrypt. The memory is as private as the disk it is on.
 - It does not run on Windows yet.
-- It does not understand meaning. A lesson is matched and a note is found by their words, which is exact and explainable, and misses what is said in other words. Search by meaning is next.
+- Meaning is a likeness, not an understanding. It finds about half of what is said in other words and is kept apart from what the words find. Without the model there are only the words.
 - The hooks are written for Claude Code. Other tools use the command or MCP.
 
 ## Roadmap
@@ -254,7 +276,7 @@ In this order, each when it is done. There are no dates.
 2. ~~Lessons, and `check`. An agent about to do something is told the lessons that apply, at that moment.~~
 3. ~~Notes and `recall`, strict enough that an empty answer is a normal one.~~
 4. ~~The same verbs over MCP, so no agent tool is special.~~
-5. Search by meaning beside search by words, with the database's vector index.
+5. ~~Search by meaning beside search by words, on this machine.~~
 6. A team: several people on one memory, each seeing what reaches them.
 7. Releases you can install without a toolchain.
 

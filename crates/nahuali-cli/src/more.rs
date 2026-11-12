@@ -3,9 +3,10 @@
 
 use std::collections::HashMap;
 
-use nahuali_core::{NewLesson, NewNote, Scope, Thing, Time};
+use nahuali_core::{Lesson, Mind, NewLesson, NewNote, Scope, Thing, Time};
 use serde_json::json;
 
+use crate::remote::Remote;
 use crate::{Failure, env, open, parse, sign, sign_anywhere, text, usage, words};
 
 /// `nahuali learn "RULE" --moment "WHEN" [--when "WORDS"]… [--everywhere] [--stop]`
@@ -40,6 +41,49 @@ pub fn learn(argv: &[String]) -> Result<String, Failure> {
     ))
 }
 
+/// A lesson that applies to an act: by the words that mark its moment, or
+/// only by being close to it in meaning.
+pub struct Told<'a> {
+    pub lesson: &'a Lesson,
+    pub because: Vec<String>,
+    /// How alike, when it was not the words that brought it.
+    pub alike: Option<f64>,
+}
+
+/// The lessons that apply to what is about to be done. Those brought by
+/// their words come first; then, when this memory has a model, those close
+/// in meaning that the words missed.
+pub fn told<'a>(mind: &'a Mind<Remote>, project: &str, doing: &str) -> Vec<Told<'a>> {
+    let scope = Scope::Project(project);
+    let state = mind.state();
+    let mut told: Vec<Told<'a>> = state
+        .check(scope, doing)
+        .into_iter()
+        .map(|a| Told { lesson: a.lesson, because: a.because, alike: None })
+        .collect();
+    // A long script is close to everything and to nothing: only a command
+    // short enough to be about one thing is compared by meaning.
+    if doing.chars().count() > 400 {
+        return told;
+    }
+    // No model, or a keeper that does not answer: the words are enough.
+    let near = mind
+        .journal()
+        .near(doing, "project", project, Some("lesson"), 3)
+        .map(|(near, _)| near)
+        .unwrap_or_default();
+    for (key, alike) in near {
+        let Some(lesson) = key.strip_prefix("lesson:").and_then(|name| state.lesson(name)) else { continue };
+        if lesson.in_force()
+            && scope.reaches(&lesson.marks, lesson.everywhere)
+            && !told.iter().any(|t| t.lesson.id == lesson.id)
+        {
+            told.push(Told { lesson, because: Vec::new(), alike: Some(alike) });
+        }
+    }
+    told
+}
+
 /// `nahuali check "WHAT I AM ABOUT TO DO"`
 pub fn check(argv: &[String]) -> Result<String, Failure> {
     let args = parse(argv, &["session"], &["json"])?;
@@ -50,28 +94,30 @@ pub fn check(argv: &[String]) -> Result<String, Failure> {
     let mut mind = open(&args)?;
     let sig = sign(&args)?;
     let now = Time::from_millis(sig.at_ms);
-    let applies = mind.state().check(Scope::Project(&sig.project), &doing);
-    let out = if args.has("json") {
-        let lessons: Vec<_> = applies
-            .iter()
-            .map(|a| {
-                json!({
-                    "lesson": a.lesson.id, "rule": a.lesson.rule, "moment": a.lesson.moment,
-                    "stop": a.lesson.stop, "because": a.because, "shown": a.lesson.shown,
+    let (out, names) = {
+        let applies = told(&mind, &sig.project, &doing);
+        let out = if args.has("json") {
+            let lessons: Vec<_> = applies
+                .iter()
+                .map(|a| {
+                    json!({
+                        "lesson": a.lesson.id, "rule": a.lesson.rule, "moment": a.lesson.moment, "stop": a.lesson.stop,
+                        "because": a.because, "alike": a.alike, "shown": a.lesson.shown,
+                    })
                 })
-            })
-            .collect();
-        format!("{}\n", json!({ "applies": lessons }))
-    } else if applies.is_empty() {
-        "no lesson applies\n".to_string()
-    } else {
-        let mut out = format!("{} to this\n", count(applies.len(), "lesson applies", "lessons apply"));
-        for a in &applies {
-            out.push_str(&text::lesson_block(a.lesson, &a.because, now));
-        }
-        out
+                .collect();
+            format!("{}\n", json!({ "applies": lessons }))
+        } else if applies.is_empty() {
+            "no lesson applies\n".to_string()
+        } else {
+            let mut out = format!("{} to this\n", count(applies.len(), "lesson applies", "lessons apply"));
+            for a in &applies {
+                out.push_str(&text::lesson_block(a.lesson, &a.because, a.alike, now));
+            }
+            out
+        };
+        (out, applies.iter().map(|a| a.lesson.id.clone()).collect::<Vec<String>>())
     };
-    let names: Vec<String> = applies.iter().map(|a| a.lesson.id.clone()).collect();
     mind.shown(sig, names, &doing, args.value("session").map(str::to_string), false)?;
     Ok(out)
 }
@@ -90,7 +136,7 @@ pub fn lessons(argv: &[String]) -> Result<String, Failure> {
     let now = Time::from_millis(env::now_ms());
     let mut out = format!("{project} · {} in force\n", count(lessons.len(), "lesson", "lessons"));
     for lesson in lessons {
-        out.push_str(&text::lesson_block(lesson, &[], now));
+        out.push_str(&text::lesson_block(lesson, &[], None, now));
     }
     Ok(out)
 }
@@ -155,7 +201,11 @@ pub fn recall(argv: &[String]) -> Result<String, Failure> {
     // What the database answered, before anything here looks at it: for
     // whoever wants to see that its own reach is right.
     if args.has("keys") {
-        return Ok(keys.iter().map(|k| format!("{k}\n")).collect());
+        let reach = if args.has("all") { "all" } else { "project" };
+        let near =
+            mind.journal().near(&about, reach, &project, None, 5).map(|(near, _)| near).unwrap_or_default();
+        let near = near.iter().filter(|(key, _)| !keys.contains(key)).map(|(key, _)| format!("near {key}\n"));
+        return Ok(keys.iter().map(|k| format!("{k}\n")).chain(near).collect());
     }
     let mut held: HashMap<String, Thing> =
         mind.state().things().into_iter().map(|t| (t.key.clone(), t)).collect();
@@ -166,30 +216,56 @@ pub fn recall(argv: &[String]) -> Result<String, Failure> {
         .filter_map(|k| held.remove(k))
         .filter(|t| scope.reaches(&t.marks, t.everywhere))
         .collect();
+    // What the words missed and the meaning did not. Kept apart and said to
+    // be so: it is a likeness, not a match.
+    let near: Vec<(Thing, f64)> = mind
+        .journal()
+        .near(&about, if args.has("all") { "all" } else { "project" }, &project, None, 5)
+        .map(|(near, _)| near)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(key, alike)| held.remove(&key).map(|thing| (thing, alike)))
+        .filter(|(t, _)| scope.reaches(&t.marks, t.everywhere))
+        .collect();
 
     let whose = if args.has("all") { "every project" } else { project.as_str() };
     if args.has("json") {
-        let things: Vec<_> = found
-            .iter()
-            .map(|t| {
-                json!({
-                    "key": t.key, "kind": t.kind, "title": t.title, "detail": t.detail,
-                    "marks": {
-                        "who": t.marks.who, "sure": t.marks.sure, "at": t.marks.at,
-                        "commit": t.marks.commit, "project": t.marks.project, "private": t.marks.private,
-                    },
-                })
+        let thing = |t: &Thing, alike: Option<f64>| {
+            json!({
+                "key": t.key, "kind": t.kind, "title": t.title, "detail": t.detail, "alike": alike,
+                "marks": {
+                    "who": t.marks.who, "sure": t.marks.sure, "at": t.marks.at,
+                    "commit": t.marks.commit, "project": t.marks.project, "private": t.marks.private,
+                },
             })
-            .collect();
-        return Ok(format!("{}\n", json!({ "about": about, "found": things })));
+        };
+        let found: Vec<_> = found.iter().map(|t| thing(t, None)).collect();
+        let near: Vec<_> = near.iter().map(|(t, alike)| thing(t, Some(*alike))).collect();
+        return Ok(format!("{}\n", json!({ "about": about, "found": found, "near": near })));
     }
-    if found.is_empty() {
+    if found.is_empty() && near.is_empty() {
         return Ok(format!("{whose} · nothing known about \"{about}\"\n"));
     }
     let now = Time::from_millis(env::now_ms());
-    let mut out = format!("{whose} · {} known about \"{about}\"\n", count(found.len(), "thing", "things"));
+    let mut out = match (found.len(), near.len()) {
+        (0, n) => format!(
+            "{whose} · nothing holds the words \"{about}\"; {} close in meaning\n",
+            count(n, "thing is", "things are")
+        ),
+        (f, 0) => format!("{whose} · {} known about \"{about}\"\n", count(f, "thing", "things")),
+        (f, n) => format!(
+            "{whose} · {} known about \"{about}\", and {n} more close in meaning\n",
+            count(f, "thing", "things")
+        ),
+    };
     for thing in &found {
-        out.push_str(&text::thing_block(thing, args.has("all"), now));
+        out.push_str(&text::thing_block(thing, args.has("all"), None, now));
+    }
+    if !near.is_empty() {
+        out.push_str("\nCLOSE IN MEANING (not the same words; judge them)\n");
+        for (thing, alike) in &near {
+            out.push_str(&text::thing_block(thing, args.has("all"), Some(*alike), now));
+        }
     }
     Ok(out)
 }

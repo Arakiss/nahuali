@@ -98,9 +98,12 @@ moment both become sets of plain terms: lower case, accents folded, split
 where letters end, common words dropped, cut to a rough root.
 
 - With `when` given, one entry is enough, and every term of that entry has
-  to be in what is about to be done.
+  to be in what is about to be done, within eight terms of each other. A
+  script of two hundred lines has every word somewhere; a command has them
+  together.
 - Without it, the moment's own words are used: three in five of them have
-  to be there, and never fewer than two unless the moment has only one.
+  to be there, near each other, and never fewer than two unless the moment
+  has only one.
 
 A lesson reaches the project it was learned in, or every project when it
 says so and is not private. A lesson marked `stop` refuses the command once
@@ -119,6 +122,33 @@ never disagree with them for longer than one write.
 asker's reach goes: its own project and what is meant for every project,
 or with `--all` everything that is not private to another project. What
 was withdrawn, retired or forgotten is not there to be found.
+
+## Meaning
+
+`nahuali setup --meaning` installs a multilingual model of 107 million
+parameters under `<home>/models` (220 MB; each file is checked against a
+pinned hash). The keeper loads it when it starts and runs it on the CPU.
+Nothing is sent anywhere.
+
+With it, each record of `thing` also carries `vec`, a vector of 384
+numbers for its words, and the table `vector` remembers every vector
+already computed by the text it is of, so a keeper that starts again
+computes only what is new. Vectors are derived: they are in no event and
+in no export, and deleting them loses nothing.
+
+A question is turned into a vector the same way and compared with every
+thing the asker may see, in the database, by cosine likeness. What is at
+least 0.65 alike is offered, after what the words found, apart from it,
+and named a likeness. `NAHUALI_NEAR` moves the line. The measurement
+behind it is `cargo run --release -p nahuali-embed --example near`.
+
+For lessons the same holds, with two limits. A command longer than 400
+characters is not compared by meaning. And a lesson that only meaning
+brought is told and never stops a command: only its words do that.
+
+At the size of one person's memory every vector is compared. SurrealDB's
+approximate index (HNSW) answers the same question for millions; it is not
+defined yet because it is not needed yet.
 
 ## Out, and in again
 
@@ -163,8 +193,8 @@ to run one. The format of the lines is the same.
 - It does not encrypt. The memory is as private as the disk it is on.
 - It reads every event on every command and folds them in the program.
   That is fast for what a person and their agents write in years.
-- It does not search by meaning. Words find their other forms, and no more
-  than that.
+- Meaning is a likeness. It finds about half of what is said in other
+  words, and it is kept apart from what the words find.
 - The keeper speaks over a Unix socket. Windows is not supported yet.
 
 ## SurrealDB's licence

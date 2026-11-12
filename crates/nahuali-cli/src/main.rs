@@ -80,6 +80,8 @@ recall \"ABOUT\"
 other tools
   nahuali setup [--hooks]     tell Claude Code and Codex about nahuali; --hooks brings the memory to
                               an agent by itself; --remove takes it out; --dry-run only says
+  nahuali setup --meaning     install the model that finds what is said in other words (220 MB, once,
+                              runs on this machine; nothing leaves it)
   nahuali mcp                 the same verbs over the Model Context Protocol, on standard input
 
 everywhere
@@ -297,8 +299,12 @@ fn place(argv: &[String]) -> Result<String, Failure> {
     let who = env::actor(args.value("as"), args.value("from")).map_err(Failure::Usage)?;
     let kind = if who.is_person() { "the person" } else { "an agent" };
     let commit = env::commit(&project).unwrap_or_else(|| "none".to_string());
+    let meaning = match nahuali_embed::spec(nahuali_embed::DEFAULT_MODEL) {
+        Ok(spec) if nahuali_embed::installed(&home.join("models"), spec) => format!("on ({})", spec.id),
+        _ => "off: words only. `nahuali setup --meaning` installs the model".to_string(),
+    };
     Ok(format!(
-        "memory   {}\nproject  {project}\nyou      {} ({kind})\ncommit   {commit}\n",
+        "memory   {}\nproject  {project}\nyou      {} ({kind})\ncommit   {commit}\nmeaning  {meaning}\n",
         home.display(),
         who.line()
     ))

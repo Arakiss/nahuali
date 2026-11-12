@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/nahuali-cli", "crates/nahuali-core", "crates/nahuali-tui", "crates/nahuali-view"]
+members = ["crates/nahuali-cli", "crates/nahuali-core", "crates/nahuali-embed", "crates/nahuali-tui", "crates/nahuali-view"]
 
 [workspace.package]
 version = "0.1.0"

@@ -112,6 +112,10 @@ ask for, each with who said it, how sure they were and when. Ask with a few
 exact words. "Nothing known" is a correct answer: say so instead of
 guessing. `--all` looks in every project.
 
+Under "CLOSE IN MEANING" it may add things that do not hold your words but
+are about something alike. They are likenesses, not matches: read each one
+and use it only if it is really about what you asked.
+
 ## Reach
 
 Add `--private` to anything that must not be shown to work on another

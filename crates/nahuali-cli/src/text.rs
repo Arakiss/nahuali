@@ -264,13 +264,15 @@ fn said(marks: &Marks, now: Time) -> String {
 }
 
 /// A lesson as it is shown to someone about to act: the rule, its moment,
-/// and what brought it.
-pub fn lesson_block(lesson: &Lesson, because: &[String], now: Time) -> String {
+/// and what brought it: the words it matched, or how alike it is in meaning.
+pub fn lesson_block(lesson: &Lesson, because: &[String], alike: Option<f64>, now: Time) -> String {
     let name = format!("lesson:{}", lesson.id);
     let pad = " ".repeat(name.chars().count() + 4);
     let mut out = format!("  {name}  {}\n{pad}when: {}\n", lesson.rule, lesson.moment);
     let mut marks = Vec::new();
-    if !because.is_empty() {
+    if let Some(alike) = alike {
+        marks.push(format!("close in meaning ({alike:.2}), not the same words"));
+    } else if !because.is_empty() {
         marks.push(format!("matched: {}", because.join(", ")));
     }
     marks.push(format!("learned by {}", said(&lesson.marks, now)));
@@ -290,8 +292,9 @@ pub fn lesson_block(lesson: &Lesson, because: &[String], now: Time) -> String {
     out
 }
 
-/// Anything recalled, with its marks.
-pub fn thing_block(thing: &Thing, wide: bool, now: Time) -> String {
+/// Anything recalled, with its marks, and how alike it is when it was
+/// found by meaning and not by its words.
+pub fn thing_block(thing: &Thing, wide: bool, alike: Option<f64>, now: Time) -> String {
     let pad = " ".repeat(thing.key.chars().count() + 4);
     let mut out = format!("  {}  {}\n", thing.key, thing.title);
     for line in &thing.detail {
@@ -312,6 +315,9 @@ pub fn thing_block(thing: &Thing, wide: bool, now: Time) -> String {
     };
     if wide && thing.kind != "work" {
         marks.push_str(&format!(" · {}", thing.marks.project));
+    }
+    if let Some(alike) = alike {
+        marks.push_str(&format!(" · {alike:.2} alike"));
     }
     out.push_str(&format!("{pad}{marks}\n"));
     out

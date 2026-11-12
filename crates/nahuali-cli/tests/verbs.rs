@@ -6,6 +6,9 @@ use std::process::{Command, Output};
 /// A memory and a working directory of their own, gone when the test ends.
 struct Desk {
     root: PathBuf,
+    /// Whether its keeper tells meaning, with a stand-in for the model in
+    /// which a few words are known to say the same.
+    meaning: bool,
 }
 
 impl Desk {
@@ -13,7 +16,13 @@ impl Desk {
         let root = std::env::temp_dir().join(format!("nahuali-cli-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("work")).unwrap();
-        Self { root }
+        Self { root, meaning: false }
+    }
+
+    fn with_meaning(name: &str) -> Self {
+        let mut desk = Self::new(name);
+        desk.meaning = true;
+        desk
     }
 
     fn home(&self) -> PathBuf {
@@ -24,6 +33,7 @@ impl Desk {
         let mut c = Command::new(env!("CARGO_BIN_EXE_nahuali"));
         // A keeper nobody stops leaves by itself soon after the test.
         c.current_dir(dir).env("NAHUALI_HOME", self.home()).env("NAHUALI_IDLE_SECS", "20");
+        c.env("NAHUALI_MEANING", if self.meaning { "test" } else { "off" }).env("NAHUALI_NEAR", "0.3");
         for marker in ["CLAUDECODE", "CODEX_SANDBOX", "CODEX_THREAD_ID", "CURSOR_AGENT", "CURSOR_TRACE_ID"] {
             c.env_remove(marker);
         }
@@ -608,4 +618,103 @@ fn the_names_of_the_works_share_one_column() {
     let status = desk.run(&["status"]).ok();
     let column = |needle: &str| status.lines().find(|l| l.contains(needle)).unwrap().find("moving").unwrap();
     assert_eq!(column("short name"), column("long name"), "{status}");
+}
+
+#[test]
+fn what_is_said_in_other_words_is_found_and_said_to_be_a_likeness() {
+    let desk = Desk::with_meaning("near");
+    desk.run(&["note", "The audit is on the 20th"]).ok();
+    desk.run(&["note", "The audit fee is private", "--private"]).ok();
+    desk.run(&["note", "Lunch is at noon"]).ok();
+
+    let other_words = desk.run(&["recall", "inspection"]).ok();
+    assert!(
+        other_words
+            .starts_with("atlas · nothing holds the words \"inspection\"; 2 things are close in meaning\n"),
+        "{other_words}"
+    );
+    assert!(other_words.contains("CLOSE IN MEANING (not the same words; judge them)"), "{other_words}");
+    assert!(other_words.contains("alike") && !other_words.contains("Lunch"), "{other_words}");
+
+    let same_words = desk.run(&["recall", "audit"]).ok();
+    assert!(same_words.starts_with("atlas · 2 things known about \"audit\"\n"), "{same_words}");
+    assert!(
+        !same_words.contains("CLOSE IN MEANING"),
+        "what the words found is not offered twice: {same_words}"
+    );
+
+    let elsewhere = desk.run(&["recall", "inspection", "--all", "--project", "borealis"]).ok();
+    assert!(
+        elsewhere.contains("on the 20th") && !elsewhere.contains("fee"),
+        "a likeness keeps to its reach too: {elsewhere}"
+    );
+    assert_eq!(desk.run(&["recall", "kubernetes"]).ok(), "atlas · nothing known about \"kubernetes\"\n");
+
+    // What the database itself answers, before the command looks at it.
+    let from_elsewhere = desk.run(&["recall", "inspection", "--keys", "--all", "--project", "borealis"]).ok();
+    assert_eq!(
+        from_elsewhere.lines().count(),
+        1,
+        "the private note never leaves the database: {from_elsewhere}"
+    );
+    assert!(from_elsewhere.starts_with("near note:"), "{from_elsewhere}");
+
+    let json: serde_json::Value =
+        serde_json::from_str(&desk.run(&["recall", "inspection", "--json"]).ok()).unwrap();
+    assert_eq!(json["found"].as_array().unwrap().len(), 0);
+    assert!(json["near"][0]["alike"].as_f64().unwrap() > 0.3);
+
+    // The vectors are kept: a keeper that starts again finds the same.
+    desk.run(&["stop"]).ok();
+    assert_eq!(desk.run(&["recall", "inspection"]).ok(), other_words);
+}
+
+#[test]
+fn a_likeness_tells_a_lesson_but_only_its_words_stop_a_command() {
+    let desk = Desk::with_meaning("near-lesson");
+    desk.run(&["learn", "Back up first", "--moment", "before a migration", "--when", "migrate up", "--stop"])
+        .ok();
+
+    let asked = desk.run(&["check", "alembic upgrade"]).ok();
+    assert!(asked.starts_with("1 lesson applies to this\n") && asked.contains("close in meaning"), "{asked}");
+    assert_eq!(desk.run(&["check", "cargo test"]).ok(), "no lesson applies\n");
+
+    let told = desk.before("s1", "alembic upgrade");
+    assert!(told["hookSpecificOutput"]["permissionDecision"].is_null(), "a likeness never refuses: {told}");
+    assert!(told["hookSpecificOutput"]["additionalContext"].as_str().unwrap().contains("not the same words"));
+    assert_eq!(
+        desk.before("s2", "./migrate up")["hookSpecificOutput"]["permissionDecision"],
+        "deny",
+        "its words do"
+    );
+    assert!(desk.before("s3", "ls -la").is_null());
+}
+
+#[test]
+fn without_a_model_there_are_words_and_nothing_pretends_otherwise() {
+    let desk = Desk::new("no-model");
+    desk.run(&["note", "The audit is on the 20th"]).ok();
+    assert_eq!(desk.run(&["recall", "inspection"]).ok(), "atlas · nothing known about \"inspection\"\n");
+    assert!(desk.run(&["recall", "audit"]).ok().starts_with("atlas · 1 thing known"));
+    assert!(desk.run(&["where"]).ok().contains("meaning  off: words only"));
+}
+
+#[test]
+fn a_long_script_that_holds_the_words_somewhere_is_nobodys_moment() {
+    let desk = Desk::new("far");
+    desk.run(&[
+        "learn",
+        "Announce a change of foundations first",
+        "--moment",
+        "before replacing the database",
+        "--when",
+        "replace database",
+    ])
+    .ok();
+    assert!(!desk.before("s1", "replace the database with plain files").is_null());
+    let script = format!(
+        "python3 - <<EOF\ns = s.replace(a, b)\n{}print('the database is fine')\nEOF",
+        "x = x + 1  # and so on, line after line\n".repeat(8)
+    );
+    assert!(desk.before("s2", &script).is_null(), "the words are there, far apart, and mean nothing");
 }

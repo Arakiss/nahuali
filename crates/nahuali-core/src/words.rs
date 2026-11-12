@@ -61,9 +61,10 @@ pub fn plain(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// The terms of a text: lower case, accents folded, split at anything that
-/// is not a letter or a digit, without the words that mark nothing.
-pub fn terms(text: &str) -> BTreeSet<String> {
+/// The terms of a text, in the order they stand: lower case, accents
+/// folded, split at anything that is not a letter or a digit, without the
+/// words that mark nothing.
+pub fn sequence(text: &str) -> Vec<String> {
     let folded: String = text.to_lowercase().chars().map(fold).collect();
     folded
         .split(|c: char| !c.is_alphanumeric())
@@ -73,15 +74,43 @@ pub fn terms(text: &str) -> BTreeSet<String> {
         .collect()
 }
 
+/// The terms of a text, as a set.
+pub fn terms(text: &str) -> BTreeSet<String> {
+    sequence(text).into_iter().collect()
+}
+
+/// How far apart the words of one mark may stand: a command is a few
+/// words, and a script of two hundred lines has every word somewhere.
+const SPAN: usize = 8;
+
+/// The most terms of `wanted` that stand within `span` terms of each other
+/// in `doing`, and which they are.
+fn together(wanted: &BTreeSet<String>, doing: &[String], span: usize) -> Vec<String> {
+    let mut best: Vec<String> = Vec::new();
+    for start in 0..doing.len() {
+        if !wanted.contains(&doing[start]) {
+            continue;
+        }
+        let window = &doing[start..doing.len().min(start + span)];
+        let found: BTreeSet<&String> = window.iter().filter(|term| wanted.contains(*term)).collect();
+        if found.len() > best.len() {
+            best = found.into_iter().cloned().collect();
+        }
+    }
+    best
+}
+
 /// Whether a moment is in what is about to be done, and by which terms.
+/// `doing` is [`sequence`] of it: the order matters.
 ///
-/// With `when` given, one entry is enough and every term of that entry has
-/// to be there. Without it, the moment's own words are used: most of them
-/// have to be there, and never fewer than two unless it has only one.
-pub fn marks(moment: &str, when: &[String], doing: &BTreeSet<String>) -> Option<Vec<String>> {
+/// With `when` given, one entry is enough, and every term of that entry has
+/// to be there, within a few words of each other. Without it, the moment's
+/// own words are used: most of them have to be there, near each other, and
+/// never fewer than two unless it has only one.
+pub fn marks(moment: &str, when: &[String], doing: &[String]) -> Option<Vec<String>> {
     for entry in when {
         let wanted = terms(entry);
-        if !wanted.is_empty() && wanted.is_subset(doing) {
+        if !wanted.is_empty() && together(&wanted, doing, SPAN.max(wanted.len() * 3)).len() == wanted.len() {
             return Some(wanted.into_iter().collect());
         }
     }
@@ -92,7 +121,7 @@ pub fn marks(moment: &str, when: &[String], doing: &BTreeSet<String>) -> Option<
     if wanted.is_empty() {
         return None;
     }
-    let found: Vec<String> = wanted.intersection(doing).cloned().collect();
+    let found = together(&wanted, doing, SPAN.max(wanted.len() * 3));
     let needed = (wanted.len() * 3).div_ceil(5).max(2).min(wanted.len());
     (found.len() >= needed).then_some(found)
 }
@@ -119,16 +148,16 @@ mod tests {
 
     #[test]
     fn an_entry_of_when_needs_all_of_its_terms() {
-        let doing = terms("git worktree add ../side -b side");
+        let doing = sequence("git worktree add ../side -b side");
         let when = vec!["worktree add".to_string(), "spawn agent".to_string()];
         assert_eq!(marks("whatever", &when, &doing), Some(vec!["add".to_string(), "worktree".to_string()]));
         assert_eq!(
-            marks("whatever", &when, &terms("git worktree list")),
+            marks("whatever", &when, &sequence("git worktree list")),
             None,
             "half an entry is not the moment"
         );
         assert_eq!(
-            marks("worktree list", &when, &terms("git worktree list")),
+            marks("worktree list", &when, &sequence("git worktree list")),
             None,
             "with when given, the moment's words are not used"
         );
@@ -137,15 +166,27 @@ mod tests {
     #[test]
     fn without_when_most_of_the_moment_has_to_be_there() {
         let moment = "before building in more than two worktrees";
-        assert!(marks(moment, &[], &terms("cargo build in the third worktree, more to come")).is_some());
-        assert!(marks(moment, &[], &terms("cargo build")).is_none(), "one word in five is not the moment");
+        assert!(marks(moment, &[], &sequence("cargo build in the third worktree, more to come")).is_some());
+        assert!(marks(moment, &[], &sequence("cargo build")).is_none(), "one word in five is not the moment");
         assert!(
-            marks("deploying", &[], &terms("deploy to production")).is_some(),
+            marks("deploying", &[], &sequence("deploy to production")).is_some(),
             "a moment of one word needs that word"
         );
         assert!(
-            marks("the", &[], &terms("anything")).is_none(),
+            marks("the", &[], &sequence("anything")).is_none(),
             "a moment that marks nothing matches nothing"
         );
+    }
+
+    #[test]
+    fn the_words_of_a_mark_have_to_stand_near_each_other() {
+        let when = vec!["replace database".to_string()];
+        assert!(marks("x", &when, &sequence("replace the database with files")).is_some());
+        let script =
+            format!("s.replace(a, b) {} print the database name", "and many other words here ".repeat(6));
+        assert!(marks("x", &when, &sequence(&script)).is_none(), "a long script has every word somewhere");
+        let moment = "before building in more than two worktrees";
+        let far = format!("cargo build {} more worktree", "then run tests again and again ".repeat(6));
+        assert!(marks(moment, &[], &sequence(&far)).is_none());
     }
 }

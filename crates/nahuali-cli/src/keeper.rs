@@ -8,7 +8,10 @@
 //! kept whole as the line it was written as and with its marks as fields.
 //! `thing` is derived from it and can be thrown away: one record per card,
 //! ask, decision, lesson and note as they stand now, with a full-text index
-//! over their words. It is what `recall` searches.
+//! over their words. It is what `recall` searches. When a model is installed
+//! each thing also carries a vector, so what is said in other words can be
+//! found too. `vector` remembers the vectors already computed, by the text
+//! they are of, so a keeper that starts again computes only what is new.
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -19,6 +22,8 @@ use std::time::{Duration, Instant};
 
 use nahuali_core::State;
 use nahuali_core::event::{Event, Line, What};
+use nahuali_embed::testing::WordEmbedder;
+use nahuali_embed::{DEFAULT_MODEL, Embedder, LocalEmbedder};
 use serde_json::{Value, json};
 use surrealdb::Surreal;
 use surrealdb::engine::any::Any;
@@ -42,6 +47,8 @@ DEFINE ANALYZER IF NOT EXISTS words TOKENIZERS class FILTERS lowercase, ascii, s
 DEFINE TABLE IF NOT EXISTS thing SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS thing_key ON thing FIELDS key;
 DEFINE INDEX IF NOT EXISTS thing_text ON thing FIELDS text FULLTEXT ANALYZER words BM25;
+DEFINE TABLE IF NOT EXISTS vector SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS vector_of ON vector FIELDS of;
 DELETE thing;
 ";
 
@@ -51,6 +58,45 @@ DELETE thing;
 struct Held {
     events: Vec<Event>,
     indexed: HashMap<String, u64>,
+    /// Vectors already computed, by the model and the text they are of.
+    vectors: HashMap<u64, Vec<f32>>,
+}
+
+/// How alike two texts have to be for one to be offered for the other.
+/// Measured with `cargo run -p nahuali-embed --example near`: at this line
+/// eight of nine things offered were answers, and half the answers that
+/// shared no word were found. `NAHUALI_NEAR` moves it.
+const NEAR: f64 = 0.65;
+
+/// The model that turns text into vectors, when there is one.
+fn meaning(home: &Path) -> Option<Arc<dyn Embedder>> {
+    match std::env::var("NAHUALI_MEANING").as_deref() {
+        Ok("off") => None,
+        Ok("test") => Some(Arc::new(WordEmbedder)),
+        _ => LocalEmbedder::open(&home.join("models"), DEFAULT_MODEL)
+            .ok()
+            .map(|m| Arc::new(m) as Arc<dyn Embedder>),
+    }
+}
+
+/// A vector as SurrealQL writes it.
+fn written(vector: &[f32]) -> String {
+    let numbers: Vec<String> = vector.iter().map(|x| format!("{x:.6}")).collect();
+    format!("[{}]", numbers.join(","))
+}
+
+fn of(model: &str, words: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (model, words).hash(&mut hasher);
+    hasher.finish()
+}
+
+fn reach(scope: Option<&str>) -> &'static str {
+    match scope {
+        Some("everything") => "true",
+        Some("all") => "(private = false OR project = $project)",
+        _ => "(project = $project OR (everywhere = true AND private = false))",
+    }
 }
 
 struct Keeper {
@@ -61,6 +107,7 @@ struct Keeper {
     spoken: AtomicU64,
     leave: Notify,
     stamp: u64,
+    meaning: Option<Arc<dyn Embedder>>,
 }
 
 fn text(e: impl std::fmt::Display) -> String {
@@ -116,11 +163,24 @@ impl Keeper {
     /// what is no longer held.
     async fn index(&self, held: &mut Held) -> Result<(), String> {
         let things = State::fold(&held.events).things();
+        self.embed(held, &things).await?;
         let mut seen = HashMap::with_capacity(things.len());
         for thing in &things {
             let words = thing.text();
+            let vector = self
+                .meaning
+                .as_ref()
+                .and_then(|m| held.vectors.get(&of(m.model(), &words)))
+                .map_or_else(|| "NONE".to_string(), |v| written(v));
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            (&words, &thing.marks.project, thing.marks.private, thing.everywhere, thing.marks.at.0)
+            (
+                &words,
+                &thing.marks.project,
+                thing.marks.private,
+                thing.everywhere,
+                thing.marks.at.0,
+                vector.len(),
+            )
                 .hash(&mut hasher);
             let shape = hasher.finish();
             seen.insert(thing.key.clone(), shape);
@@ -128,11 +188,11 @@ impl Keeper {
                 continue;
             }
             self.db
-                .query(
+                .query(format!(
                     "DELETE thing WHERE key = $key; \
-                     CREATE thing CONTENT { key: $key, kind: $kind, text: $text, project: $project, \
-                     private: $private, everywhere: $everywhere, at: <datetime> $at }",
-                )
+                     CREATE thing CONTENT {{ key: $key, kind: $kind, text: $text, project: $project, \
+                     private: $private, everywhere: $everywhere, at: <datetime> $at, vec: {vector} }}"
+                ))
                 .bind(("key", thing.key.clone()))
                 .bind(("kind", thing.kind))
                 .bind(("text", words))
@@ -152,6 +212,68 @@ impl Keeper {
         Ok(())
     }
 
+    /// Compute the vectors of the things that have none yet, and remember them.
+    async fn embed(&self, held: &mut Held, things: &[nahuali_core::Thing]) -> Result<(), String> {
+        let Some(model) = &self.meaning else { return Ok(()) };
+        let mut missing: Vec<String> = things
+            .iter()
+            .map(nahuali_core::Thing::text)
+            .filter(|w| !held.vectors.contains_key(&of(model.model(), w)))
+            .collect();
+        missing.sort();
+        missing.dedup();
+        if missing.is_empty() {
+            return Ok(());
+        }
+        let texts: Vec<&str> = missing.iter().map(String::as_str).collect();
+        let vectors = model.embed_passages(&texts).map_err(text)?;
+        for (words, vector) in missing.iter().zip(vectors) {
+            let key = of(model.model(), words);
+            self.db
+                .query(format!("CREATE vector CONTENT {{ of: $of, v: {} }}", written(&vector)))
+                .bind(("of", key.to_string()))
+                .await
+                .map_err(text)?
+                .check()
+                .map_err(text)?;
+            held.vectors.insert(key, vector);
+        }
+        Ok(())
+    }
+
+    /// The things closest in meaning to what is asked, each with how alike
+    /// it is, down to the line below which nothing is offered.
+    async fn near(&self, request: &Value) -> Result<Vec<Value>, String> {
+        let Some(model) = &self.meaning else { return Ok(Vec::new()) };
+        let asked = request["q"].as_str().unwrap_or_default().trim();
+        if asked.is_empty() {
+            return Ok(Vec::new());
+        }
+        let vector = model.embed_query(asked).map_err(text)?;
+        let line = std::env::var("NAHUALI_NEAR").ok().and_then(|v| v.parse().ok()).unwrap_or(NEAR);
+        let kind = if request["kind"].is_string() { "AND kind = $kind" } else { "" };
+        let query = format!(
+            "SELECT key, vector::similarity::cosine(vec, {}) AS sim FROM thing WHERE vec != NONE AND {} {kind} \
+             ORDER BY sim DESC LIMIT $limit",
+            written(&vector),
+            reach(request["scope"].as_str())
+        );
+        let mut answer = self
+            .db
+            .query(query)
+            .bind(("project", request["project"].as_str().unwrap_or_default().to_string()))
+            .bind(("kind", request["kind"].as_str().unwrap_or_default().to_string()))
+            .bind(("limit", request["limit"].as_u64().unwrap_or(5).min(50)))
+            .await
+            .map_err(text)?;
+        let rows: Vec<Value> = answer.take(0).map_err(text)?;
+        Ok(rows
+            .into_iter()
+            .filter(|row| row["sim"].as_f64().is_some_and(|sim| sim >= line))
+            .map(|row| json!([row["key"], row["sim"]]))
+            .collect())
+    }
+
     async fn lines(&self) -> Result<Vec<String>, String> {
         let mut answer = self.db.query("SELECT VALUE line FROM event ORDER BY id ASC").await.map_err(text)?;
         answer.take(0).map_err(text)
@@ -164,11 +286,7 @@ impl Keeper {
         if words.is_empty() {
             return Ok(Vec::new());
         }
-        let reach = match request["scope"].as_str() {
-            Some("everything") => "true",
-            Some("all") => "(private = false OR project = $project)",
-            _ => "(project = $project OR (everywhere = true AND private = false))",
-        };
+        let reach = reach(request["scope"].as_str());
         let query = format!(
             "SELECT key, search::score(0) AS score, at FROM thing WHERE text @0@ $q AND {reach} \
              ORDER BY score DESC, at DESC LIMIT $limit"
@@ -198,6 +316,10 @@ impl Keeper {
                 None => Err("append takes a line".to_string()),
             },
             Some("search") => self.search(request).await.map(|keys| json!({ "ok": true, "keys": keys })),
+            Some("near") => self
+                .near(request)
+                .await
+                .map(|near| json!({ "ok": true, "near": near, "meaning": self.meaning.is_some() })),
             Some("ping") => Ok(json!({ "ok": true })),
             Some("stop") => {
                 self.leave.notify_one();
@@ -264,9 +386,20 @@ async fn run(home: &Path) -> Result<(), String> {
         spoken: AtomicU64::new(0),
         leave: Notify::new(),
         stamp: remote::stamp(),
+        meaning: meaning(home),
     });
     {
         let mut held = keeper.held.lock().await;
+        let mut kept = keeper.db.query("SELECT of, v FROM vector").await.map_err(text)?;
+        let rows: Vec<Value> = kept.take(0).map_err(text)?;
+        for row in rows {
+            let (Some(of), Some(v)) =
+                (row["of"].as_str().and_then(|s| s.parse::<u64>().ok()), row["v"].as_array())
+            else {
+                continue;
+            };
+            held.vectors.insert(of, v.iter().filter_map(|x| x.as_f64().map(|x| x as f32)).collect());
+        }
         held.events = keeper
             .lines()
             .await?
