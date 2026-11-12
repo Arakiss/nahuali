@@ -572,3 +572,23 @@ fn recall_returns_what_holds_every_word_and_nothing_else() {
         "what was forgotten is not recalled"
     );
 }
+
+#[test]
+fn finished_work_has_nothing_next_unless_it_says_so() {
+    let mut m = mind();
+    m.update(
+        agent(0, "atlas"),
+        WorkSet { next: Some(vec!["open the review".into()]), ..card("importer", "ready") },
+    )
+    .unwrap();
+    let done = m
+        .update(agent(1, "atlas"), WorkSet { status: Some(Status::Done), ..card("importer", "shipped") })
+        .unwrap();
+    assert!(done.next.is_empty());
+    let follow = WorkSet {
+        status: Some(Status::Done),
+        next: Some(vec!["watch the logs for a day".into()]),
+        ..card("importer", "shipped")
+    };
+    assert_eq!(m.update(agent(2, "atlas"), follow).unwrap().next, ["watch the logs for a day"]);
+}

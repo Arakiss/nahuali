@@ -314,6 +314,9 @@ impl State {
                 work.done.extend(set.done.iter().cloned());
                 if let Some(next) = &set.next {
                     work.next = next.clone();
+                } else if set.status == Some(Status::Done) {
+                    // Finished work has nothing next, unless it says so.
+                    work.next.clear();
                 }
                 let private = work.marks.private || event.private;
                 work.marks = Marks { private, ..Marks::of(event) };

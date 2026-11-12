@@ -112,9 +112,15 @@ impl Report<'_> {
         }
         if !works.is_empty() {
             out.push_str("\nWORK\n");
+            // One column for the names, as wide as the longest.
+            let wide = works
+                .iter()
+                .map(|w| self.place(&w.marks).chars().count() + w.slug.chars().count())
+                .max()
+                .unwrap_or(0);
             for work in &works {
-                let name = format!("{}{}", self.place(&work.marks), work.slug);
-                let pad = " ".repeat(name.chars().count() + 4);
+                let name = format!("{:<wide$}", format!("{}{}", self.place(&work.marks), work.slug));
+                let pad = " ".repeat(wide + 4);
                 let standing = match self.state.standing(work) {
                     Standing::Blocked(why) => format!("blocked by {why}"),
                     Standing::Waiting(asks) => format!("waiting on ask:{}", asks.join(", ask:")),

@@ -599,3 +599,13 @@ fn the_database_itself_keeps_reach_and_forgets_what_is_gone() {
     assert_eq!(desk.run(&["recall", "fee", "--keys"]).ok(), "", "what was forgotten is no longer indexed");
     assert_eq!(keys(&[]), 2);
 }
+
+#[test]
+fn the_names_of_the_works_share_one_column() {
+    let desk = Desk::new("column");
+    desk.run(&["update", "a", "--line", "short name"]).ok();
+    desk.run(&["update", "a-much-longer-name", "--line", "long name"]).ok();
+    let status = desk.run(&["status"]).ok();
+    let column = |needle: &str| status.lines().find(|l| l.contains(needle)).unwrap().find("moving").unwrap();
+    assert_eq!(column("short name"), column("long name"), "{status}");
+}
