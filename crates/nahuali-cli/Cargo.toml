@@ -17,7 +17,7 @@ path = "src/main.rs"
 [dependencies]
 chacha20poly1305 = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-getrandom = "0.3"
+getrandom = "0.4"
 nahuali-core = { version = "0.1.0", path = "../nahuali-core" }
 nahuali-embed = { version = "0.1.0", path = "../nahuali-embed" }
 nahuali-tui = { version = "0.1.0", path = "../nahuali-tui" }
