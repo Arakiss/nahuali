@@ -11,7 +11,7 @@ description = "Portable terminal renderer for the Nahuali view model"
 workspace = true
 
 [dependencies]
-base64 = "0.22.1"
+base64 = "0.23.1"
 crossterm = "0.29.0"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 nahuali-view = { version = "0.1.0", path = "../nahuali-view" }
