@@ -1,0 +1,13 @@
+name: Idea
+description: Something Nahuali could do.
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: What goes wrong today
+      description: The situation, before the solution.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What you would want instead

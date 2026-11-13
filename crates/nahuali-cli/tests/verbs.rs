@@ -852,6 +852,10 @@ impl Drop for TeamServer {
 #[test]
 fn a_team_shares_one_memory_and_the_server_keeps_each_to_their_reach() {
     let Some(server) = TeamServer::start() else {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "no `surreal` on PATH, and in CI the team's tests may not be skipped"
+        );
         eprintln!("no `surreal` on PATH: the team's test was skipped");
         return;
     };

@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20or%20Apache%202.0-F6F0E8?style=flat-square&labelColor=1B100C" alt="License: MIT or Apache 2.0"></a>
   <img src="https://img.shields.io/badge/status-being%20built-F7913D?style=flat-square&labelColor=1B100C" alt="Status: being built">
   <img src="https://img.shields.io/badge/runs-on%20your%20machine-F6F0E8?style=flat-square&labelColor=1B100C" alt="Runs on your machine">
   <img src="https://img.shields.io/badge/built%20on-SurrealDB%204-F6F0E8?style=flat-square&labelColor=1B100C" alt="Built on SurrealDB 4">
@@ -345,4 +346,4 @@ In Mesoamerican tradition a nahual is a person's animal double. The axolotl is o
 
 ## License
 
-Not chosen yet. It is chosen on the day this repository is published.
+The code is under either of the [MIT licence](LICENSE-MIT) or the [Apache License 2.0](LICENSE-APACHE), at your option. The name Nahuali and the axolotl are not covered by it: see [`assets/README.md`](assets/README.md). How to report a vulnerability is in [`SECURITY.md`](SECURITY.md), and how to contribute in [`CONTRIBUTING.md`](CONTRIBUTING.md).

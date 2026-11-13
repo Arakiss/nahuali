@@ -3,7 +3,7 @@
 Nahuali is meant to be open source that anyone can host themselves, with a
 hosted service beside it for those who would rather not. This repository is
 the first of the two, so it is kept, from its first commit, as if it were
-already public. Making it public should need a licence file and nothing else.
+already public, which it now is.
 
 ## In here
 
@@ -44,10 +44,9 @@ hosted service's repository when it only exists because there are many.
 
 ## Licence
 
-Not chosen yet, on purpose: it is chosen on the day this repository is
-published. Until then the crates say `LicenseRef-Private`. The working
-assumption is a permissive licence for the code. Whatever it is, it will not
-cover the name Nahuali or the axolotl (see `assets/README.md`).
+The code is under either of the MIT licence (`LICENSE-MIT`) or the Apache
+License 2.0 (`LICENSE-APACHE`), at your option, as is usual for Rust. Neither
+covers the name Nahuali or the axolotl (see `assets/README.md`).
 
 ## How the line is kept
 

@@ -169,6 +169,5 @@ repository and what stays out is in `docs/boundaries.md`.
 
 ## Decided later, on purpose
 
-What a team adds, the licence, and what the hosted service costs. None of
-them changes anything above. How it is stored and how two machines share it
+What the hosted service costs. It changes nothing above. How it is stored and how two machines share it
 were decided when the first part was built, and are in `docs/format.md`.

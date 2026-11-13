@@ -6,7 +6,7 @@ members = ["crates/nahuali-cli", "crates/nahuali-core", "crates/nahuali-embed", 
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.99"
-license = "LicenseRef-Private"
+license = "MIT OR Apache-2.0"
 publish = false
 
 # Dependencies carry no debug information: the database alone would make

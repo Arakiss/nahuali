@@ -1,0 +1,3 @@
+# A vulnerability goes through "Report a vulnerability" in the Security tab
+# (SECURITY.md), which GitHub offers next to these forms.
+blank_issues_enabled: false

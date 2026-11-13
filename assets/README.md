@@ -6,7 +6,7 @@ The axolotl as the program draws it: the sprite sheet of the first version
 the banner at the top of the repository's front page.
 
 The name Nahuali and the axolotl are the project's identity. They are not
-covered by the licence of the code, whatever that licence turns out to be:
+covered by the licence of the code (MIT or Apache 2.0):
 you may run and modify the program with them in place, but not use them for
 a different product or a fork presented as the original.
 

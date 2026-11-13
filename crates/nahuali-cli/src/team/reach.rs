@@ -449,6 +449,10 @@ fn planted(what: &str, from: &str, to: &str) -> String {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_server_keeps_every_rule() {
     let Some(server) = Server::start() else {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "no `surreal` on PATH, and in CI the team's tests may not be skipped"
+        );
         eprintln!("no `surreal` on PATH: the team's rules were not checked");
         return;
     };
@@ -459,6 +463,10 @@ async fn the_server_keeps_every_rule() {
 #[tokio::test(flavor = "multi_thread")]
 async fn each_protection_taken_away_is_missed_by_its_rule_alone() {
     let Some(server) = Server::start() else {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "no `surreal` on PATH, and in CI the team's tests may not be skipped"
+        );
         eprintln!("no `surreal` on PATH: the team's rules were not checked");
         return;
     };
@@ -480,6 +488,10 @@ async fn each_protection_taken_away_is_missed_by_its_rule_alone() {
 #[tokio::test(flavor = "multi_thread")]
 async fn init_again_brings_a_server_to_these_rules() {
     let Some(server) = Server::start() else {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "no `surreal` on PATH, and in CI the team's tests may not be skipped"
+        );
         eprintln!("no `surreal` on PATH: the team's rules were not checked");
         return;
     };
