@@ -1,0 +1,67 @@
+{
+  "tag-prefix": "v",
+  "changelog": "CHANGELOG.md",
+  "header-max": 100,
+  "types": [
+    "feat",
+    "fix",
+    "perf",
+    "security",
+    "revert",
+    "refactor",
+    "docs",
+    "style",
+    "test",
+    "build",
+    "ci",
+    "chore"
+  ],
+  "scopes": [],
+  "pre-1-breaking": "minor",
+  "pre-1-feature": "minor",
+  "release-types": [
+    "fix",
+    "perf",
+    "security",
+    "revert"
+  ],
+  "sections": [
+    {
+      "types": [
+        "feat"
+      ],
+      "title": "Added"
+    },
+    {
+      "types": [
+        "fix"
+      ],
+      "title": "Fixed"
+    },
+    {
+      "types": [
+        "perf"
+      ],
+      "title": "Performance"
+    },
+    {
+      "types": [
+        "security"
+      ],
+      "title": "Security"
+    },
+    {
+      "types": [
+        "revert"
+      ],
+      "title": "Reverted"
+    }
+  ],
+  "files": [
+    {
+      "kind": "cargo",
+      "path": "Cargo.toml"
+    }
+  ],
+  "since": "5175914"
+}

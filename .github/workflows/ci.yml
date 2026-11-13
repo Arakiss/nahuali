@@ -17,6 +17,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Tags and history, for the release check and the commit lint.
+          fetch-depth: 0
+      - run: ops/release check
+      - name: Commit messages and title are conventional commits
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.base_ref }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          ops/release lint "origin/${BASE}..HEAD"
+          printf '%s\n' "$TITLE" > "$RUNNER_TEMP/title"
+          ops/release lint --message "$RUNNER_TEMP/title"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy

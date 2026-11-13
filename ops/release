@@ -1,0 +1,890 @@
+#!/usr/bin/env python3
+"""release: semantic versions and a changelog from Conventional Commits.
+
+One file, Python 3.9+ standard library only, so it can be copied into any
+repository (`release init` puts it in ops/release) and run by hooks and CI
+with nothing installed.
+
+  release init [--dry-run] [--force]   write .release.json, CHANGELOG.md, ops/release
+  release lint --message FILE          check one commit message (commit-msg hook)
+  release lint [RANGE]                 check every commit in RANGE (default: since the last tag)
+  release plan [--pre ID] [--as X.Y.Z] [--json]
+                                       the next version, why, and draft notes
+  release cut [--notes FILE] [--pre ID] [--as X.Y.Z]
+                                       bump, write the changelog, commit and tag, locally
+  release check                        tags, manifests and changelog agree
+  release publish [TAG]                create the GitHub release of a pushed tag (gh)
+  release hooks [--force]              install the commit-msg hook
+  release version                      the version this file carries
+
+Nothing here pushes. `cut` stops at a local commit and tag; pushing and
+`publish` are left to the person, after they have read the notes.
+"""
+
+import fnmatch
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from datetime import date
+
+TOOL_VERSION = "0.1.0"
+CONFIG = ".release.json"
+
+DEFAULT_TYPES = ["feat", "fix", "perf", "security", "revert", "refactor", "docs", "style",
+                 "test", "build", "ci", "chore"]
+DEFAULT_SECTIONS = [
+    {"types": ["feat"], "title": "Added"},
+    {"types": ["fix"], "title": "Fixed"},
+    {"types": ["perf"], "title": "Performance"},
+    {"types": ["security"], "title": "Security"},
+    {"types": ["revert"], "title": "Reverted"},
+]
+HEADER = re.compile(
+    r"^(?P<type>[a-z]+)(?:\((?P<scope>[^()\s]+)\))?(?P<bang>!)?: (?P<subject>\S.*)$")
+SEMVER = re.compile(
+    r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)"
+    r"(?:-(?P<pre>[0-9A-Za-z.-]+))?$")
+BREAKING_FOOTER = re.compile(r"^BREAKING[ -]CHANGE: ", re.M)
+RELEASE_SUBJECT = re.compile(r"^chore\(release\): ")
+
+
+class Refused(Exception):
+    """Something the person has to fix; said plainly, exit 1."""
+
+
+# ---------------------------------------------------------------- utilities
+
+def git(*args, check=True, cwd=None):
+    out = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    if check and out.returncode != 0:
+        raise Refused("git %s: %s" % (" ".join(args), out.stderr.strip() or out.stdout.strip()))
+    return out.stdout
+
+
+def root():
+    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    if out.returncode != 0:
+        raise Refused("not inside a git repository")
+    return out.stdout.strip()
+
+
+def read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def write(path, text):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def say(*lines):
+    for line in lines:
+        print(line)
+
+
+# ------------------------------------------------------------------ versions
+
+class Version:
+    def __init__(self, major, minor, patch, pre=None):
+        self.major, self.minor, self.patch, self.pre = major, minor, patch, pre
+
+    @classmethod
+    def parse(cls, text):
+        m = SEMVER.match(text.strip())
+        if not m:
+            raise Refused("`%s` is not a semantic version (X.Y.Z or X.Y.Z-pre)" % text)
+        return cls(int(m["major"]), int(m["minor"]), int(m["patch"]), m["pre"])
+
+    def base(self):
+        return Version(self.major, self.minor, self.patch)
+
+    def key(self):
+        # A pre-release sorts before its release; identifiers compare as SemVer says.
+        pre = ()
+        if self.pre is not None:
+            pre = tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in self.pre.split("."))
+        return (self.major, self.minor, self.patch, 0 if self.pre is not None else 1, pre)
+
+    def __lt__(self, other):
+        return self.key() < other.key()
+
+    def __eq__(self, other):
+        return isinstance(other, Version) and self.key() == other.key()
+
+    def __str__(self):
+        core = "%d.%d.%d" % (self.major, self.minor, self.patch)
+        return core + ("-" + self.pre if self.pre else "")
+
+
+def bumped(current, level):
+    if level == "major":
+        return Version(current.major + 1, 0, 0)
+    if level == "minor":
+        return Version(current.major, current.minor + 1, 0)
+    return Version(current.major, current.minor, current.patch + 1)
+
+
+def next_version(current, stable, level, pre, config):
+    """The version after `current` for a change of `level`, optionally a
+    pre-release `pre`. `stable` is the last release that was not a
+    pre-release, or None."""
+    reference = stable if current.pre is not None else current
+    if (reference or current).major == 0:
+        if level == "major":
+            level = config.get("pre-1-breaking", "minor")
+        elif level == "minor":
+            level = config.get("pre-1-feature", "minor")
+    if current.pre is None:
+        target = bumped(current, level)
+        return Version(target.major, target.minor, target.patch, pre + ".1" if pre else None)
+    # On the way to current.base(): it holds the change unless the change
+    # asks for more than the step from the last stable release to it.
+    target = current.base()
+    if stable is not None:
+        needed = bumped(stable, level)
+        if target < needed:
+            target = needed
+    if pre is None:
+        return target
+    if target == current.base():
+        return Version(target.major, target.minor, target.patch, bump_pre(current.pre, pre))
+    return Version(target.major, target.minor, target.patch, pre + ".1")
+
+
+def bump_pre(current_pre, wanted):
+    parts = current_pre.split(".")
+    if parts[0] == wanted and len(parts) == 2 and parts[1].isdigit():
+        return "%s.%d" % (wanted, int(parts[1]) + 1)
+    return wanted + ".1"
+
+
+# ---------------------------------------------------------------- commits
+
+def parse_commit(sha, subject, body):
+    m = HEADER.match(subject)
+    if not m:
+        return {"sha": sha, "subject": subject, "body": body, "type": None}
+    return {
+        "sha": sha, "subject": subject, "body": body,
+        "type": m["type"], "scope": m["scope"], "text": m["subject"],
+        "breaking": bool(m["bang"]) or bool(BREAKING_FOOTER.search(body)),
+    }
+
+
+def commits(rev_range):
+    out = git("log", "--no-merges", "--format=%H%x1f%s%x1f%b%x1e", rev_range)
+    found = []
+    for record in out.split("\x1e"):
+        record = record.strip("\n")
+        if not record:
+            continue
+        sha, subject, body = (record.split("\x1f") + ["", ""])[:3]
+        if RELEASE_SUBJECT.match(subject):
+            continue
+        found.append(parse_commit(sha, subject, body))
+    return found
+
+
+def lint_message(text, config):
+    """Problems with one commit message, as sentences; empty when it is fine."""
+    lines = [l for l in text.splitlines() if not l.startswith("#")]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if not lines:
+        return ["the message is empty"]
+    header = lines[0]
+    if header.startswith(("Merge ", "Revert \"", "fixup! ", "squash! ", "amend! ")):
+        return []
+    m = HEADER.match(header)
+    if not m:
+        return ["the first line is not `type(scope): subject`, as in `fix(cli): keep the exit code`"]
+    problems = []
+    types = config.get("types", DEFAULT_TYPES)
+    if m["type"] not in types:
+        problems.append("`%s` is not a type here; use one of: %s" % (m["type"], ", ".join(types)))
+    scopes = config.get("scopes") or []
+    if m["scope"] and scopes and m["scope"] not in scopes:
+        problems.append("`%s` is not a scope here; use one of: %s" % (m["scope"], ", ".join(scopes)))
+    if m["subject"].endswith("."):
+        problems.append("the subject ends with a full stop")
+    limit = config.get("header-max", 100)
+    if len(header) > limit:
+        problems.append("the first line is %d characters; at most %d" % (len(header), limit))
+    if len(lines) > 1 and lines[1].strip():
+        problems.append("the second line must be blank, between the subject and the body")
+    return problems
+
+
+# ----------------------------------------------------------------- config
+
+def load_config(repo):
+    path = os.path.join(repo, CONFIG)
+    if not os.path.exists(path):
+        raise Refused("%s is missing: run `release init` first" % CONFIG)
+    try:
+        config = json.loads(read(path))
+    except ValueError as e:
+        raise Refused("%s is not valid JSON: %s" % (CONFIG, e))
+    for adapter in config.get("files", []):
+        if adapter.get("kind") not in ADAPTERS:
+            raise Refused("%s: `%s` is not a kind of file it knows (%s)"
+                          % (CONFIG, adapter.get("kind"), ", ".join(sorted(ADAPTERS))))
+    return config
+
+
+def tags(config):
+    prefix = config.get("tag-prefix", "v")
+    found = []
+    for tag in git("tag", "--list", prefix + "*", "--merged", "HEAD").split():
+        try:
+            found.append((Version.parse(tag[len(prefix):]), tag))
+        except Refused:
+            continue
+    return sorted(found, key=lambda pair: pair[0].key())
+
+
+def all_tags(config):
+    prefix = config.get("tag-prefix", "v")
+    found = []
+    for tag in git("tag", "--list", prefix + "*").split():
+        try:
+            found.append((Version.parse(tag[len(prefix):]), tag))
+        except Refused:
+            continue
+    return sorted(found, key=lambda pair: pair[0].key())
+
+
+# --------------------------------------------------------------- adapters
+#
+# Each kind of file says what version it holds and how to set it, and edits
+# only the lines that carry the version, so formatting and comments stay.
+
+def toml_tables(text):
+    """[(name, start, end)] of each table in a TOML text, by line offsets."""
+    spans, name, start = [], "", 0
+    lines = text.splitlines(keepends=True)
+    offset = 0
+    for line in lines:
+        m = re.match(r"^\s*\[\[?([^\]]+)\]\]?\s*(#.*)?$", line)
+        if m:
+            spans.append((name, start, offset))
+            name, start = m.group(1).strip(), offset
+        offset += len(line)
+    spans.append((name, start, offset))
+    return spans
+
+
+def toml_get(text, table, key):
+    for name, start, end in toml_tables(text):
+        if name == table:
+            m = re.search(r'^\s*%s\s*=\s*"([^"]*)"' % re.escape(key), text[start:end], re.M)
+            if m:
+                return m.group(1)
+    return None
+
+
+def toml_set(text, table, key, value):
+    for name, start, end in toml_tables(text):
+        if name == table:
+            part = text[start:end]
+            new, n = re.subn(r'^(\s*%s\s*=\s*")[^"]*(")' % re.escape(key),
+                             lambda m: m.group(1) + value + m.group(2), part, count=1, flags=re.M)
+            if n:
+                return text[:start] + new + text[end:]
+    raise Refused("no `%s` in [%s]" % (key, table))
+
+
+class Cargo:
+    """A Cargo package or workspace: [workspace.package], each member's
+    [package], the versions of path dependencies on members, and Cargo.lock."""
+
+    def __init__(self, repo, spec):
+        self.repo, self.path = repo, os.path.join(repo, spec.get("path", "Cargo.toml"))
+
+    def members(self):
+        text = read(self.path)
+        found = [self.path] if toml_get(text, "package", "name") else []
+        m = re.search(r"^\s*members\s*=\s*\[(.*?)\]", text, re.M | re.S)
+        if m:
+            base = os.path.dirname(self.path)
+            for pattern in re.findall(r'"([^"]+)"', m.group(1)):
+                for d in sorted(glob.glob(os.path.join(base, pattern))):
+                    if os.path.exists(os.path.join(d, "Cargo.toml")):
+                        found.append(os.path.join(d, "Cargo.toml"))
+        return found
+
+    def names(self):
+        return [toml_get(read(p), "package", "name") for p in self.members()]
+
+    def versions(self):
+        held = []
+        root_text = read(self.path)
+        shared = toml_get(root_text, "workspace.package", "version")
+        if shared:
+            held.append(("Cargo.toml [workspace.package]", shared))
+        for p in self.members():
+            v = toml_get(read(p), "package", "version")
+            if v:
+                held.append((os.path.relpath(p, self.repo), v))
+        return held
+
+    def set(self, version):
+        changed = set()
+        text = read(self.path)
+        if toml_get(text, "workspace.package", "version"):
+            write(self.path, toml_set(text, "workspace.package", "version", version))
+            changed.add(self.path)
+        names = self.names()
+        for p in self.members():
+            text = read(p)
+            if toml_get(text, "package", "version"):
+                text = toml_set(text, "package", "version", version)
+            for name in names:
+                # `name = { version = "x", path = "…" }`: only path dependencies on members.
+                pattern = r'^(\s*%s\s*=\s*\{[^}\n]*?\bversion\s*=\s*")[^"]*("[^}\n]*\})' % re.escape(name)
+                text = re.sub(pattern, lambda m: m.group(1) + version + m.group(2)
+                              if "path" in m.group(0) else m.group(0), text, flags=re.M)
+            if text != read(p):
+                write(p, text)
+                changed.add(p)
+        root_text = read(self.path)
+        for name in names:
+            pattern = r'^(\s*%s\s*=\s*\{[^}\n]*?\bversion\s*=\s*")[^"]*("[^}\n]*\})' % re.escape(name)
+            root_text = re.sub(pattern, lambda m: m.group(1) + version + m.group(2)
+                               if "path" in m.group(0) else m.group(0), root_text, flags=re.M)
+        if root_text != read(self.path):
+            write(self.path, root_text)
+            changed.add(self.path)
+        lock = os.path.join(os.path.dirname(self.path), "Cargo.lock")
+        if os.path.exists(lock):
+            text = read(lock)
+            for name in names:
+                # A member's entry has no `source` line: crates from a registry keep theirs.
+                pattern = r'(\[\[package\]\]\nname = "%s"\nversion = ")[^"]*("\n(?!source))' % re.escape(name)
+                text = re.sub(pattern, lambda m: m.group(1) + version + m.group(2), text)
+            if text != read(lock):
+                write(lock, text)
+                changed.add(lock)
+        return sorted(changed)
+
+
+class Npm:
+    """package.json, and package-lock.json beside it when there is one."""
+
+    def __init__(self, repo, spec):
+        self.repo, self.path = repo, os.path.join(repo, spec.get("path", "package.json"))
+
+    def versions(self):
+        return [(os.path.relpath(self.path, self.repo), json.loads(read(self.path)).get("version"))]
+
+    def set(self, version):
+        text = read(self.path)
+        new, n = re.subn(r'^(\s*"version"\s*:\s*")[^"]*(")', lambda m: m.group(1) + version + m.group(2),
+                         text, count=1, flags=re.M)
+        if not n:
+            raise Refused("%s has no version" % self.path)
+        write(self.path, new)
+        changed = [self.path]
+        lock = os.path.join(os.path.dirname(self.path), "package-lock.json")
+        if os.path.exists(lock):
+            data = json.loads(read(lock))
+            data["version"] = version
+            if "" in data.get("packages", {}):
+                data["packages"][""]["version"] = version
+            write(lock, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+            changed.append(lock)
+        return changed
+
+
+class Pyproject:
+    """pyproject.toml: [project] version, or [tool.poetry] version."""
+
+    def __init__(self, repo, spec):
+        self.repo, self.path = repo, os.path.join(repo, spec.get("path", "pyproject.toml"))
+
+    def table(self):
+        text = read(self.path)
+        for table in ("project", "tool.poetry"):
+            if toml_get(text, table, "version"):
+                return table
+        raise Refused("%s has no static version in [project] or [tool.poetry]" % self.path)
+
+    def versions(self):
+        return [(os.path.relpath(self.path, self.repo), toml_get(read(self.path), self.table(), "version"))]
+
+    def set(self, version):
+        write(self.path, toml_set(read(self.path), self.table(), "version", version))
+        return [self.path]
+
+
+class VersionFile:
+    """A file that holds the version and nothing else."""
+
+    def __init__(self, repo, spec):
+        self.repo, self.path = repo, os.path.join(repo, spec.get("path", "VERSION"))
+
+    def versions(self):
+        return [(os.path.relpath(self.path, self.repo), read(self.path).strip())]
+
+    def set(self, version):
+        write(self.path, version + "\n")
+        return [self.path]
+
+
+class Pattern:
+    """Any file: the first group of `find`, a regular expression, is the version."""
+
+    def __init__(self, repo, spec):
+        self.repo, self.path, self.find = repo, os.path.join(repo, spec["path"]), spec["find"]
+
+    def versions(self):
+        m = re.search(self.find, read(self.path), re.M)
+        if not m:
+            raise Refused("%s: `%s` finds nothing" % (self.path, self.find))
+        return [(os.path.relpath(self.path, self.repo), m.group(1))]
+
+    def set(self, version):
+        text = read(self.path)
+        m = re.search(self.find, text, re.M)
+        if not m:
+            raise Refused("%s: `%s` finds nothing" % (self.path, self.find))
+        write(self.path, text[:m.start(1)] + version + text[m.end(1):])
+        return [self.path]
+
+
+ADAPTERS = {"cargo": Cargo, "npm": Npm, "pyproject": Pyproject, "version-file": VersionFile,
+            "pattern": Pattern}
+
+
+def adapters(repo, config):
+    return [ADAPTERS[spec["kind"]](repo, spec) for spec in config.get("files", [])]
+
+
+def held_versions(repo, config):
+    held = []
+    for a in adapters(repo, config):
+        held.extend(a.versions())
+    return held
+
+
+def manifest_version(repo, config):
+    held = held_versions(repo, config)
+    distinct = sorted(set(v for _, v in held))
+    if len(distinct) > 1:
+        raise Refused("the files disagree on the version:\n" +
+                      "\n".join("  %s: %s" % pair for pair in held))
+    return Version.parse(distinct[0]) if distinct else None
+
+
+# -------------------------------------------------------------- changelog
+
+INTRO = """# Changelog
+
+All notable changes to this project are written here. The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
+adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+"""
+
+
+def changelog_path(repo, config):
+    return os.path.join(repo, config.get("changelog", "CHANGELOG.md"))
+
+
+def released_headings(text):
+    """Versions of the `## [X.Y.Z]` headings, top first."""
+    found = []
+    for m in re.finditer(r"^## \[?v?([0-9][^\]\s]*)\]?(?:\s|$)", text, re.M):
+        try:
+            found.append(Version.parse(m.group(1)))
+        except Refused:
+            continue
+    return found
+
+
+def unreleased(text):
+    m = re.search(r"^## \[Unreleased\][^\n]*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    if not m:
+        return ""
+    body = re.sub(r"^\[[^\]]+\]: .*$", "", m.group(1), flags=re.M)
+    return body.strip()
+
+
+def section_of(text, version):
+    m = re.search(r"^## \[?v?%s\]?[^\n]*\n(.*?)(?=^## |^\[[^\]]+\]: |\Z)" % re.escape(str(version)),
+                  text, re.M | re.S)
+    return m.group(1).strip() if m else None
+
+
+def draft(found, config):
+    """Notes from the commits: breaking changes first, then the configured sections."""
+    out = []
+    breaking = [c for c in found if c.get("breaking")]
+    if breaking:
+        out.append("### Breaking changes\n")
+        for c in breaking:
+            note = BREAKING_FOOTER.split(c["body"], 1)
+            detail = note[1].strip().splitlines()[0] if len(note) > 1 and note[1].strip() else c["text"]
+            out.append("- %s%s" % (scope_mark(c), detail))
+        out.append("")
+    for section in config.get("sections", DEFAULT_SECTIONS):
+        items = [c for c in found if c.get("type") in section["types"] and not c.get("breaking")]
+        if items:
+            out.append("### %s\n" % section["title"])
+            out.extend("- %s%s" % (scope_mark(c), c["text"]) for c in items)
+            out.append("")
+    return "\n".join(out).strip()
+
+
+def scope_mark(c):
+    return "**%s:** " % c["scope"] if c.get("scope") else ""
+
+
+def write_release(repo, config, version, notes):
+    path = changelog_path(repo, config)
+    text = read(path) if os.path.exists(path) else INTRO
+    heading = "## [%s] - %s\n\n%s\n" % (version, date.today().isoformat(), notes.strip())
+    m = re.search(r"^## \[Unreleased\][^\n]*\n", text, re.M)
+    if m:
+        # What was gathered under Unreleased is what is released: start it again empty.
+        rest = text[m.end():]
+        n = re.search(r"^## |^\[[^\]]+\]: ", rest, re.M)
+        tail = rest[n.start():] if n else ""
+        text = text[:m.end()] + "\n" + heading + ("\n" + tail if tail else "")
+    else:
+        n = re.search(r"^## ", text, re.M)
+        at = n.start() if n else len(text)
+        text = text[:at].rstrip("\n") + "\n\n" + heading + ("\n" + text[at:] if n else "")
+    write(path, text.rstrip("\n") + "\n")
+    return path
+
+
+# ---------------------------------------------------------------- commands
+
+def cmd_lint(args, config):
+    if "--message" in args:
+        path = args[args.index("--message") + 1]
+        problems = lint_message(read(path), config)
+        for p in problems:
+            print("commit message: " + p, file=sys.stderr)
+        if problems:
+            print("  see https://www.conventionalcommits.org/en/v1.0.0/", file=sys.stderr)
+        return 1 if problems else 0
+    rest = [a for a in args if not a.startswith("--")]
+    if rest:
+        rev_range = rest[0]
+    else:
+        last = tags(config)
+        rev_range = "%s..HEAD" % last[-1][1] if last else "HEAD"
+        if not last and config.get("since"):
+            rev_range = "%s..HEAD" % config["since"]
+    bad = 0
+    for c in commits(rev_range):
+        problems = lint_message(c["subject"] + ("\n\n" + c["body"] if c["body"].strip() else ""), config)
+        for p in problems:
+            bad += 1
+            print("%s %s: %s" % (c["sha"][:7], c["subject"][:60], p), file=sys.stderr)
+    if not bad:
+        say("every commit in %s is a conventional commit" % rev_range)
+    return 1 if bad else 0
+
+
+def planned(repo, config, args):
+    pre = args[args.index("--pre") + 1] if "--pre" in args else None
+    wanted = args[args.index("--as") + 1] if "--as" in args else None
+    last = tags(config)
+    held = manifest_version(repo, config)
+    if last:
+        current, base = last[-1][0], last[-1][1]
+    else:
+        current, base = held, config.get("since")
+    rev_range = "%s..HEAD" % base if base else "HEAD"
+    found = commits(rev_range)
+    unclassified = [c for c in found if c["type"] is None]
+    classified = [c for c in found if c["type"]]
+    level = None
+    if any(c["breaking"] for c in classified):
+        level = "major"
+    elif any(c["type"] == "feat" for c in classified):
+        level = "minor"
+    elif any(c["type"] in config.get("release-types", ["fix", "perf", "security", "revert"])
+             for c in classified):
+        level = "patch"
+    if wanted:
+        version = Version.parse(wanted)
+        why = "asked for"
+    elif not last:
+        if current is None:
+            raise Refused("no tag and no version in the files: say the first one with --as 0.1.0")
+        version = current if pre is None else Version(current.major, current.minor, current.patch,
+                                                      pre + ".1")
+        why = "the first release, at the version the files hold"
+    elif level is None:
+        version, why = None, "nothing since %s changes what a user gets (only %s)" % (
+            base, ", ".join(sorted(set(c["type"] for c in classified))) or "no commits")
+    else:
+        stable = [v for v, _ in last if v.pre is None]
+        version = next_version(current, stable[-1] if stable else None, level, pre, config)
+        why = "a %s change since %s" % (level, base)
+    if version is not None and last and not (last[-1][0] < version):
+        raise Refused("%s is not after %s" % (version, last[-1][0]))
+    if version is not None:
+        taken = [t for v, t in all_tags(config) if v == version]
+        if taken:
+            raise Refused("%s is already tagged (%s)" % (version, taken[0]))
+    text = read(changelog_path(repo, config)) if os.path.exists(changelog_path(repo, config)) else ""
+    return {
+        "current": str(current) if current else None, "version": str(version) if version else None,
+        "tag": config.get("tag-prefix", "v") + str(version) if version else None,
+        "why": why, "range": rev_range, "level": level,
+        "prerelease": bool(version and version.pre),
+        "commits": len(found), "unclassified": [c["sha"][:7] + " " + c["subject"] for c in unclassified],
+        "unreleased": unreleased(text), "draft": draft(classified, config),
+    }
+
+
+def cmd_plan(args, config, repo):
+    plan = planned(repo, config, args)
+    if "--json" in args:
+        print(json.dumps(plan, indent=2, ensure_ascii=False))
+        return 0
+    if plan["version"] is None:
+        say("no release: " + plan["why"])
+        return 0
+    say("next: %s (%s), from %s" % (plan["tag"], plan["why"], plan["current"]),
+        "%d commit(s) in %s" % (plan["commits"], plan["range"]))
+    if plan["unclassified"]:
+        say("", "%d commit(s) are not conventional and are not in the draft:" % len(plan["unclassified"]))
+        say(*("  " + c for c in plan["unclassified"][:20]))
+    if plan["unreleased"]:
+        say("", "The changelog's Unreleased section will be the notes:", "", plan["unreleased"])
+    else:
+        say("", "Draft notes (write them for a reader before `cut`, with --notes FILE):", "",
+            plan["draft"] or "(nothing to say from the commits)")
+    return 0
+
+
+def clean_tree():
+    if git("status", "--porcelain").strip():
+        raise Refused("the working tree has changes: commit or stash them first")
+
+
+def cmd_cut(args, config, repo):
+    clean_tree()
+    plan = planned(repo, config, args)
+    if plan["version"] is None:
+        raise Refused("no release: " + plan["why"])
+    if "--notes" in args:
+        notes = read(args[args.index("--notes") + 1]).strip()
+    elif plan["unreleased"]:
+        notes = plan["unreleased"]
+    elif plan["unclassified"]:
+        raise Refused("%d commit(s) are not conventional, so the draft would leave them out: "
+                      "write the notes and pass --notes FILE" % len(plan["unclassified"]))
+    else:
+        notes = plan["draft"]
+    if not notes:
+        raise Refused("there are no notes to release with: pass --notes FILE")
+    version, tag = plan["version"], plan["tag"]
+    changed = []
+    for a in adapters(repo, config):
+        changed.extend(a.set(version))
+    changed.append(write_release(repo, config, version, notes))
+    git("add", "--", *sorted(set(changed)))
+    git("commit", "-q", "-m", "chore(release): %s" % tag)
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".md") as f:
+        f.write("%s\n\n%s\n" % (tag, notes))
+    try:
+        git("tag", "-a", tag, "-F", f.name)
+    finally:
+        os.unlink(f.name)
+    say("%s is cut here: one commit and an annotated tag, nothing pushed." % tag,
+        "", "Read it with:  git show %s" % tag,
+        "Undo it with:  git tag -d %s && git reset --hard HEAD~1" % tag,
+        "Publish it:    git push --follow-tags && release publish %s" % tag)
+    return 0
+
+
+def cmd_check(args, config, repo):
+    problems = []
+    try:
+        held = manifest_version(repo, config)
+    except Refused as e:
+        problems.append(str(e))
+        held = None
+    last = tags(config)
+    path = changelog_path(repo, config)
+    headings = released_headings(read(path)) if os.path.exists(path) else []
+    if last:
+        version, tag = last[-1]
+        if held is not None and held != version:
+            problems.append("the files hold %s, and the last tag is %s" % (held, tag))
+        if not headings:
+            problems.append("%s has no section for %s" % (os.path.relpath(path, repo), tag))
+        elif headings[0] != version:
+            problems.append("the changelog's latest section is %s, and the last tag is %s"
+                            % (headings[0], tag))
+        if git("cat-file", "-t", tag).strip() != "tag":
+            problems.append("%s is a lightweight tag; releases are annotated (`git tag -a`)" % tag)
+    elif headings:
+        problems.append("the changelog has a section for %s, and there is no tag" % headings[0])
+    for p in problems:
+        print("release check: " + p, file=sys.stderr)
+    if not problems:
+        where = last[-1][1] if last else "no release yet"
+        say("release check: the tags, the files and the changelog agree (%s)" % where)
+    return 1 if problems else 0
+
+
+def cmd_publish(args, config, repo):
+    last = tags(config)
+    rest = [a for a in args if not a.startswith("--")]
+    tag = rest[0] if rest else (last[-1][1] if last else None)
+    if not tag:
+        raise Refused("there is no tag to publish")
+    prefix = config.get("tag-prefix", "v")
+    version = Version.parse(tag[len(prefix):])
+    remote = subprocess.run(["git", "ls-remote", "--tags", "origin", "refs/tags/" + tag],
+                            capture_output=True, text=True).stdout.strip()
+    if not remote:
+        raise Refused("%s is not on origin: `git push --follow-tags` first" % tag)
+    notes = section_of(read(changelog_path(repo, config)), version)
+    if not notes:
+        raise Refused("the changelog has no section for %s" % version)
+    if not shutil.which("gh"):
+        raise Refused("publishing needs the GitHub CLI, `gh`")
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".md") as f:
+        f.write(notes + "\n")
+    try:
+        cmd = ["gh", "release", "create", tag, "--verify-tag", "--title", tag, "--notes-file", f.name]
+        if version.pre:
+            cmd.append("--prerelease")
+        out = subprocess.run(cmd, capture_output=True, text=True)
+    finally:
+        os.unlink(f.name)
+    if out.returncode != 0:
+        raise Refused("gh: " + (out.stderr.strip() or out.stdout.strip()))
+    say(out.stdout.strip())
+    return 0
+
+
+HOOK = """#!/bin/sh
+# Installed by `release hooks`: every commit message is a conventional commit.
+exec "$(git rev-parse --show-toplevel)/ops/release" lint --message "$1"
+"""
+
+
+def cmd_hooks(args, repo):
+    hooks = git("rev-parse", "--git-path", "hooks").strip()
+    hooks = hooks if os.path.isabs(hooks) else os.path.join(repo, hooks)
+    os.makedirs(hooks, exist_ok=True)
+    path = os.path.join(hooks, "commit-msg")
+    if os.path.exists(path) and read(path) != HOOK and "--force" not in args:
+        raise Refused("%s already exists and is not this one: add this line to it, or --force\n"
+                      '  "$(git rev-parse --show-toplevel)/ops/release" lint --message "$1" || exit 1'
+                      % path)
+    write(path, HOOK)
+    os.chmod(path, 0o755)
+    say("commit-msg hook installed: %s" % path)
+    return 0
+
+
+def detect(repo):
+    files = []
+    if os.path.exists(os.path.join(repo, "Cargo.toml")):
+        files.append({"kind": "cargo", "path": "Cargo.toml"})
+    if os.path.exists(os.path.join(repo, "package.json")):
+        data = json.loads(read(os.path.join(repo, "package.json")))
+        if "version" in data:
+            files.append({"kind": "npm", "path": "package.json"})
+    if os.path.exists(os.path.join(repo, "pyproject.toml")):
+        files.append({"kind": "pyproject", "path": "pyproject.toml"})
+    if not files and os.path.exists(os.path.join(repo, "VERSION")):
+        files.append({"kind": "version-file", "path": "VERSION"})
+    return files
+
+
+def cmd_init(args, repo):
+    dry = "--dry-run" in args
+    force = "--force" in args
+    plans = []
+    config_path = os.path.join(repo, CONFIG)
+    files = detect(repo)
+    config = {
+        "tag-prefix": "v",
+        "changelog": "CHANGELOG.md",
+        "header-max": 100,
+        "types": DEFAULT_TYPES,
+        "scopes": [],
+        "pre-1-breaking": "minor",
+        "pre-1-feature": "minor",
+        "release-types": ["fix", "perf", "security", "revert"],
+        "sections": DEFAULT_SECTIONS,
+        "files": files,
+    }
+    if not tags(config):
+        head = git("rev-parse", "--short", "HEAD", check=False).strip()
+        if head and git("log", "--format=%s", "-1", check=False).strip():
+            # History before adopting is not conventional: start counting here.
+            config["since"] = head
+    if not os.path.exists(config_path) or force:
+        plans.append((config_path, json.dumps(config, indent=2) + "\n"))
+    path = os.path.join(repo, "CHANGELOG.md")
+    if not os.path.exists(path):
+        plans.append((path, INTRO))
+    vendored = os.path.join(repo, "ops", "release")
+    plans.append((vendored, read(os.path.abspath(__file__))))
+    for path, _ in plans:
+        say("%s %s" % ("would write" if dry else "writing", os.path.relpath(path, repo)))
+    if not files:
+        say("no Cargo.toml, package.json, pyproject.toml or VERSION here: add the files that hold the "
+            "version to `files` in %s" % CONFIG)
+    if dry:
+        return 0
+    for path, text in plans:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        write(path, text)
+    os.chmod(vendored, 0o755)
+    say("", "next: `ops/release hooks` for the commit-msg hook, and in CI:",
+        "  ops/release check",
+        "  ops/release lint origin/${{ github.base_ref }}..HEAD   # on pull requests")
+    return 0
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__.strip())
+        return 0
+    command, args = argv[0], argv[1:]
+    try:
+        if command == "version":
+            say(TOOL_VERSION)
+            return 0
+        repo = root()
+        if command == "init":
+            return cmd_init(args, repo)
+        if command == "hooks":
+            return cmd_hooks(args, repo)
+        if command == "lint" and "--message" in args and not os.path.exists(os.path.join(repo, CONFIG)):
+            return cmd_lint(args, {})
+        config = load_config(repo)
+        handlers = {"lint": lambda: cmd_lint(args, config), "plan": lambda: cmd_plan(args, config, repo),
+                    "cut": lambda: cmd_cut(args, config, repo), "check": lambda: cmd_check(args, config, repo),
+                    "publish": lambda: cmd_publish(args, config, repo)}
+        if command not in handlers:
+            raise Refused("`%s` is not a command: init, lint, plan, cut, check, publish, hooks" % command)
+        return handlers[command]()
+    except Refused as e:
+        print("release: %s" % e, file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
