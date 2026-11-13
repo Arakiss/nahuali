@@ -207,6 +207,18 @@ The server keeps each person to their reach, with its own permissions:
 | write an event only as themselves | `FOR create WHERE person = $auth.name` |
 | change or delete nothing | `FOR update, delete NONE` |
 | read no other member's record | `person` is readable only by its own member |
+| add, change or remove no member, and sign nobody up | `person` has no other permission, and `member` only signs in |
+
+`nahuali team init` defines these with `OVERWRITE`, so running it again on a
+server that holds other rules, from an older build or set by hand, leaves it
+holding these. What was written stays, and whoever was signed in stays
+signed in.
+
+`team::reach`, in `nahuali-cli`, tries every way a client can reach an event
+or a member (200 cases, as each member and as a connection that never signed
+in) against a throwaway server, and compares what the server then holds with
+the rules written out again by hand. Nine plants each take one protection
+away, or one allowance, and each must be missed by its own rule and no other.
 
 So what is only one person's is never sent to another's machine, and a
 copy of Nahuali that was changed cannot write as someone else. The server

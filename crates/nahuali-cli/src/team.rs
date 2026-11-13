@@ -28,6 +28,9 @@ use surrealdb::opt::auth::{Record, Root};
 use crate::remote::Remote;
 use crate::{Failure, env, parse, usage, words};
 
+#[cfg(test)]
+mod reach;
+
 pub const NAMESPACE: &str = "nahuali";
 pub const DATABASE: &str = "memory";
 const ACCESS: &str = "member";
@@ -36,19 +39,19 @@ const ACCESS: &str = "member";
 /// events that are shared and those that are only theirs; writes only in
 /// their own name; and changes or deletes nothing.
 const SCHEMA: &str = "
-DEFINE TABLE IF NOT EXISTS person SCHEMAFULL PERMISSIONS FOR select WHERE id = $auth.id;
-DEFINE FIELD IF NOT EXISTS name ON person TYPE string;
-DEFINE FIELD IF NOT EXISTS pass ON person TYPE string;
-DEFINE INDEX IF NOT EXISTS person_name ON person FIELDS name UNIQUE;
-DEFINE ACCESS IF NOT EXISTS member ON DATABASE TYPE RECORD
+DEFINE TABLE OVERWRITE person SCHEMAFULL PERMISSIONS FOR select WHERE id = $auth.id;
+DEFINE FIELD OVERWRITE name ON person TYPE string;
+DEFINE FIELD OVERWRITE pass ON person TYPE string;
+DEFINE INDEX OVERWRITE person_name ON person FIELDS name UNIQUE;
+DEFINE ACCESS OVERWRITE member ON DATABASE TYPE RECORD
   SIGNIN ( SELECT * FROM person WHERE name = $name AND crypto::argon2::compare(pass, $pass) )
   DURATION FOR TOKEN 1h, FOR SESSION 30d;
-DEFINE TABLE IF NOT EXISTS event SCHEMALESS PERMISSIONS
+DEFINE TABLE OVERWRITE event SCHEMALESS PERMISSIONS
   FOR select WHERE mine = false OR person = $auth.name
   FOR create WHERE person = $auth.name
   FOR update, delete NONE;
-DEFINE INDEX IF NOT EXISTS event_project ON event FIELDS project;
-DEFINE INDEX IF NOT EXISTS event_at ON event FIELDS at;
+DEFINE INDEX OVERWRITE event_project ON event FIELDS project;
+DEFINE INDEX OVERWRITE event_at ON event FIELDS at;
 ";
 
 /// Where a team's memory is, and who this installation is on it. Kept in

@@ -236,7 +236,7 @@ nahuali note "What I want to raise in my review" --mine           # only you and
 | Nothing written is changed or deleted | The database server |
 | A line cannot say another person spoke | Every reader. It is read as its own person reporting what the other said |
 
-No copy of Nahuali has to be trusted for these to hold: they are permissions of the SurrealDB server, defined by `nahuali team init`. Each machine keeps its own keeper, which signs in as its person and keeps the search index and the vectors on its own disk. `nahuali team leave` goes back to the memory on the machine, which was never touched.
+No copy of Nahuali has to be trusted for these to hold: they are permissions of the SurrealDB server, defined by `nahuali team init`, and running it again brings a server to the current ones. Each machine keeps its own keeper, which signs in as its person and keeps the search index and the vectors on its own disk. `nahuali team leave` goes back to the memory on the machine, which was never touched.
 
 ### Any tool
 
