@@ -12,7 +12,7 @@ use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use nahuali_core::Journal;
 use serde_json::{Value, json};
@@ -172,9 +172,19 @@ impl Remote {
         )))
     }
 
-    /// Tell the keeper to leave, if there is one.
+    /// Tell the keeper to leave, if there is one, and wait until it has.
+    /// It answers before it goes: without the wait, what is asked next can
+    /// reach the keeper that is leaving, which still reads the memory as it
+    /// was set up before, instead of a new one.
     pub fn stop(&self) -> bool {
-        self.once(&json!({ "op": "stop", "stamp": stamp() })).is_ok()
+        if self.once(&json!({ "op": "stop", "stamp": stamp() })).is_err() {
+            return false;
+        }
+        let deadline = Instant::now() + self.patience;
+        while UnixStream::connect(socket(&self.home)).is_ok() && Instant::now() < deadline {
+            std::thread::sleep(STEP);
+        }
+        true
     }
 }
 
