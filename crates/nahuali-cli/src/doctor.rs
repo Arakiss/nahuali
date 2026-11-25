@@ -176,6 +176,21 @@ fn tool(home: &Path, user: &Path, dir: &str, file: &str, name: &'static str) -> 
     })
 }
 
+/// Whether nahuali records its own use here, and where.
+fn usage(home: &Path) -> Line {
+    if !crate::uses::on() {
+        return fine("usage", "not recorded: NAHUALI_USAGE is off");
+    }
+    let lines = crate::uses::this_month(home);
+    fine(
+        "usage",
+        format!(
+            "recorded on this machine only, in {} · {lines} lines this month · `nahuali usage` reads them",
+            crate::uses::dir(home).display()
+        ),
+    )
+}
+
 pub fn doctor(argv: &[String]) -> Result<String, Failure> {
     let args = parse(argv, &[], &["json"])?;
     let [] = words(&args, "doctor takes no words")?;
@@ -198,6 +213,7 @@ pub fn doctor(argv: &[String]) -> Result<String, Failure> {
         lines.extend(tool(&home, user, ".claude", "settings.json", "claude-code"));
         lines.extend(tool(&home, user, ".codex", "hooks.json", "codex"));
     }
+    lines.push(usage(&home));
     let who = env::actor(args.value("as"), None).map_or_else(|_| "?".to_string(), |a| a.line());
     lines.push(fine("you", format!("{} is the person · {who} is speaking", crate::me_at(&home))));
 

@@ -117,6 +117,7 @@ pub fn check(argv: &[String]) -> Result<String, Failure> {
             }
             out
         };
+        crate::uses::count("lessons", applies.len());
         (out, applies.iter().map(|a| a.lesson.id.clone()).collect::<Vec<String>>())
     };
     mind.shown(sig, names, &doing, args.value("session").map(str::to_string), false)?;
@@ -232,6 +233,8 @@ pub fn recall(argv: &[String]) -> Result<String, Failure> {
         .filter(|(t, _)| scope.reaches(&t.marks, t.everywhere))
         .collect();
 
+    crate::uses::count("found", found.len());
+    crate::uses::count("near", near.len());
     let whose = if args.has("all") { "every project" } else { project.as_str() };
     if args.has("json") {
         let thing = |t: &Thing, alike: Option<f64>| {

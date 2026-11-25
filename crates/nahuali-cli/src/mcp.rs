@@ -5,6 +5,7 @@
 
 use std::io::{BufRead, Write};
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
@@ -171,11 +172,15 @@ fn argv(tool: &Tool, given: &Value) -> Vec<String> {
 
 fn call(params: &Value) -> Result<Value, String> {
     let name = params["name"].as_str().unwrap_or_default();
-    let tool = TOOLS
-        .iter()
-        .find(|t| t.name == name)
-        .ok_or_else(|| format!("nahuali has no tool called `{name}`"))?;
-    let (said, failed) = match crate::run(&argv(tool, &params["arguments"])) {
+    let Some(tool) = TOOLS.iter().find(|t| t.name == name) else {
+        crate::uses::after_mcp(name, &[], &Ok(String::new()), Duration::ZERO);
+        return Err(format!("nahuali has no tool called `{name}`"));
+    };
+    let line = argv(tool, &params["arguments"]);
+    let started = Instant::now();
+    let result = crate::run(&line);
+    crate::uses::after_mcp(name, &line, &result, started.elapsed());
+    let (said, failed) = match result {
         Ok(out) => (out, false),
         Err(Failure::Usage(why) | Failure::Refused(why) | Failure::Told(why)) => (why, true),
     };

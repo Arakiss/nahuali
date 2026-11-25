@@ -127,6 +127,19 @@ Add `--private` to anything that must not be shown to work on another
 project. `--all` on `status` and `recall` shows every project, without what
 is private to another one.
 
+## When nahuali itself gets in your way
+
+```sh
+nahuali usage --friction "recall found nothing for 'deploy date'; the note says 'release day'"
+```
+
+One line, about the tool, not about the work: a verb or flag you expected
+and did not find, an answer that misled you, something slow or confusing.
+Whoever keeps nahuali reads these in `nahuali usage`, with what each verb
+was used for and where it failed, and repairs it from that. Every call is
+already counted without its words; the friction line is the only text kept,
+so say what happened, not anything private.
+
 ## What it is not for
 
 A diary of your session, a place to store long text, or a substitute for

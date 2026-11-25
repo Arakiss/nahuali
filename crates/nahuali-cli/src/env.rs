@@ -111,7 +111,11 @@ pub fn project(flag: Option<&str>) -> Result<String, String> {
             .ok_or("this directory has no name to call the project by; say it with --project")?,
     };
     let slug = slugify(&name);
-    if slug.is_empty() { Err(format!("`{name}` is not a name for a project")) } else { Ok(slug) }
+    if slug.is_empty() {
+        return Err(format!("`{name}` is not a name for a project"));
+    }
+    crate::uses::seen_project(&slug);
+    Ok(slug)
 }
 
 /// `/x/atlas/.git` is `atlas`; a bare `/x/atlas.git` is `atlas` too.

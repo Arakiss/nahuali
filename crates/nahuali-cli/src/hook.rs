@@ -139,6 +139,8 @@ fn pre_tool(
         person: Some(me),
         mine: false,
     };
+    crate::uses::count("told", names.len());
+    crate::uses::count("stopped", usize::from(stops));
     // If the showing cannot be recorded, it is still shown.
     let _ = mind.shown(sig, names, &doing, session, stops);
     let output = if stops {

@@ -246,11 +246,31 @@ nahuali setup            # writes the one page an agent reads, for Claude Code a
 nahuali setup --hooks    # also, in Claude Code and Codex: the board at the start of a session, lessons before a command
 nahuali mcp              # the same eight verbs over the Model Context Protocol
 nahuali doctor           # whether every part is right, and what to do about the ones that are not
+nahuali usage            # how it was used here lately, and where it got in the way
 ```
 
 With the hooks, an agent is also reminded when its card may be old: when you next speak and there were commits since the card was written, once for each commit, stopping nothing.
 
 `nahuali setup --remove` takes out exactly what it put in and leaves the tools' own files as they were. What an agent is told about Nahuali is one page: [`skills/nahuali/SKILL.md`](skills/nahuali/SKILL.md).
+
+### What it records about its own use
+
+Every command, every call over MCP and every hook adds one line to a file on this machine, so that whoever keeps Nahuali can see how it is really used and repair it from that, not from a guess.
+
+```sh
+nahuali usage                  # the last 7 days: each verb, who calls, what failed, what was typed and does not exist
+nahuali usage --since 30d --json
+nahuali usage --friction "recall needed every word and I had to guess three times"
+```
+
+| Rule | In practice |
+| --- | --- |
+| Never what was said | A line holds the verb, the names of the flags, who called, the project, how long it took and how it ended. Not the words of a card, an ask, a note or a recall, and not the value of any flag. A sentence typed where a verb goes is kept as `(not a word)` |
+| What does not exist is kept | A verb or a flag that Nahuali does not take is the clearest sign of what an agent expected to find, so it is kept by name and counted |
+| Friction is said on purpose | `--friction` is the one text it keeps: a line an agent or the person writes about Nahuali itself, when it got in the way |
+| Local only | The lines stay in `<home>/local/usage/`, one file a month. Nothing is sent anywhere, and nothing goes to another machine with the memory |
+| It holds nobody up | A line is written after the command has answered. If it cannot be written, the command does not know |
+| It can be off | `NAHUALI_USAGE=off` and nothing is recorded. `nahuali doctor` says which it is |
 
 ## The memory is yours
 
