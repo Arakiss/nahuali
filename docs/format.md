@@ -7,6 +7,7 @@ it as plain lines of text whenever you ask.
 <home>/db/                   the database: an embedded SurrealDB
 <home>/log/*.jsonl           lines to take in: from an export, or from another machine
 <home>/local/keeper.log      what the keeper said; stays on this machine
+<home>/local/usage/*.jsonl   how nahuali itself was used, one file a month; stays on this machine
 ```
 
 `<home>` is `--home`, then `NAHUALI_HOME`, then `$XDG_DATA_HOME/nahuali`,
@@ -270,6 +271,37 @@ The part that holds the rules, `nahuali-core`, does not know where events
 are kept. It also ships a journal that keeps them as plain files, with no
 database and no keeper, for tests and for a machine too small or too simple
 to run one. The format of the lines is the same.
+
+## Its own use
+
+Apart from the memory, nahuali keeps a line about each time it is used:
+each command, each call over MCP and each hook. They are not events, are
+not exported and never go to another machine. `nahuali usage` reads them.
+
+```json
+{"v":1,"at":"2026-11-25T21:40:12Z","surface":"cli","verb":"recall","by":"claude-code","project":"atlas","flags":["all"],"ms":38,"outcome":"ok","counts":{"found":0,"near":0},"version":"0.1.0"}
+```
+
+| Field | Meaning |
+|---|---|
+| `v` | The version of this format. This is version 1. |
+| `at` | When, in UTC. The file is named after its month: `2026-11.jsonl`. |
+| `surface` | `cli`, `mcp` or `hook`. |
+| `verb` | The verb, or the kind of hook. A sentence where a verb goes is `(not a word)`. |
+| `by` | The tool or agent that called, or `person`. Never the person's name. |
+| `project` | The project it spoke of, when there was one. |
+| `flags` | The names of the flags given, without their values. |
+| `ms` | How long the command took. |
+| `outcome` | `ok` or `error`. |
+| `kind` | For an error: `unknown-verb`, `unknown-flag`, `missing-value`, `usage`, `refused` or `told`. |
+| `unknown` | For an unknown verb or flag: the name as typed. |
+| `said` | For an error: its first line, with what was quoted in it left out. |
+| `counts` | What the command gave: `found` and `near` for a recall, `lessons` for a check, `said`, `told` and `stopped` for a hook. |
+| `cold` | Present and `true` when this command had to start the keeper. |
+| `friction` | In a line written by `nahuali usage --friction`: the text, as its writer gave it. |
+| `version` | The version of nahuali that wrote it. |
+
+A line that is not understood is skipped. `NAHUALI_USAGE=off` records nothing.
 
 ## What it does not do
 

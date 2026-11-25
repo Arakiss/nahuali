@@ -12,6 +12,7 @@ use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use nahuali_core::Journal;
@@ -33,6 +34,10 @@ pub fn socket(home: &Path) -> PathBuf {
         .fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
     std::env::temp_dir().join(format!("nahuali-{hash:016x}.sock"))
 }
+
+/// Whether this process had to start a keeper: the first command after a
+/// quiet while pays for opening the database, and its use says so.
+pub static STARTED: AtomicBool = AtomicBool::new(false);
 
 /// Which build this is: a keeper started by an older build steps aside.
 pub fn stamp() -> u64 {
@@ -118,6 +123,7 @@ impl Remote {
     }
 
     fn start(&self) -> io::Result<()> {
+        STARTED.store(true, Ordering::Relaxed);
         std::fs::create_dir_all(self.home.join("local"))?;
         let log = std::fs::OpenOptions::new()
             .create(true)

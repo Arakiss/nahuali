@@ -38,6 +38,7 @@ impl Desk {
             c.env_remove(marker);
         }
         c.env_remove("NAHUALI_ACTOR").env_remove("NAHUALI_PROJECT").env_remove("NAHUALI_PERSON");
+        c.env_remove("NAHUALI_USAGE");
         c.stdin(std::process::Stdio::null());
         c
     }
@@ -567,6 +568,11 @@ fn the_same_verbs_answer_over_the_model_context_protocol() {
     let status = answers[4]["result"]["content"][0]["text"].as_str().unwrap();
     assert!(status.contains("some-tool · claimed"), "the client is who spoke: {status}");
     assert!(answers[5]["error"]["message"].as_str().unwrap().contains("nope"));
+    let calls: Vec<_> = uses(&desk).into_iter().filter(|l| l["surface"] == "mcp").collect();
+    let verbs: Vec<&str> = calls.iter().map(|l| l["verb"].as_str().unwrap()).collect();
+    assert_eq!(verbs, ["update", "update", "status"], "each call is kept as its own: {calls:?}");
+    assert_eq!(calls[0]["by"], "some-tool");
+    assert_eq!(calls[1]["outcome"], "error");
 }
 
 #[test]
@@ -1147,4 +1153,117 @@ fn a_card_older_than_the_commits_is_remembered_once_when_the_person_speaks() {
     git(&["commit", "-q", "--allow-empty", "--no-verify", "-m", "third"]);
     nahuali(&["update", "importer", "--status", "done"]);
     assert_eq!(spoken(), "", "finished work is not asked about");
+}
+
+/// Every line nahuali kept about its own use in this memory.
+fn uses(desk: &Desk) -> Vec<serde_json::Value> {
+    let dir = desk.home().join("local").join("usage");
+    let mut lines = Vec::new();
+    for file in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+        let text = std::fs::read_to_string(file.path()).unwrap();
+        lines.extend(text.lines().map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap()));
+    }
+    lines
+}
+
+#[test]
+fn its_own_use_is_kept_without_a_word_of_what_was_said() {
+    let desk = Desk::new("uses");
+    desk.run(&["status"]).ok();
+    assert!(!desk.home().exists(), "a memory that does not exist is not created to count its use");
+
+    desk.run(&["update", "importer", "--line", "salaries of cobalt", "--verified", "cargo test"]).ok();
+    desk.run(&["recall", "lighthouse"]).ok();
+    desk.run(&["recall", "salaries"]).ok();
+    assert_eq!(desk.run(&["pending"]).code, 2);
+    assert_eq!(desk.run(&["status", "--since", "7d"]).code, 2);
+    assert_eq!(desk.run(&["the audit is on the 20th"]).code, 2);
+    desk.before("s1", "git push");
+
+    let lines = uses(&desk);
+    let text: String = lines.iter().map(|l| format!("{l}\n")).collect();
+    for said in ["salaries of cobalt", "cargo test", "lighthouse", "audit is on"] {
+        assert!(!text.contains(said), "what was said is never kept ({said}): {text}");
+    }
+    let update = lines.iter().find(|l| l["verb"] == "update").unwrap();
+    assert_eq!(update["flags"], serde_json::json!(["line", "verified"]));
+    assert_eq!((update["outcome"].as_str(), update["by"].as_str()), (Some("ok"), Some("builder")));
+    assert_eq!(update["project"], "atlas");
+    assert_eq!(update["surface"], "cli");
+    assert!(update["ms"].is_u64() && update["version"].is_string(), "{update}");
+    let empty = lines.iter().find(|l| l["verb"] == "recall").unwrap();
+    assert_eq!(empty["counts"], serde_json::json!({ "found": 0, "near": 0 }));
+    let unknown: Vec<_> = lines.iter().filter(|l| l["kind"] == "unknown-verb").collect();
+    assert_eq!(unknown[0]["unknown"], "pending");
+    assert_eq!(unknown[1]["unknown"], "(not a word)", "a sentence typed as a verb is not kept");
+    let flag = lines.iter().find(|l| l["kind"] == "unknown-flag").unwrap();
+    assert_eq!((flag["verb"].as_str(), flag["unknown"].as_str()), (Some("status"), Some("--since")));
+    let hook = lines.iter().find(|l| l["surface"] == "hook").unwrap();
+    assert_eq!((hook["verb"].as_str(), hook["counts"]["said"].as_u64()), (Some("pre-tool"), Some(0)));
+
+    let report = desk.run(&["usage"]).ok();
+    assert!(report.starts_with("nahuali usage · the last 7 days · "), "{report}");
+    for part in [
+        "VERBS",
+        "update",
+        "NOT USED IN THE LAST 7 DAYS",
+        "nahuali pending ×1",
+        "--since on status ×1",
+        "unknown-flag ×1",
+        "2 asked · 1 came back with nothing (50%)",
+        "pre-tool",
+    ] {
+        assert!(report.contains(part), "{part}: {report}");
+    }
+    let json: serde_json::Value =
+        serde_json::from_str(&desk.run(&["usage", "--json", "--since", "all"]).ok()).unwrap();
+    assert_eq!(json["recall"], serde_json::json!({ "asked": 2, "empty": 1 }));
+    assert_eq!(json["verbs"]["update"]["calls"], 1);
+    assert_eq!(json["unknown"]["nahuali pending"], 1);
+    assert_eq!(desk.run(&["usage", "--since", "7w"]).code, 2);
+}
+
+#[test]
+fn friction_is_said_on_purpose_and_shown_to_whoever_keeps_nahuali() {
+    let desk = Desk::new("friction");
+    let said =
+        desk.run(&["usage", "--friction", "recall needs every word;  I had to guess three times"]).ok();
+    assert!(said.starts_with("friction kept"), "{said}");
+    let report = desk.run(&["usage"]).ok();
+    assert!(report.contains("FRICTION"), "{report}");
+    assert!(
+        report.contains("builder · atlas · recall needs every word; I had to guess three times"),
+        "{report}"
+    );
+    assert_eq!(uses(&desk).iter().filter(|l| l["friction"].is_string()).count(), 1, "kept once");
+    assert_eq!(desk.run(&["usage", "--friction", "  "]).code, 2);
+}
+
+#[test]
+fn when_use_is_not_to_be_recorded_nothing_is() {
+    let desk = Desk::new("uses-off");
+    desk.run(&["update", "importer", "--line", "started"]).ok();
+    let before = uses(&desk).len();
+    let off = |args: &[&str]| {
+        let out = desk
+            .command(&desk.root.join("work"))
+            .env("NAHUALI_ACTOR", "builder")
+            .env("NAHUALI_PROJECT", "atlas")
+            .env("NAHUALI_USAGE", "off")
+            .env("HOME", &desk.root)
+            .args(args)
+            .output()
+            .unwrap();
+        (out.status.code(), String::from_utf8_lossy(&out.stdout).to_string())
+    };
+    assert_eq!(off(&["status"]).0, Some(0));
+    assert_eq!(off(&["nope"]).0, Some(2));
+    assert_eq!(
+        off(&["usage", "--friction", "slow"]).0,
+        Some(1),
+        "friction that cannot be kept is not said to be"
+    );
+    assert_eq!(uses(&desk).len(), before, "nothing was added");
+    assert!(off(&["doctor"]).1.contains("not recorded: NAHUALI_USAGE is off"));
+    assert!(desk.feed(&["doctor"], "").ok().contains("lines this month"));
 }

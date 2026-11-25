@@ -16,9 +16,11 @@ mod remote;
 mod setup;
 mod team;
 mod text;
+mod uses;
 
 use std::io::IsTerminal;
 use std::process::ExitCode;
+use std::time::Instant;
 
 use args::Args;
 use nahuali_core::event::WorkSet;
@@ -88,6 +90,10 @@ other tools
   nahuali setup --meaning     install the model that finds what is said in other words (220 MB, once,
                               runs on this machine; nothing leaves it)
   nahuali mcp                 the same verbs over the Model Context Protocol, on standard input
+  nahuali usage               how nahuali was used here lately, and where it got in the way
+                              (--since 24h|7d|30d|all, --json). Kept on this machine only;
+                              NAHUALI_USAGE=off stops it
+  nahuali usage --friction \"TEXT\"   say in one line what about nahuali got in your way
 
 your own machines
   nahuali node                who this machine talks to, and how the last time went
@@ -138,7 +144,10 @@ fn usage(text: impl Into<String>) -> Failure {
 
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
-    match run(&argv) {
+    let started = Instant::now();
+    let result = run(&argv);
+    let took = started.elapsed();
+    let code = match &result {
         Ok(out) => {
             print!("{out}");
             ExitCode::SUCCESS
@@ -155,7 +164,11 @@ fn main() -> ExitCode {
             print!("{text}");
             ExitCode::from(1)
         }
-    }
+    };
+    // After what was asked has been said: recording holds nobody up.
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    uses::after_command(&argv, &result, took);
+    code
 }
 
 fn parse(argv: &[String], valued: &[&str], flags: &[&str]) -> Result<Args, Failure> {
@@ -230,6 +243,7 @@ pub(crate) fn run(argv: &[String]) -> Result<String, Failure> {
         "team" => team::team(rest),
         "node" => node::node(rest),
         "doctor" => doctor::doctor(rest),
+        "usage" => uses::report(rest),
         "serve" => serve(rest),
         "stop" => stop(rest),
         other => Err(usage(format!("`{other}` is not something nahuali does"))),
