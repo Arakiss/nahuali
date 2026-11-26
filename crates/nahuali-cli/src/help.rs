@@ -13,7 +13,7 @@ pub(crate) const OLD: &str = "was a verb of the old nahuali";
 pub(crate) fn asked(argv: &[String]) -> Option<&str> {
     let (first, rest) = argv.split_first()?;
     if matches!(first.as_str(), "help" | "--help" | "-h") {
-        return rest.first().map(String::as_str).filter(|verb| !verb.starts_with('-'));
+        return rest.first().map(String::as_str).filter(|verb| !verb.starts_with('-') && *verb != "help");
     }
     if first.starts_with('-') {
         return None;
@@ -108,9 +108,15 @@ mod tests {
         {
             assert_eq!(asked(&argv(typed)), Some("setup"), "{typed}");
         }
-        for typed in
-            ["help", "--help", "setup --hooks", "note -- --help", "--project atlas --help", "help --all"]
-        {
+        for typed in [
+            "help",
+            "--help",
+            "setup --hooks",
+            "note -- --help",
+            "--project atlas --help",
+            "help --all",
+            "help help",
+        ] {
             assert_eq!(asked(&argv(typed)), None, "{typed}");
         }
     }
