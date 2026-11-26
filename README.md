@@ -251,6 +251,8 @@ nahuali usage            # how it was used here lately, and where it got in the 
 
 With the hooks, an agent is also reminded when its card may be old: when you next speak and there were commits since the card was written, once for each commit, stopping nothing.
 
+The board at the start of a session is kept short however much is held: every question waiting on you, the eight pieces of work changed last and the last three decisions, about 2 KB, then a line that says how much more `nahuali status` shows. Finished work is not in it. A hook never waits for the memory to start: when no keeper is running it starts one and says nothing, or at the start of a session one line that the memory is waking up. What the agent is doing is never held up by it.
+
 `nahuali setup --remove` takes out exactly what it put in and leaves the tools' own files as they were. What an agent is told about Nahuali is one page: [`skills/nahuali/SKILL.md`](skills/nahuali/SKILL.md).
 
 ### What it records about its own use

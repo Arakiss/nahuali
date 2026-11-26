@@ -468,6 +468,98 @@ fn a_session_starts_knowing_where_the_project_stands() {
 }
 
 #[test]
+fn the_start_of_a_session_stays_small_however_much_work_is_held() {
+    let desk = Desk::new("brief");
+    let input = serde_json::json!({ "session_id": "s1", "cwd": desk.root.join("work") }).to_string();
+    // Fifty cards, written as lines a keeper takes in when it starts, a
+    // minute apart, the last the most recent.
+    let lines: String = (0..50)
+        .map(|i| {
+            serde_json::json!({
+                "v": 1, "id": format!("01M8AJ13QQ6QJ86PAVM6W{i:05}"),
+                "at": format!("2026-11-20T{:02}:{:02}:00Z", 10 + i / 60, i % 60),
+                "by": { "agent": "builder" }, "project": "atlas", "sure": "claimed",
+                "what": { "work": { "work": format!("slice-{i:02}"),
+                    "line": format!("slice {i} of the importer reads the old format, review left"),
+                    "next": ["open the review", "ask borealis to check the parser"] } },
+            })
+            .to_string()
+                + "\n"
+        })
+        .collect();
+    std::fs::create_dir_all(desk.home().join("log")).unwrap();
+    std::fs::write(desk.home().join("log").join("cards.jsonl"), lines).unwrap();
+    desk.run(&["update", "slice-49", "--status", "done"]).ok();
+    let asks =
+        ["Ship slice 3 behind a flag?", "Keep the old parser for a release?", "Move the audit to the 20th?"];
+    for ask in asks {
+        desk.run(&["ask", ask, "--recommends", "yes"]).ok();
+    }
+    let said: serde_json::Value =
+        serde_json::from_str(&desk.feed(&["hook", "session-start"], &input).ok()).unwrap();
+    let context = said["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
+    for ask in asks {
+        assert!(context.contains(ask), "every open ask is there: {context}");
+    }
+    assert!(!context.contains("slice-49 "), "finished work is not: {context}");
+    assert!(context.contains("slice-48 ") && !context.contains("slice-40 "), "the latest cards: {context}");
+    assert!(context.contains("\n+41 more pieces of work · `nahuali status` shows them all\n"), "{context}");
+    assert!(context.len() < 3500, "{} bytes: {context}", context.len());
+    assert!(desk.run(&["status"]).ok().contains("slice-00 "), "status still shows it all");
+}
+
+#[test]
+fn a_hook_does_not_wait_for_the_memory_to_wake() {
+    let desk = Desk::new("cold");
+    desk.run(&["update", "importer", "--line", "tests green, review left"]).ok();
+    desk.run(&[
+        "learn",
+        "Run the migration twice",
+        "--moment",
+        "before running migrate",
+        "--when",
+        "migrate",
+    ])
+    .ok();
+    // A keeper that takes seconds to start: it has lines to take in.
+    let lines: String = (0..100)
+        .map(|i| {
+            serde_json::json!({
+                "v": 1, "id": format!("01M8AJ13QQ6QJ86PAVM6W{i:05}"), "at": "2026-11-20T10:00:00Z",
+                "by": { "agent": "builder" }, "project": "atlas", "sure": "claimed",
+                "what": { "note": { "note": format!("n{i:05}"), "text": format!("the audit of slice {i} is on the 20th") } },
+            })
+            .to_string()
+                + "\n"
+        })
+        .collect();
+    std::fs::create_dir_all(desk.home().join("log")).unwrap();
+    std::fs::write(desk.home().join("log").join("notes.jsonl"), lines).unwrap();
+    let cwd = desk.root.join("work");
+    for kind in ["session-start", "pre-tool", "prompt"] {
+        desk.run(&["stop"]).ok();
+        let input = serde_json::json!({
+            "session_id": "s1", "cwd": cwd, "tool_name": "Bash", "tool_input": { "command": "bin/migrate up" },
+        });
+        let began = std::time::Instant::now();
+        let said = desk.feed(&["hook", kind], &input.to_string()).ok();
+        let took = began.elapsed();
+        assert!(took < std::time::Duration::from_millis(1000), "{kind} waited {took:?}");
+        if kind == "session-start" {
+            assert!(said.contains("waking up") && said.contains("nahuali status"), "{said}");
+        } else {
+            assert_eq!(said, "", "{kind}");
+        }
+        // The keeper it started is there for whoever comes next.
+        let began = std::time::Instant::now();
+        assert!(desk.run(&["status"]).ok().contains("importer"));
+        assert!(began.elapsed() > took, "{kind}: the memory really was asleep");
+    }
+    let told = desk.before("s2", "bin/migrate up");
+    assert!(told.to_string().contains("Run the migration twice"), "once awake, a hook tells: {told}");
+}
+
+#[test]
 fn recall_finds_what_holds_every_word_and_says_so_when_nothing_does() {
     let desk = Desk::new("recall");
     desk.run(&["update", "importer", "--line", "reads the three export formats"]).ok();
