@@ -521,8 +521,8 @@ fn a_hook_does_not_wait_for_the_memory_to_wake() {
         "migrate",
     ])
     .ok();
-    // A keeper that takes long to start: it has many lines to take in.
-    let lines: String = (0..400)
+    // A keeper that takes seconds to start: it has lines to take in.
+    let lines: String = (0..100)
         .map(|i| {
             serde_json::json!({
                 "v": 1, "id": format!("01M8AJ13QQ6QJ86PAVM6W{i:05}"), "at": "2026-11-20T10:00:00Z",

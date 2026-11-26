@@ -696,6 +696,7 @@ async fn run(home: &Path, stay: bool) -> Result<(), String> {
         times = (opened, read, began.elapsed());
     }
     take_in(&keeper, home).await;
+    let taken = began.elapsed();
 
     let socket = remote::socket(home);
     let _ = std::fs::remove_file(&socket);
@@ -711,11 +712,12 @@ async fn run(home: &Path, stay: bool) -> Result<(), String> {
     };
     let secs = |d: Duration| format!("{:.2} s", d.as_secs_f64());
     let ready = format!(
-        "ready in {}: database {}, events {}, index {}",
+        "ready in {}: database {}, events {}, index {}, log/ {}",
         secs(began.elapsed()),
         secs(times.0),
         secs(times.1 - times.0),
-        secs(times.2 - times.1)
+        secs(times.2 - times.1),
+        secs(taken - times.2)
     );
     if stay {
         eprintln!("keeping {} (stays until told to leave; {ready})", home.display());
