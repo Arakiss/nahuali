@@ -23,6 +23,10 @@ with its one-line card, and what was decided in the last seven days. Read
 the decisions: an answer to a question you or another agent asked is there
 and nowhere else. "Nothing held yet" is a correct answer.
 
+With the hooks, a session starts with a short version of this: every
+question waiting on the person and the work changed last. When it says
+there is more, or that the memory is waking up, run `nahuali status`.
+
 ## When the state of your work changes
 
 ```sh

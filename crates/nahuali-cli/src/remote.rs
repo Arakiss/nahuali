@@ -11,7 +11,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
@@ -21,6 +21,8 @@ use serde_json::{Value, json};
 /// How long a command waits for a keeper to answer before giving up.
 const PATIENCE: Duration = Duration::from_secs(20);
 const STEP: Duration = Duration::from_millis(50);
+/// Steps between two starts of a keeper by one command.
+const RESTART: u32 = 10;
 
 /// Where the keeper of a memory listens. Socket paths are short by law, so
 /// it is not inside the memory: it is named after it, in the user's own
@@ -53,11 +55,20 @@ pub fn stamp() -> u64 {
 pub struct Remote {
     home: PathBuf,
     patience: Duration,
+    hasty: bool,
 }
 
 impl Remote {
     pub fn at(home: impl Into<PathBuf>) -> Self {
-        Self { home: home.into(), patience: PATIENCE }
+        Self { home: home.into(), patience: PATIENCE, hasty: false }
+    }
+
+    /// Never wait for a keeper to start: when none answers, start one and
+    /// give up at once, so that the next call finds it. For a hook, which
+    /// runs before what an agent does and must not hold it up.
+    pub fn hasty(mut self) -> Self {
+        self.hasty = true;
+        self
     }
 
     /// Wait at most this long for a keeper: for callers that must not hold
@@ -122,7 +133,7 @@ impl Remote {
             || self.home.join("local").join("server.json").exists()
     }
 
-    fn start(&self) -> io::Result<()> {
+    fn start(&self) -> io::Result<Child> {
         STARTED.store(true, Ordering::Relaxed);
         std::fs::create_dir_all(self.home.join("local"))?;
         let log = std::fs::OpenOptions::new()
@@ -139,7 +150,6 @@ impl Remote {
             // Its own group: closing the command that started it does not stop it.
             .process_group(0)
             .spawn()
-            .map(|_| ())
     }
 
     fn once(&self, request: &Value) -> io::Result<Value> {
@@ -157,8 +167,11 @@ impl Remote {
         request["op"] = json!(op);
         request["stamp"] = json!(stamp());
         let tries = (self.patience.as_millis() / STEP.as_millis()).max(1) as u32;
+        let mut started: Option<(Child, u32)> = None;
         for attempt in 0..tries {
             match self.once(&request) {
+                // An older keeper is leaving; a hook does not wait for it.
+                Ok(answer) if answer["stale"] == true && self.hasty => return Err(waking()),
                 Ok(answer) if answer["stale"] == true => {}
                 Ok(answer) if answer["ok"] == true => return Ok(answer),
                 Ok(answer) => {
@@ -166,9 +179,21 @@ impl Remote {
                         answer["error"].as_str().unwrap_or("the keeper refused").to_string(),
                     ));
                 }
-                // Nobody there, or it is still opening the database.
-                Err(_) if attempt % 40 == 0 => self.start()?,
-                Err(_) => {}
+                // Nobody there, or it is still opening the database. The
+                // keeper started here is started again once it has left,
+                // as it does when the database is still held by one that is
+                // leaving, and at most every half second.
+                Err(_) => {
+                    let again = started.as_mut().is_none_or(|(child, at)| {
+                        attempt - *at >= RESTART && child.try_wait().ok().flatten().is_some()
+                    });
+                    if again {
+                        started = Some((self.start()?, attempt));
+                    }
+                    if self.hasty {
+                        return Err(waking());
+                    }
+                }
             }
             std::thread::sleep(STEP);
         }
@@ -192,6 +217,16 @@ impl Remote {
         }
         true
     }
+}
+
+/// What a hasty call says when it started a keeper instead of waiting.
+fn waking() -> io::Error {
+    io::Error::new(io::ErrorKind::WouldBlock, "the keeper is starting")
+}
+
+/// Whether a call gave up because the keeper was starting.
+pub fn is_waking(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::WouldBlock
 }
 
 impl Journal for Remote {

@@ -38,6 +38,9 @@ use crate::team::Server;
 /// How long the keeper stays with nobody speaking to it.
 const IDLE: u64 = 600;
 
+/// How many things are written to the index in one transaction.
+const INDEXED_AT_ONCE: usize = 100;
+
 /// Words are split where letters end, lower-cased, stripped of accents and
 /// cut to their English root, so `worktrees` finds `worktree` and
 /// `decision` finds `decisión`.
@@ -237,6 +240,7 @@ impl Keeper {
     async fn index(&self, held: &mut Held) -> Result<(), String> {
         let things = State::fold(&held.events).things();
         let mut seen = HashMap::with_capacity(things.len());
+        let mut changed = Vec::new();
         for thing in &things {
             let words = thing.text();
             let vector = self
@@ -259,23 +263,33 @@ impl Keeper {
             if held.indexed.get(&thing.key) == Some(&shape) {
                 continue;
             }
-            self.db
-                .query(format!(
-                    "DELETE thing WHERE key = $key; \
-                     CREATE thing CONTENT {{ key: $key, kind: $kind, text: $text, project: $project, \
-                     private: $private, everywhere: $everywhere, at: <datetime> $at, vec: {vector} }}"
-                ))
-                .bind(("key", thing.key.clone()))
-                .bind(("kind", thing.kind))
-                .bind(("text", words))
-                .bind(("project", thing.marks.project.clone()))
-                .bind(("private", thing.marks.private))
-                .bind(("everywhere", thing.everywhere))
-                .bind(("at", thing.marks.at.rfc3339()))
-                .await
-                .map_err(text)?
-                .check()
-                .map_err(text)?;
+            changed.push((thing, words, vector));
+        }
+        // A query is a transaction of its own, and a keeper that starts
+        // writes every thing again: one at a time that was nearly all of
+        // the seconds a keeper took to start.
+        for handful in changed.chunks(INDEXED_AT_ONCE) {
+            let mut query = String::from("BEGIN TRANSACTION;");
+            for (i, (_, _, vector)) in handful.iter().enumerate() {
+                query.push_str(&format!(
+                    "DELETE thing WHERE key = $key{i}; \
+                     CREATE thing CONTENT {{ key: $key{i}, kind: $kind{i}, text: $text{i}, project: $project{i}, \
+                     private: $private{i}, everywhere: $everywhere{i}, at: <datetime> $at{i}, vec: {vector} }};"
+                ));
+            }
+            query.push_str("COMMIT TRANSACTION;");
+            let mut query = self.db.query(query);
+            for (i, (thing, words, _)) in handful.iter().enumerate() {
+                query = query
+                    .bind((format!("key{i}"), thing.key.clone()))
+                    .bind((format!("kind{i}"), thing.kind))
+                    .bind((format!("text{i}"), words.clone()))
+                    .bind((format!("project{i}"), thing.marks.project.clone()))
+                    .bind((format!("private{i}"), thing.marks.private))
+                    .bind((format!("everywhere{i}"), thing.everywhere))
+                    .bind((format!("at{i}"), thing.marks.at.rfc3339()));
+            }
+            query.await.map_err(text)?.check().map_err(text)?;
         }
         for gone in held.indexed.keys().filter(|key| !seen.contains_key(*key)) {
             self.db.query("DELETE thing WHERE key = $key").bind(("key", gone.clone())).await.map_err(text)?;
@@ -630,6 +644,7 @@ async fn take_in(keeper: &Keeper, home: &Path) {
 }
 
 async fn run(home: &Path, stay: bool) -> Result<(), String> {
+    let began = Instant::now();
     std::fs::create_dir_all(home.join("local")).map_err(text)?;
     // Opening the database is what makes this the only keeper: a second
     // one is refused here and leaves.
@@ -644,6 +659,7 @@ async fn run(home: &Path, stay: bool) -> Result<(), String> {
         Some(server) => server.connect().await?,
         None => db.clone(),
     };
+    let opened = began.elapsed();
     let keeper = Arc::new(Keeper {
         db,
         events,
@@ -659,6 +675,7 @@ async fn run(home: &Path, stay: bool) -> Result<(), String> {
         node: if server.is_some() { None } else { Node::read(home) },
         met: Mutex::new(HashMap::new()),
     });
+    let times;
     {
         let mut held = keeper.held.lock().await;
         let mut kept = keeper.db.query("SELECT of, v FROM vector").await.map_err(text)?;
@@ -674,7 +691,9 @@ async fn run(home: &Path, stay: bool) -> Result<(), String> {
         let lines = keeper.lines().await?;
         held.seen = lines.len();
         held.events = read_events(&lines);
+        let read = began.elapsed();
         keeper.index(&mut held).await?;
+        times = (opened, read, began.elapsed());
     }
     take_in(&keeper, home).await;
 
@@ -690,10 +709,18 @@ async fn run(home: &Path, stay: bool) -> Result<(), String> {
     } else {
         std::env::var("NAHUALI_IDLE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(IDLE)
     };
+    let secs = |d: Duration| format!("{:.2} s", d.as_secs_f64());
+    let ready = format!(
+        "ready in {}: database {}, events {}, index {}",
+        secs(began.elapsed()),
+        secs(times.0),
+        secs(times.1 - times.0),
+        secs(times.2 - times.1)
+    );
     if stay {
-        eprintln!("keeping {} (stays until told to leave)", home.display());
+        eprintln!("keeping {} (stays until told to leave; {ready})", home.display());
     } else {
-        eprintln!("keeping {} (leaves after {idle} s of silence)", home.display());
+        eprintln!("keeping {} (leaves after {idle} s of silence; {ready})", home.display());
     }
     // The other machines of this memory: answer them here, and go to them.
     let answering = match keeper.node.as_ref().and_then(|n| n.listen.clone()) {

@@ -2,11 +2,21 @@
 //! who said each thing, how sure they were and as of when. Written for an
 //! agent to read at the start of its work, and short enough for a person.
 
-use nahuali_core::{Ask, Closed, Lesson, Marks, Scope, Standing, State, Thing, Time, Work};
+use nahuali_core::{Ask, Closed, Lesson, Marks, Scope, Standing, State, Status, Thing, Time, Work};
 use serde_json::{Value, json};
 
 /// Decisions stay in `status` this long, so whoever asked finds the answer.
 pub const DECIDED_FOR: u64 = 7 * 86_400;
+
+/// How much of the board `Report::brief` lets in, past the open asks.
+pub struct Budget {
+    /// Pieces of work, the most recently changed.
+    pub works: usize,
+    /// Bytes for the work shown. One card is shown even if it is longer.
+    pub bytes: usize,
+    /// Decisions, the latest.
+    pub decided: usize,
+}
 
 pub struct Report<'a> {
     pub state: &'a State,
@@ -65,14 +75,61 @@ impl Report<'_> {
         parts.join(" · ")
     }
 
-    /// No work, no ask and no decision of this project is held. Lessons do
-    /// not count: they arrive at their moment, not at the start.
-    pub fn is_empty(&self) -> bool {
-        self.asks().is_empty() && self.works().is_empty() && self.decided().is_empty()
+    pub fn text(&self) -> String {
+        let (works, decided) = (self.works(), self.decided());
+        self.board(&works, &decided, (0, 0))
     }
 
-    pub fn text(&self) -> String {
-        let (asks, works, decided) = (self.asks(), self.works(), self.decided());
+    /// What a session is shown when it starts: every open ask, and only as
+    /// much work and as many decisions as `budget` lets in, the most
+    /// recently changed first. Finished work is not in it. What is left out
+    /// is counted at the end, and `status` shows it all. Nothing when no
+    /// ask, open work or decision is held. Lessons do not count: they
+    /// arrive at their moment, not at the start.
+    pub fn brief(&self, budget: &Budget) -> Option<String> {
+        let mut open: Vec<&Work> = self.works().into_iter().filter(|w| w.status != Status::Done).collect();
+        let decided = self.decided();
+        if self.asks().is_empty() && open.is_empty() && decided.is_empty() {
+            return None;
+        }
+        let mut recent = open.clone();
+        recent.sort_by_key(|w| std::cmp::Reverse(w.marks.at));
+        let mut kept: Vec<&str> = Vec::new();
+        for work in &recent {
+            if kept.len() == budget.works {
+                break;
+            }
+            kept.push(&work.slug);
+            let shown: Vec<&Work> =
+                open.iter().copied().filter(|w| kept.contains(&w.slug.as_str())).collect();
+            // One card is always shown, however long it is.
+            if kept.len() > 1 && self.works_text(&shown).len() > budget.bytes {
+                kept.pop();
+                break;
+            }
+        }
+        let all = open.len();
+        open.retain(|w| kept.contains(&w.slug.as_str()));
+        let told = decided.len().min(budget.decided);
+        let mut out = self.board(&open, &decided[..told], (all - open.len(), decided.len() - told));
+        let count = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+        let mut left = Vec::new();
+        if all > open.len() {
+            left.push(count(all - open.len(), "more piece of work", "more pieces of work"));
+        }
+        if decided.len() > told {
+            left.push(count(decided.len() - told, "more decision", "more decisions"));
+        }
+        if !left.is_empty() {
+            out.push_str(&format!("\n+{} · `nahuali status` shows them all\n", left.join(" and ")));
+        }
+        Some(out)
+    }
+
+    /// The board, with `works` and `decided` as what is shown of them and
+    /// `hidden` as how many of each are left out but still counted.
+    fn board(&self, works: &[&Work], decided: &[&Ask], hidden: (usize, usize)) -> String {
+        let asks = self.asks();
         let whose = if self.wide() { "every project" } else { self.project };
         let mut out = String::new();
         let lessons = self.state.lessons(self.scope).len();
@@ -82,7 +139,7 @@ impl Report<'_> {
         } else {
             format!(" · {} in force", count(lessons, "lesson", "lessons"))
         };
-        if asks.is_empty() && works.is_empty() && decided.is_empty() {
+        if asks.is_empty() && works.is_empty() && decided.is_empty() && hidden == (0, 0) {
             let held =
                 if lessons == 0 { "nothing held yet".to_string() } else { format!("no work held{learned}") };
             out.push_str(&format!("{whose} · {held}\n"));
@@ -90,7 +147,7 @@ impl Report<'_> {
             out.push_str(&format!(
                 "{whose} · {} waiting on the person · {}{learned}\n",
                 asks.len(),
-                count(works.len(), "piece of work", "pieces of work")
+                count(works.len() + hidden.0, "piece of work", "pieces of work")
             ));
         }
         if !asks.is_empty() {
@@ -118,44 +175,10 @@ impl Report<'_> {
                 out.push_str(&format!("{pad}asked by {}\n", self.said(&ask.marks)));
             }
         }
-        if !works.is_empty() {
-            out.push_str("\nWORK\n");
-            // One column for the names, as wide as the longest.
-            let wide = works
-                .iter()
-                .map(|w| self.place(&w.marks).chars().count() + w.slug.chars().count())
-                .max()
-                .unwrap_or(0);
-            for work in &works {
-                let name = format!("{:<wide$}", format!("{}{}", self.place(&work.marks), work.slug));
-                let pad = " ".repeat(wide + 4);
-                let standing = match self.state.standing(work) {
-                    Standing::Blocked(why) => format!("blocked by {why}"),
-                    Standing::Waiting(asks) => format!("waiting on ask:{}", asks.join(", ask:")),
-                    other => other.word().to_string(),
-                };
-                let line = if work.line.is_empty() { String::new() } else { format!(" · {}", work.line) };
-                out.push_str(&format!("  {name}  {standing}{line}\n"));
-                if let Some(goal) = &work.goal {
-                    out.push_str(&format!("{pad}goal: {goal}\n"));
-                }
-                if let Some(last) = work.done.last() {
-                    let more = if work.done.len() > 1 {
-                        format!(" (and {} before)", work.done.len() - 1)
-                    } else {
-                        String::new()
-                    };
-                    out.push_str(&format!("{pad}done: {last}{more}\n"));
-                }
-                if !work.next.is_empty() {
-                    out.push_str(&format!("{pad}next: {}\n", work.next.join("; ")));
-                }
-                out.push_str(&format!("{pad}{}\n", self.marks(&work.marks)));
-            }
-        }
+        out.push_str(&self.works_text(works));
         if !decided.is_empty() {
             out.push_str("\nDECIDED IN THE LAST 7 DAYS\n");
-            for ask in &decided {
+            for ask in decided {
                 let Some((how, marks)) = &ask.closed else { continue };
                 let name = format!("{}ask:{}", self.place(&ask.marks), ask.id);
                 let pad = " ".repeat(name.chars().count() + 4);
@@ -181,6 +204,47 @@ impl Report<'_> {
                 "\nnote: {} of the log was written by a newer nahuali and was left out\n",
                 lines(self.newer)
             ));
+        }
+        out
+    }
+
+    /// The work part of the board.
+    fn works_text(&self, works: &[&Work]) -> String {
+        let mut out = String::new();
+        if !works.is_empty() {
+            out.push_str("\nWORK\n");
+            // One column for the names, as wide as the longest.
+            let wide = works
+                .iter()
+                .map(|w| self.place(&w.marks).chars().count() + w.slug.chars().count())
+                .max()
+                .unwrap_or(0);
+            for work in works {
+                let name = format!("{:<wide$}", format!("{}{}", self.place(&work.marks), work.slug));
+                let pad = " ".repeat(wide + 4);
+                let standing = match self.state.standing(work) {
+                    Standing::Blocked(why) => format!("blocked by {why}"),
+                    Standing::Waiting(asks) => format!("waiting on ask:{}", asks.join(", ask:")),
+                    other => other.word().to_string(),
+                };
+                let line = if work.line.is_empty() { String::new() } else { format!(" · {}", work.line) };
+                out.push_str(&format!("  {name}  {standing}{line}\n"));
+                if let Some(goal) = &work.goal {
+                    out.push_str(&format!("{pad}goal: {goal}\n"));
+                }
+                if let Some(last) = work.done.last() {
+                    let more = if work.done.len() > 1 {
+                        format!(" (and {} before)", work.done.len() - 1)
+                    } else {
+                        String::new()
+                    };
+                    out.push_str(&format!("{pad}done: {last}{more}\n"));
+                }
+                if !work.next.is_empty() {
+                    out.push_str(&format!("{pad}next: {}\n", work.next.join("; ")));
+                }
+                out.push_str(&format!("{pad}{}\n", self.marks(&work.marks)));
+            }
         }
         out
     }
