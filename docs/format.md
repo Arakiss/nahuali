@@ -287,13 +287,13 @@ not exported and never go to another machine. `nahuali usage` reads them.
 | `v` | The version of this format. This is version 1. |
 | `at` | When, in UTC. The file is named after its month: `2026-11.jsonl`. |
 | `surface` | `cli`, `mcp` or `hook`. |
-| `verb` | The verb, or the kind of hook. A sentence where a verb goes is `(not a word)`. |
+| `verb` | The verb, or the kind of hook. A sentence where a verb goes is `(not a word)`. The help of one verb is `help` and the verb: `help setup`. |
 | `by` | The tool or agent that called, or `person`. Never the person's name. |
 | `project` | The project it spoke of, when there was one. |
 | `flags` | The names of the flags given, without their values. |
 | `ms` | How long the command took. |
-| `outcome` | `ok` or `error`. |
-| `kind` | For an error: `unknown-verb`, `unknown-flag`, `missing-value`, `usage`, `refused` or `told`. |
+| `outcome` | `ok`, `error`, or `told`: the command did its job and found things to look at, as `doctor` does when a part is not right. Its exit status is still 1. Older lines say this as `error` with kind `told`, and are read the same. |
+| `kind` | For an error: `unknown-verb`, `unknown-flag`, `missing-value`, `usage` or `refused`. A verb of the old nahuali is an `unknown-verb`. |
 | `unknown` | For an unknown verb or flag: the name as typed. |
 | `said` | For an error: its first line, with what was quoted in it left out. |
 | `counts` | What the command gave: `found` and `near` for a recall, `lessons` for a check, `said`, `told` and `stopped` for a hook. |

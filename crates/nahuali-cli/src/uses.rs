@@ -22,7 +22,7 @@ use std::time::Duration;
 use nahuali_core::{Actor, Time};
 use serde_json::{Map, Value, json};
 
-use crate::{Failure, env, parse, usage, words};
+use crate::{Failure, env, help, parse, usage, words};
 
 /// The verbs a person or an agent is meant to use. One not used in a while
 /// is a verb nobody needs, or one nobody finds.
@@ -164,7 +164,7 @@ fn ending(line: &mut Map<String, Value>, result: &Result<String, Failure>, typed
             line.insert("outcome".into(), json!("ok"));
             return;
         }
-        Err(Failure::Usage(t)) if t.ends_with("is not something nahuali does") => {
+        Err(Failure::Usage(t)) if t.ends_with("is not something nahuali does") || t.contains(help::OLD) => {
             ("unknown-verb", Some(word(typed)), Some(t))
         }
         Err(Failure::Usage(t)) if t.contains(" is not something this command takes") => {
@@ -174,8 +174,12 @@ fn ending(line: &mut Map<String, Value>, result: &Result<String, Failure>, typed
         Err(Failure::Usage(t)) if t.ends_with(" takes a value") => ("missing-value", None, Some(t)),
         Err(Failure::Usage(t)) => ("usage", None, Some(t)),
         Err(Failure::Refused(t)) => ("refused", None, Some(t)),
-        // What doctor says when something is not right: its own report.
-        Err(Failure::Told(_)) => ("told", None, None),
+        // What doctor says when something is not right: it did its job,
+        // and what it found is for someone to look at. Not a failure.
+        Err(Failure::Told(_)) => {
+            line.insert("outcome".into(), json!("told"));
+            return;
+        }
     };
     line.insert("outcome".into(), json!("error"));
     line.insert("kind".into(), json!(kind));
@@ -253,6 +257,19 @@ fn record(call: Call<'_>, result: &Result<String, Failure>) {
 
 /// After a command has run and said what it had to say.
 pub fn after_command(argv: &[String], result: &Result<String, Failure>, took: Duration) {
+    // The help of one verb: which verb, so that what agents had to look up shows.
+    if let Some(topic) = help::asked(argv) {
+        let call = Call {
+            surface: "cli",
+            verb: format!("help {}", word(topic)),
+            by: caller(value_of(argv, "as")),
+            argv,
+            took,
+            typed: topic,
+        };
+        record(call, result);
+        return;
+    }
     let first = argv.first().map(String::as_str);
     let looked = || if std::io::stdout().is_terminal() { "board" } else { "status" };
     let (verb, rest) = match first {
@@ -413,6 +430,8 @@ fn rank(sorted: &[u64], p: f64) -> Option<u64> {
 struct Verb {
     calls: u64,
     failed: u64,
+    /// Did its job and said there were things to look at, as doctor does.
+    told: u64,
     ms: Vec<u64>,
     last: Time,
     /// Each kind of failure: how many, and what one of them said.
@@ -478,7 +497,9 @@ impl Tally {
                 hook.stopped += n(line, "/counts/stopped");
                 continue;
             }
-            let failed = line["outcome"] == "error";
+            // Before `told` was an outcome of its own, it was a kind of error.
+            let told = line["outcome"] == "told" || line["kind"] == "told";
+            let failed = line["outcome"] == "error" && !told;
             if let Some(unknown) = line["unknown"].as_str() {
                 let key = if line["kind"] == "unknown-verb" {
                     format!("nahuali {unknown}")
@@ -502,6 +523,9 @@ impl Tally {
             v.last = v.last.max(at);
             if !LONG.contains(&verb.as_str()) {
                 v.ms.push(ms);
+            }
+            if told {
+                v.told += 1;
             }
             if failed {
                 v.failed += 1;
@@ -540,16 +564,17 @@ impl Tally {
         );
         if !self.verbs.is_empty() {
             out.push_str(&format!(
-                "\nVERBS\n  {:<14} {:>6} {:>7} {:>8} {:>8}   last\n",
-                "", "calls", "failed", "p50", "p95"
+                "\nVERBS\n  {:<14} {:>6} {:>7} {:>5} {:>8} {:>8}   last\n",
+                "", "calls", "failed", "told", "p50", "p95"
             ));
             let mut verbs: Vec<_> = self.verbs.iter().collect();
             verbs.sort_by(|a, b| b.1.calls.cmp(&a.1.calls).then(a.0.cmp(b.0)));
             for (name, v) in verbs {
                 out.push_str(&format!(
-                    "  {name:<14} {:>6} {:>7} {:>8} {:>8}   {}\n",
+                    "  {name:<14} {:>6} {:>7} {:>5} {:>8} {:>8}   {}\n",
                     v.calls,
                     v.failed,
+                    v.told,
                     ms(rank(&v.ms, 0.5)),
                     ms(rank(&v.ms, 0.95)),
                     v.last.ago(now)
@@ -640,7 +665,7 @@ impl Tally {
                     .map(|(kind, (n, said))| (kind.clone(), json!({ "n": n, "said": said })))
                     .collect();
                 let value = json!({
-                    "calls": v.calls, "failed": v.failed, "p50_ms": rank(&v.ms, 0.5), "p95_ms": rank(&v.ms, 0.95),
+                    "calls": v.calls, "failed": v.failed, "told": v.told, "p50_ms": rank(&v.ms, 0.5), "p95_ms": rank(&v.ms, 0.95),
                     "last": v.last, "failures": failures,
                 });
                 (name.clone(), value)

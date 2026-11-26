@@ -10,7 +10,7 @@ where things stand, what is waiting on the person, what was learned, and how
 far each of those can be trusted. The person sees it as a board.
 
 Eight verbs. Every one records who you are, the project, the commit and the
-time for you.
+time for you. `nahuali VERB --help` says what one of them takes.
 
 ## When you start
 

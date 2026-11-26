@@ -1267,3 +1267,110 @@ fn when_use_is_not_to_be_recorded_nothing_is() {
     assert!(off(&["doctor"]).1.contains("not recorded: NAHUALI_USAGE is off"));
     assert!(desk.feed(&["doctor"], "").ok().contains("lines this month"));
 }
+
+#[test]
+fn every_verb_says_what_it_takes_when_asked_for_help() {
+    let desk = Desk::new("help");
+    desk.run(&["update", "importer", "--line", "started"]).ok();
+    let events = desk.run(&["export"]).ok();
+    // Before, a verb refused `--help` as a flag it does not take.
+    let setup = desk.run(&["setup", "--help"]).ok();
+    assert!(setup.contains("nahuali setup [--hooks]") && setup.contains("--meaning"), "{setup}");
+    assert!(setup.contains("\neverywhere\n"), "what every command takes goes with it: {setup}");
+    assert!(!setup.contains("nahuali recall"), "only that verb: {setup}");
+    assert_eq!(desk.run(&["setup", "-h"]).ok(), setup);
+    assert_eq!(desk.run(&["help", "setup"]).ok(), setup);
+
+    let update = desk.run(&["update", "importer", "--line", "x", "--help"]).ok();
+    assert!(update.contains("\nupdate WORK\n  --line") && update.contains("--verified"), "{update}");
+    assert_eq!(desk.run(&["export"]).ok(), events, "asking for help wrote nothing");
+
+    let all = desk.run(&["help"]).ok();
+    assert!(all.starts_with("nahuali: a working memory") && all.contains("\na team\n"), "{all}");
+    assert_eq!(desk.run(&["--help"]).ok(), all);
+
+    let nope = desk.run(&["nope", "--help"]);
+    assert_eq!(nope.code, 2);
+    assert!(nope.err.contains("`nope` is not something nahuali does"), "{}", nope.err);
+    assert_eq!(desk.run(&["help", "nope"]).code, 2);
+
+    let lines = uses(&desk);
+    let helped: Vec<_> =
+        lines.iter().filter_map(|l| l["verb"].as_str()).filter(|v| v.starts_with("help")).collect();
+    assert_eq!(
+        helped,
+        ["help setup", "help setup", "help setup", "help update", "help", "help", "help nope", "help nope"]
+    );
+    let unknown: Vec<_> = lines.iter().filter(|l| l["kind"] == "unknown-verb").collect();
+    assert!(unknown.iter().all(|l| l["unknown"] == "nope"), "{unknown:?}");
+}
+
+#[test]
+fn a_verb_of_the_old_nahuali_is_refused_with_what_to_use_now() {
+    let desk = Desk::new("old-verbs");
+    desk.run(&["update", "importer", "--line", "started"]).ok();
+    let pending = desk.run(&["pending"]);
+    assert_eq!(pending.code, 2);
+    assert!(
+        pending.err.contains(
+            "`pending` was a verb of the old nahuali; what waits on the person and the work in motion is `nahuali status`"
+        ),
+        "{}",
+        pending.err
+    );
+    let done = desk.run(&["intention-complete", "importer"]);
+    assert_eq!(done.code, 2);
+    assert!(done.err.contains("`nahuali update WORK --status done`"), "{}", done.err);
+    for (old, now) in
+        [("remember", "nahuali note"), ("procedure", "nahuali learn"), ("backup", "nahuali export")]
+    {
+        let said = desk.run(&[old, "x"]);
+        assert_eq!(said.code, 2);
+        assert!(said.err.contains(now), "{old}: {}", said.err);
+    }
+
+    let lines = uses(&desk);
+    let unknown: Vec<_> = lines.iter().filter(|l| l["kind"] == "unknown-verb").collect();
+    assert_eq!(unknown.len(), 5, "still a verb nahuali does not have: {lines:?}");
+    assert_eq!(unknown[0]["unknown"], "pending");
+    let report = desk.run(&["usage"]).ok();
+    assert!(
+        report.contains("nahuali pending ×1") && report.contains("nahuali intention-complete ×1"),
+        "{report}"
+    );
+}
+
+#[test]
+fn what_doctor_finds_to_look_at_is_not_counted_as_a_failure() {
+    let desk = Desk::new("told");
+    desk.run(&["update", "importer", "--line", "started"]).ok();
+    // A tool that runs agents and was never told: doctor has something to say.
+    std::fs::create_dir_all(desk.root.join(".claude")).unwrap();
+    assert_eq!(desk.feed(&["doctor"], "").code, 1, "its exit status says so, as before");
+    assert_eq!(desk.run(&["status", "--since", "7d"]).code, 2);
+    let told = uses(&desk).into_iter().find(|l| l["verb"] == "doctor").unwrap();
+    assert_eq!((told["outcome"].as_str(), told.get("kind")), (Some("told"), None), "{told}");
+
+    // A line written before `told` was an outcome of its own still reads.
+    let month = told["at"].as_str().unwrap()[..7].to_string();
+    let old = serde_json::json!({
+        "v": 1, "at": told["at"], "surface": "cli", "verb": "doctor", "by": "builder", "ms": 5,
+        "outcome": "error", "kind": "told", "version": "0.1.0",
+    });
+    let file = desk.home().join("local").join("usage").join(format!("{month}.jsonl"));
+    let mut text = std::fs::read_to_string(&file).unwrap();
+    text.push_str(&format!("{old}\n"));
+    std::fs::write(&file, text).unwrap();
+
+    let json: serde_json::Value = serde_json::from_str(&desk.run(&["usage", "--json"]).ok()).unwrap();
+    let doctor = &json["verbs"]["doctor"];
+    assert_eq!(
+        (doctor["calls"].as_u64(), doctor["failed"].as_u64(), doctor["told"].as_u64()),
+        (Some(2), Some(0), Some(2))
+    );
+    assert_eq!(json["verbs"]["status"]["failed"], 1, "a real failure is still one");
+    let report = desk.run(&["usage"]).ok();
+    let row = report.lines().find(|l| l.trim_start().starts_with("doctor")).unwrap();
+    assert_eq!(row.split_whitespace().take(4).collect::<Vec<_>>(), ["doctor", "2", "0", "2"], "{report}");
+    assert!(!report.contains(" told ×"), "not among what failed: {report}");
+}
