@@ -6,6 +6,7 @@
 mod args;
 mod doctor;
 mod env;
+mod help;
 mod hook;
 mod keeper;
 mod live;
@@ -29,7 +30,7 @@ use nahuali_tui::anim::Motion;
 use nahuali_tui::theme::ColorMode;
 use remote::Remote;
 
-const HELP: &str = "\
+pub(crate) const HELP: &str = "\
 nahuali: a working memory for a person and their agents
 
   nahuali                     the board (at a terminal), or status (anywhere else)
@@ -213,6 +214,12 @@ fn words<const N: usize>(args: &Args, what: &str) -> Result<[String; N], Failure
 }
 
 pub(crate) fn run(argv: &[String]) -> Result<String, Failure> {
+    if let Some(name) = help::asked(argv) {
+        return match verb(name) {
+            Some(_) => Ok(help::section(name)),
+            None => Err(usage(help::not_a_verb(name))),
+        };
+    }
     let (command, rest) = match argv.first().map(String::as_str) {
         None => (if std::io::stdout().is_terminal() { "board" } else { "status" }, argv),
         Some(first) if first.starts_with("--") && !matches!(first, "--help" | "--version") => {
@@ -223,31 +230,43 @@ pub(crate) fn run(argv: &[String]) -> Result<String, Failure> {
     match command {
         "help" | "--help" | "-h" => Ok(HELP.to_string()),
         "--version" | "-V" => Ok(format!("nahuali {}\n", env!("CARGO_PKG_VERSION"))),
-        "status" => status(rest),
-        "update" => update(rest),
-        "ask" => ask(rest),
-        "answer" => answer(rest),
-        "where" => place(rest),
-        "board" => board(rest),
-        "export" => export(rest),
-        "learn" => more::learn(rest),
-        "check" => more::check(rest),
-        "lessons" => more::lessons(rest),
-        "retire" => more::retire(rest),
-        "note" => more::note(rest),
-        "recall" => more::recall(rest),
-        "forget" => more::forget(rest),
-        "hook" => hook::hook(rest),
-        "mcp" => mcp::mcp(rest),
-        "setup" => setup::setup(rest),
-        "team" => team::team(rest),
-        "node" => node::node(rest),
-        "doctor" => doctor::doctor(rest),
-        "usage" => uses::report(rest),
-        "serve" => serve(rest),
-        "stop" => stop(rest),
-        other => Err(usage(format!("`{other}` is not something nahuali does"))),
+        other => match verb(other) {
+            Some(verb) => verb(rest),
+            None => Err(usage(help::not_a_verb(other))),
+        },
     }
+}
+
+type Verb = fn(&[String]) -> Result<String, Failure>;
+
+/// What runs a verb, for every verb nahuali has.
+fn verb(name: &str) -> Option<Verb> {
+    Some(match name {
+        "status" => status,
+        "update" => update,
+        "ask" => ask,
+        "answer" => answer,
+        "where" => place,
+        "board" => board,
+        "export" => export,
+        "learn" => more::learn,
+        "check" => more::check,
+        "lessons" => more::lessons,
+        "retire" => more::retire,
+        "note" => more::note,
+        "recall" => more::recall,
+        "forget" => more::forget,
+        "hook" => hook::hook,
+        "mcp" => mcp::mcp,
+        "setup" => setup::setup,
+        "team" => team::team,
+        "node" => node::node,
+        "doctor" => doctor::doctor,
+        "usage" => uses::report,
+        "serve" => serve,
+        "stop" => stop,
+        _ => return None,
+    })
 }
 
 fn status(argv: &[String]) -> Result<String, Failure> {
