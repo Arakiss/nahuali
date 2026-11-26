@@ -246,6 +246,12 @@ pub struct Event {
     /// Absent in lines written before people were told apart.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub person: Option<String>,
+    /// The session of the tool an agent spoke in: one conversation, from
+    /// its start to its end. Never a person's. It sits beside `by`, not in
+    /// it, so that a reader from before sessions ignores it and still reads
+    /// the line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
     /// Only that person and their agents see it.
     #[serde(default, skip_serializing_if = "is_false")]
     pub mine: bool,
@@ -294,6 +300,10 @@ impl Event {
                     {
                         event.by = Actor::Reported { by: owner.clone(), from: said.clone() };
                     }
+                    // A person speaks for themselves, never from a session.
+                    if event.by.is_person() {
+                        event.session = None;
+                    }
                     Line::Event(Box::new(event))
                 }
                 Err(_) => Line::Damaged,
@@ -313,6 +323,7 @@ mod tests {
             at: Time(1_794_496_811),
             by: Actor::Agent("claude-code".into()),
             person: None,
+            session: None,
             mine: false,
             project: "atlas".into(),
             private: false,
@@ -372,5 +383,29 @@ mod tests {
         let own = line.replace(r#""person":"bob""#, r#""person":"ada""#);
         let Line::Event(e) = Event::read(&own) else { panic!("it is a readable line") };
         assert_eq!(e.by, Actor::Person("ada".into()));
+    }
+
+    #[test]
+    fn a_session_is_kept_beside_who_spoke_and_a_line_without_one_still_reads() {
+        let e = Event {
+            session: Some("0b5e7a2c-session-of-cobalt".into()),
+            ..event(What::Note(NoteNew { note: "n1".into(), text: "hi".into(), ..NoteNew::default() }))
+        };
+        let line = e.line();
+        assert!(
+            line.contains(r#""by":{"agent":"claude-code"},"session":"0b5e7a2c-session-of-cobalt""#),
+            "{line}"
+        );
+        assert_eq!(Event::read(&line), Line::Event(Box::new(e.clone())));
+        let old = line.replace(r#","session":"0b5e7a2c-session-of-cobalt""#, "");
+        let Line::Event(read) = Event::read(&old) else { panic!("a line from before sessions reads") };
+        assert_eq!(*read, Event { session: None, ..e });
+    }
+
+    #[test]
+    fn a_person_never_speaks_from_a_session() {
+        let line = r#"{"v":1,"id":"01","at":"2026-11-12T15:20:11Z","by":{"person":"ada"},"session":"s1","project":"atlas","what":{"answer":{"ask":"k3f9q2","text":"yes"}}}"#;
+        let Line::Event(e) = Event::read(line) else { panic!("it is a readable line") };
+        assert_eq!(e.session, None);
     }
 }

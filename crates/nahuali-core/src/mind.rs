@@ -184,6 +184,8 @@ pub struct Mind<J> {
     pub newer: usize,
     /// Whose eyes this is: what is only another person's is not here.
     viewer: Option<String>,
+    /// The session of the tool whatever this writes is said in.
+    session: Option<String>,
 }
 
 impl<J: Journal> Mind<J> {
@@ -194,10 +196,25 @@ impl<J: Journal> Mind<J> {
     /// Open as one person sees it: an event that is only another person's
     /// is left out before anything is folded, as if it had never arrived.
     pub fn open_as(journal: J, viewer: Option<String>) -> Result<Self, Error> {
-        let mut mind =
-            Self { journal, events: Vec::new(), state: State::default(), damaged: 0, newer: 0, viewer };
+        let mut mind = Self {
+            journal,
+            events: Vec::new(),
+            state: State::default(),
+            damaged: 0,
+            newer: 0,
+            viewer,
+            session: None,
+        };
         mind.reload()?;
         Ok(mind)
+    }
+
+    /// Write as an agent speaking in `session`: the conversation of the tool
+    /// that runs it. One process speaks in one session. What a person says
+    /// is written without it, whatever is given here.
+    pub fn in_session(mut self, session: Option<String>) -> Self {
+        self.session = session;
+        self
     }
 
     /// Read the journal again: another writer may have added to it.
@@ -230,12 +247,14 @@ impl<J: Journal> Mind<J> {
 
     fn write(&mut self, sig: Signature, what: What) -> Result<String, Error> {
         named("a project", &sig.project)?;
+        let session = if sig.who.is_person() { None } else { self.session.clone() };
         let event = Event {
             v: VERSION,
             id: id::ulid(sig.at_ms, sig.entropy),
             at: Time::from_millis(sig.at_ms),
             by: sig.who,
             person: sig.person,
+            session,
             mine: sig.mine,
             project: sig.project,
             private: sig.private,

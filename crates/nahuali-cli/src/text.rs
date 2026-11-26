@@ -2,7 +2,7 @@
 //! who said each thing, how sure they were and as of when. Written for an
 //! agent to read at the start of its work, and short enough for a person.
 
-use nahuali_core::{Ask, Closed, Lesson, Marks, Scope, Standing, State, Status, Thing, Time, Work};
+use nahuali_core::{Actor, Ask, Closed, Lesson, Marks, Scope, Standing, State, Status, Thing, Time, Work};
 use serde_json::{Value, json};
 
 /// Decisions stay in `status` this long, so whoever asked finds the answer.
@@ -55,14 +55,15 @@ impl Report<'_> {
     /// Who and when, for what is a saying and not a claim about the world:
     /// an ask, an answer. An agent that decides is named as one.
     fn said(&self, marks: &Marks) -> String {
-        let who =
-            if marks.who.is_person() { marks.who.line() } else { format!("{}, an agent", marks.who.line()) };
-        let private = if marks.private { " · private" } else { "" };
-        format!("{who} · {}{private}", marks.at.ago(self.now))
+        said(marks, self.now)
     }
 
     fn marks(&self, marks: &Marks) -> String {
-        let mut parts = vec![marks.who.line(), marks.sure.line(), marks.at.ago(self.now)];
+        let mut parts = vec![who(marks)];
+        if ours(marks) {
+            parts.push("this session".to_string());
+        }
+        parts.extend([marks.sure.line(), marks.at.ago(self.now)]);
         if let Some(commit) = &marks.commit {
             parts.push(format!("commit {commit}"));
         }
@@ -260,6 +261,8 @@ impl Report<'_> {
                 "private": m.private,
                 "person": m.person,
                 "mine": m.mine,
+                "session": m.session,
+                "this_session": ours(m),
             })
         };
         let asks: Vec<Value> = self
@@ -329,12 +332,28 @@ pub fn work_line(state: &State, work: &Work) -> String {
     format!("{}/{} · {standing}{line}", work.marks.project, work.slug)
 }
 
+/// Whether it was said in the session that is reading it now.
+fn ours(marks: &Marks) -> bool {
+    marks.session.is_some() && marks.session == crate::env::session()
+}
+
+/// Who said it: `claude-code 9f3a1c`, the agent and the end of the session
+/// it spoke in, so that another session's work is not taken for one's own.
+/// The session reading is not tagged: `this session` says it.
+fn who(marks: &Marks) -> String {
+    let tag = marks.tag().filter(|_| !ours(marks)).map(|t| format!(" {t}")).unwrap_or_default();
+    match &marks.who {
+        Actor::Reported { by, from } => format!("{by}{tag} (from {from})"),
+        Actor::Person(name) | Actor::Agent(name) => format!("{name}{tag}"),
+    }
+}
+
 /// Who said something and when, with what an agent's word is worth.
 fn said(marks: &Marks, now: Time) -> String {
-    let who =
-        if marks.who.is_person() { marks.who.line() } else { format!("{}, an agent", marks.who.line()) };
+    let who = if marks.who.is_person() { who(marks) } else { format!("{}, an agent", who(marks)) };
+    let this = if ours(marks) { " · this session" } else { "" };
     let private = if marks.private { " · private" } else { "" };
-    format!("{who} · {}{private}", marks.at.ago(now))
+    format!("{who}{this} · {}{private}", marks.at.ago(now))
 }
 
 /// A lesson as it is shown to someone about to act: the rule, its moment,
@@ -376,7 +395,11 @@ pub fn thing_block(thing: &Thing, wide: bool, alike: Option<f64>, now: Time) -> 
     }
     let mut marks = match thing.kind {
         "work" => {
-            let mut parts = vec![thing.marks.who.line(), thing.marks.sure.line(), thing.marks.at.ago(now)];
+            let mut parts = vec![who(&thing.marks)];
+            if ours(&thing.marks) {
+                parts.push("this session".to_string());
+            }
+            parts.extend([thing.marks.sure.line(), thing.marks.at.ago(now)]);
             parts.extend(thing.marks.commit.iter().map(|c| format!("commit {c}")));
             if thing.marks.private {
                 parts.push("private".to_string());

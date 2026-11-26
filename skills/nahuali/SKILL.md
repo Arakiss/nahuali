@@ -21,7 +21,9 @@ nahuali status
 For this project: the questions waiting on the person, each piece of work
 with its one-line card, and what was decided in the last seven days. Read
 the decisions: an answer to a question you or another agent asked is there
-and nowhere else. "Nothing held yet" is a correct answer.
+and nowhere else. "Nothing held yet" is a correct answer. A card marked
+`this session` is yours; one with a tag after the agent's name, as in
+`claude-code 0a41b6`, is another session's, and another agent may be on it.
 
 With the hooks, a session starts with a short version of this: every
 question waiting on the person and the work changed last. When it says

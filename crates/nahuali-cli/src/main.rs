@@ -181,7 +181,7 @@ fn parse(argv: &[String], valued: &[&str], flags: &[&str]) -> Result<Args, Failu
 fn open(args: &Args) -> Result<Mind<Remote>, Failure> {
     let home = env::home(args.value("home")).map_err(Failure::Usage)?;
     let me = me_at(&home);
-    Ok(Mind::open_as(Remote::at(home), Some(me))?)
+    Ok(Mind::open_as(Remote::at(home), Some(me))?.in_session(env::session()))
 }
 
 /// The person this installation works for: who it is on its team's server,

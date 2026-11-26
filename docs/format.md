@@ -50,6 +50,7 @@ table `event`. Out of it, it is one line of JSON:
 | `at` | When, in UTC. |
 | `by` | Who: `{"person":"ada"}`, `{"agent":"claude-code"}`, or `{"reported":{"by":"lead","from":"scout"}}` when one passes on what another said. |
 | `person` | The person the speaker works for: themselves, when a person speaks. Absent in lines from before people were told apart. |
+| `session` | The session of the tool an agent spoke in: one conversation, from its start to its end. Never a person's. Absent when the tool does not say, and in lines from before sessions. |
 | `mine` | Present and `true` when only that person and their agents may see it. |
 | `project` | Where it belongs. |
 | `private` | Present and `true` when it must not be offered to work on another project. |
@@ -59,6 +60,19 @@ table `event`. Out of it, it is one line of JSON:
 
 The first five and `sure` are the four marks of `docs/product.md`: who, how
 sure, as of, and reach. No event exists without them.
+
+`session` is part of who. It comes from the environment the tool gives the
+agent: `CLAUDE_CODE_SESSION_ID` for Claude Code, `CODEX_THREAD_ID` for
+Codex, or `NAHUALI_SESSION` for any other; Cursor names none. Agents that a
+session starts inside itself, as Claude Code's subagents, inherit its
+session and so are that session too. It sits beside
+`by` and not inside it, because a reader from before sessions refuses a `by`
+of two keys and would lose the line, while a field it does not know it
+ignores. Where it is shown, a session is its last six letters and digits,
+`claude-code 0a41b6`: the last, because Codex begins its ids with the time,
+and two sessions started together would begin alike. What was written in
+the session that is reading says `this session` instead, and in `status
+--json` its marks carry `"this_session": true`.
 
 | Kind | Fields | Effect |
 |---|---|---|
