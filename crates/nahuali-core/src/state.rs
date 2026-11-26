@@ -25,9 +25,21 @@ pub struct Marks {
     pub person: Option<String>,
     /// Only that person and their agents see it.
     pub mine: bool,
+    /// The session of the tool an agent spoke in, when the line says.
+    pub session: Option<String>,
 }
 
 impl Marks {
+    /// Enough of the session to tell it from another: its last six letters
+    /// and digits, `9f3a1c`. The last, because some tools begin theirs with
+    /// the time, and two sessions started together would begin alike.
+    pub fn tag(&self) -> Option<String> {
+        let session = self.session.as_deref()?;
+        let mut tail: Vec<char> = session.chars().rev().filter(char::is_ascii_alphanumeric).take(6).collect();
+        tail.reverse();
+        (!tail.is_empty()).then(|| tail.into_iter().collect::<String>().to_ascii_lowercase())
+    }
+
     fn of(event: &Event) -> Self {
         Self {
             who: event.by.clone(),
@@ -38,6 +50,7 @@ impl Marks {
             private: event.private,
             person: event.person.clone(),
             mine: event.mine,
+            session: event.session.clone(),
         }
     }
 }

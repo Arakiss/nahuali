@@ -55,17 +55,20 @@ fn local(at: Time) -> Stamp {
     }
 }
 
-fn who(actor: &Actor) -> view::Who {
-    match actor {
+/// An agent with the session it spoke in, `claude-code 9f3a1c`, so that two
+/// sessions of one tool are two speakers on the board.
+fn who(m: &Marks) -> view::Who {
+    let tag = m.tag().map(|t| format!(" {t}")).unwrap_or_default();
+    match &m.who {
         Actor::Person(name) => view::Who::Person(name.clone()),
-        Actor::Agent(name) => view::Who::Agent(name.clone()),
-        Actor::Reported { by, from } => view::Who::Reported(format!("{by}, from {from}")),
+        Actor::Agent(name) => view::Who::Agent(format!("{name}{tag}")),
+        Actor::Reported { by, from } => view::Who::Reported(format!("{by}{tag}, from {from}")),
     }
 }
 
 fn marks(m: &Marks) -> view::Marks {
     view::Marks {
-        who: who(&m.who),
+        who: who(m),
         sure: match &m.sure {
             Sure::Verified(by) => view::Sure::Verified(by.clone()),
             Sure::Claimed => view::Sure::Claimed,

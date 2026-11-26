@@ -88,6 +88,20 @@ pub fn actor(named: Option<&str>, from: Option<&str>) -> Result<Actor, String> {
     })
 }
 
+/// Tools that run agents name the session in the environment, in the
+/// order [`HARNESSES`] tells them apart. `NAHUALI_SESSION` names one by hand.
+/// Cursor says none that we know of.
+const SESSIONS: [&str; 3] = ["NAHUALI_SESSION", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID"];
+
+/// The session an agent is speaking in: one conversation of the tool that
+/// runs it, from its start to its end. Letters, digits and `-_.:`, or none.
+pub fn session() -> Option<String> {
+    let id = SESSIONS.iter().find_map(|name| var(name))?;
+    let id = id.trim();
+    let plain = id.len() <= 128 && id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.:".contains(c));
+    plain.then(|| id.to_string())
+}
+
 fn git(args: &[&str]) -> Option<String> {
     let out = Command::new("git").args(args).output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout).trim().to_string();

@@ -88,6 +88,30 @@ fn a_card_is_overwritten_and_its_past_stays_behind_it() {
 }
 
 #[test]
+fn an_agent_writes_in_its_session_and_a_person_in_none() {
+    let mut m = Mind::open(MemJournal::default()).unwrap().in_session(Some("3c9d2e7f-cobalt-0a41b6".into()));
+    let work = m.update(agent(0, "atlas"), card("importer", "started")).unwrap();
+    assert_eq!(work.marks.session.as_deref(), Some("3c9d2e7f-cobalt-0a41b6"));
+    assert_eq!(work.marks.tag().as_deref(), Some("0a41b6"), "the end tells sessions apart");
+    assert!(m.journal().0[0].contains(r#""session":"3c9d2e7f-cobalt-0a41b6""#));
+    let work = m.update(ada(1), card("importer", "looked at it")).unwrap();
+    assert_eq!(work.marks.session, None, "a person never speaks from a session");
+    assert_eq!(work.marks.tag(), None);
+}
+
+#[test]
+fn lines_from_before_sessions_give_the_same_state_as_ever() {
+    let mut m = mind();
+    m.update(agent(0, "atlas"), card("importer", "started")).unwrap();
+    m.update(ada(1), card("exporter", "planned")).unwrap();
+    let lines = m.journal().0.clone();
+    assert!(lines.iter().all(|l| !l.contains("session")), "nothing is written that was not given");
+    let again = Mind::open(MemJournal(lines)).unwrap();
+    assert_eq!(again.state(), m.state());
+    assert_eq!(again.state().work("atlas", "importer").unwrap().marks.session, None);
+}
+
+#[test]
 fn a_field_left_out_keeps_what_it_had() {
     let mut m = mind();
     let first = WorkSet {

@@ -46,7 +46,7 @@ Every one of them carries the same four marks.
 
 | Mark | Says |
 | --- | --- |
-| who | You said it, an agent saw it, or an agent passes on what another told it |
+| who | You said it, an agent saw it, or an agent passes on what another told it. An agent is named with the session it spoke in, so two sessions of one tool are two speakers |
 | how sure | Verified, and by what, or only claimed |
 | as of | The moment and, for work in a repository, the commit |
 | reach | The project it belongs to, and whether it is private to it |
@@ -115,9 +115,9 @@ WORK
   importer  waiting on ask:k3f9q2 · tests green, review left
             done: parser for the old format
             next: open the review
-            claude-code · verified by cargo test, 42 passing · 12 min ago · commit abc1234
+            claude-code · this session · verified by cargo test, 42 passing · 12 min ago · commit abc1234
   pricing   not started
-            codex · claimed · 1 d ago
+            codex 7e5f19 · claimed · 1 d ago
 
 DECIDED IN THE LAST 7 DAYS
   ask:9x8y7z  Which of the two logos goes on the cover?
@@ -126,6 +126,8 @@ DECIDED IN THE LAST 7 DAYS
 ```
 
 A piece of work is never set to "waiting on the person" by hand. It waits while an open ask names it and stops waiting when that ask is closed. An agent that answers an ask itself is shown as an agent.
+
+An agent's word carries the session of the tool it spoke in. What the session reading wrote says `this session`; what another session wrote carries the end of that session's id, `codex 7e5f19`, and is another agent's work, even when it is the same tool.
 
 ### A lesson arrives at the moment of the act
 

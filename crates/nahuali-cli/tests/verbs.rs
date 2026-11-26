@@ -38,6 +38,7 @@ impl Desk {
             c.env_remove(marker);
         }
         c.env_remove("NAHUALI_ACTOR").env_remove("NAHUALI_PROJECT").env_remove("NAHUALI_PERSON");
+        c.env_remove("NAHUALI_SESSION").env_remove("CLAUDE_CODE_SESSION_ID");
         c.env_remove("NAHUALI_USAGE");
         c.stdin(std::process::Stdio::null());
         c
@@ -317,6 +318,76 @@ fn many_agents_write_at_once_while_another_reads_and_nothing_is_lost() {
     let status = desk.run(&["status"]).ok();
     assert!(status.starts_with("atlas · 0 waiting on the person · 13 pieces of work\n"), "{status}");
     assert!(desk.home().join("db").exists(), "it is kept in the database");
+}
+
+const COBALT: &str = "3c9d2e7f-1b2a-4c3d-8e4f-c0ba170a41b6";
+const BOREALIS: &str = "9a8b7c6d-5e4f-4a3b-9c2d-b0ea117e5f19";
+
+/// Run as Claude Code on project `atlas`, in the session `session`.
+fn in_session(desk: &Desk, session: &str, args: &[&str]) -> String {
+    let mut c = desk.command(&desk.root.join("work"));
+    c.env("CLAUDECODE", "1").env("CLAUDE_CODE_SESSION_ID", session).env("NAHUALI_PROJECT", "atlas");
+    Said::of(c.args(args).output().unwrap()).ok()
+}
+
+#[test]
+fn a_card_says_which_session_wrote_it_and_which_one_is_reading() {
+    let desk = Desk::new("sessions");
+    in_session(&desk, COBALT, &["update", "importer", "--line", "parsing"]);
+    in_session(&desk, BOREALIS, &["update", "exporter", "--line", "drafting"]);
+    let lines = desk.run(&["export"]).ok();
+    let importer = lines.lines().find(|l| l.contains("importer")).unwrap();
+    let event: serde_json::Value = serde_json::from_str(importer).unwrap();
+    assert_eq!(event["by"], serde_json::json!({ "agent": "claude-code" }), "who spoke keeps its shape");
+    assert_eq!(event["session"], COBALT);
+
+    let mine = in_session(&desk, COBALT, &["status"]);
+    let line = |out: &str, of: &str| {
+        let mut lines = out.lines().skip_while(|l| !l.trim_start().starts_with(of));
+        lines.find(|l| l.contains(" · claimed · ")).unwrap().trim().to_string()
+    };
+    assert!(line(&mine, "importer").starts_with("claude-code · this session · claimed · "), "{mine}");
+    assert!(line(&mine, "exporter").starts_with("claude-code 7e5f19 · claimed · "), "{mine}");
+
+    let theirs = in_session(&desk, "a-third-session-ff00aa", &["status"]);
+    assert!(line(&theirs, "importer").starts_with("claude-code 0a41b6 · claimed · "), "{theirs}");
+    assert!(!theirs.contains("this session"), "{theirs}");
+
+    let json: serde_json::Value =
+        serde_json::from_str(&in_session(&desk, COBALT, &["status", "--json"])).unwrap();
+    let marks = |work: &str| {
+        json["works"].as_array().unwrap().iter().find(|w| w["work"] == work).unwrap()["marks"].clone()
+    };
+    assert_eq!(marks("importer")["session"], COBALT);
+    assert_eq!(marks("importer")["this_session"], true);
+    assert_eq!(marks("exporter")["session"], BOREALIS);
+    assert_eq!(marks("exporter")["this_session"], false);
+
+    // A session that starts again, after its context was compacted, finds
+    // its own work told apart: the tool gives its hooks the session too.
+    let mut hook = desk.command(&desk.root.join("work"));
+    hook.env("CLAUDECODE", "1").env("CLAUDE_CODE_SESSION_ID", COBALT).env("NAHUALI_PROJECT", "atlas");
+    hook.env("HOME", &desk.root).args(["hook", "session-start", "claude-code"]);
+    let said: serde_json::Value = serde_json::from_str(&Said::of(hook.output().unwrap()).ok()).unwrap();
+    let context = said["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
+    assert!(context.contains("claude-code · this session · claimed"), "{context}");
+    assert!(context.contains("claude-code 7e5f19 · claimed"), "{context}");
+}
+
+#[test]
+fn a_line_from_before_sessions_reads_and_shows_as_it_did() {
+    let before = Desk::new("before-sessions");
+    before.run(&["update", "importer", "--line", "ready"]).ok();
+    let lines = before.run(&["export"]).ok();
+    assert!(!lines.contains("session"), "{lines}");
+
+    let now = Desk::new("after-sessions");
+    std::fs::create_dir_all(now.home().join("log")).unwrap();
+    std::fs::write(now.home().join("log").join("old.jsonl"), &lines).unwrap();
+    let mut c = now.command(&now.root.join("work"));
+    c.env("NAHUALI_ACTOR", "builder").env("NAHUALI_PROJECT", "atlas").env("CLAUDE_CODE_SESSION_ID", COBALT);
+    let read = Said::of(c.arg("status").output().unwrap()).ok();
+    assert_eq!(read, before.run(&["status"]).ok(), "no session is made up for it");
 }
 
 #[test]
