@@ -314,7 +314,12 @@ fn update(argv: &[String]) -> Result<String, Failure> {
         next: (!next.is_empty()).then_some(next),
     };
     let mut mind = open(&args)?;
-    let work = mind.update(sign(&args)?, set)?;
+    let work = mind.update(sign(&args)?, set).map_err(|e| match e {
+        nahuali_core::Error::TooLong { what: "the card's line", .. } => Failure::Refused(format!(
+            "{e}\n  the line is what is true now; what was done goes in --done, what comes next in --next"
+        )),
+        e => e.into(),
+    })?;
     Ok(format!("{}\n", text::work_line(mind.state(), &work)))
 }
 
@@ -329,10 +334,38 @@ fn ask(argv: &[String]) -> Result<String, Failure> {
         to: args.value("to").map(str::to_string),
     };
     let mut mind = open(&args)?;
-    let ask = mind.ask(sign(&args)?, new)?;
+    let sig = sign(&args)?;
+    let project = sig.project.clone();
+    let ask = match mind.ask(sig, new) {
+        Err(nahuali_core::Error::NoSuchWork(work)) => return Err(no_such_work(&mind, &project, &work)),
+        asked => asked?,
+    };
     Ok(format!(
         "ask:{} · open in {} · it stays on the person's board; `nahuali status` shows the answer when there is one\n",
         ask.id, ask.marks.project
+    ))
+}
+
+/// A question tied to a piece of work that is not there: the works that
+/// are, and how to start the one that was meant.
+fn no_such_work(mind: &Mind<Remote>, project: &str, work: &str) -> Failure {
+    let now = nahuali_core::Time::from_millis(env::now_ms());
+    let state = mind.state();
+    let works = state.works(nahuali_core::Scope::Project(project), now);
+    let open: Vec<&str> = works
+        .iter()
+        .filter(|w| w.status != nahuali_core::Status::Done)
+        .map(|w| w.slug.as_str())
+        .take(8)
+        .collect();
+    let here = if open.is_empty() {
+        format!("{project} has no work in motion")
+    } else {
+        format!("its works in motion: {}", open.join(", "))
+    };
+    Failure::Refused(format!(
+        "there is no work called `{work}` in this project\n  {here}\n  \
+         to start it: nahuali update {work} --line \"…\", then ask again"
     ))
 }
 
