@@ -100,10 +100,21 @@ const SESSIONS: [&str; 5] = [
     "CURSOR_CONVERSATION_ID",
 ];
 
+/// The session a hook was told about by the tool that called it. A tool
+/// does not always put it in the hook's environment (Codex does not, when
+/// it runs a hook), but every one sends it in the hook's input.
+static HOOKED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Say, once, the session this process speaks for: what a hook's input
+/// named. It comes before the environment.
+pub fn hooked_session(id: &str) {
+    let _ = HOOKED.set(id.to_string());
+}
+
 /// The session an agent is speaking in: one conversation of the tool that
 /// runs it, from its start to its end. Letters, digits and `-_.:`, or none.
 pub fn session() -> Option<String> {
-    let id = SESSIONS.iter().find_map(|name| var(name))?;
+    let id = HOOKED.get().cloned().or_else(|| SESSIONS.iter().find_map(|name| var(name)))?;
     let id = id.trim();
     let plain = id.len() <= 128 && id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.:".contains(c));
     plain.then(|| id.to_string())

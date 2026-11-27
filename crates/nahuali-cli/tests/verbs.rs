@@ -34,7 +34,16 @@ impl Desk {
         // A keeper nobody stops leaves by itself soon after the test.
         c.current_dir(dir).env("NAHUALI_HOME", self.home()).env("NAHUALI_IDLE_SECS", "20");
         c.env("NAHUALI_MEANING", if self.meaning { "test" } else { "off" }).env("NAHUALI_NEAR", "0.3");
-        for marker in ["CLAUDECODE", "CODEX_SANDBOX", "CODEX_THREAD_ID", "CURSOR_AGENT", "CURSOR_TRACE_ID"] {
+        for marker in [
+            "CLAUDECODE",
+            "CODEX_SANDBOX",
+            "CODEX_THREAD_ID",
+            "ANTIGRAVITY_AGENT",
+            "ANTIGRAVITY_CONVERSATION_ID",
+            "CURSOR_AGENT",
+            "CURSOR_TRACE_ID",
+            "CURSOR_CONVERSATION_ID",
+        ] {
             c.env_remove(marker);
         }
         c.env_remove("NAHUALI_ACTOR").env_remove("NAHUALI_PROJECT").env_remove("NAHUALI_PERSON");
@@ -372,6 +381,15 @@ fn a_card_says_which_session_wrote_it_and_which_one_is_reading() {
     let context = said["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
     assert!(context.contains("claude-code · this session · claimed"), "{context}");
     assert!(context.contains("claude-code 7e5f19 · claimed"), "{context}");
+
+    // Codex runs its hooks without the session in the environment, and
+    // names it only in the hook's input: that is enough.
+    let input = serde_json::json!({ "session_id": COBALT, "cwd": desk.root.join("work") });
+    let said: serde_json::Value =
+        serde_json::from_str(&desk.feed(&["hook", "session-start", "codex"], &input.to_string()).ok())
+            .unwrap();
+    let context = said["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
+    assert!(context.contains("claude-code · this session · claimed"), "{context}");
 }
 
 #[test]

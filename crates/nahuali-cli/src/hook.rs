@@ -178,6 +178,11 @@ fn run(kind: &str, input: &Value, tool: Option<&str>) -> Option<String> {
     if let Some(cwd) = &given.cwd {
         std::env::set_current_dir(cwd).ok()?;
     }
+    // What the tool says in the input is surer than what it left in the
+    // environment: the board marks this session's own cards by it.
+    if let Some(session) = &given.session {
+        env::hooked_session(session);
+    }
     let home = env::home(None).ok()?;
     // Leave a trace that this tool calls: it is how `doctor` knows that
     // hooks which are in place are also run. Only in a memory that exists.
