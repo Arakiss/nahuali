@@ -46,9 +46,18 @@ jobs:
         env:
           TESTED: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if [ -n "$TESTED" ] && [ "$(git rev-parse HEAD)" != "$TESTED" ]; then
-            echo "main moved past the commit CI passed on; that newer commit's run releases it"
-            exit 0
+          # main may have moved on since the run that started this one. Release
+          # what main is now if its own CI has passed; if not, that CI's
+          # completion starts another run. (Of two runs waiting here, GitHub
+          # keeps only the newer to start, so "leave it to the newer commit's
+          # run" alone could release nothing.)
+          head=$(git rev-parse HEAD)
+          if [ -n "$TESTED" ] && [ "$head" != "$TESTED" ]; then
+            passed=$(gh run list --workflow CI --commit "$head" --event push --json conclusion --jq '.[0].conclusion')
+            if [ "$passed" != "success" ]; then
+              echo "main is at ${head:0:7}, whose CI has not passed (${passed:-not run}); its completion releases it"
+              exit 0
+            fi
           fi
           # A tag on HEAD that has no GitHub release yet: a run that failed after the cut.
           pending=$(git tag --points-at HEAD 'v*' | head -1)
@@ -142,6 +151,8 @@ jobs:
           install nahuali-${TAG}-aarch64-apple-darwin/nahuali ~/.local/bin/
           nahuali setup --hooks
           \`\`\`
+
+          The macOS binary is not signed. Downloaded with a browser, macOS keeps it from running until you clear the quarantine: \`xattr -d com.apple.quarantine ~/.local/bin/nahuali\`.
 
           Or build it: \`cargo install --locked --git https://github.com/${REPO} --tag ${TAG} nahuali-cli\`.
           EOF
