@@ -86,8 +86,9 @@ recall \"ABOUT\"
   --json  --limit N
 
 other tools
-  nahuali setup [--hooks]     tell Claude Code and Codex about nahuali; --hooks brings the memory to
-                              an agent by itself; --remove takes it out; --dry-run only says
+  nahuali setup [--hooks]     tell Claude Code, Codex, Antigravity and Cursor about nahuali;
+                              --hooks brings the memory to an agent by itself; --remove takes it
+                              out; --dry-run only says
   nahuali setup --meaning     install the model that finds what is said in other words (220 MB, once,
                               runs on this machine; nothing leaves it)
   nahuali mcp                 the same verbs over the Model Context Protocol, on standard input

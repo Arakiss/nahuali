@@ -55,10 +55,11 @@ pub fn person() -> String {
 }
 
 /// Tools that run agents say so in the environment.
-const HARNESSES: [(&str, &str); 5] = [
+const HARNESSES: [(&str, &str); 6] = [
     ("CLAUDECODE", "claude-code"),
     ("CODEX_SANDBOX", "codex"),
     ("CODEX_THREAD_ID", "codex"),
+    ("ANTIGRAVITY_AGENT", "antigravity"),
     ("CURSOR_AGENT", "cursor"),
     ("CURSOR_TRACE_ID", "cursor"),
 ];
@@ -90,8 +91,14 @@ pub fn actor(named: Option<&str>, from: Option<&str>) -> Result<Actor, String> {
 
 /// Tools that run agents name the session in the environment, in the
 /// order [`HARNESSES`] tells them apart. `NAHUALI_SESSION` names one by hand.
-/// Cursor says none that we know of.
-const SESSIONS: [&str; 3] = ["NAHUALI_SESSION", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID"];
+/// Antigravity and Cursor name the conversation, which is their session.
+const SESSIONS: [&str; 5] = [
+    "NAHUALI_SESSION",
+    "CLAUDE_CODE_SESSION_ID",
+    "CODEX_THREAD_ID",
+    "ANTIGRAVITY_CONVERSATION_ID",
+    "CURSOR_CONVERSATION_ID",
+];
 
 /// The session an agent is speaking in: one conversation of the tool that
 /// runs it, from its start to its end. Letters, digits and `-_.:`, or none.

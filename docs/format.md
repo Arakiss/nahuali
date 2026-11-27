@@ -63,7 +63,8 @@ sure, as of, and reach. No event exists without them.
 
 `session` is part of who. It comes from the environment the tool gives the
 agent: `CLAUDE_CODE_SESSION_ID` for Claude Code, `CODEX_THREAD_ID` for
-Codex, or `NAHUALI_SESSION` for any other; Cursor names none. Agents that a
+Codex, `ANTIGRAVITY_CONVERSATION_ID` for Antigravity, `CURSOR_CONVERSATION_ID`
+for Cursor, or `NAHUALI_SESSION` for any other. Agents that a
 session starts inside itself, as Claude Code's subagents, inherit its
 session and so are that session too. It sits beside
 `by` and not inside it, because a reader from before sessions refuses a `by`

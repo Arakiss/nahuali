@@ -121,31 +121,41 @@ fn meaning(home: &Path, health: &Result<Value, String>) -> Line {
     }
 }
 
-/// One tool that runs agents: does it know about nahuali, and does it call.
-fn tool(home: &Path, user: &Path, dir: &str, file: &str, name: &'static str) -> Option<Line> {
-    let root = user.join(dir);
-    if !root.is_dir() {
-        return None;
+/// Every `command` in a hooks file, whatever the tool's shape.
+fn commands(v: &Value, out: &mut Vec<String>) {
+    match v {
+        Value::Object(all) => {
+            for (key, value) in all {
+                match (key.as_str(), value.as_str()) {
+                    ("command", Some(command)) => out.push(command.to_string()),
+                    _ => commands(value, out),
+                }
+            }
+        }
+        Value::Array(all) => all.iter().for_each(|v| commands(v, out)),
+        _ => {}
     }
-    let skill = std::fs::read_to_string(root.join("skills").join("nahuali").join("SKILL.md")).ok();
-    if skill.is_none() {
+}
+
+/// One tool that runs agents: does it know about nahuali, and does it call.
+fn tool(home: &Path, user: &Path, target: &crate::setup::Target) -> Option<Line> {
+    let name = crate::setup::name(target);
+    // A tool without a page of its own reads Claude Code's or Codex's.
+    let pages: Vec<std::path::PathBuf> = match crate::setup::page(user, target) {
+        Some(page) => vec![page],
+        None => crate::setup::targets(user).filter_map(|t| crate::setup::page(user, t)).collect(),
+    };
+    if !pages.iter().any(|p| p.is_file()) {
         return Some(look(name, "does not know about nahuali: `nahuali setup --hooks`"));
     }
-    let settings: Value = std::fs::read_to_string(root.join(file))
+    let settings: Value = std::fs::read_to_string(crate::setup::hooks_file(user, target))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or(json!({}));
     let exe = std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-    let calls: Vec<String> = settings["hooks"]
-        .as_object()
-        .into_iter()
-        .flat_map(|events| events.values())
-        .flat_map(|entries| entries.as_array().into_iter().flatten())
-        .flat_map(|entry| entry["hooks"].as_array().into_iter().flatten())
-        .filter_map(|hook| hook["command"].as_str())
-        .filter(|command| command.contains("nahuali") && command.contains(" hook "))
-        .map(str::to_string)
-        .collect();
+    let mut calls = Vec::new();
+    commands(&settings, &mut calls);
+    calls.retain(|command| command.contains("nahuali") && command.contains(" hook "));
     if calls.is_empty() {
         return Some(fine(
             name,
@@ -210,8 +220,9 @@ pub fn doctor(argv: &[String]) -> Result<String, Failure> {
     }
     if let Ok(user) = std::env::var("HOME") {
         let user = Path::new(&user);
-        lines.extend(tool(&home, user, ".claude", "settings.json", "claude-code"));
-        lines.extend(tool(&home, user, ".codex", "hooks.json", "codex"));
+        for target in crate::setup::targets(user) {
+            lines.extend(tool(&home, user, target));
+        }
     }
     lines.push(usage(&home));
     let who = env::actor(args.value("as"), None).map_or_else(|_| "?".to_string(), |a| a.line());
