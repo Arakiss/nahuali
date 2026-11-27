@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-27
+
 The first release: a working memory for a person and their agents, with
 prebuilt binaries for macOS on Apple silicon and for Linux on x86_64 and
 arm64.
@@ -39,3 +41,6 @@ arm64.
   [#5](https://github.com/Arakiss/nahuali/pull/5)).
 - **Releases:** a version is cut, built and published by itself when a change
   that a user meets lands on `main`.
+
+[Unreleased]: https://github.com/Arakiss/nahuali/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Arakiss/nahuali/releases/tag/v0.1.0
