@@ -19,7 +19,7 @@ When several agents work for you on several projects, the state of the work live
 Nothing in it is a bare statement. Every card, question and decision carries who said it, whether it was verified or only claimed, when, and at which commit.
 
 > [!NOTE]
-> Nahuali is being built and has no release yet. It runs from source. The eight verbs of its design exist: `status`, `update`, `ask`, `answer`, `learn`, `check`, `note` and `recall`. The screens on this page are drawn by the real interface on invented data.
+> Nahuali is young: until 1.0, a minor version may change the command line. Each release ships binaries for macOS and Linux on [GitHub Releases](https://github.com/Arakiss/nahuali/releases). The eight verbs of its design exist: `status`, `update`, `ask`, `answer`, `learn`, `check`, `note` and `recall`. The screens on this page are drawn by the real interface on invented data.
 
 ## Why
 
@@ -319,11 +319,18 @@ The rules live in [`nahuali-core`](crates/nahuali-core), which has no clock, no 
 
 ## Running it
 
-It needs a Rust toolchain.
+Download the archive for your machine from the [latest release](https://github.com/Arakiss/nahuali/releases/latest) (macOS on Apple silicon, Linux on x86_64 and arm64), check it against its `.sha256`, and put `nahuali` on your `PATH`:
 
 ```sh
-cargo install --path crates/nahuali-cli
+tar -xzf nahuali-v*-aarch64-apple-darwin.tar.gz
+install nahuali-v*-aarch64-apple-darwin/nahuali ~/.local/bin/
 nahuali help
+```
+
+Or build it with a Rust toolchain:
+
+```sh
+cargo install --locked --path crates/nahuali-cli
 ```
 
 To see the interface on invented data, without a memory of your own:
@@ -358,7 +365,7 @@ In this order, each when it is done. There are no dates.
 5. ~~Search by meaning beside search by words, on this machine.~~
 6. ~~A team: several people on one memory, each seeing what reaches them.~~
 7. ~~Your own machines: each with its memory, brought together when they meet.~~
-8. Releases you can install without a toolchain.
+8. ~~Releases you can install without a toolchain.~~
 
 A hosted service is not on this list. It may come one day; for now Nahuali is for one person, their agents and their own machines.
 

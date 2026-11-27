@@ -1,0 +1,148 @@
+# A release cuts itself when CI passes on main and a change a user meets
+# (feat, fix, perf, security, revert, or anything breaking) has landed since
+# the last tag. `ops/release` decides the version and writes the changelog;
+# this workflow pushes the release commit and tag, builds the binaries on
+# each platform and publishes them, all at once, as the GitHub release.
+#
+# Nothing to release (only docs, tests, chores): it stops after the plan.
+# Run it by hand (workflow_dispatch) to retry after a failure; a tag already
+# cut and pushed is built and published again without cutting anything.
+
+name: Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One release at a time, and never one cancelled half way.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cut:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.cut.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Cut the version, if there is one
+        id: cut
+        env:
+          TESTED: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -n "$TESTED" ] && [ "$(git rev-parse HEAD)" != "$TESTED" ]; then
+            echo "main moved past the commit CI passed on; that newer commit's run releases it"
+            exit 0
+          fi
+          # A tag on HEAD that has no GitHub release yet: a run that failed after the cut.
+          pending=$(git tag --points-at HEAD 'v*' | head -1)
+          if [ -n "$pending" ] && ! gh release view "$pending" >/dev/null 2>&1; then
+            echo "tag=$pending" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tag=$(ops/release plan --json | python3 -c 'import json, sys; print(json.load(sys.stdin)["tag"] or "")')
+          if [ -z "$tag" ]; then
+            ops/release plan
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          ops/release cut
+          ops/release check
+          git push --atomic origin HEAD:main "refs/tags/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+    env:
+      # gh looks for a release already published for a tag on HEAD.
+      GH_TOKEN: ${{ github.token }}
+
+  build:
+    needs: cut
+    if: needs.cut.outputs.tag != ''
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          # The oldest supported Ubuntu, so the binary needs the oldest glibc.
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.cut.outputs.tag }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+      - run: cargo build --release --locked -p nahuali-cli
+      - name: Package
+        env:
+          TAG: ${{ needs.cut.outputs.tag }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          name="nahuali-${TAG}-${TARGET}"
+          mkdir "$name"
+          cp target/release/nahuali README.md CHANGELOG.md LICENSE-MIT LICENSE-APACHE "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+          ./"$name"/nahuali --version
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nahuali-${{ matrix.target }}
+          path: nahuali-*.tar.gz*
+          if-no-files-found: error
+
+  publish:
+    needs: [cut, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.cut.outputs.tag }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the release with its files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.cut.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          cat dist/*.sha256 | sed 's#  .*/#  #' > dist/SHA256SUMS
+          cat > "$RUNNER_TEMP/install.md" <<EOF
+          ### Install
+
+          Download the archive for your machine below, check it and put \`nahuali\` on your \`PATH\`:
+
+          \`\`\`sh
+          tar -xzf nahuali-${TAG}-aarch64-apple-darwin.tar.gz
+          shasum -a 256 -c nahuali-${TAG}-aarch64-apple-darwin.tar.gz.sha256
+          install nahuali-${TAG}-aarch64-apple-darwin/nahuali ~/.local/bin/
+          nahuali setup --hooks
+          \`\`\`
+
+          Or build it: \`cargo install --locked --git https://github.com/${REPO} --tag ${TAG} nahuali-cli\`.
+          EOF
+          ops/release publish "$TAG" dist/*.tar.gz dist/*.sha256 dist/SHA256SUMS --append "$RUNNER_TEMP/install.md"
