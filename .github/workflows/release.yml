@@ -152,6 +152,8 @@ jobs:
           nahuali setup --hooks
           \`\`\`
 
+          The macOS binary is not signed. Downloaded with a browser, macOS keeps it from running until you clear the quarantine: \`xattr -d com.apple.quarantine ~/.local/bin/nahuali\`.
+
           Or build it: \`cargo install --locked --git https://github.com/${REPO} --tag ${TAG} nahuali-cli\`.
           EOF
           ops/release publish "$TAG" dist/*.tar.gz dist/*.sha256 dist/SHA256SUMS --append "$RUNNER_TEMP/install.md"

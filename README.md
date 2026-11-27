@@ -327,6 +327,8 @@ install nahuali-v*-aarch64-apple-darwin/nahuali ~/.local/bin/
 nahuali help
 ```
 
+The macOS binary is not signed yet. Downloaded with a browser, macOS keeps it from running until you clear the quarantine: `xattr -d com.apple.quarantine ~/.local/bin/nahuali`.
+
 Or build it with a Rust toolchain:
 
 ```sh
