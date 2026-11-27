@@ -1,6 +1,6 @@
 [package]
 name = "nahuali-tui"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -14,7 +14,7 @@ workspace = true
 base64 = "0.23.1"
 crossterm = "0.29.0"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
-nahuali-view = { version = "0.1.0", path = "../nahuali-view" }
+nahuali-view = { version = "0.1.1", path = "../nahuali-view" }
 palette = "0.7.7"
 ratatui = "0.30.2"
 ratatui-image = { version = "11.1.0", default-features = false }

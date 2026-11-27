@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-27
+
+### Fixed
+
+- **hook:** take the session from the hook's input ([#11](https://github.com/Arakiss/nahuali/pull/11))
+- **cli:** say what was meant when a call is wrong ([#10](https://github.com/Arakiss/nahuali/pull/10))
+
 ## [0.1.0] - 2026-11-27
 
 The first release: a working memory for a person and their agents, with
@@ -42,5 +49,6 @@ arm64.
 - **Releases:** a version is cut, built and published by itself when a change
   that a user meets lands on `main`.
 
-[Unreleased]: https://github.com/Arakiss/nahuali/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Arakiss/nahuali/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Arakiss/nahuali/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Arakiss/nahuali/releases/tag/v0.1.0
