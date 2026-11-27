@@ -1,5 +1,6 @@
 {
   "tag-prefix": "v",
+  "repository": "https://github.com/Arakiss/nahuali",
   "changelog": "CHANGELOG.md",
   "header-max": 100,
   "types": [

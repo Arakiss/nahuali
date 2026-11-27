@@ -1,7 +1,7 @@
 # Contributing
 
-Nahuali is being built and has no release yet. Issues and pull requests are
-welcome; for anything large, open an issue first so we can agree on the shape.
+Issues and pull requests are welcome; for anything large, open an issue first
+so we can agree on the shape.
 
 ## Before a pull request
 
@@ -26,10 +26,15 @@ private: `ln -s ../../ops/commit-msg.sh .git/hooks/commit-msg`.
 
 Versions follow [Semantic Versioning](https://semver.org), and
 `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Both are kept by `ops/release`: `ops/release plan` says the next version and why,
-`ops/release cut --notes FILE` bumps every crate, writes the changelog and
-tags, and CI runs `ops/release check` so that tags, crates and changelog
-never disagree.
+Both are kept by `ops/release`, and a release cuts itself: when CI passes on
+`main` and a change a user meets has landed since the last tag, the Release
+workflow runs `ops/release cut` (the next version, every crate bumped, the
+changelog written, an annotated tag), pushes it, builds the binaries on each
+platform and publishes them with the notes. `ops/release plan` says locally
+what the next release would be. The notes are drawn from the commits, each
+linked to its pull request; to say more than the commits do, write it under
+`## [Unreleased]` in `CHANGELOG.md` and those words are the notes instead.
+CI runs `ops/release check` so that tags, crates and changelog never disagree.
 
 ## What a change carries
 

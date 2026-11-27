@@ -13,7 +13,9 @@ with nothing installed.
   release cut [--notes FILE] [--pre ID] [--as X.Y.Z]
                                        bump, write the changelog, commit and tag, locally
   release check                        tags, manifests and changelog agree
-  release publish [TAG]                create the GitHub release of a pushed tag (gh)
+  release publish [TAG] [FILE...] [--append FILE] [--draft]
+                                       create the GitHub release of a pushed tag (gh),
+                                       with FILEs attached and FILE's text after the notes
   release hooks [--force]              install the commit-msg hook
   release version                      the version this file carries
 
@@ -532,19 +534,27 @@ def draft(found, config):
         for c in breaking:
             note = BREAKING_FOOTER.split(c["body"], 1)
             detail = note[1].strip().splitlines()[0] if len(note) > 1 and note[1].strip() else c["text"]
-            out.append("- %s%s" % (scope_mark(c), detail))
+            out.append("- %s%s" % (scope_mark(c), linked(detail, config)))
         out.append("")
     for section in config.get("sections", DEFAULT_SECTIONS):
         items = [c for c in found if c.get("type") in section["types"] and not c.get("breaking")]
         if items:
             out.append("### %s\n" % section["title"])
-            out.extend("- %s%s" % (scope_mark(c), c["text"]) for c in items)
+            out.extend("- %s%s" % (scope_mark(c), linked(c["text"], config)) for c in items)
             out.append("")
     return "\n".join(out).strip()
 
 
 def scope_mark(c):
     return "**%s:** " % c["scope"] if c.get("scope") else ""
+
+
+def linked(text, config):
+    """`(#12)` becomes a link to pull request 12 when the repository is known."""
+    url = config.get("repository", "").rstrip("/")
+    if not url:
+        return text
+    return re.sub(r"\(#(\d+)\)", lambda m: "([#%s](%s/pull/%s))" % (m.group(1), url, m.group(1)), text)
 
 
 def write_release(repo, config, version, notes):
@@ -562,8 +572,31 @@ def write_release(repo, config, version, notes):
         n = re.search(r"^## ", text, re.M)
         at = n.start() if n else len(text)
         text = text[:at].rstrip("\n") + "\n\n" + heading + ("\n" + text[at:] if n else "")
-    write(path, text.rstrip("\n") + "\n")
+    write(path, with_links(text, config).rstrip("\n") + "\n")
     return path
+
+
+LINK_REF = re.compile(r"^\[[^\]]+\]: \S+\s*$", re.M)
+
+
+def with_links(text, config):
+    """The link references at the foot of the changelog, as Keep a Changelog has them:
+    each version to the comparison with the one before, Unreleased to what came since."""
+    url = config.get("repository", "").rstrip("/")
+    if not url:
+        return text
+    prefix = config.get("tag-prefix", "v")
+    versions = released_headings(text)
+    refs = []
+    if versions and re.search(r"^## \[Unreleased\]", text, re.M):
+        refs.append("[Unreleased]: %s/compare/%s%s...HEAD" % (url, prefix, versions[0]))
+    for newer, older in zip(versions, versions[1:] + [None]):
+        if older is None:
+            refs.append("[%s]: %s/releases/tag/%s%s" % (newer, url, prefix, newer))
+        else:
+            refs.append("[%s]: %s/compare/%s%s...%s%s" % (newer, url, prefix, older, prefix, newer))
+    body = LINK_REF.sub("", text).rstrip("\n")
+    return body + ("\n\n" + "\n".join(refs) if refs else "") + "\n"
 
 
 # ---------------------------------------------------------------- commands
@@ -745,8 +778,22 @@ def cmd_check(args, config, repo):
 
 def cmd_publish(args, config, repo):
     last = tags(config)
-    rest = [a for a in args if not a.startswith("--")]
+    rest, append, i = [], None, 0
+    while i < len(args):
+        if args[i] == "--append":
+            append = args[i + 1] if i + 1 < len(args) else None
+            if not append:
+                raise Refused("--append takes a file")
+            i += 2
+            continue
+        if not args[i].startswith("--"):
+            rest.append(args[i])
+        i += 1
     tag = rest[0] if rest else (last[-1][1] if last else None)
+    assets = rest[1:]
+    for a in assets:
+        if not os.path.isfile(a):
+            raise Refused("%s is not a file to attach" % a)
     if not tag:
         raise Refused("there is no tag to publish")
     prefix = config.get("tag-prefix", "v")
@@ -760,12 +807,18 @@ def cmd_publish(args, config, repo):
         raise Refused("the changelog has no section for %s" % version)
     if not shutil.which("gh"):
         raise Refused("publishing needs the GitHub CLI, `gh`")
+    if append:
+        notes = notes + "\n\n" + read(append).strip()
     with tempfile.NamedTemporaryFile("w", delete=False, suffix=".md") as f:
         f.write(notes + "\n")
     try:
+        # Everything in one call: a release is never seen without its files.
         cmd = ["gh", "release", "create", tag, "--verify-tag", "--title", tag, "--notes-file", f.name]
+        cmd += assets
         if version.pre:
             cmd.append("--prerelease")
+        if "--draft" in args:
+            cmd.append("--draft")
         out = subprocess.run(cmd, capture_output=True, text=True)
     finally:
         os.unlink(f.name)
