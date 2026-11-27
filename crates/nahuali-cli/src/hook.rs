@@ -10,6 +10,15 @@
 //! - `nahuali hook prompt`: when the person speaks again, and there were
 //!   commits since this project's card was last written, a reminder that
 //!   the card may be old. Once for each commit, and it stops nothing.
+//! - `nahuali hook post-tool`: what a lesson told before a command, for a
+//!   tool that cannot add words to a command it lets through.
+//!
+//! The last word names the tool, and each tool asks and is answered in its
+//! own shape ([`Tool`]). Claude Code and Codex add words to a command they
+//! let through. Antigravity and Cursor only let it through or refuse it: a
+//! lesson that stops nothing is kept and said right after the command, at
+//! Antigravity's next call to the model (`prompt`, its `PreInvocation`) or
+//! at Cursor's `postToolUse`.
 //!
 //! A hook never breaks the session it runs in. Whatever goes wrong, it
 //! says nothing and exits well. And it never waits for a keeper to start:
@@ -34,6 +43,127 @@ const PATIENCE: Duration = Duration::from_millis(2500);
 /// what eight of them take.
 const BRIEF: text::Budget = text::Budget { works: 8, bytes: 2048, decided: 3 };
 
+/// The shape a tool asks a hook in and takes its answer in.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Tool {
+    /// Claude Code and Codex: `hookSpecificOutput`, snake_case input.
+    Claude,
+    /// Antigravity (`agy`): camelCase input, `injectSteps` and `decision`.
+    Antigravity,
+    /// Cursor: snake_case input, `additional_context` and `permission`.
+    Cursor,
+}
+
+impl Tool {
+    pub fn of(name: Option<&str>) -> Tool {
+        match name {
+            Some("antigravity") => Tool::Antigravity,
+            Some("cursor") => Tool::Cursor,
+            _ => Tool::Claude,
+        }
+    }
+}
+
+/// What a hook needs from what the tool sent, whatever its shape.
+#[derive(Debug, Default, PartialEq)]
+struct Given {
+    cwd: Option<String>,
+    session: Option<String>,
+    tool: String,
+    command: Option<String>,
+    file: String,
+    /// Antigravity calls `prompt` before each call to the model; only the
+    /// first of a turn is the person speaking again.
+    first_of_turn: bool,
+}
+
+fn given(tool: Tool, input: &Value) -> Given {
+    let text = |v: &Value| v.as_str().filter(|s| !s.is_empty()).map(str::to_string);
+    match tool {
+        Tool::Claude => Given {
+            cwd: text(&input["cwd"]),
+            session: text(&input["session_id"]),
+            tool: input["tool_name"].as_str().unwrap_or_default().to_string(),
+            command: text(&input["tool_input"]["command"]),
+            file: input["tool_input"]["file_path"].as_str().unwrap_or_default().to_string(),
+            first_of_turn: true,
+        },
+        Tool::Antigravity => Given {
+            cwd: text(&input["cwd"]).or_else(|| text(&input["workspacePaths"][0])),
+            session: text(&input["conversationId"]),
+            tool: input["toolCall"]["name"].as_str().unwrap_or_default().to_string(),
+            command: text(&input["toolCall"]["args"]["CommandLine"]),
+            file: input["toolCall"]["args"]["TargetFile"].as_str().unwrap_or_default().to_string(),
+            first_of_turn: input["invocationNum"].as_u64().unwrap_or(0) == 0,
+        },
+        // Cursor sends an empty `cwd` to a shell command: the workspace is
+        // where it runs.
+        Tool::Cursor => Given {
+            cwd: text(&input["cwd"]).or_else(|| text(&input["workspace_roots"][0])),
+            session: text(&input["session_id"]).or_else(|| text(&input["conversation_id"])),
+            tool: input["tool_name"].as_str().unwrap_or_default().to_string(),
+            command: text(&input["tool_input"]["command"]),
+            file: input["tool_input"]["file_path"].as_str().unwrap_or_default().to_string(),
+            first_of_turn: true,
+        },
+    }
+}
+
+/// Words for the agent at the start of a session, in the tool's shape.
+fn starting(tool: Tool, said: String) -> String {
+    match tool {
+        Tool::Claude => {
+            json!({ "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": said } })
+        }
+        Tool::Antigravity => json!({ "injectSteps": [{ "systemMessage": { "systemMessage": said } }] }),
+        Tool::Cursor => json!({ "additional_context": said }),
+    }
+    .to_string()
+}
+
+/// Words for the agent before its next step, in the tool's shape: when the
+/// person speaks (`prompt`), or after a command (`post-tool`).
+fn between(tool: Tool, event: &str, said: String) -> String {
+    match tool {
+        Tool::Claude => {
+            json!({ "hookSpecificOutput": { "hookEventName": event, "additionalContext": said } })
+        }
+        Tool::Antigravity => json!({ "injectSteps": [{ "systemMessage": { "systemMessage": said } }] }),
+        Tool::Cursor => json!({ "additional_context": said }),
+    }
+    .to_string()
+}
+
+/// A command refused once, with the lesson that refused it.
+fn refusing(tool: Tool, said: String) -> String {
+    match tool {
+        Tool::Claude => json!({ "hookSpecificOutput": {
+            "hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": said } }),
+        Tool::Antigravity => json!({ "decision": "deny", "reason": said }),
+        // Cursor shows the agent `user_message` as the refusal.
+        Tool::Cursor => json!({ "permission": "deny", "user_message": said, "agent_message": said }),
+    }
+    .to_string()
+}
+
+/// Where a lesson told before a command waits to be said after it, for a
+/// tool that cannot say it before.
+fn held(local: &std::path::Path, tool: Tool, session: Option<&str>) -> std::path::PathBuf {
+    let session = session
+        .filter(|s| s.len() <= 128 && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.:".contains(c)))
+        .unwrap_or("none");
+    local.join(format!("held-{tool:?}-{session}").to_lowercase())
+}
+
+/// What was held for this session, taken: it is said once.
+fn take_held(local: &std::path::Path, tool: Tool, session: Option<&str>) -> Option<String> {
+    let file = held(local, tool, session);
+    let said = std::fs::read_to_string(&file).ok()?;
+    let _ = std::fs::remove_file(&file);
+    let said = said.trim();
+    (!said.is_empty()).then(|| said.to_string())
+}
+
 pub fn hook(argv: &[String]) -> Result<String, Failure> {
     let kind = argv.first().map(String::as_str).unwrap_or_default();
     let mut input = String::new();
@@ -43,7 +173,9 @@ pub fn hook(argv: &[String]) -> Result<String, Failure> {
 }
 
 fn run(kind: &str, input: &Value, tool: Option<&str>) -> Option<String> {
-    if let Some(cwd) = input["cwd"].as_str() {
+    let shape = Tool::of(tool);
+    let given = given(shape, input);
+    if let Some(cwd) = &given.cwd {
         std::env::set_current_dir(cwd).ok()?;
     }
     let home = env::home(None).ok()?;
@@ -62,7 +194,8 @@ fn run(kind: &str, input: &Value, tool: Option<&str>) -> Option<String> {
     let mind = match Mind::open_as(journal, Some(me.clone())) {
         Ok(mind) => mind,
         Err(nahuali_core::Error::Io(why)) if kind == "session-start" && crate::remote::is_waking(&why) => {
-            return Some(start_context(
+            return Some(starting(
+                shape,
                 "nahuali · the memory was asleep and is waking up. `nahuali status` shows where this project stands."
                     .to_string(),
             ));
@@ -70,9 +203,19 @@ fn run(kind: &str, input: &Value, tool: Option<&str>) -> Option<String> {
         Err(_) => return None,
     };
     match kind {
-        "session-start" => session_start(&mind, &project, &me),
-        "pre-tool" => pre_tool(mind, &project, input, me, tool),
-        "prompt" => prompt(&mind, &project, &local),
+        "session-start" => session_start(&mind, &project, &me).map(|said| starting(shape, said)),
+        "pre-tool" => pre_tool(mind, &project, &given, me, tool, shape, &local),
+        "prompt" => {
+            // What a lesson told before the last command comes first: it
+            // is about what was just done.
+            let before = take_held(&local, shape, given.session.as_deref());
+            let card = given.first_of_turn.then(|| prompt(&mind, &project, &local)).flatten();
+            let said = [before, card].into_iter().flatten().collect::<Vec<_>>().join("\n\n");
+            (!said.is_empty()).then(|| between(shape, "UserPromptSubmit", said))
+        }
+        "post-tool" => {
+            take_held(&local, shape, given.session.as_deref()).map(|said| between(shape, "PostToolUse", said))
+        }
         _ => None,
     }
 }
@@ -93,32 +236,28 @@ fn session_start(mind: &Mind<Remote>, project: &str, me: &str) -> Option<String>
          Update a card with `nahuali update` when its state changes; put a decision for the person with `nahuali ask`.",
         report.brief(&BRIEF)?
     );
-    Some(start_context(said))
-}
-
-fn start_context(said: String) -> String {
-    json!({ "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": said } })
-        .to_string()
+    Some(said)
 }
 
 fn pre_tool(
     mut mind: Mind<Remote>,
     project: &str,
-    input: &Value,
+    given: &Given,
     me: String,
     by: Option<&str>,
+    shape: Tool,
+    local: &std::path::Path,
 ) -> Option<String> {
-    let tool = input["tool_name"].as_str().unwrap_or_default();
-    let doing = match input["tool_input"]["command"].as_str() {
+    let doing = match &given.command {
         // What the command carries along, a script or a file's text, is not the act.
         Some(command) => nahuali_core::words::act(command),
-        None => format!("{tool} {}", input["tool_input"]["file_path"].as_str().unwrap_or_default()),
+        None => format!("{} {}", given.tool, given.file),
     };
     // Talking to the memory is nobody's moment.
     if doing.trim_start().starts_with("nahuali ") {
         return None;
     }
-    let session = input["session_id"].as_str().map(str::to_string);
+    let session = given.session.clone();
     let now = Time::from_millis(env::now_ms());
     let (said, names, stops) = {
         let applies: Vec<_> = crate::more::told(&mind, project, &doing, false)
@@ -159,12 +298,26 @@ fn pre_tool(
     crate::uses::count("stopped", usize::from(stops));
     // If the showing cannot be recorded, it is still shown.
     let _ = mind.shown(sig, names, &doing, session, stops);
-    let output = if stops {
-        json!({ "hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": said })
-    } else {
-        json!({ "hookEventName": "PreToolUse", "additionalContext": said })
-    };
-    Some(json!({ "hookSpecificOutput": output }).to_string())
+    if stops {
+        return Some(refusing(shape, said));
+    }
+    if shape == Tool::Claude {
+        return Some(
+            json!({ "hookSpecificOutput": { "hookEventName": "PreToolUse", "additionalContext": said } })
+                .to_string(),
+        );
+    }
+    // This tool cannot add words to a command it lets through, and any
+    // answer but none refuses it. The lesson is said right after.
+    use std::io::Write;
+    let file = held(local, shape, given.session.as_deref());
+    let mut out = std::fs::OpenOptions::new().create(true).append(true).open(file).ok()?;
+    let _ = writeln!(
+        out,
+        "{}",
+        said.replacen("it applies to what you are about to do", "it applied to the command you just ran", 1)
+    );
+    None
 }
 
 fn git(args: &[&str]) -> Option<String> {
@@ -218,8 +371,80 @@ fn prompt(mind: &Mind<Remote>, project: &str, local: &std::path::Path) -> Option
         card.marks.at.ago(now),
         card.slug
     );
-    Some(
-        json!({ "hookSpecificOutput": { "hookEventName": "UserPromptSubmit", "additionalContext": said } })
-            .to_string(),
-    )
+    Some(said)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_tool_is_read_in_its_own_shape() {
+        // As Antigravity 1.5 sends it before a command.
+        let agy = json!({
+            "conversationId": "c-1", "cwd": "/w/atlas", "hookEventName": "PreToolUse", "stepIdx": 4,
+            "toolCall": { "id": "call_1", "name": "run_command", "args": { "CommandLine": "git push --force" } },
+            "workspacePaths": ["/w/atlas"]
+        });
+        let got = given(Tool::Antigravity, &agy);
+        assert_eq!(got.cwd.as_deref(), Some("/w/atlas"));
+        assert_eq!(got.session.as_deref(), Some("c-1"));
+        assert_eq!(got.command.as_deref(), Some("git push --force"));
+        assert_eq!(got.tool, "run_command");
+
+        // Antigravity calls before each call to the model; only the first is
+        // the person speaking.
+        assert!(given(Tool::Antigravity, &json!({ "invocationNum": 0 })).first_of_turn);
+        assert!(!given(Tool::Antigravity, &json!({ "invocationNum": 2 })).first_of_turn);
+
+        // As Cursor sends it: an empty `cwd`, the workspace in `workspace_roots`.
+        let cursor = json!({
+            "conversation_id": "c-2", "session_id": "c-2", "tool_name": "Shell", "cwd": "",
+            "tool_input": { "command": "git push --force", "cwd": "" }, "workspace_roots": ["/w/borealis"]
+        });
+        let got = given(Tool::Cursor, &cursor);
+        assert_eq!(got.cwd.as_deref(), Some("/w/borealis"), "an empty cwd is no place");
+        assert_eq!(got.session.as_deref(), Some("c-2"));
+        assert_eq!(got.command.as_deref(), Some("git push --force"));
+
+        let claude = json!({ "session_id": "s-3", "cwd": "/w/cobalt", "tool_name": "Bash", "tool_input": { "command": "ls" } });
+        let got = given(Tool::Claude, &claude);
+        assert_eq!((got.cwd.as_deref(), got.session.as_deref()), (Some("/w/cobalt"), Some("s-3")));
+    }
+
+    #[test]
+    fn each_tool_is_answered_in_its_own_shape() {
+        let parse = |s: String| serde_json::from_str::<Value>(&s).unwrap();
+        let agy = parse(starting(Tool::Antigravity, "board".into()));
+        assert_eq!(agy["injectSteps"][0]["systemMessage"]["systemMessage"], "board");
+        assert_eq!(parse(starting(Tool::Cursor, "board".into()))["additional_context"], "board");
+        assert_eq!(
+            parse(starting(Tool::Claude, "board".into()))["hookSpecificOutput"]["additionalContext"],
+            "board"
+        );
+
+        let agy = parse(refusing(Tool::Antigravity, "lesson".into()));
+        assert_eq!((agy["decision"].as_str(), agy["reason"].as_str()), (Some("deny"), Some("lesson")));
+        let cursor = parse(refusing(Tool::Cursor, "lesson".into()));
+        assert_eq!(cursor["permission"], "deny");
+        assert_eq!(cursor["user_message"], "lesson", "Cursor shows the agent this one");
+        assert_eq!(
+            parse(refusing(Tool::Claude, "lesson".into()))["hookSpecificOutput"]["permissionDecision"],
+            "deny"
+        );
+    }
+
+    #[test]
+    fn what_is_held_is_said_once_and_only_to_its_session() {
+        let local = std::env::temp_dir().join(format!("nahuali-held-{}", std::process::id()));
+        std::fs::create_dir_all(&local).unwrap();
+        std::fs::write(held(&local, Tool::Cursor, Some("c-1")), "a lesson\n").unwrap();
+        assert_eq!(take_held(&local, Tool::Cursor, Some("c-2")), None, "another session hears nothing");
+        assert_eq!(take_held(&local, Tool::Antigravity, Some("c-1")), None, "another tool hears nothing");
+        assert_eq!(take_held(&local, Tool::Cursor, Some("c-1")).as_deref(), Some("a lesson"));
+        assert_eq!(take_held(&local, Tool::Cursor, Some("c-1")), None, "said once");
+        // A session that is not a plain name never becomes a path.
+        assert!(held(&local, Tool::Cursor, Some("../../x")).ends_with("held-cursor-none"));
+        let _ = std::fs::remove_dir_all(&local);
+    }
 }

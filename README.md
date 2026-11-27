@@ -244,8 +244,8 @@ No copy of Nahuali has to be trusted for these to hold: they are permissions of 
 ### Any tool
 
 ```sh
-nahuali setup            # writes the one page an agent reads, for Claude Code and Codex
-nahuali setup --hooks    # also, in Claude Code and Codex: the board at the start of a session, lessons before a command
+nahuali setup            # writes the one page an agent reads, for Claude Code, Codex, Antigravity and Cursor
+nahuali setup --hooks    # also, in each: the board at the start of a session, lessons before a command
 nahuali mcp              # the same eight verbs over the Model Context Protocol
 nahuali doctor           # whether every part is right, and what to do about the ones that are not
 nahuali usage            # how it was used here lately, and where it got in the way
@@ -345,7 +345,7 @@ This repository is kept, from its first commit, as if it were already public. Wh
 - It does not encrypt. The memory is as private as the disk it is on.
 - It does not run on Windows itself. It runs on Linux inside Windows (WSL), where it has not been tried yet.
 - Meaning is a likeness, not an understanding. It finds about half of what is said in other words and is kept apart from what the words find. Without the model there are only the words.
-- The hooks are for Claude Code and Codex. Codex runs them only after you review them once, in its `/hooks`. Other tools use the command or MCP.
+- The hooks are for Claude Code, Codex, Antigravity (`agy`) and Cursor. Codex runs them only after you review them once, in its `/hooks`. Antigravity and Cursor cannot add words to a command they let through, so a lesson that does not stop it is said right after it. Other tools use the command or MCP.
 
 ## Roadmap
 
