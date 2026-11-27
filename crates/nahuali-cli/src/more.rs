@@ -16,9 +16,13 @@ pub fn learn(argv: &[String]) -> Result<String, Failure> {
         &args,
         "learn takes one rule, in quotes: nahuali learn \"Agent worktrees start from the default branch\" --moment \"before spawning an agent in a worktree\"",
     )?;
-    let moment = args
-        .value("moment")
-        .ok_or_else(|| usage("a lesson needs the moment it applies: --moment \"before …\""))?;
+    let moment = args.value("moment").ok_or_else(|| {
+        usage(
+            "a lesson needs the moment it applies: --moment \"before …\"\n  \
+                 --moment says when, in words (\"before pushing to main\"); \
+                 --when gives words of the command that mark it (\"git push\")",
+        )
+    })?;
     let new = NewLesson {
         rule,
         moment: moment.to_string(),

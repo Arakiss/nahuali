@@ -244,6 +244,30 @@ fn a_mistake_on_the_command_line_is_told_apart_from_a_refusal() {
 }
 
 #[test]
+fn a_mistake_says_what_was_meant() {
+    let desk = Desk::new("meant");
+    let err = |args: &[&str]| desk.run(args).err;
+    assert!(err(&["update", "importer", "--state", "done"]).contains("did you mean --status?"));
+    assert!(err(&["ask", "Ship it?", "--holds", "importer"]).contains("did you mean --work?"));
+    let said = err(&["learn", "Rebase first", "--when", "git push"]);
+    assert!(
+        said.contains("--moment says when") && said.contains("--when gives words of the command"),
+        "{said}"
+    );
+    assert!(err(&["update", "Agy Global Config", "--line", "x"]).contains("as `agy-global-config`"));
+
+    desk.run(&["update", "importer", "--line", "reading the files"]).ok();
+    let long = "a".repeat(300);
+    let said = err(&["update", "importer", "--line", &long]);
+    assert!(said.contains("at most 280 characters, and this one has 300"), "{said}");
+    assert!(said.contains("--done") && said.contains("--next"), "{said}");
+
+    let said = err(&["ask", "Which?", "--work", "ghost"]);
+    assert!(said.contains("its works in motion: importer"), "{said}");
+    assert!(said.contains("nahuali update ghost --line"), "{said}");
+}
+
+#[test]
 fn whoever_speaks_is_named_by_the_tool_that_runs_it() {
     let desk = Desk::new("who");
     let dir = desk.root.join("work");

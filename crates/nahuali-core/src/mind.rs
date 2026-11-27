@@ -74,6 +74,8 @@ pub enum Error {
     TooLong {
         what: &'static str,
         limit: usize,
+        /// How many characters were given.
+        has: usize,
     },
     /// An update that changes nothing.
     Nothing,
@@ -108,10 +110,16 @@ impl fmt::Display for Error {
         match self {
             Self::Io(e) => write!(f, "the memory could not be read or written: {e}"),
             Self::BadName { what, given } => {
-                write!(f, "`{given}` is not a name for {what}: use lower-case letters, digits and dashes")
+                write!(f, "`{given}` is not a name for {what}: use lower-case letters, digits and dashes")?;
+                match as_name(given) {
+                    Some(name) if name != *given => write!(f, ", as `{name}`"),
+                    _ => Ok(()),
+                }
             }
             Self::Empty(what) => write!(f, "{what} needs words"),
-            Self::TooLong { what, limit } => write!(f, "{what} is one line of at most {limit} characters"),
+            Self::TooLong { what, limit, has } => {
+                write!(f, "{what} is one line of at most {limit} characters, and this one has {has}")
+            }
             Self::Nothing => write!(
                 f,
                 "an update says at least one thing: a status, a line, something done or what is next"
@@ -161,13 +169,20 @@ fn said(what: &'static str, text: &str, limit: usize) -> Result<String, Error> {
         return Err(Error::Empty(what));
     }
     if text.chars().count() > limit {
-        return Err(Error::TooLong { what, limit });
+        return Err(Error::TooLong { what, limit, has: text.chars().count() });
     }
     Ok(text)
 }
 
 fn maybe(what: &'static str, text: &Option<String>, limit: usize) -> Result<Option<String>, Error> {
     text.as_deref().map(|t| said(what, t, limit)).transpose()
+}
+
+/// What a name that is not one would be as one: `Agy global config` is
+/// `agy-global-config`. None when nothing of it is left.
+fn as_name(given: &str) -> Option<String> {
+    let name = id::slugify(given);
+    id::is_slug(&name).then_some(name)
 }
 
 fn named(what: &'static str, given: &str) -> Result<(), Error> {
